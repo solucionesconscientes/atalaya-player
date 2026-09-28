@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Launch the system mpv with the project's portable config dir and a unique IPC socket per instance.
+# Usage: bin/mpv-uos [mpv options] [files/URLs]   (any mpv option given here overrides mpv-config/mpv.conf)
+# Env: MPV_UOS_MPV (mpv binary, default "mpv"), MPV_UOS_RUNTIME_DIR (socket dir), MPV_UOS_SOCKET (explicit socket).
+set -euo pipefail
+ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+CONFIG_DIR="$ROOT/mpv-config"
+MPV_BIN="${MPV_UOS_MPV:-mpv}"
+RUNTIME_DIR="${MPV_UOS_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/mpv-uos}"
+mkdir -p "$RUNTIME_DIR"
+# `exec` below keeps this shell's PID for mpv, so the socket name matches the mpv process.
+SOCKET="${MPV_UOS_SOCKET:-$RUNTIME_DIR/mpv-$$.sock}"
+export MPV_UOS_ROOT="$ROOT"
+export MPV_UOS_SOCKET="$SOCKET"
+exec "$MPV_BIN" --config-dir="$CONFIG_DIR" --input-ipc-server="$SOCKET" "$@"

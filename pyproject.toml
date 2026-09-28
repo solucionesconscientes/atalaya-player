@@ -1,0 +1,33 @@
+[project]
+name = "mpvd"
+version = "0.1.0"
+description = "Companion daemon for MPV-UOS: heavy lifting (AI, network, indexes, downloads) next to mpv, over JSON-RPC"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = []
+
+[project.scripts]
+mpvd = "mpvd.__main__:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "pytest-timeout>=2.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.8,<1"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "mpvd"
+module-root = ""
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -ra -m 'not network'"
+timeout = 180
+markers = [
+  "network: needs internet access (run with -m network)",
+]

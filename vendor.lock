@@ -1,0 +1,12 @@
+# Componentes de terceros fijados (formato KEY=VALUE, lo lee tools/vendor.sh con `source`).
+# Para actualizar: cambia versión/URL, calcula el SHA-256 (sha256sum) y ejecuta tools/vendor.sh.
+UOSC_VERSION=5.13.0
+UOSC_ZIP_URL=https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip
+UOSC_ZIP_SHA256=4be9da3289285300fa374496c3f1bfd7bb20ac08e890d25bd5a06b28eebe4882
+UOSC_CONF_URL=https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.conf
+UOSC_CONF_SHA256=d956aea5d2e90f7690ede41c6a23f855d045f3aa9b05932df27d8045fa3b3396
+THUMBFAST_COMMIT=0f711de3138c9bd6718209d819ac54022c23ded2
+THUMBFAST_LUA_URL=https://raw.githubusercontent.com/po5/thumbfast/0f711de3138c9bd6718209d819ac54022c23ded2/thumbfast.lua
+THUMBFAST_LUA_SHA256=a3d08e71eae8b892f6cd39f9593ea219768e709312d176bca883841b156448bf
+THUMBFAST_CONF_URL=https://raw.githubusercontent.com/po5/thumbfast/0f711de3138c9bd6718209d819ac54022c23ded2/thumbfast.conf
+THUMBFAST_CONF_SHA256=b4cfc2d8711e36067b0692e9215d5188e2f0f33717d5daca1bdd0f2d55360dd2

@@ -5,6 +5,9 @@ tmp/
 logs/
 __pycache__/
 *.pyc
+.pytest_cache/
 .runner.env
 mpv-config/watch_later/
 mpv-config/cache/
+mpv-config/scripts/uosc/bin/
+tests/fixtures/media/
