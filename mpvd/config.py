@@ -57,10 +57,26 @@ def default_cache_dir() -> Path:
     return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "mpv-uos"
 
 
+def default_data_dir() -> Path:
+    """User data that is not a cache (favourites, recents, settings)."""
+    env = os.environ.get("MPV_UOS_DATA_DIR")
+    if env:
+        return Path(env)
+    root = project_root()
+    if root is not None:
+        return root / ".cache" / "data"
+    if sys.platform == "win32":
+        return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "mpv-uos"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "mpv-uos"
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "mpv-uos"
+
+
 @dataclass
 class Settings:
     runtime_dir: Path = field(default_factory=default_runtime_dir)
     cache_dir: Path = field(default_factory=default_cache_dir)
+    data_dir: Path = field(default_factory=default_data_dir)
     idle_timeout: float = 600.0  # seconds without sessions/clients before the daemon exits (0 = never)
     workers: int = max(1, (os.cpu_count() or 2) - 1)
     log_level: str = "INFO"
@@ -80,6 +96,7 @@ class Settings:
     def ensure_dirs(self) -> None:
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
         try:
             os.chmod(self.runtime_dir, 0o700)
         except OSError:

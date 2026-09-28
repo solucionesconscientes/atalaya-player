@@ -1,0 +1,52 @@
+[
+  {
+    "name": "Spain",
+    "iso_3166_1": "ES",
+    "stationcount": 1461
+  },
+  {
+    "name": "France",
+    "iso_3166_1": "FR",
+    "stationcount": 3858
+  },
+  {
+    "name": "Germany",
+    "iso_3166_1": "DE",
+    "stationcount": 6440
+  },
+  {
+    "name": "The United Kingdom Of Great Britain And Northern Ireland",
+    "iso_3166_1": "GB",
+    "stationcount": 2491
+  },
+  {
+    "name": "The United States Of America",
+    "iso_3166_1": "US",
+    "stationcount": 8253
+  },
+  {
+    "name": "Mexico",
+    "iso_3166_1": "MX",
+    "stationcount": 2968
+  },
+  {
+    "name": "Argentina",
+    "iso_3166_1": "AR",
+    "stationcount": 1257
+  },
+  {
+    "name": "Italy",
+    "iso_3166_1": "IT",
+    "stationcount": 1855
+  },
+  {
+    "name": "Portugal",
+    "iso_3166_1": "PT",
+    "stationcount": 400
+  },
+  {
+    "name": "Brazil",
+    "iso_3166_1": "BR",
+    "stationcount": 1743
+  }
+]

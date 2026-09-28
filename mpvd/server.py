@@ -45,7 +45,7 @@ def socket_is_alive(path: os.PathLike[str] | str, timeout: float = 1.0) -> bool:
 
 
 class MpvdServer:
-    def __init__(self, settings: Settings | None = None):
+    def __init__(self, settings: Settings | None = None, iptv_sources: list[Any] | None = None):
         self.settings = settings or Settings.from_env()
         self.dispatcher = Dispatcher()
         self.guardian = PerformanceGuardian()
@@ -60,8 +60,12 @@ class MpvdServer:
         self._idle_task: asyncio.Task[None] | None = None
         self.services: dict[str, bool] = {}
         from mpvd import methods  # noqa: PLC0415 - avoid import cycle
+        from mpvd.iptv.service import IptvService  # noqa: PLC0415
+        from mpvd.iptv.service import register as register_iptv  # noqa: PLC0415
 
         methods.register(self)
+        self.iptv = IptvService(self, sources=iptv_sources)
+        register_iptv(self, self.iptv)
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -106,6 +110,7 @@ class MpvdServer:
             self._server.close()
             await self._server.wait_closed()
         self.cache.close()
+        self.iptv.close()
         with contextlib.suppress(OSError):
             if self.settings.pid_path.exists() and self.settings.pid_path.read_text().strip() == str(os.getpid()):
                 self.settings.pid_path.unlink()

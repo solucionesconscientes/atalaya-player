@@ -1,0 +1,42 @@
+#EXTM3U
+# @LaQuay https://github.com/LaQuay/TDTChannels
+#EXTINF:-1 radio="true" tvg-id="CadenaS.Radio" tvg-logo="https://graph.facebook.com/cadenaser/picture?width=200&height=200" group-title="Radio_Populares" tvg-name="Cadena SER",Cadena SER
+https://playerservices.streamtheworld.com/api/livestream-redirect/CADENASERAAC.aac
+#EXTINF:-1 radio="true" tvg-id="CadenaS.Radio" tvg-logo="https://graph.facebook.com/cadenaser/picture?width=200&height=200" group-title="Radio_Populares" tvg-name="Cadena SER",Cadena SER
+https://playerservices.streamtheworld.com/api/livestream-redirect/CADENASER_ALT1AAC.aac
+#EXTINF:-1 radio="true" tvg-id="CadenaS.Radio" tvg-logo="https://graph.facebook.com/cadenaser/picture?width=200&height=200" group-title="Radio_Populares" tvg-name="Cadena SER",Cadena SER
+https://playerservices.streamtheworld.com/api/livestream-redirect/CADENASER_ALT2AAC.aac
+#EXTINF:-1 radio="true" tvg-id="OndaCero.Radio" tvg-logo="https://graph.facebook.com/ondacero/picture?width=200&height=200" group-title="Radio_Populares" tvg-name="Onda Cero",Onda Cero
+https://atres-live.ondacero.es/live/ondaceroeventos1/master.m3u8
+#EXTINF:-1 radio="true" tvg-id="CATRadio.Radio" tvg-logo="https://graph.facebook.com/catradio/picture?width=200&height=200" group-title="Radio_Populares" tvg-name="Catalunya Ràdio",Catalunya Ràdio
+https://directes-radio-int.3catdirectes.cat/live-content/catalunya-radio-hls/master.m3u8
+#EXTINF:-1 radio="true" tvg-id="RadioMaria.Radio" tvg-logo="https://graph.facebook.com/RadioMariaSpa/picture?width=200&height=200" group-title="Radio_Populares" tvg-name="Radio María",Radio María
+https://dreamsiteradiocp2.com/proxy/rmspain1?mp=/stream
+#EXTINF:-1 radio="true" tvg-id="Los40.Radio" tvg-logo="https://graph.facebook.com/los40/picture?width=200&height=200" group-title="Radio_Musicales" tvg-name="LOS40",LOS40
+https://playerservices.streamtheworld.com/api/livestream-redirect/LOS40AAC.aac
+#EXTINF:-1 radio="true" tvg-id="LocaFM.Radio" tvg-logo="https://graph.facebook.com/LocaFmOficial/picture?width=200&height=200" group-title="Radio_Musicales" tvg-name="Loca FM",Loca FM
+https://s3.we4stream.com:2020/stream/locafm
+#EXTINF:-1 radio="true" tvg-logo="https://graph.facebook.com/ValenciaCF/picture?width=200&height=200" group-title="Radio_Deportivas" tvg-name="Valencia CF Radio",Valencia CF Radio
+https://radio-valencia-direct.flumotion.com/rvfc/shoutcast.mp3
+#EXTINF:-1 radio="true" tvg-logo="https://yt3.googleusercontent.com/ytc/AIdro_k2PqG2pKYF9_qLh_ut69Z0MtU-jXsRvezCZQtbjivJsX8=s200" group-title="Radio_Infantiles" tvg-name="Babyradio",Babyradio
+https://srv6022.dns-lcinternet.com:8033/stream
+#EXTINF:-1 radio="true" tvg-id="CanalSurFlamenco.Radio" tvg-logo="https://graph.facebook.com/FlamencoRadio/picture?width=200&height=200" group-title="Radio_Andalucía" tvg-name="Flamenco Radio",Flamenco Radio
+https://rtva-live-radio.flumotion.com/rtva/flamenco.mp3
+#EXTINF:-1 radio="true" tvg-logo="https://graph.facebook.com/cadenadial/picture?width=200&height=200" group-title="Radio_Andalucía" tvg-name="Cadena Dial Andalucía Este",Cadena Dial Andalucía Este
+http://streaming5.elitecomunicacion.es:8226/stream
+#EXTINF:-1 radio="true" tvg-id="AragonRadio.Radio" tvg-logo="https://graph.facebook.com/aragonradio/picture?width=200&height=200" group-title="Radio_Aragón" tvg-name="Aragón Radio",Aragón Radio
+https://eu.mdstrm.com/audio/69934495897db8e420c636a4/live.m3u8
+#EXTINF:-1 radio="true" tvg-logo="https://graph.facebook.com/radiomai/picture?width=200&height=200" group-title="Radio_Aragón" tvg-name="Radio Mai",Radio Mai
+https://www.radiomai.com/online/stream.php?ch=1
+#EXTINF:-1 radio="true" tvg-logo="https://graph.facebook.com/LaRadioCanaria/picture?width=200&height=200" group-title="Radio_Canarias" tvg-name="Canarias Radio",Canarias Radio
+https://rtvc-radio.flumotion.com/rtvc-radio/radio1-high.mp3
+#EXTINF:-1 radio="true" tvg-id="RNE.Radio" tvg-logo="https://graph.facebook.com/radionacionalrne/picture?width=200&height=200" group-title="Radio_Cantabria" tvg-name="Radio Nacional Cantabria",Radio Nacional Cantabria
+https://dispatcher.rndfnk.com/crtve/rne1/ctb/mp3/high
+#EXTINF:-1 radio="true" tvg-logo="https://graph.facebook.com/CMMediaes/picture?width=200&height=200" group-title="Radio_Castilla-La Mancha" tvg-name="CMM Radio",CMM Radio
+https://cdnapisec.kaltura.com/p/2288691/sp/228869100/playManifest/entryId/1_fmx3e3sd/protocol/https/format/applehttp/a.m3u8
+#EXTINF:-1 radio="true" tvg-id="RNE.Radio" tvg-logo="https://graph.facebook.com/radionacionalrne/picture?width=200&height=200" group-title="Radio_Castilla y León" tvg-name="Radio Nacional Castilla y León",Radio Nacional Castilla y León
+https://dispatcher.rndfnk.com/crtve/rne1/cyl/mp3/high
+#EXTINF:-1 radio="true" tvg-logo="https://graph.facebook.com/LeoRadiofm/picture?width=200&height=200" group-title="Radio_C. Valenciana" tvg-name="LEO Radio Benidorm",LEO Radio Benidorm
+https://stream.netservers.ovh:8443/leoradiofm.ogg
+#EXTINF:-1 radio="true" tvg-logo="https://graph.facebook.com/Radiolazona/picture?width=200&height=200" group-title="Radio_Internacional" tvg-name="Radio La Zona Perú",Radio La Zona Perú
+https://mdstrm.com/audio/5fada54116646e098d97e6a5/icecast.audio

@@ -1,0 +1,75 @@
+﻿#EXTM3U url-tvg="https://example.invalid/epg.xml.gz" x-tvg-url="https://example.invalid/epg2.xml"
+
+# comentario libre que no es directiva
+#EXTINF:-1,Sin atributos
+https://example.invalid/sin-atributos/index.m3u8
+#EXTINF:0 tvg-id="Dur0.TV",Duracion cero
+https://example.invalid/duracion-cero.m3u8
+#EXTINF:123.5 tvg-id="DurPos.TV" tvg-name="Con duracion positiva",Con duracion positiva (VOD)
+https://example.invalid/vod/pelicula.mp4
+#EXTINF:-1 tvg-id="Coma.TV" group-title="Rarezas",Canal, con coma, en el titulo
+https://example.invalid/coma.m3u8
+#EXTINF:-1 tvg-logo="https://example.invalid/fill/w_200,h_200,al_c/logo.png" group-title="Rarezas" tvg-name="Coma en logo",Coma en logo
+https://example.invalid/coma-logo.m3u8
+#EXTINF:-1 tvg-id=SinComillas.TV group-title=Rarezas tvg-name=SinComillas,Atributos sin comillas
+https://example.invalid/sin-comillas.m3u8
+#EXTINF:-1 tvg-id="Escapadas.TV" tvg-name="Canal \"Escapado\"" group-title="Rarezas",Comillas escapadas en atributo
+https://example.invalid/escapadas.m3u8
+#EXTINF:-1 tvg-id='Simples.TV' group-title='Rarezas',Comillas simples en atributos
+https://example.invalid/simples.m3u8
+#EXTINF:-1 tvg-id="Vacio.TV" tvg-logo="" group-title="",Atributos con valor vacio
+https://example.invalid/vacio.m3u8
+#EXTINF:-1 tvg-id="Espacios.TV"   group-title="Rarezas"  ,   Titulo con espacios alrededor   
+   https://example.invalid/espacios.m3u8   
+#EXTINF:-1 tvg-id="Titulo.TV" group-title="Rarezas",
+https://example.invalid/titulo-vacio.m3u8
+#EXTINF:-1 tvg-id="Unicode.TV" group-title="Cataluña",Canal ñandú – 日本語 📺 Россия
+https://example.invalid/unicode.m3u8
+#EXTINF:-1 tvg-id="Grp.TV",Canal con EXTGRP
+#EXTGRP:Grupo via EXTGRP
+https://example.invalid/extgrp.m3u8
+#EXTINF:-1 tvg-id="Vlc.TV" group-title="Rarezas",Canal con EXTVLCOPT y KODIPROP
+#EXTVLCOPT:http-user-agent=Mozilla/5.0 (X11; Linux x86_64) Test/1.0
+#EXTVLCOPT:http-referrer=https://example.invalid/player/
+#EXTVLCOPT:network-caching=1000
+#KODIPROP:inputstream=inputstream.adaptive
+#KODIPROP:inputstream.adaptive.manifest_type=mpd
+#KODIPROP:inputstream.adaptive.license_type=org.w3.clearkey
+#KODIPROP:inputstream.adaptive.license_key=00000000000000000000000000000000:11111111111111111111111111111111
+#KODIPROP:inputstream.adaptive.stream_headers=User-Agent=Test/1.0&Referer=https://example.invalid/
+https://example.invalid/dash/manifest.mpd
+#EXTINF:-1 tvg-id="Huerfano1.TV",Primer EXTINF sin URL (le sigue otro EXTINF)
+#EXTINF:-1 tvg-id="Huerfano2.TV",Segundo EXTINF seguido
+https://example.invalid/dos-extinf.m3u8
+https://example.invalid/url-sin-extinf.m3u8
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:10
+#EXT-X-MEDIA-SEQUENCE:1
+#EXT-X-STREAM-INF:BANDWIDTH=1280000,RESOLUTION=1280x720
+https://example.invalid/hls/variant_720p.m3u8
+#EXT-X-DISCONTINUITY
+#EXT-X-ENDLIST
+#EXTINF:-1 tvg-id="Dup.TV" group-title="Duplicados",Duplicado exacto
+https://example.invalid/dup.m3u8
+#EXTINF:-1 tvg-id="Dup.TV" group-title="Duplicados",Duplicado exacto
+https://example.invalid/dup.m3u8
+#EXTINF:-1 tvg-id="Dup2.TV" group-title="Duplicados",Misma URL otro nombre
+https://example.invalid/dup.m3u8
+#EXTINF:-1 tvg-id="Dup3.TV" group-title="Duplicados",Mismo nombre otra URL
+https://example.invalid/dup-a.m3u8
+#EXTINF:-1 tvg-id="Dup3.TV" group-title="Duplicados",Mismo nombre otra URL
+https://example.invalid/dup-b.m3u8
+#EXTINF:-1 tvg-id="Esquemas.TV" group-title="Esquemas",rtmp
+rtmp://example.invalid:1935/live/stream
+#EXTINF:-1 tvg-id="Esquemas.TV" group-title="Esquemas",mmsh
+mmsh://192.0.2.1/rtv1
+#EXTINF:-1 tvg-id="Esquemas.TV" group-title="Esquemas",srt sin extension
+srt://192.0.2.1:4001
+#EXTINF:-1 tvg-id="Esquemas.TV" group-title="Esquemas",udp multicast tras proxy
+http://192.0.2.1:4022/udp/224.2.2.4:10000
+#EXTINF:-1 tvg-id="Esquemas.TV" group-title="Esquemas",ruta relativa (invalida en lista remota)
+relativa/canal.m3u8
+#EXTINF:-1 tvg-id="Esquemas.TV" group-title="Esquemas",URL con espacio y query
+https://example.invalid/con espacio.m3u8?token=a b&x=1
+#EXTINF:-1 tvg-id="Final.TV" group-title="Final",Ultima entrada sin salto de linea final
+https://example.invalid/final.m3u8
