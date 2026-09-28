@@ -14,3 +14,5 @@ Desarrollado y probado en Linux (Ubuntu, Wayland/KDE, mpv 0.41). Lo siguiente NO
 
 ## Rutas
 - Config: siempre `<proyecto>/mpv-config` vía `--config-dir` (ADR-002). Caché de mpvd: `.cache/` en desarrollo; XDG/platformdirs en producción.
+- Grabaciones de TV/radio: `~~desktop/MPV-UOS` (placeholder de mpv, válido en las tres plataformas). Copiar URL usa wl-copy/xclip/xsel
+  en Linux, `pbcopy` en macOS y `clip` en Windows (no probado fuera de Linux).

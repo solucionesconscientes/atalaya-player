@@ -14,10 +14,11 @@ from typing import TYPE_CHECKING, Any
 
 from mpvd.iptv.index import SearchIndex
 from mpvd.iptv.model import Channel
+from mpvd.iptv.radiobrowser import SOURCE_ID as RADIO_SOURCE, RadioBrowser
 from mpvd.iptv.sources import BUILTIN_SOURCES, Source, SourceState, load_source
 from mpvd.iptv.store import IptvStore
 from mpvd.jobs import Job
-from mpvd.net import HttpCache
+from mpvd.net import FetchError, HttpCache
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -26,20 +27,44 @@ if TYPE_CHECKING:
 log = logging.getLogger("mpvd.iptv")
 
 FACETS = ("group", "country", "category", "language")
+COUNTRIES_URL = "https://iptv-org.github.io/api/countries.json"  # [{name, code, flag, languages}]
+
+
+def _sources_from_env() -> list[Source] | None:
+    """MPV_UOS_IPTV_SOURCES=<json file> replaces the built-in sources (tests, offline mirrors)."""
+    import os  # noqa: PLC0415
+
+    path = os.environ.get("MPV_UOS_IPTV_SOURCES")
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            rows = json.load(fh)
+        return [Source(**row) for row in rows]
+    except (OSError, ValueError, TypeError) as exc:
+        log.warning("ignoring MPV_UOS_IPTV_SOURCES (%s): %s", path, exc)
+        return None
 
 
 class IptvService:
-    def __init__(self, server: MpvdServer, sources: list[Source] | None = None):
+    def __init__(self, server: MpvdServer, sources: list[Source] | None = None, radio_base_url: str | None = None):
         self.server = server
         settings = server.settings
         self.http = HttpCache(settings.cache_dir / "http")
         self.store = IptvStore(settings.data_dir / "iptv.sqlite3")
-        self._builtin = list(BUILTIN_SOURCES if sources is None else sources)
+        if sources is None:
+            sources = _sources_from_env() or BUILTIN_SOURCES
+        self._builtin = list(sources)
         self._states: dict[str, SourceState] = {}
         self._index = SearchIndex()
         self._by_id: dict[str, Channel] = {}
         self._loads: dict[str, asyncio.Task[SourceState]] = {}
         self._lock = asyncio.Lock()
+        import os  # noqa: PLC0415
+
+        self.radio = RadioBrowser(self.http, base_url=radio_base_url or os.environ.get("MPV_UOS_RADIO_BROWSER_URL"))
+        self.countries_url = os.environ.get("MPV_UOS_COUNTRIES_URL", COUNTRIES_URL)
+        self._country_names: dict[str, dict[str, str]] | None = None
 
     # -- sources ------------------------------------------------------------------------------
 
@@ -120,25 +145,62 @@ class IptvService:
             counter[getattr(ch, facet) or ""] += 1
         return [{"value": k, "count": n} for k, n in sorted(counter.items(), key=lambda kv: (kv[0] == "", kv[0]))]
 
-    def list_channels(self, source_id: str | None = None, offset: int = 0, limit: int = 500, **filters: Any) -> dict[str, Any]:
+    def country_names(self) -> dict[str, dict[str, str]]:
+        """ISO2 (lower) -> {name, flag} from the iptv-org API (cached a week); empty when unreachable."""
+        if self._country_names is None:
+            try:
+                res = self.http.fetch(self.countries_url, ttl=7 * 24 * 3600, timeout=20)
+                rows = json.loads(res.read_text())
+                self._country_names = {r["code"].lower(): {"name": r.get("name", r["code"]), "flag": r.get("flag", "")}
+                                       for r in rows if r.get("code")}
+            except (FetchError, ValueError, KeyError, TypeError) as exc:
+                log.warning("country names unavailable: %s", exc)
+                self._country_names = {}
+        return self._country_names
+
+    def countries(self, source_id: str | None = None, **filters: Any) -> list[dict[str, Any]]:
+        names = self.country_names()
+        out = []
+        for row in self.facet("country", source_id, **filters):
+            code = row["value"]
+            if not code:
+                continue
+            meta = names.get(code, {})
+            out.append({"code": code, "name": meta.get("name") or code.upper(), "flag": meta.get("flag", ""),
+                        "count": row["count"]})
+        return sorted(out, key=lambda r: r["name"].casefold())
+
+    def list_channels(self, source_id: str | None = None, offset: int = 0, limit: int = 500, compact: bool = False,
+                      **filters: Any) -> dict[str, Any]:
         items = [ch for ch in self.channels_of(source_id) if self._matches(ch, filters)]
         favs = self.store.favorite_ids()
         health = self.store.health()
         page = items[offset: offset + limit]
         return {
             "total": len(items), "offset": offset,
-            "items": [self._decorate(ch, favs, health) for ch in page],
+            "items": [self._decorate(ch, favs, health, compact) for ch in page],
         }
 
-    def _decorate(self, ch: Channel, favs: set[str] | None = None, health: dict[str, Any] | None = None) -> dict[str, Any]:
-        d = ch.to_dict()
+    def _decorate(self, ch: Channel, favs: set[str] | None = None, health: dict[str, Any] | None = None,
+                  compact: bool = False) -> dict[str, Any]:
+        if compact:  # what menus need; keeps big lists small on the wire
+            d: dict[str, Any] = {"id": ch.id, "name": ch.name, "kind": ch.kind, "group": ch.group,
+                                 "category": ch.category, "country": ch.country, "source": ch.source}
+            if ch.extra.get("geo_blocked"):
+                d["geo_blocked"] = True
+            if ch.extra.get("not_24_7"):
+                d["not_24_7"] = True
+            if ch.extra.get("quality"):
+                d["quality"] = ch.extra["quality"]
+        else:
+            d = ch.to_dict()
         d["favorite"] = ch.id in (favs if favs is not None else self.store.favorite_ids())
         h = (health if health is not None else self.store.health()).get(ch.id)
         d["health"] = h["ok"] if h else None
         return d
 
     def get(self, channel_id: str) -> Channel:
-        ch = self._by_id.get(channel_id)
+        ch = self._by_id.get(channel_id) or self.radio.stations.get(channel_id)
         if ch is None:
             for c in self.store.favorites() + self.store.recents(50):
                 if c.id == channel_id:
@@ -146,10 +208,12 @@ class IptvService:
             raise RpcError(NOT_FOUND, f"unknown channel: {channel_id}")
         return ch
 
-    def search(self, query: str, limit: int = 50, kind: str | None = None, source_id: str | None = None) -> list[dict[str, Any]]:
+    def search(self, query: str, limit: int = 50, kind: str | None = None, source_id: str | None = None,
+               compact: bool = False) -> list[dict[str, Any]]:
         favs = self.store.favorite_ids()
         health = self.store.health()
-        return [self._decorate(ch, favs, health) for ch in self._index.search(query, limit=limit, kind=kind, source=source_id)]
+        return [self._decorate(ch, favs, health, compact)
+                for ch in self._index.search(query, limit=limit, kind=kind, source=source_id)]
 
     def neighbours(self, channel_id: str, delta: int) -> Channel:
         """Zapping: the channel ``delta`` positions away inside the same source and group (wrapping)."""
@@ -161,7 +225,25 @@ class IptvService:
     def play_info(self, channel_id: str) -> dict[str, Any]:
         ch = self.get(channel_id)
         self.store.touch_recent(ch)
+        if ch.source == RADIO_SOURCE and ch.extra.get("stationuuid"):
+            uuid = ch.extra["stationuuid"]
+            self.server.jobs.submit("radio.click", lambda job: asyncio.to_thread(self.radio.click, uuid),
+                                    priority="index", meta={"uuid": uuid})
         return {"channel": self._decorate(ch), "url": ch.url, "options": ch.mpv_options()}
+
+    async def radio_stations(self, country: str | None = None, tag: str | None = None, q: str | None = None,
+                             top: int | None = None, limit: int = 200, compact: bool = False) -> list[dict[str, Any]]:
+        if q:
+            chans = await asyncio.to_thread(self.radio.search, q, limit, country)
+        elif country:
+            chans = await asyncio.to_thread(self.radio.by_country, country, limit)
+        elif tag:
+            chans = await asyncio.to_thread(self.radio.by_tag, tag, limit)
+        else:
+            chans = await asyncio.to_thread(self.radio.top, top or limit)
+        favs = self.store.favorite_ids()
+        health = self.store.health()
+        return [self._decorate(c, favs, health, compact) for c in chans]
 
     # -- health -------------------------------------------------------------------------------
 
@@ -250,21 +332,27 @@ def register(server: MpvdServer, service: IptvService) -> None:  # noqa: C901
         await service.ensure_loaded(source)
         return service.facet(facet, source, country=country, category=category, kind=kind)
 
+    @d.method("iptv.countries")
+    async def countries(ctx: RpcContext, source: str | None = None, kind: str | None = None) -> list[dict[str, Any]]:
+        """Countries with channel counts and display names/flags (sorted by name)."""
+        await service.ensure_loaded(source)
+        return await asyncio.to_thread(service.countries, source, kind=kind)
+
     @d.method("iptv.channels")
     async def channels(ctx: RpcContext, source: str | None = None, group: str | None = None,
                        country: str | None = None, category: str | None = None, language: str | None = None,
-                       kind: str | None = None, offset: int = 0, limit: int = 500) -> dict[str, Any]:
-        """Channels filtered by facets, paginated."""
+                       kind: str | None = None, offset: int = 0, limit: int = 500, compact: bool = False) -> dict[str, Any]:
+        """Channels filtered by facets, paginated (compact=true for menus)."""
         await service.ensure_loaded(source)
-        return service.list_channels(source, offset, limit, group=group, country=country, category=category,
+        return service.list_channels(source, offset, limit, compact, group=group, country=country, category=category,
                                      language=language, kind=kind)
 
     @d.method("iptv.search")
     async def search(ctx: RpcContext, q: str, limit: int = 50, kind: str | None = None,
-                     source: str | None = None) -> list[dict[str, Any]]:
+                     source: str | None = None, compact: bool = False) -> list[dict[str, Any]]:
         """Accent-insensitive search across loaded sources."""
         await service.ensure_loaded()
-        return service.search(q, limit=limit, kind=kind, source_id=source)
+        return service.search(q, limit=limit, kind=kind, source_id=source, compact=compact)
 
     @d.method("iptv.channel")
     async def channel(ctx: RpcContext, id: str) -> dict[str, Any]:  # noqa: A002
@@ -285,9 +373,9 @@ def register(server: MpvdServer, service: IptvService) -> None:  # noqa: C901
         return service.play_info(service.neighbours(id, int(delta)).id)
 
     @d.method("iptv.favorites.list")
-    async def fav_list(ctx: RpcContext) -> list[dict[str, Any]]:
+    async def fav_list(ctx: RpcContext, compact: bool = False) -> list[dict[str, Any]]:
         """Favourite channels in user order."""
-        return [service._decorate(c) for c in service.store.favorites()]
+        return [service._decorate(c, compact=compact) for c in service.store.favorites()]
 
     @d.method("iptv.favorites.toggle")
     async def fav_toggle(ctx: RpcContext, id: str) -> dict[str, Any]:  # noqa: A002
@@ -296,9 +384,9 @@ def register(server: MpvdServer, service: IptvService) -> None:  # noqa: C901
         return {"id": id, "favorite": service.store.toggle_favorite(service.get(id))}
 
     @d.method("iptv.recents.list")
-    async def rec_list(ctx: RpcContext, limit: int = 20) -> list[dict[str, Any]]:
+    async def rec_list(ctx: RpcContext, limit: int = 20, compact: bool = False) -> list[dict[str, Any]]:
         """Recently played channels."""
-        return [service._decorate(c) for c in service.store.recents(limit)]
+        return [service._decorate(c, compact=compact) for c in service.store.recents(limit)]
 
     @d.method("iptv.recents.clear")
     async def rec_clear(ctx: RpcContext) -> dict[str, Any]:
@@ -322,6 +410,31 @@ def register(server: MpvdServer, service: IptvService) -> None:  # noqa: C901
         service._states.pop(id, None)
         service._rebuild_index()
         return {"removed": removed}
+
+    @d.method("radio.countries")
+    async def radio_countries(ctx: RpcContext) -> list[dict[str, Any]]:
+        """Countries in Radio Browser with station counts."""
+        try:
+            return await asyncio.to_thread(service.radio.countries)
+        except Exception as exc:  # noqa: BLE001 - network
+            raise RpcError(UNAVAILABLE, f"radio-browser: {exc}") from exc
+
+    @d.method("radio.tags")
+    async def radio_tags(ctx: RpcContext, limit: int = 100) -> list[dict[str, Any]]:
+        """Most used tags (genres) in Radio Browser."""
+        try:
+            return await asyncio.to_thread(service.radio.tags, limit)
+        except Exception as exc:  # noqa: BLE001
+            raise RpcError(UNAVAILABLE, f"radio-browser: {exc}") from exc
+
+    @d.method("radio.stations")
+    async def radio_stations(ctx: RpcContext, country: str | None = None, tag: str | None = None, q: str | None = None,
+                             top: int | None = None, limit: int = 200, compact: bool = False) -> list[dict[str, Any]]:
+        """Stations by country code, tag, name search or top votes (as channels, playable with iptv.play)."""
+        try:
+            return await service.radio_stations(country=country, tag=tag, q=q, top=top, limit=limit, compact=compact)
+        except Exception as exc:  # noqa: BLE001
+            raise RpcError(UNAVAILABLE, f"radio-browser: {exc}") from exc
 
     @d.method("iptv.health.check")
     async def health_check(ctx: RpcContext, source: str | None = None, ids: list[str] | None = None,

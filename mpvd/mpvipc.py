@@ -21,6 +21,9 @@ from typing import Any
 DISCONNECTED_EVENT = "mpvd:disconnected"  # synthesized locally when the connection ends
 
 
+LINE_LIMIT = 32 * 1024 * 1024  # max size of one JSON line from mpv (big native properties)
+
+
 class MpvIpcError(RuntimeError):
     """mpv answered a command with an error string."""
 
@@ -51,7 +54,7 @@ class MpvIpcClient:
         deadline = loop.time() + timeout
         while True:
             try:
-                self._reader, self._writer = await asyncio.open_unix_connection(self.path)
+                self._reader, self._writer = await asyncio.open_unix_connection(self.path, limit=LINE_LIMIT)
                 break
             except (FileNotFoundError, ConnectionRefusedError, PermissionError):
                 if loop.time() >= deadline:
@@ -173,9 +176,9 @@ class MpvIpcClient:
             try:
                 value = await self.get_property(name)
             except MpvIpcError as exc:
-                if exc.error != "property unavailable":
+                if exc.error not in ("property unavailable", "property not found"):
                     raise
-                value = None
+                value = None  # unset (or not yet created) user-data keys land here
             if predicate(value):
                 return value
             if loop.time() >= deadline:

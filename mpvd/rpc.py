@@ -21,6 +21,7 @@ log = logging.getLogger("mpvd.rpc")
 PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
+STREAM_LIMIT = 32 * 1024 * 1024  # max JSON-RPC line (a whole channel list can be several MB)
 INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
 # Application errors (-32000..-32099 reserved by the spec for server errors).

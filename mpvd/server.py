@@ -16,7 +16,7 @@ from mpvd.cache import ArtifactCache
 from mpvd.config import PROTOCOL_VERSION, Settings
 from mpvd.guardian import PerformanceGuardian
 from mpvd.jobs import JobQueue
-from mpvd.rpc import Dispatcher
+from mpvd.rpc import STREAM_LIMIT, Dispatcher
 from mpvd.sessions import Session, SessionManager
 
 log = logging.getLogger("mpvd.server")
@@ -45,7 +45,8 @@ def socket_is_alive(path: os.PathLike[str] | str, timeout: float = 1.0) -> bool:
 
 
 class MpvdServer:
-    def __init__(self, settings: Settings | None = None, iptv_sources: list[Any] | None = None):
+    def __init__(self, settings: Settings | None = None, iptv_sources: list[Any] | None = None,
+                 radio_base_url: str | None = None):
         self.settings = settings or Settings.from_env()
         self.dispatcher = Dispatcher()
         self.guardian = PerformanceGuardian()
@@ -64,7 +65,7 @@ class MpvdServer:
         from mpvd.iptv.service import register as register_iptv  # noqa: PLC0415
 
         methods.register(self)
-        self.iptv = IptvService(self, sources=iptv_sources)
+        self.iptv = IptvService(self, sources=iptv_sources, radio_base_url=radio_base_url)
         register_iptv(self, self.iptv)
 
     # -- lifecycle -------------------------------------------------------------
@@ -82,7 +83,7 @@ class MpvdServer:
             if socket_is_alive(s.socket_path):
                 raise RuntimeError(f"another mpvd is already listening on {s.socket_path}")
             s.socket_path.unlink()
-        self._server = await asyncio.start_unix_server(self._handle_peer, path=str(s.socket_path))
+        self._server = await asyncio.start_unix_server(self._handle_peer, path=str(s.socket_path), limit=STREAM_LIMIT)
         with contextlib.suppress(OSError):
             os.chmod(s.socket_path, 0o600)
         s.pid_path.write_text(str(os.getpid()), encoding="utf-8")

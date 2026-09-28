@@ -77,9 +77,9 @@ def web():
 
 def with_iptv_server(tmp_path: Path, base: str, fn):
     sources = [
-        Source("tdt_tv", "España TV", f"{base}/tv.m3u8", "tv", "es"),
-        Source("tdt_radio", "España Radio", f"{base}/radio.m3u8", "radio", "es"),
-        Source("iptv_org", "Mundo", f"{base}/world.m3u", "tv", "world"),
+        Source("tdt_tv", "España TV", f"{base}/tv.m3u8", "tv", "es", country="es"),
+        Source("tdt_radio", "España Radio", f"{base}/radio.m3u8", "radio", "es", country="es"),
+        Source("iptv_org", "Mundo", f"{base}/world.m3u", "tv", "world", country_from_tvg_id=True),
     ]
 
     async def go():

@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-_ATTR_RE = re.compile(r"""([A-Za-z0-9_.\-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s,]*))""")
+_ATTR_RE = re.compile(r"""([A-Za-z0-9_.\-]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'([^']*)'|([^\s,]*))""")
 _HLS_MARKERS = ("#EXT-X-TARGETDURATION", "#EXT-X-STREAM-INF", "#EXT-X-MEDIA-SEQUENCE", "#EXT-X-VERSION")
 
 
@@ -47,7 +47,10 @@ def parse_attrs(text: str) -> dict[str, str]:
     out: dict[str, str] = {}
     for m in _ATTR_RE.finditer(text):
         key = m.group(1).lower()
-        val = m.group(2) if m.group(2) is not None else m.group(3) if m.group(3) is not None else m.group(4)
+        if m.group(2) is not None:
+            val = m.group(2).replace('\\"', '"')
+        else:
+            val = m.group(3) if m.group(3) is not None else m.group(4)
         out[key] = (val or "").strip()
     return out
 
@@ -55,9 +58,15 @@ def parse_attrs(text: str) -> dict[str, str]:
 def _split_extinf(body: str) -> tuple[float, dict[str, str], str]:
     """Split ``<duration> [attrs],<title>`` honouring quotes around the first comma."""
     quote: str | None = None
+    skip = False
     for i, ch in enumerate(body):
+        if skip:
+            skip = False
+            continue
         if quote:
-            if ch == quote:
+            if ch == "\\":
+                skip = True
+            elif ch == quote:
                 quote = None
         elif ch in ('"', "'"):
             quote = ch
@@ -83,6 +92,8 @@ def parse_m3u(text: str) -> M3UPlaylist:
         text = text[1:]
     pending: M3UEntry | None = None
     pending_group: str | None = None
+    hls_markers = False
+    channel_like = False  # an #EXTINF with attributes or a -1 duration is a channel list, not an HLS segment list
     for lineno, raw in enumerate(text.splitlines(), 1):
         line = raw.strip()
         if not line:
@@ -92,7 +103,7 @@ def parse_m3u(text: str) -> M3UPlaylist:
             pl.header.update(parse_attrs(line[7:]))
             continue
         if upper.startswith(_HLS_MARKERS):
-            pl.kind = "hls"
+            hls_markers = True
             continue
         if upper.startswith("#EXTINF:"):
             if pending is not None:
@@ -100,6 +111,8 @@ def parse_m3u(text: str) -> M3UPlaylist:
             duration, attrs, title = _split_extinf(line[8:])
             pending = M3UEntry(name=title or attrs.get("tvg-name", ""), url="", duration=duration, attrs=attrs,
                                group=pending_group, line=lineno)
+            if attrs or duration < 0:
+                channel_like = True
             continue
         if upper.startswith("#EXTVLCOPT:"):
             k, _, v = line[11:].partition("=")
@@ -128,11 +141,11 @@ def parse_m3u(text: str) -> M3UPlaylist:
         pending.url = line
         if not pending.name:
             pending.name = pending.attrs.get("tvg-id") or line.rsplit("/", 1)[-1]
-        if pl.kind != "hls":
-            pl.entries.append(pending)
+        pl.entries.append(pending)
         pending = None
     if pending is not None:
         pl.warnings.append(f"line {pending.line}: #EXTINF without URL at end of file (dropped)")
-    if pl.kind == "hls":
+    if hls_markers and not channel_like:
+        pl.kind = "hls"
         pl.entries.clear()
     return pl

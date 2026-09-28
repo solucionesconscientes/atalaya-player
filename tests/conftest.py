@@ -150,8 +150,10 @@ class DaemonEnv:
         self.base = base
         self.runtime_dir = base / "rt"
         self.cache_dir = base / "cache"
+        self.data_dir = base / "data"  # favourites, recents, user lists: never the developer's .cache/data
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def socket(self) -> Path:
@@ -160,7 +162,7 @@ class DaemonEnv:
     @property
     def env(self) -> dict[str, str]:
         return {"MPV_UOS_RUNTIME_DIR": str(self.runtime_dir), "MPV_UOS_CACHE_DIR": str(self.cache_dir),
-                "MPVD_IDLE_TIMEOUT": "120"}
+                "MPV_UOS_DATA_DIR": str(self.data_dir), "MPVD_IDLE_TIMEOUT": "120"}
 
     def cli(self, *args: str, timeout: float = 60.0) -> subprocess.CompletedProcess[str]:
         return subprocess.run(

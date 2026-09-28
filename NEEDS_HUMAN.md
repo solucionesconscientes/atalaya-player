@@ -5,5 +5,8 @@
   opciones existentes (Python, uv, MCP): añadir Lua, Bash, mpv, ffmpeg, yt-dlp exigía modificar el esquema de la base y el permiso fue denegado.
   Si quieres esas etiquetas: añádelas a mano en Notion (Stack → editar opciones) o permite `mcp__claude_ai_Notion__notion-update-data-source`.
 - El campo Repo está vacío porque el repo no tiene remoto. Cuando lo haya: `git remote add origin <url>` y actualizar la ficha.
-- La convención CODE-NOTION pide marcar el registro fuera del repo (prohibido por las reglas nocturnas):
-  `mkdir -p ~/.cache/notion-reg && touch ~/.cache/notion-reg/mpv-uos`
+- (hecho 2026-09-28 13:16) marca `~/.cache/notion-reg/mpv-uos` puesta desde la sesión interactiva; Notion al día hasta H2.
+
+## 2026-09-28 · Opcional (no bloquea)
+- "Copiar URL" del menú de TV usa `wl-copy`/`xclip`/`xsel`; no hay ninguno instalado, así que muestra la URL en pantalla.
+  Para copiar de verdad: `sudo apt install wl-clipboard`

@@ -97,21 +97,47 @@ def split_pipe_headers(url: str) -> tuple[str, dict[str, str]]:
     return base, _parse_header_blob(blob)
 
 
-def _country_from(entry: M3UEntry) -> str | None:
+def _country_from(entry: M3UEntry, from_tvg_id: bool) -> str | None:
     for key in ("tvg-country", "country"):
         v = entry.attrs.get(key)
         if v and len(v) == 2:
             return v.lower()
-    tvg = entry.attrs.get("tvg-id") or ""
-    m = re.search(r"\.([a-z]{2})$", tvg.lower())
-    return m.group(1) if m else None
+    if from_tvg_id:
+        # iptv-org: tvg-id="Name.cc@Feed" (TDTChannels uses "Name.TV"/"Name.Radio", so this is opt-in)
+        tvg = (entry.attrs.get("tvg-id") or "").split("@", 1)[0]
+        m = re.search(r"\.([a-z]{2})$", tvg.lower())
+        return m.group(1) if m else None
+    return None
 
 
-def entry_to_channel(entry: M3UEntry, source: str, default_kind: str = "tv") -> Channel:
+_QUALITY_RE = re.compile(r"\s*\((\d{3,4}p|[0-9.]+p?)\)\s*$")
+_FLAG_RE = re.compile(r"\s*\[(Not 24/7|Geo-blocked)\]\s*", re.IGNORECASE)
+
+
+def clean_title(title: str) -> tuple[str, dict[str, str]]:
+    """Strip iptv-org style suffixes: "Name (1080p) [Not 24/7] [Geo-blocked]" -> ("Name", flags)."""
+    flags: dict[str, str] = {}
+    name = title
+    for m in _FLAG_RE.finditer(name):
+        flag = m.group(1).lower()
+        flags["geo_blocked" if flag == "geo-blocked" else "not_24_7"] = "1"
+    name = _FLAG_RE.sub(" ", name).strip()
+    m = _QUALITY_RE.search(name)
+    if m:
+        flags["quality"] = m.group(1)
+        name = name[: m.start()].strip()
+    return name or title.strip(), flags
+
+
+def entry_to_channel(
+    entry: M3UEntry, source: str, default_kind: str = "tv", default_country: str | None = None,
+    country_from_tvg_id: bool = False,
+) -> Channel:
     url, headers = split_pipe_headers(entry.url.strip())
     attrs = entry.attrs
-    for k, v in entry.vlcopts.items():
-        if k.startswith("http-"):
+    # iptv-org repeats the hints as #EXTINF attributes (http-user-agent="..", http-referrer="..")
+    for k, v in list(attrs.items()) + list(entry.vlcopts.items()):
+        if k.startswith("http-") and v:
             canon = HEADER_CANON.get(k[5:], None)
             if canon:
                 headers[canon] = v
@@ -141,7 +167,10 @@ def entry_to_channel(entry: M3UEntry, source: str, default_kind: str = "tv") -> 
         chno = int(chno_raw) if chno_raw else None
     except ValueError:
         chno = None
-    name = (entry.name or attrs.get("tvg-name") or attrs.get("tvg-id") or url).strip()
+    raw_name = (entry.name or attrs.get("tvg-name") or attrs.get("tvg-id") or url).strip()
+    name, flags = clean_title(raw_name)
+    extra.update(flags)
+    category = (attrs.get("group-title") or group or "").split(";", 1)[0].strip() or None
     return Channel(
         id=channel_id(source, url),
         name=name,
@@ -149,9 +178,9 @@ def entry_to_channel(entry: M3UEntry, source: str, default_kind: str = "tv") -> 
         kind=kind,
         source=source,
         group=group,
-        country=_country_from(entry),
+        country=_country_from(entry, country_from_tvg_id) or default_country,
         language=(attrs.get("tvg-language") or attrs.get("language") or None),
-        category=attrs.get("group-title") or None,
+        category=category,
         logo=attrs.get("tvg-logo") or None,
         tvg_id=attrs.get("tvg-id") or None,
         chno=chno,

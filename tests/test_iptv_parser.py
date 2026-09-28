@@ -77,7 +77,7 @@ def test_parse_attrs_variants():
 
 def test_entry_to_channel_headers_and_kinds():
     pl = parse_m3u(SAMPLE)
-    chans = [entry_to_channel(e, "tdt_tv") for e in pl.entries]
+    chans = [entry_to_channel(e, "tdt_tv", default_country="es") for e in pl.entries]
     la1 = chans[0]
     assert la1.kind == "tv" and la1.country == "es" and la1.tvg_id == "La1.es" and la1.logo.endswith("la1.png")
     assert la1.headers == {"User-Agent": "Mozilla/5.0 (X11)", "Referer": "https://www.rtve.es/"}
@@ -86,7 +86,8 @@ def test_entry_to_channel_headers_and_kinds():
     news = chans[1]
     assert news.url == "http://example.org/news.m3u8"  # pipe headers stripped from the URL
     assert news.headers == {"User-Agent": "VLC/3", "Referer": "https://r.example/", "Origin": "https://o.example"}
-    assert news.country == "es" and news.group == "News, Politics" and news.extra == {"inputstream.adaptive.manifest_type": "hls"}
+    assert news.country == "es" and news.group == "News, Politics" and news.category == "News, Politics"
+    assert news.extra == {"inputstream.adaptive.manifest_type": "hls"}
     assert news.mpv_options()["http-header-fields"] == "Origin: https://o.example"
     radio = chans[2]
     assert radio.kind == "radio" and radio.chno == 7

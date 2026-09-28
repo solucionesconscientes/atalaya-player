@@ -20,6 +20,8 @@ class Source:
     region: str = "world"  # "es" | "world"
     ttl: float = DEFAULT_TTL
     builtin: bool = True
+    country: str | None = None  # all channels belong to this country (ISO2) when set
+    country_from_tvg_id: bool = False  # iptv-org style "Name.cc@Feed" ids
 
     def to_dict(self) -> dict[str, Any]:
         return {"id": self.id, "name": self.name, "url": self.url, "kind": self.kind, "region": self.region,
@@ -28,9 +30,11 @@ class Source:
 
 # Verified 2026-09-28 (see docs/FUENTES_IPTV.md); tdt_radio is skipped automatically if the URL 404s.
 BUILTIN_SOURCES: list[Source] = [
-    Source("tdt_tv", "España · TV (TDTChannels)", "https://www.tdtchannels.com/lists/tv.m3u8", "tv", "es"),
-    Source("tdt_radio", "España · Radio (TDTChannels)", "https://www.tdtchannels.com/lists/radio.m3u8", "radio", "es"),
-    Source("iptv_org", "Mundo · TV (iptv-org)", "https://iptv-org.github.io/iptv/index.m3u", "tv", "world"),
+    Source("tdt_tv", "España · TV (TDTChannels)", "https://www.tdtchannels.com/lists/tv.m3u8", "tv", "es", country="es"),
+    Source("tdt_radio", "España · Radio (TDTChannels)", "https://www.tdtchannels.com/lists/radio.m3u8", "radio", "es",
+           country="es"),
+    Source("iptv_org", "Mundo · TV (iptv-org)", "https://iptv-org.github.io/iptv/index.m3u", "tv", "world",
+           country_from_tvg_id=True),
 ]
 
 
@@ -67,7 +71,8 @@ def load_source(http: HttpCache, source: Source, force: bool = False, timeout: f
     if pl.kind == "hls":
         state.error = "the URL is an HLS stream, not a channel list"
         return state
-    channels = [entry_to_channel(e, source.id, source.kind) for e in pl.entries]
+    channels = [entry_to_channel(e, source.id, source.kind, source.country, source.country_from_tvg_id)
+                for e in pl.entries]
     state.channels = dedupe(channels)
     state.loaded_at = time.time()
     state.fetched_at = res.fetched_at
