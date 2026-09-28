@@ -237,6 +237,16 @@ end)
 
 mp.register_script_message('mu-ensure', ensure)
 
+-- Events pushed by mpvd (job progress for jobs submitted with notify=mu_core): kept for tests/diagnostics.
+local event_count = 0
+mp.register_script_message('mu-event', function(payload)
+  local ev = utils.parse_json(payload or '')
+  if type(ev) ~= 'table' then return end
+  event_count = event_count + 1
+  ev.seq = event_count
+  mp.set_property_native('user-data/mu/last_event', ev)
+end)
+
 -- ---------------------------------------------------------------------------------------------
 -- uosc detection (broadcast on load + fallback on its user-data)
 

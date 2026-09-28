@@ -10,3 +10,17 @@ THUMBFAST_LUA_URL=https://raw.githubusercontent.com/po5/thumbfast/0f711de3138c9b
 THUMBFAST_LUA_SHA256=a3d08e71eae8b892f6cd39f9593ea219768e709312d176bca883841b156448bf
 THUMBFAST_CONF_URL=https://raw.githubusercontent.com/po5/thumbfast/0f711de3138c9bd6718209d819ac54022c23ded2/thumbfast.conf
 THUMBFAST_CONF_SHA256=b4cfc2d8711e36067b0692e9215d5188e2f0f33717d5daca1bdd0f2d55360dd2
+# yt-dlp: asset "yt-dlp" (zipimport, ejecutable con python3 >= 3.9; lo usan ytdl_hook y mpvd). mpvd puede instalar versiones más
+# nuevas en vendor/bin (comprobación diaria verificada con el SHA2-256SUMS oficial); este lock es la base reproducible.
+YTDLP_VERSION=2026.08.19
+YTDLP_URL=https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp
+YTDLP_SHA256=1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6
+# deno: runtime JS recomendado por yt-dlp para YouTube (EJS). Opcional: tools/vendor.sh lo instala en vendor/bin/deno solo si no hay
+# deno ni node >= 22 en PATH, o con MU_VENDOR_DENO=1. Sumas del fichero .sha256sum oficial de la release (docs/YTDLP.md §4).
+DENO_VERSION=v2.9.7
+DENO_BASE_URL=https://github.com/denoland/deno/releases/download/v2.9.7
+DENO_SHA256_x86_64_linux=c6527f24f4b16031d3ae4fa9f658d5f11534c8d84ce7dc8502420280919c3490
+DENO_SHA256_aarch64_linux=c832298b1ad4422481334855f6003e0f54145762c5a134f20a489511d2f65bbf
+DENO_SHA256_x86_64_darwin=95daaff11c116a52ad54785e7914c8e9c9cdcaba793c5ed929c74ca2d8e6259a
+DENO_SHA256_aarch64_darwin=5cd46d6268f6f78f5d88bdc7159d20bd44cdaa4b3303474839f87ec6fe7ae25c
+DENO_SHA256_x86_64_windows=a0c3101b4158d1dfb7d6a78a7bf0f3de80c96bb423c152beec8beb22786f2238

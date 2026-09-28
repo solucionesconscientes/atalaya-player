@@ -13,7 +13,7 @@ Visión: `docs/VISION.md` · Plan: `BACKLOG.md` · Estado: `PROGRESS.md` · Deci
 ```bash
 git clone <repo> MPV-UOS && cd MPV-UOS
 uv sync              # crea .venv con Python 3.12 y el paquete mpvd
-tools/vendor.sh      # descarga y verifica uosc 5.13.0 (+ ziggy) y thumbfast según vendor.lock
+tools/vendor.sh      # descarga y verifica uosc 5.13.0 (+ ziggy), thumbfast y yt-dlp según vendor.lock
 tools/check.sh       # lint + tests headless; debe acabar en "✅ check OK"
 ```
 
@@ -50,10 +50,29 @@ tipo paleta (`alt+f`, sin acentos). Sobre un canal, `Tab` abre las acciones: fav
   ```
 - Copiar URL necesita `wl-copy` (paquete wl-clipboard) o `xclip`; si no hay, la URL se muestra en pantalla.
 
+## yt-dlp: calidad, solo audio y descargas
+Al abrir una URL (YouTube, archive.org, cualquier extractor de yt-dlp) mpv usa el **yt-dlp vendorizado** (`vendor/bin/yt-dlp`,
+actualizado a diario por mpvd verificando las sumas oficiales) y, si hay `node ≥ 22` o `deno`, el runtime JS que YouTube exige.
+Menú **yt-dlp** (botón ⬇ en la barra, `alt+y`):
+- `alt+a` **Solo audio / vídeo**: recarga la misma URL con `bestaudio/best` (o el formato de vídeo) en la posición actual.
+- `alt+q` **Calidad**: todos los formatos de `yt-dlp -J` agrupados (vídeo+audio, solo vídeo, solo audio) con contenedor, códecs,
+  resolución, fps, HDR, bitrate y tamaño; Enter cambia en caliente, `Tab` descarga ese formato exacto.
+- `alt+d` **Descargar**: presets (mejor calidad, 1080/720/480/360p, audio original, MP3 96–320 kbps o VBR, Opus, M4A, FLAC, WAV)
+  y opciones (contenedor mp4/mkv/webm, subtítulos, capítulos, miniatura, metadatos, SponsorBlock marcar/quitar, playlist entera).
+- `alt+l` **Descargas**: progreso (%, velocidad, ETA), cancelar, repetir, quitar; aviso en pantalla al terminar.
+  Carpetas por defecto `~/Vídeos/MPV-UOS` y `~/Música/MPV-UOS` (XDG); plantilla `%(title).120B [%(id)s].%(ext)s`.
+```bash
+.venv/bin/python -m mpvd call ytdl.status                                   # binario, versión, runtime JS, actualización
+.venv/bin/python -m mpvd call ytdl.info '{"url":"https://www.youtube.com/watch?v=aqz-KE-bpKQ"}'
+.venv/bin/python -m mpvd call ytdl.download '{"url":"https://archive.org/details/Countdow1960","preset":"audio_mp3_128"}'
+.venv/bin/python -m mpvd call ytdl.downloads.list
+.venv/bin/python -m mpvd call ytdl.settings.set '{"video_dir":"~/Descargas/video","auto_update":false}'
+```
+
 ## Estructura
 - `bin/mpv-uos` lanzador · `mpv-config/` configuración portable (mpv.conf, input.conf, scripts `mu-*`, uosc, thumbfast)
 - `mpvd/` daemon Python (JSON-RPC 2.0) · `tests/` pytest (unit + integración con mpv headless) · `tools/` scripts de build/check
-- `vendor.lock` versiones fijadas de terceros · `vendor/` descargas (ignorado por git)
+- `vendor.lock` versiones fijadas de terceros · `vendor/` descargas y binarios (yt-dlp, deno opcional; ignorado por git)
 
 ## Tests a mano
 ```bash

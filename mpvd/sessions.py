@@ -28,6 +28,7 @@ log = logging.getLogger("mpvd.sessions")
 RPC_MESSAGE = "mu-rpc"
 REPLY_MESSAGE = "mu-reply"
 HELLO_MESSAGE = "mu-hello"
+EVENT_MESSAGE = "mu-event"
 DEFAULT_TARGET = "mu_core"
 
 OBSERVED = {1: "frame-drop-count", 2: "pause", 3: "path", 4: "media-title"}
@@ -44,6 +45,7 @@ class Session:
     props: dict[str, Any] = field(default_factory=dict)
     task: asyncio.Task[None] | None = field(default=None, repr=False)
     _pending: set[asyncio.Task[None]] = field(default_factory=set, repr=False)
+    _pushed: dict[str, tuple[str, float]] = field(default_factory=dict, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -64,6 +66,34 @@ class Session:
     async def reply(self, target: str, payload: str) -> None:
         await self.script_message(target, REPLY_MESSAGE, payload)
 
+    def push_event(self, target: str, key: str, status: str, payload: dict[str, Any], min_interval: float = 0.25,
+                   final: bool = False) -> None:
+        """Send ``script-message-to <target> mu-event <json>``, throttled per ``key``.
+
+        Status changes are always delivered; same-status updates at most every ``min_interval`` seconds.
+        ``final`` drops the throttle entry (the key will not be seen again).
+        """
+        now = time.monotonic()
+        last = self._pushed.get(key)
+        if last is not None and last[0] == status and now - last[1] < min_interval:
+            return
+        self._pushed[key] = (status, now)
+        if final:
+            self._pushed.pop(key, None)
+        t = asyncio.create_task(self._push(target, encode(payload)))
+        self._pending.add(t)
+        t.add_done_callback(self._pending.discard)
+
+    def push_job(self, target: str, job: Any, min_interval: float = 0.25) -> None:
+        """Push a job's state as ``{"event":"job","job":{...}}`` (see ``push_event``)."""
+        status = job.status.value if hasattr(job.status, "value") else str(job.status)
+        self.push_event(target, "job:" + job.id, status, {"event": "job", "job": job.to_dict()}, min_interval,
+                        final=status in ("done", "failed", "cancelled"))
+
+    async def _push(self, target: str, payload: str) -> None:
+        with contextlib.suppress(ConnectionError, MpvIpcError, asyncio.TimeoutError):
+            await self.script_message(target, EVENT_MESSAGE, payload)
+
 
 class SessionManager:
     def __init__(self, server: MpvdServer):
@@ -75,6 +105,9 @@ class SessionManager:
 
     def get(self, session_id: str) -> Session | None:
         return self._sessions.get(session_id)
+
+    def all(self) -> list[Session]:
+        return list(self._sessions.values())
 
     def __len__(self) -> int:
         return len(self._sessions)

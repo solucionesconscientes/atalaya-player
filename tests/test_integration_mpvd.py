@@ -58,6 +58,14 @@ def test_mu_core_starts_daemon_registers_and_round_trips(mpv_with_daemon, media_
     h.command("loadfile", str(media_dir / "video30.mkv"))
     d.wait(lambda: (d.call("sessions.list")[0].get("path") or "").endswith("video30.mkv"), timeout=15)
 
+    # Jobs with notify=<script> push their progress to that script as `mu-event` messages.
+    reply = mu_call(h, "jobs.sleep", {"seconds": 1, "name": "pushed", "notify": "mu_core"})
+    pushed_id = reply["result"]["id"]
+    ev = h.wait_property("user-data/mu/last_event",
+                         lambda v: bool(v) and v.get("job", {}).get("id") == pushed_id
+                         and v["job"]["status"] == "done", timeout=15)
+    assert ev["event"] == "job" and ev["job"]["progress"] == 1.0 and ev["seq"] >= 2  # queued/running... + done
+
     # Jobs submitted from a session are tagged with it and cancelled when it goes away.
     reply = mu_call(h, "jobs.sleep", {"seconds": 60, "name": "from-mpv"})
     job_id = reply["result"]["id"]

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install or refresh the vendored third-party components (uosc, thumbfast) pinned in vendor.lock.
+# Install or refresh the vendored third-party components (uosc, thumbfast, yt-dlp) pinned in vendor.lock.
 # Downloads land in vendor/dl/ (git-ignored) and are verified with SHA-256 before being installed
 # into mpv-config/. Safe to re-run; works offline once the downloads are cached.
 set -euo pipefail
@@ -8,7 +8,7 @@ cd "$ROOT"
 # shellcheck disable=SC1091
 source vendor.lock
 DL="$ROOT/vendor/dl"
-mkdir -p "$DL" mpv-config/scripts mpv-config/fonts mpv-config/script-opts
+mkdir -p "$DL" "$ROOT/vendor/bin" mpv-config/scripts mpv-config/fonts mpv-config/script-opts
 
 verify() { echo "$1  $2" | sha256sum -c --quiet --status; }
 
@@ -48,6 +48,49 @@ else
 fi
 if fetch "$THUMBFAST_CONF_URL" "$THUMBFAST_CONF_SHA256" "$DL/thumbfast-$THUMBFAST_COMMIT.conf"; then
   [ -f mpv-config/script-opts/thumbfast.conf ] || cp "$DL/thumbfast-$THUMBFAST_COMMIT.conf" mpv-config/script-opts/thumbfast.conf
+fi
+
+echo "yt-dlp $YTDLP_VERSION"
+# vendor/bin/yt-dlp may already hold a NEWER release installed by mpvd's daily updater (verified against the
+# upstream SHA2-256SUMS); only (re)install the pinned base when it is missing or MU_VENDOR_FORCE=1.
+if [ -x vendor/bin/yt-dlp ] && [ "${MU_VENDOR_FORCE:-0}" != "1" ]; then
+  echo "  presente ($(cat vendor/bin/yt-dlp.version 2>/dev/null || echo '?'))"
+elif fetch "$YTDLP_URL" "$YTDLP_SHA256" "$DL/yt-dlp-$YTDLP_VERSION"; then
+  install -m 0755 "$DL/yt-dlp-$YTDLP_VERSION" vendor/bin/yt-dlp
+  echo "$YTDLP_VERSION" > vendor/bin/yt-dlp.version
+  echo "  instalado en vendor/bin/yt-dlp"
+else
+  status=1
+fi
+
+# deno (JS runtime for YouTube): only when nothing usable is on PATH, or on demand (MU_VENDOR_DENO=1).
+need_deno=1
+command -v deno >/dev/null && need_deno=0
+if command -v node >/dev/null; then
+  major="$(node --version 2>/dev/null | sed -E 's/^v?([0-9]+).*/\1/')"
+  [ -n "$major" ] && [ "$major" -ge 22 ] && need_deno=0
+fi
+if [ -x vendor/bin/deno ]; then
+  echo "deno: presente (vendor/bin/deno)"
+elif [ "${MU_VENDOR_DENO:-0}" = "1" ] || [ "$need_deno" = "1" ]; then
+  arch="$(uname -m)"; os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  case "$arch" in x86_64|amd64) arch=x86_64 ;; aarch64|arm64) arch=aarch64 ;; esac
+  case "$os" in linux) triple="$arch-unknown-linux-gnu" ;; darwin) triple="$arch-apple-darwin" ;; *) triple="" ;; esac
+  sha_var="DENO_SHA256_${arch}_${os}"
+  sha="${!sha_var:-}"
+  if [ -n "$triple" ] && [ -n "$sha" ] && command -v unzip >/dev/null; then
+    echo "deno $DENO_VERSION ($triple; sin deno/node>=22 en PATH)"
+    if fetch "$DENO_BASE_URL/deno-$triple.zip" "$sha" "$DL/deno-$DENO_VERSION-$triple.zip"; then
+      unzip -qo "$DL/deno-$DENO_VERSION-$triple.zip" deno -d vendor/bin && chmod 0755 vendor/bin/deno \
+        && echo "  instalado en vendor/bin/deno" || status=1
+    else
+      status=1
+    fi
+  else
+    echo "deno: no vendorizado (sin suma/plataforma para $os/$arch o falta unzip); yt-dlp usará node si existe"
+  fi
+else
+  echo "deno: no necesario (hay deno o node >= 22 en PATH)"
 fi
 
 # Sanity: the committed sources must match the pinned version.

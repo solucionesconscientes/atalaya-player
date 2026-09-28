@@ -89,9 +89,10 @@ def register(server: MpvdServer) -> None:  # noqa: C901 - flat list of small han
 
     @d.method("jobs.sleep")
     async def jobs_sleep(
-        ctx: RpcContext, seconds: float = 1.0, priority: str = "interactive", heavy: bool = False, name: str = "sleep"
+        ctx: RpcContext, seconds: float = 1.0, priority: str = "interactive", heavy: bool = False, name: str = "sleep",
+        notify: str | None = None,
     ) -> dict[str, Any]:
-        """Diagnostic job that sleeps and reports progress (used by tests)."""
+        """Diagnostic job that sleeps and reports progress (used by tests); ``notify`` = script to push events to."""
 
         async def body(job: Job) -> dict[str, Any]:
             steps = max(1, int(seconds * 10))
@@ -102,7 +103,8 @@ def register(server: MpvdServer) -> None:  # noqa: C901 - flat list of small han
 
         sid = ctx.session.id if ctx.session is not None else None
         try:
-            job = server.jobs.submit(name, body, priority=priority, heavy=heavy, session_id=sid)
+            job = server.jobs.submit(name, body, priority=priority, heavy=heavy, session_id=sid,
+                                     meta={"notify": notify} if notify else None)
         except (KeyError, ValueError) as exc:
             raise RpcError(INVALID_PARAMS, f"bad priority: {priority}") from exc
         return job.to_dict()

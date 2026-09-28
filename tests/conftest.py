@@ -114,6 +114,8 @@ def start_mpv(run_dir: Path, extra_args: list[str] | None = None, env: dict[str,
     args = [
         str(ROOT / "bin" / "mpv-uos"),
         "--vo=null", "--ao=null", "--hwdec=no", "--idle=yes", "--no-terminal",
+        # never resume/persist positions or track choices between test runs (mpv.conf enables them for users)
+        "--save-position-on-quit=no", "--resume-playback=no", f"--watch-later-dir={run_dir / 'watch_later'}",
         f"--input-ipc-server={socket}", f"--log-file={log}",
         *(extra_args or []),
     ]

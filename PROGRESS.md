@@ -1,9 +1,12 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 ## SIGUIENTE PASO
-H3 · yt-dlp avanzado: empezar por vendorizar yt-dlp en vendor/bin con comprobación diaria de actualización (tools/vendor.sh),
-verificar con `vendor/bin/yt-dlp --help` las opciones reales (-J, -f, --remux-video, --extract-audio, --audio-format/--audio-quality,
---embed-*, --sponsorblock-*), y configurar ytdl_hook para usar ese binario. Luego conmutador vídeo/solo audio y menú Calidad.
+H4 · UX base: menú raíz "MPV-UOS" (mu-core o nuevo mu-menu) que agrupe TV y radio, yt-dlp, subtítulos… y botón en la barra;
+paleta de comandos global (comandos de mpv + canales + recientes + acciones de mpvd) reutilizando `iptv.search` y un nuevo
+`recents.*` por hash (`file.hash` + `cache.*` ya existen); "continuar viendo" por hash independiente de la ruta (mpvd guarda
+time-pos en `watch.*`, mu-core lo restaura en file-loaded); pantalla de inicio en modo idle (menú uosc abierto al arrancar sin
+archivo) y docs/ATAJOS.md con todas las teclas. Verificar antes: `mp.get_property('input-bindings')` para listar comandos en la
+paleta, y cómo uosc muestra menús en idle (docs/UOSC_API.md §4).
 ## Registro por iteración
 ### Iteración 1 · 2026-09-28
 #### H0 · Cimientos — plan
@@ -118,3 +121,54 @@ verificar con `vendor/bin/yt-dlp --help` las opciones reales (-J, -f, --remux-vi
 - Runner nocturno: `tools/nocturno.sh` espera al reset del cupo de sesión de Claude (hora del mensaje o 30 min) sin contarlo como fallo,
   tope de 3 h por iteración, effort `high` (.runner.env) y `DEADLINE=07:30`. Lanzamiento: `tmux kill-session -t mpvuos;
   tmux new-session -d -s mpvuos "cd <proyecto> && systemd-inhibit --what=sleep:idle bash tools/nocturno.sh; exec bash"`.
+#### H3 · yt-dlp avanzado — hecho (commit "H3: yt-dlp avanzado")
+- Verificación real: docs/YTDLP.md (release 2026.08.19, assets y SHA, runtime JS/EJS, `--help` completo, `-J`, progreso JSON,
+  fixtures) y docs/MPV_YTDL.md (ytdl_hook embebido en mpv 0.41: opciones, lectura en caliente de script-opts, `user-data/mpv/ytdl/*`,
+  sintaxis `loadfile … replace -1 {…}`, pruebas headless).
+- Vendorizado: `vendor.lock` fija `yt-dlp` 2026.08.19 (zipimport, SHA-256) y las sumas de deno v2.9.7 por plataforma;
+  `tools/vendor.sh` instala vendor/bin/yt-dlp (no pisa una versión más nueva instalada por mpvd) y deno solo si no hay runtime JS.
+- mpvd `ytdl/`: `binary.py` (resolución env → vendor → PATH, runtime JS deno/node≥22, ffmpeg, updater diario verificado con
+  SHA2-256SUMS), `info.py` (filas de formato con etiqueta/hint, agrupación combinado/vídeo/audio, resumen, playlists planas),
+  `presets.py` (DownloadSpec → argv exacto; 14 presets; política de contenedor ADR-019), `downloads.py` (cola sobre JobQueue,
+  progreso `MU_PROGRESS`/`MU_PP`/`MU_DONE`, cancelar/repetir/quitar, historial y ajustes persistentes, carpetas XDG),
+  `service.py` (métodos `ytdl.status/hook/update.check/update.apply/info/playlist/presets/download/downloads.*/settings.*`,
+  caché de `-J` por URL con semilla del hook, eventos push a todas las sesiones). `sessions.push_event` genérico.
+- `mu-ytdl/main.lua`: fija `ytdl_hook-ytdl_path` y `ytdl-raw-options js-runtimes` en caliente; conmutador vídeo/solo audio
+  (alt+a) en la misma posición; menú Calidad (alt+q) con cambio en caliente y acción "descargar este formato"; menú Descargar
+  (alt+d) con presets y opciones conmutables; panel Descargas (alt+l) en vivo desde `mu-event`; Estado de yt-dlp con
+  actualización manual; botón ⬇ en la barra con contador; `user-data/mu/ytdl` con estado e items del menú para tests.
+- Tests: presets (argv exacto), info (fixtures reales de YouTube/archive.org/playlists), binario+updater (servidor HTTP local,
+  SHA incorrecto rechazado), descargas y métodos con un yt-dlp falso (`tests/fixtures/ytdlp/fake_ytdlp.py`), integración headless
+  mu-ytdl (ytdl_hook real ejecutando el fake, medios por HTTP, conmutador, calidad, descarga, panel) y @network (info real,
+  comprobación en GitHub, descargas reales 360p/mp3 128k/mkv verificadas con ffprobe). conftest aísla watch_later/resume.
+- Probar a mano:
+  ```bash
+  bin/mpv-uos https://www.youtube.com/watch?v=aqz-KE-bpKQ   # alt+q calidad · alt+a solo audio · alt+d descargar · alt+l descargas
+  bin/mpv-uos https://archive.org/details/Countdow1960
+  .venv/bin/python -m mpvd call ytdl.status
+  .venv/bin/python -m mpvd call ytdl.update.check '{"force":true}'
+  .venv/bin/python -m mpvd call ytdl.download '{"url":"https://archive.org/details/Countdow1960","preset":"video_360"}'
+  .venv/bin/python -m mpvd call ytdl.downloads.list
+  uv run pytest -m network tests/test_network_ytdl.py -s
+  ```
+- Test intermitente conocido: `test_mu_iptv.py::test_menus_play_zap_favorites_record_and_search` puede agotar el tiempo de
+  espera del directo (ffmpeg -re) con la máquina cargada; se subió a 90 s. Pasa aislado.
+#### H3 · yt-dlp avanzado — plan (original)
+- Verificación previa (subagentes): docs/YTDLP.md (última release, assets, runtime JS para YouTube, opciones reales de `--help`,
+  formato `-J`, `--progress-template`) y docs/MPV_YTDL.md (ytdl_hook de mpv 0.41: script-opts, `ytdl_path`, `all_formats`,
+  `loadfile ... replace -1 {ytdl-format=…,start=…}`, `vid=no` + `audio-display`). Fixtures reales de `-J` en tests/fixtures/ytdlp/.
+- Vendorizado: vendor.lock gana `YTDLP_VERSION/URL/SHA256` (asset `yt-dlp` zipimport, corre con el Python del .venv); tools/vendor.sh lo
+  instala en vendor/bin/yt-dlp (+ envoltorio ejecutable). mpvd comprueba una vez al día (`ytdl.update.check`) la última release en
+  GitHub (caché HTTP) y la descarga verificando el SHA2-256SUMS oficial; nunca en el hilo de mpv. Runtime JS (deno) vendorizado en
+  vendor/bin si YouTube lo exige (verificar en docs/YTDLP.md).
+- ytdl_hook: `script-opts/ytdl_hook.conf` con `ytdl_path=<ruta absoluta>` no vale (la config debe ser portable) → mu-ytdl fija
+  `ytdl_hook-ytdl_path` en caliente vía `script-opts` al arrancar apuntando a vendor/bin (relativo a MPV_UOS_ROOT).
+- mpvd `ytdl/`: `binary.py` (localizar/actualizar binario), `info.py` (`-J` con caché por URL, agrupación de formatos), `presets.py`
+  (argumentos de cada preset: exacto/combinación/audio original/convertido/opciones extra), `downloads.py` (cola con progreso
+  `--newline --progress-template`, cancelar, reintentar, carpetas XDG y plantilla), `service.py` (métodos `ytdl.*`).
+- mu-ytdl.lua: conmutador vídeo/solo audio (tecla + menú, `loadfile … replace -1 {ytdl-format=…,start=<pos>}` conservando pausa,
+  velocidad y volumen), menú "Calidad" (todos los formatos agrupados) y "Descargar" (presets), panel "Descargas" con progreso
+  (eventos push `mu-event` desde mpvd), botón en la barra de uosc y teclas en input.conf.
+- Tests: unit (presets → argv exacto, parseo de `-J` desde fixtures, parser de progreso, comprobación de actualización con servidor
+  local), integración headless (mu-ytdl con un yt-dlp falso que devuelve el JSON de fixture y "descarga" un archivo local con
+  progreso), @network (descarga real corta en 2 presets verificada con ffprobe).

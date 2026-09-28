@@ -155,7 +155,8 @@ def test_menus_play_zap_favorites_record_and_search(tv):
     # live recording (stream-record) of a real-time HTTP stream into the configured folder
     send_event(h, {"type": "activate", "index": 1, "value": {"play": chans["Directo Test"]["id"]}})
     h.wait_property("path", lambda v: bool(v) and v.endswith("/live.ts"), timeout=30)
-    h.wait_property("time-pos", lambda v: isinstance(v, (int, float)) and v > 0.5, timeout=40)
+    # a real-time stream under a loaded machine can take a while to fill mpv's cache
+    h.wait_property("time-pos", lambda v: isinstance(v, (int, float)) and v > 0.5, timeout=90)
     h.command("script-binding", "mu_iptv/record-toggle")
     rec = h.wait_property("stream-record", lambda v: bool(v), timeout=10)
     assert rec.startswith(str(record_dir)) and rec.endswith(".mkv") and "Directo Test" in rec

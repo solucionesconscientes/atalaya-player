@@ -13,9 +13,9 @@ from typing import Any
 
 from mpvd import __version__
 from mpvd.cache import ArtifactCache
-from mpvd.config import PROTOCOL_VERSION, Settings
+from mpvd.config import PROTOCOL_VERSION, Settings, project_root
 from mpvd.guardian import PerformanceGuardian
-from mpvd.jobs import JobQueue
+from mpvd.jobs import Job, JobQueue
 from mpvd.rpc import STREAM_LIMIT, Dispatcher
 from mpvd.sessions import Session, SessionManager
 
@@ -48,9 +48,10 @@ class MpvdServer:
     def __init__(self, settings: Settings | None = None, iptv_sources: list[Any] | None = None,
                  radio_base_url: str | None = None):
         self.settings = settings or Settings.from_env()
+        self.root = project_root()
         self.dispatcher = Dispatcher()
         self.guardian = PerformanceGuardian()
-        self.jobs = JobQueue(workers=self.settings.workers, guardian=self.guardian)
+        self.jobs = JobQueue(workers=self.settings.workers, guardian=self.guardian, on_change=self._job_changed)
         self.cache = ArtifactCache(self.settings.cache_dir / "artifacts")
         self.sessions = SessionManager(self)
         self.started_at = time.time()
@@ -63,10 +64,14 @@ class MpvdServer:
         from mpvd import methods  # noqa: PLC0415 - avoid import cycle
         from mpvd.iptv.service import IptvService  # noqa: PLC0415
         from mpvd.iptv.service import register as register_iptv  # noqa: PLC0415
+        from mpvd.ytdl.service import YtdlService  # noqa: PLC0415
+        from mpvd.ytdl.service import register as register_ytdl  # noqa: PLC0415
 
         methods.register(self)
         self.iptv = IptvService(self, sources=iptv_sources, radio_base_url=radio_base_url)
         register_iptv(self, self.iptv)
+        self.ytdl = YtdlService(self)
+        register_ytdl(self, self.ytdl)
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -88,6 +93,7 @@ class MpvdServer:
             os.chmod(s.socket_path, 0o600)
         s.pid_path.write_text(str(os.getpid()), encoding="utf-8")
         await self.jobs.start()
+        await self.ytdl.start()
         self._idle_task = asyncio.create_task(self._idle_watch(), name="mpvd-idle")
         log.info("mpvd %s listening on %s (cache %s, workers %d)", __version__, s.socket_path, s.cache_dir, s.workers)
 
@@ -104,6 +110,7 @@ class MpvdServer:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._idle_task
         await self.sessions.close_all()
+        await self.ytdl.close()
         await self.jobs.stop()
         for w in list(self._peers):
             w.close()
@@ -137,6 +144,18 @@ class MpvdServer:
                 log.info("idle for %.0fs without sessions: exiting", timeout)
                 self.request_shutdown()
                 return
+
+    # -- job events pushed to mpv scripts ------------------------------------------
+
+    def _job_changed(self, job: Job) -> None:
+        """Forward job progress to the mpv script that asked for it (``meta.notify`` = script name)."""
+        target = job.meta.get("notify")
+        if not target or job.session_id is None:
+            return
+        session = self.sessions.get(job.session_id)
+        if session is None or not session.connected:
+            return
+        session.push_job(target, job)
 
     # -- Unix socket peers -------------------------------------------------------
 

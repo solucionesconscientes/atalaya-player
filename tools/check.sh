@@ -14,10 +14,14 @@ mpv --version | head -1
 [ -x .venv/bin/python ] || uv sync --quiet
 .venv/bin/python --version
 
-step "vendor (uosc, thumbfast)"
+step "vendor (uosc, thumbfast, yt-dlp)"
 if [ -f mpv-config/scripts/uosc/main.lua ] && [ -f mpv-config/scripts/thumbfast.lua ]; then
   echo "presentes ($(grep -o "uosc_version = '[^']*'" mpv-config/scripts/uosc/main.lua))"
-  [ -x mpv-config/scripts/uosc/bin/ziggy-linux ] || tools/vendor.sh || true
+  if [ -x mpv-config/scripts/uosc/bin/ziggy-linux ] && [ -x vendor/bin/yt-dlp ]; then
+    echo "yt-dlp $(cat vendor/bin/yt-dlp.version 2>/dev/null || echo '?') en vendor/bin"
+  else
+    tools/vendor.sh || true
+  fi
 else
   tools/vendor.sh || fail=1
 fi
