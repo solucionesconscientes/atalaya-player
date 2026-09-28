@@ -105,8 +105,11 @@ class MpvHeadless:
                 self.proc.wait(timeout=5)
 
 
-def start_mpv(run_dir: Path, extra_args: list[str] | None = None, env: dict[str, str] | None = None) -> MpvHeadless:
-    """Launch bin/mpv-uos headless: --vo=null --ao=null --idle=yes, socket and log under run_dir."""
+def start_mpv(run_dir: Path, extra_args: list[str] | None = None, env: dict[str, str] | None = None,
+              start_screen: bool = False) -> MpvHeadless:
+    """Launch bin/mpv-uos headless: --vo=null --ao=null --idle=yes, socket and log under run_dir.
+
+    The mu-menu start screen is off unless ``start_screen`` (it would open a menu in every test)."""
     run_dir.mkdir(parents=True, exist_ok=True)
     tag = uuid.uuid4().hex[:8]
     socket = run_dir / f"mpv-{tag}.sock"
@@ -118,6 +121,8 @@ def start_mpv(run_dir: Path, extra_args: list[str] | None = None, env: dict[str,
         "--save-position-on-quit=no", "--resume-playback=no", f"--watch-later-dir={run_dir / 'watch_later'}",
         f"--input-ipc-server={socket}", f"--log-file={log}",
         *(extra_args or []),
+        # appended last: a later --script-opts=... would replace the whole list otherwise
+        f"--script-opts-append=mu-menu-start_screen={'yes' if start_screen else 'no'}",
     ]
     proc = subprocess.Popen(
         args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,

@@ -36,6 +36,14 @@ por instancia en `$XDG_RUNTIME_DIR/mpv-uos/mpv-<pid>.sock` (variable `MPV_UOS_SO
 ```
 Socket: `$XDG_RUNTIME_DIR/mpv-uos/mpvd.sock` (JSON-RPC 2.0, una línea por mensaje). Log: `.cache/mpvd.log`.
 
+## Menú, paleta y continuar viendo
+- Botón derecho, `MENU` o `alt+m`: menú **MPV-UOS** (buscar, abrir, continuar viendo, TV y radio, yt-dlp, lista, subtítulos, audio,
+  capítulos, captura, menú completo, salir). Al arrancar sin archivo aparece la pantalla de inicio con los recientes.
+- `alt+p`: **paleta** global. Escribe para filtrar comandos (todas las teclas con título), canales de TV y radio, vídeos recientes y
+  acciones de mpvd (actualizar listas, buscar actualización de yt-dlp, estado). Sin acentos: "pelicula" encuentra "Película".
+- **Continuar viendo** por contenido: la posición se guarda por hash del archivo (mpvd `watch.*`), así que un archivo renombrado o
+  movido reanuda donde lo dejaste. `alt+h` lista los recientes (Tab: olvidar). Todas las teclas: `docs/ATAJOS.md`.
+
 ## TV y radio
 Menú **TV y radio** en uosc (botón 📺 en la barra de controles, `alt+t`, o menú contextual): España TV y radio (TDTChannels),
 Mundo por país y categoría (iptv-org), Radio mundial (Radio Browser), Favoritos, Recientes, Mis listas (M3U propias) y búsqueda

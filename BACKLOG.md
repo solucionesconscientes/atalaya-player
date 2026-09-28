@@ -51,9 +51,9 @@ Aceptación: tests con JSON `-J` guardado como fixture (parseo + argumentos de c
 de licencia libre en 2 presets (vídeo 360p y mp3 128k) y verifica con ffprobe códec y bitrate.
 
 ## H4 · UX base (G1, F2, G7)
-- [ ] Menú raíz "MPV-UOS" y botón en los controles; paleta de comandos global (comandos + canales + recientes + acciones de mpvd).
-- [ ] Continuar viendo por hash (independiente de la ruta) y pantalla de inicio en modo idle con recientes y accesos.
-- [ ] docs/ATAJOS.md con todas las teclas.
+- [x] Menú raíz "MPV-UOS" y botón en los controles; paleta de comandos global (comandos + canales + recientes + acciones de mpvd).
+- [x] Continuar viendo por hash (independiente de la ruta) y pantalla de inicio en modo idle con recientes y accesos.
+- [x] docs/ATAJOS.md con todas las teclas.
 
 ## H5 · Subtítulos IA en vivo (B1, B2)
 - [ ] whisper.cpp: reutiliza el de ~/proyectos/live-captions-linux si existe (copiar/compilar en vendor/, sin tocar el original); si no, clona

@@ -1,7 +1,15 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 ## SIGUIENTE PASO
-H4 · UX base: menú raíz "MPV-UOS" (mu-core o nuevo mu-menu) que agrupe TV y radio, yt-dlp, subtítulos… y botón en la barra;
+H5 · Subtítulos IA en vivo: (1) inspeccionar ~/proyectos/live-captions-linux (solo lectura) para reutilizar su whisper.cpp
+(binario/modelos ya compilados: copiar a vendor/whisper, no compilar si ya existe whisper-server/whisper-cli); si no, clonar un tag
+estable de ggml-org/whisper.cpp en vendor/ y compilar con cmake (CPU; probar -DGGML_VULKAN=ON solo si compila y mejora RTF).
+(2) tools/bench_asr.sh: RTF por modelo (tiny/base/small, q5/q8) sobre tests/fixtures/media/voz_es.flac → docs/BENCHMARKS.md;
+elegir modelo por tier de hardware (mpvd/hardware.py). (3) mpvd `asr/`: extracción de audio por delante de time-pos (ffmpeg
+16 kHz mono), VAD (Silero vía whisper-server --vad o energía), transcripción por trozos, SRT incremental en caché por hash;
+mu-subs.lua añade/recarga la pista (`sub-add`/`sub-reload`) y repriorizar en seek. Verificar antes: opciones reales de
+whisper-server/whisper-cli (`--help`), formato de salida JSON y si admite `--vad-model`.
+(H4 antiguo) H4 · UX base: menú raíz "MPV-UOS" (mu-core o nuevo mu-menu) que agrupe TV y radio, yt-dlp, subtítulos… y botón en la barra;
 paleta de comandos global (comandos de mpv + canales + recientes + acciones de mpvd) reutilizando `iptv.search` y un nuevo
 `recents.*` por hash (`file.hash` + `cache.*` ya existen); "continuar viendo" por hash independiente de la ruta (mpvd guarda
 time-pos en `watch.*`, mu-core lo restaura en file-loaded); pantalla de inicio en modo idle (menú uosc abierto al arrancar sin
@@ -121,6 +129,35 @@ paleta, y cómo uosc muestra menús en idle (docs/UOSC_API.md §4).
 - Runner nocturno: `tools/nocturno.sh` espera al reset del cupo de sesión de Claude (hora del mensaje o 30 min) sin contarlo como fallo,
   tope de 3 h por iteración, effort `high` (.runner.env) y `DEADLINE=07:30`. Lanzamiento: `tmux kill-session -t mpvuos;
   tmux new-session -d -s mpvuos "cd <proyecto> && systemd-inhibit --what=sleep:idle bash tools/nocturno.sh; exec bash"`.
+#### H4 · UX base — hecho (commit "H4: UX base")
+- mpvd `watch.py` (servicio `watch.*`: get/update/recents/search/remove/clear; clave por contenido; historial de 500 entradas).
+- `mu-menu/main.lua`: menú raíz "MPV-UOS" (MBTN_RIGHT/MENU/alt+m, botón `mu-menu` en la barra; "Continuar viendo" inline),
+  vista Recientes (alt+h; Tab olvida; borrar historial), paleta global (alt+p; comandos de `input-bindings` + curados, canales,
+  recientes, acciones de mpvd), continuar viendo (seek al cargar si procede; guarda cada 15 s/pausa/seek/fin; directos excluidos),
+  pantalla de inicio en idle. mu-iptv: `mu-iptv-play <id>` y `current_url`. uosc.conf: botones `mu-menu` y `mu-ytdl`.
+- docs/ATAJOS.md completo + tests/test_atajos.py (cada tecla de input.conf documentada y cada script-binding existente).
+- Tests: test_watch.py (store, clave estable al renombrar, métodos), test_mu_menu.py (reanudación tras renombrar, no reanuda lo
+  terminado, menú raíz con recientes, paleta con comandos/canales/recientes/acciones, reproducir canal desde la paleta, pantalla
+  de inicio). conftest: `start_screen` en start_mpv (desactivada por defecto).
+- Probar a mano:
+  ```bash
+  bin/mpv-uos                                  # pantalla de inicio (recientes + accesos); alt+p paleta; alt+m menú
+  bin/mpv-uos tests/fixtures/media/video30.mkv # avanza a 0:25, cierra con q; cópialo con otro nombre y ábrelo: reanuda en 0:25
+  .venv/bin/python -m mpvd call watch.recents
+  .venv/bin/python -m mpvd call watch.search '{"q":"video"}'
+  ```
+#### H4 · UX base — plan
+- Verificado: `input-bindings` (mpv 0.41) devuelve `{key, cmd, comment, section, priority, is_weak}`; los comentarios `#!` de
+  input.conf llegan como `comment = "! Título > Sub"` → base de la paleta de comandos. `idle-active` + `playlist-count` para la
+  pantalla de inicio. `--script-opts=` posterior sustituye la lista entera (usar `--script-opts-append` en tests).
+- mpvd `watch.py` (servicio `watch.*`): SQLite en data_dir con clave por contenido (`file.hash` para archivos, `url:` para URLs):
+  get/update/recents/search/remove/clear; "terminado" si posición ≥ duración-30 s o ≥95 %.
+- `mu-menu/main.lua`: menú raíz "MPV-UOS" (MBTN_RIGHT/MENU/alt+m; botón `mu-menu` primero en la barra; incluye "Menú completo"
+  = uosc/menu), paleta global (alt+p: comandos de input-bindings + lista curada, canales vía iptv.search, recientes vía
+  watch.search, acciones de mpvd), continuar viendo por hash (seek en file-loaded si mpv no reanudó ya; posición cada 15 s,
+  en pausa/seek/end-file), pantalla de inicio en idle (opción `mu-menu-start_screen`, desactivada en tests salvo el suyo).
+- mu-iptv gana `script-message mu-iptv-play <id>` para la paleta. uosc.conf: `button:mu-menu` y `button:mu-ytdl` en controls.
+- docs/ATAJOS.md + test que comprueba que todas las teclas de input.conf están documentadas.
 #### H3 · yt-dlp avanzado — hecho (commit "H3: yt-dlp avanzado")
 - Verificación real: docs/YTDLP.md (release 2026.08.19, assets y SHA, runtime JS/EJS, `--help` completo, `-J`, progreso JSON,
   fixtures) y docs/MPV_YTDL.md (ytdl_hook embebido en mpv 0.41: opciones, lectura en caliente de script-opts, `user-data/mpv/ytdl/*`,

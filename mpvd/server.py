@@ -64,6 +64,8 @@ class MpvdServer:
         from mpvd import methods  # noqa: PLC0415 - avoid import cycle
         from mpvd.iptv.service import IptvService  # noqa: PLC0415
         from mpvd.iptv.service import register as register_iptv  # noqa: PLC0415
+        from mpvd.watch import WatchService  # noqa: PLC0415
+        from mpvd.watch import register as register_watch  # noqa: PLC0415
         from mpvd.ytdl.service import YtdlService  # noqa: PLC0415
         from mpvd.ytdl.service import register as register_ytdl  # noqa: PLC0415
 
@@ -72,6 +74,8 @@ class MpvdServer:
         register_iptv(self, self.iptv)
         self.ytdl = YtdlService(self)
         register_ytdl(self, self.ytdl)
+        self.watch = WatchService(self)
+        register_watch(self, self.watch)
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -119,6 +123,7 @@ class MpvdServer:
             await self._server.wait_closed()
         self.cache.close()
         self.iptv.close()
+        self.watch.close()
         with contextlib.suppress(OSError):
             if self.settings.pid_path.exists() and self.settings.pid_path.read_text().strip() == str(os.getpid()):
                 self.settings.pid_path.unlink()

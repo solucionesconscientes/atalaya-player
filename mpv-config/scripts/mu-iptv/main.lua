@@ -26,6 +26,7 @@ options.read_options(opts, 'mu-iptv')
 
 local state = {
   current = nil,      -- channel dict from iptv.play
+  current_url = '',   -- URL actually loaded for it (other scripts compare it with `path`)
   recording = '',     -- path of the file being recorded
   icy_title = '',
   view = '',          -- id of the view shown (for tests/diagnostics)
@@ -37,7 +38,7 @@ local state = {
 
 local function publish()
   mp.set_property_native('user-data/mu/iptv', {
-    current = state.current or '', recording = state.recording, icy_title = state.icy_title,
+    current = state.current or '', current_url = state.current_url, recording = state.recording, icy_title = state.icy_title,
     view = state.view, search_results = state.search_results, last_error = state.last_error,
     depth = #state.stack,
   })
@@ -60,6 +61,7 @@ end
 
 local function apply_play_info(info)
   state.current = info.channel
+  state.current_url = info.url or ''
   publish()
   local ok = mp.command_native({ 'loadfile', info.url, 'replace', -1, info.options or {} })
   if ok == nil then msg.warn('loadfile failed for ' .. info.url) end
@@ -647,6 +649,7 @@ local function open_root()
 end
 
 mp.add_key_binding(nil, 'tv-menu', open_root)
+mp.register_script_message('mu-iptv-play', function(channel_id) if channel_id and channel_id ~= '' then play(channel_id) end end)
 mp.add_key_binding(nil, 'tv-search', function()
   state.stack = {}
   open_view({ name = 'search' })
