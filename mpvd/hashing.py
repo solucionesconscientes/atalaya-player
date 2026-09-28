@@ -42,13 +42,11 @@ def _head_tail(path: Path) -> tuple[int, bytes, bytes]:
 
 
 def _os_sum(data: bytes) -> int:
+    """Sum of little-endian uint64 words; a trailing partial word (files < 128 KiB) is ignored."""
     total = 0
     full = len(data) - (len(data) % 8)
     for (v,) in struct.iter_unpack("<Q", data[:full]):
         total += v
-    rest = data[full:]
-    if rest:
-        total += struct.unpack("<Q", rest.ljust(8, b"\0"))[0]
     return total
 
 

@@ -1,4 +1,4 @@
-"""Shared fixtures: project paths, generated media, and a headless mpv launched through bin/mpv-uos."""
+"""Shared fixtures: project paths, generated media, headless mpv via bin/mpv-uos, and mpvd daemons."""
 
 from __future__ import annotations
 
@@ -6,7 +6,10 @@ import asyncio
 import json
 import os
 import re
+import shutil
+import signal
 import subprocess
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -14,11 +17,13 @@ from typing import Any
 
 import pytest
 
+from mpvd.client import rpc_call
 from mpvd.mpvipc import MpvIpcClient
 
 ROOT = Path(__file__).resolve().parents[1]
 MEDIA = ROOT / "tests" / "fixtures" / "media"
 TMP = ROOT / "tmp"
+PYTHON = ROOT / ".venv" / "bin" / "python"
 
 
 @pytest.fixture(scope="session")
@@ -57,10 +62,11 @@ SCRIPT_ERROR_RE = re.compile(r"\]\[(e|f)\]\[(uosc|thumbfast|mu_[a-z0-9_]+)\]|Lua
 class MpvHeadless:
     """A running mpv (no video/audio output, idle) with an IPC socket and a verbose log file."""
 
-    def __init__(self, proc: subprocess.Popen[bytes], socket: Path, log: Path):
+    def __init__(self, proc: subprocess.Popen[bytes], socket: Path, log: Path, run_dir: Path):
         self.proc = proc
         self.socket = socket
         self.log = log
+        self.run_dir = run_dir
 
     def run(self, fn: Callable[[MpvIpcClient], Awaitable[Any]], timeout: float = 60.0) -> Any:
         """Run an async function with a fresh connected client (tests stay synchronous)."""
@@ -99,30 +105,114 @@ class MpvHeadless:
                 self.proc.wait(timeout=5)
 
 
-@pytest.fixture
-def mpv_headless(media_dir: Path) -> Any:
-    """mpv launched via bin/mpv-uos with --vo=null --ao=null --idle=yes (socket and log under tmp/)."""
-    run_dir = TMP / "test-mpv"
+def start_mpv(run_dir: Path, extra_args: list[str] | None = None, env: dict[str, str] | None = None) -> MpvHeadless:
+    """Launch bin/mpv-uos headless: --vo=null --ao=null --idle=yes, socket and log under run_dir."""
     run_dir.mkdir(parents=True, exist_ok=True)
     tag = uuid.uuid4().hex[:8]
-    socket = run_dir / f"{tag}.sock"
-    log = run_dir / f"{tag}.log"
+    socket = run_dir / f"mpv-{tag}.sock"
+    log = run_dir / f"mpv-{tag}.log"
+    args = [
+        str(ROOT / "bin" / "mpv-uos"),
+        "--vo=null", "--ao=null", "--hwdec=no", "--idle=yes", "--no-terminal",
+        f"--input-ipc-server={socket}", f"--log-file={log}",
+        *(extra_args or []),
+    ]
     proc = subprocess.Popen(
-        [
-            str(ROOT / "bin" / "mpv-uos"),
-            "--vo=null", "--ao=null", "--hwdec=no", "--idle=yes", "--no-terminal",
-            f"--input-ipc-server={socket}", f"--log-file={log}",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        env={**os.environ, "MPV_UOS_RUNTIME_DIR": str(run_dir)},
+        args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        env={**os.environ, "MPV_UOS_RUNTIME_DIR": str(run_dir), **(env or {})},
     )
-    h = MpvHeadless(proc, socket, log)
+    h = MpvHeadless(proc, socket, log, run_dir)
+    h.run(lambda c: c.get_property("mpv-version"))  # waits for the socket
+    return h
+
+
+@pytest.fixture
+def mpv_headless(media_dir: Path) -> Any:
+    """Headless mpv WITHOUT the daemon (mu-core autostart off) for config/UI smoke tests."""
+    run_dir = TMP / "test-mpv"
+    h = start_mpv(run_dir, ["--script-opts=mu-core-autostart=no"])
     try:
-        h.run(lambda c: c.get_property("mpv-version"))  # waits for the socket
         yield h
     finally:
         h.stop()
         if not os.environ.get("MU_KEEP_LOGS"):
-            for p in (socket, log):
+            for p in (h.socket, h.log):
                 p.unlink(missing_ok=True)
+
+
+# -- mpvd -------------------------------------------------------------------------------------
+
+
+class DaemonEnv:
+    """Isolated runtime + cache directories for one mpvd daemon."""
+
+    def __init__(self, base: Path):
+        self.base = base
+        self.runtime_dir = base / "rt"
+        self.cache_dir = base / "cache"
+        self.runtime_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def socket(self) -> Path:
+        return self.runtime_dir / "mpvd.sock"
+
+    @property
+    def env(self) -> dict[str, str]:
+        return {"MPV_UOS_RUNTIME_DIR": str(self.runtime_dir), "MPV_UOS_CACHE_DIR": str(self.cache_dir),
+                "MPVD_IDLE_TIMEOUT": "120"}
+
+    def cli(self, *args: str, timeout: float = 60.0) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [str(PYTHON), "-m", "mpvd", *args], capture_output=True, text=True, timeout=timeout,
+            env={**os.environ, **self.env},
+        )
+
+    def call(self, method: str, params: Any = None, timeout: float = 30.0) -> Any:
+        return rpc_call(str(self.socket), method, params, timeout=timeout)
+
+    def alive(self) -> bool:
+        try:
+            return bool(self.call("ping", timeout=2).get("pong"))
+        except Exception:  # noqa: BLE001
+            return False
+
+    def wait(self, predicate: Callable[[], bool], timeout: float = 30.0, interval: float = 0.1) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return
+            time.sleep(interval)
+        raise TimeoutError("condition not met")
+
+    def stop(self) -> None:
+        if self.alive():
+            try:
+                self.call("shutdown", timeout=5)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                self.wait(lambda: not self.alive(), timeout=10)
+            except TimeoutError:
+                pass
+        pid_file = self.runtime_dir / "mpvd.pid"
+        if pid_file.exists():
+            try:
+                os.kill(int(pid_file.read_text()), signal.SIGKILL)
+            except (OSError, ValueError):
+                pass
+        log = self.cache_dir / "mpvd.log"
+        if log.exists() and os.environ.get("MU_KEEP_LOGS"):
+            print(log.read_text(encoding="utf-8", errors="replace"))
+
+
+@pytest.fixture
+def daemon_env() -> Any:
+    base = TMP / "test-mpvd" / uuid.uuid4().hex[:8]
+    d = DaemonEnv(base)
+    try:
+        yield d
+    finally:
+        d.stop()
+        if not os.environ.get("MU_KEEP_LOGS"):
+            shutil.rmtree(base, ignore_errors=True)

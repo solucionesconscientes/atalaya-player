@@ -13,12 +13,12 @@ Si terminas todo, añade hitos nuevos al final a partir de docs/VISION.md (TOP 1
 Aceptación: tools/check.sh en verde; README explica cómo abrir un archivo con bin/mpv-uos.
 
 ## H1 · mpvd núcleo (A1, A2, A7)
-- [ ] Servidor JSON-RPC 2.0 (socket Unix en ruta de runtime): ping, version, capabilities, jobs.list, jobs.cancel; registro de sesiones
+- [x] Servidor JSON-RPC 2.0 (socket Unix en ruta de runtime): ping, version, capabilities, jobs.list, jobs.cancel; registro de sesiones
       (una por instancia de mpv, con su ruta IPC).
-- [ ] mu-core.lua: arranca mpvd si no responde (proceso desacoplado con el Python del .venv), se registra, publica estado en user-data/mu/*,
+- [x] mu-core.lua: arranca mpvd si no responde (proceso desacoplado con el Python del .venv), se registra, publica estado en user-data/mu/*,
       reintenta y registra en log.
-- [ ] Hash de archivo (tamaño + 64 KB inicio/fin, estilo OpenSubtitles) y caché SQLite de artefactos (get/put/invalidate).
-- [ ] Cola asyncio con prioridades y cancelación; guardián de rendimiento básico (observa frame-drop-count y frena trabajos pesados).
+- [x] Hash de archivo (tamaño + 64 KB inicio/fin, estilo OpenSubtitles) y caché SQLite de artefactos (get/put/invalidate).
+- [x] Cola asyncio con prioridades y cancelación; guardián de rendimiento básico (observa frame-drop-count y frena trabajos pesados).
 Aceptación: tests unitarios + integración mpv headless ↔ mpvd.
 
 ## H2 · TV y radio (N1)

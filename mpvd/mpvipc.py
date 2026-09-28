@@ -18,6 +18,9 @@ from collections.abc import Callable
 from typing import Any
 
 
+DISCONNECTED_EVENT = "mpvd:disconnected"  # synthesized locally when the connection ends
+
+
 class MpvIpcError(RuntimeError):
     """mpv answered a command with an error string."""
 
@@ -110,6 +113,9 @@ class MpvIpcClient:
                 if not fut.done():
                     fut.set_exception(ConnectionError("mpv IPC connection closed"))
             self._pending.clear()
+            if self.events.full():
+                self.events.get_nowait()
+            self.events.put_nowait({"event": DISCONNECTED_EVENT})
 
     # -- commands ------------------------------------------------------------
 
@@ -148,6 +154,8 @@ class MpvIpcClient:
             if remaining <= 0:
                 raise TimeoutError(f"mpv event {name!r} not received in {timeout}s")
             ev = await asyncio.wait_for(self.events.get(), remaining)
+            if ev.get("event") == DISCONNECTED_EVENT:
+                raise ConnectionError("mpv IPC connection closed while waiting for " + name)
             if ev.get("event") == name and (predicate is None or predicate(ev)):
                 return ev
 

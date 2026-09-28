@@ -26,6 +26,16 @@ bin/mpv-uos --fs pelicula.mp4              # cualquier opción de mpv se pasa ta
 `bin/mpv-uos` lanza el mpv del sistema con `--config-dir=<proyecto>/mpv-config` (no toca `~/.config/mpv`) y crea un socket IPC único
 por instancia en `$XDG_RUNTIME_DIR/mpv-uos/mpv-<pid>.sock` (variable `MPV_UOS_SOCKET`). Botón derecho o tecla `MENU` abre el menú de uosc.
 
+## El daemon mpvd
+`mu-core.lua` arranca `mpvd` automáticamente al abrir mpv (se apaga solo a los 10 min sin sesiones). CLI:
+```bash
+.venv/bin/python -m mpvd status                  # sesiones, trabajos y guardián de rendimiento
+.venv/bin/python -m mpvd call capabilities       # métodos JSON-RPC disponibles
+.venv/bin/python -m mpvd call <método> '{...}'   # cualquier método
+.venv/bin/python -m mpvd stop
+```
+Socket: `$XDG_RUNTIME_DIR/mpv-uos/mpvd.sock` (JSON-RPC 2.0, una línea por mensaje). Log: `.cache/mpvd.log`.
+
 ## Estructura
 - `bin/mpv-uos` lanzador · `mpv-config/` configuración portable (mpv.conf, input.conf, scripts `mu-*`, uosc, thumbfast)
 - `mpvd/` daemon Python (JSON-RPC 2.0) · `tests/` pytest (unit + integración con mpv headless) · `tools/` scripts de build/check
