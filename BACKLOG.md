@@ -9,7 +9,7 @@ Si terminas todo, añade hitos nuevos al final a partir de docs/VISION.md (TOP 1
 - [x] tools/make_test_media.sh: vídeo de 30 s (testsrc2 + tono), audio con voz sintetizada (espeak-ng) en español e inglés con frases
       conocidas, un archivo con capítulos.
 - [x] tools/check.sh: pytest + lint Lua + smoke test headless (mpv carga uosc y mu-core sin errores en el log).
-- [ ] Registro en Notion (opcional, ver CLAUDE.md).
+- [x] Registro en Notion (opcional, ver CLAUDE.md).
 Aceptación: tools/check.sh en verde; README explica cómo abrir un archivo con bin/mpv-uos.
 
 ## H1 · mpvd núcleo (A1, A2, A7)

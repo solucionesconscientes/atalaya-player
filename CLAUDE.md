@@ -43,3 +43,6 @@ Visión: docs/VISION.md · Plan: BACKLOG.md · Estado: PROGRESS.md · Bloqueos: 
 ## Notion (opcional)
 Si en la sesión hay MCP de Notion y lo permite el modo de permisos, registra/actualiza el proyecto "MPV-UOS" siguiendo la convención de
 /home/pc/Documentos/PROJECTES/CODE-NOTION/ (léela primero; busca antes de crear para no duplicar). Si no es posible, anótalo en NEEDS_HUMAN.md.
+
+## Notion
+Proyecto Notion: slug=mpv-uos
