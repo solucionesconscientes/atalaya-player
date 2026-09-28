@@ -1,0 +1,10 @@
+.venv/
+vendor/
+.cache/
+tmp/
+logs/
+__pycache__/
+*.pyc
+.runner.env
+mpv-config/watch_later/
+mpv-config/cache/
