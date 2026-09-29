@@ -229,8 +229,12 @@ local function static_root_items()
   local items = {
     { title = 'Buscar: comandos, canales, recientes…', hint = 'alt+p', icon = 'search', value = { view = 'palette' } },
     { title = 'Abrir archivo', hint = 'o', icon = 'folder_open', value = { cmd = { 'script-binding', 'uosc/open-file' } } },
+    { title = 'Abrir URL (YouTube y otras webs)…', hint = 'ctrl+u', icon = 'link',
+      value = { cmd = { 'script-binding', 'mu_ytdl/open-url' } } },
+    { title = 'Buscar en YouTube', hint = 'ctrl+f', icon = 'travel_explore',
+      value = { cmd = { 'script-binding', 'mu_ytdl/yt-search' } } },
     { title = 'TV y radio', hint = 'alt+t', icon = 'live_tv', value = { cmd = { 'script-binding', 'mu_iptv/tv-menu' } } },
-    { title = 'yt-dlp: calidad y descargas', hint = 'alt+y', icon = 'download',
+    { title = 'Vídeos de internet: calidad y descargas', hint = 'alt+y', icon = 'download',
       value = { cmd = { 'script-binding', 'mu_ytdl/ytdl-menu' } } },
     { title = 'Subtítulos IA (whisper)', hint = 'alt+i', icon = 'closed_caption',
       value = { cmd = { 'script-binding', 'mu_subs/subs-menu' } } },
@@ -255,8 +259,10 @@ local function static_root_items()
     table.insert(items, { title = 'Captura de pantalla', hint = 'ctrl+s', icon = 'photo_camera',
                           value = { cmd = { 'async', 'screenshot' } } })
   end
-  table.insert(items, { title = 'Menú completo (todas las teclas)', hint = 'uosc', icon = 'menu',
-                        value = { cmd = { 'script-binding', 'uosc/menu' } }, separator = true })
+  table.insert(items, { title = 'Más opciones (ver, audio, subtítulos, repetir…)', hint = 'ctrl+m', icon = 'menu',
+                        value = { cmd = { 'script-binding', 'uosc/menu' } } })
+  table.insert(items, { title = 'Todas las teclas', icon = 'keyboard',
+                        value = { cmd = { 'script-binding', 'uosc/keybinds' } }, separator = true })
   table.insert(items, { title = 'Salir', hint = 'q', icon = 'logout', value = { cmd = { 'quit' } } })
   return items
 end
@@ -302,9 +308,13 @@ end
 views.start = function()
   local items = {
     { title = 'Abrir archivo', hint = 'o', icon = 'folder_open', value = { cmd = { 'script-binding', 'uosc/open-file' } } },
+    { title = 'Abrir URL (YouTube y otras webs)…', hint = 'ctrl+u', icon = 'link',
+      value = { cmd = { 'script-binding', 'mu_ytdl/open-url' } } },
+    { title = 'Buscar en YouTube', hint = 'ctrl+f', icon = 'travel_explore',
+      value = { cmd = { 'script-binding', 'mu_ytdl/yt-search' } } },
     { title = 'TV y radio', hint = 'alt+t', icon = 'live_tv', value = { cmd = { 'script-binding', 'mu_iptv/tv-menu' } } },
-    { title = 'Buscar…', hint = 'alt+p', icon = 'search', value = { view = 'palette' } },
-    { title = 'Menú completo', hint = 'alt+m', icon = 'apps', value = { view = 'root' }, separator = true },
+    { title = 'Buscar comandos, canales y recientes…', hint = 'alt+p', icon = 'search', value = { view = 'palette' } },
+    { title = 'Más opciones', hint = 'alt+m', icon = 'apps', value = { view = 'root' }, separator = true },
   }
   show('MPV-UOS · Inicio', items)
   with_recents(12, false, function(_, rows)
@@ -329,21 +339,21 @@ end
 -- command palette
 
 local CURATED = {
-  { title = 'Pausa / reproducir', cmd = 'cycle pause', key = 'espacio' },
-  { title = 'Pantalla completa', cmd = 'cycle fullscreen', key = 'f' },
-  { title = 'Silenciar', cmd = 'cycle mute', key = 'm' },
-  { title = 'Subir volumen', cmd = 'add volume 5', key = '0' },
-  { title = 'Bajar volumen', cmd = 'add volume -5', key = '9' },
-  { title = 'Velocidad +10 %', cmd = 'multiply speed 1.1', key = ']' },
-  { title = 'Velocidad −10 %', cmd = 'multiply speed 1/1.1', key = '[' },
+  { title = 'Pausa / reproducir', cmd = 'cycle pause', key = 'espacio', kw = 'play pause pausar reproducir parar' },
+  { title = 'Pantalla completa', cmd = 'cycle fullscreen', key = 'f', kw = 'fullscreen maximizar' },
+  { title = 'Silenciar', cmd = 'cycle mute', key = 'm', kw = 'mute sonido silencio' },
+  { title = 'Subir volumen', cmd = 'add volume 2', key = '0', kw = 'volume up mas alto' },
+  { title = 'Bajar volumen', cmd = 'add volume -2', key = '9', kw = 'volume down mas bajo' },
+  { title = 'Velocidad +10 %', cmd = 'multiply speed 1.1', key = ']', kw = 'speed rapido acelerar' },
+  { title = 'Velocidad −10 %', cmd = 'multiply speed 1/1.1', key = '[', kw = 'speed lento frenar' },
   { title = 'Velocidad normal', cmd = 'set speed 1.0', key = 'BS' },
   { title = 'Capítulo siguiente', cmd = 'add chapter 1', key = '!' },
   { title = 'Capítulo anterior', cmd = 'add chapter -1', key = '@' },
-  { title = 'Siguiente de la lista', cmd = 'playlist-next', key = '>' },
-  { title = 'Anterior de la lista', cmd = 'playlist-prev', key = '<' },
+  { title = 'Siguiente de la lista', cmd = 'playlist-next', key = '>', kw = 'next siguiente' },
+  { title = 'Anterior de la lista', cmd = 'playlist-prev', key = '<', kw = 'previous anterior' },
   { title = 'Bucle A-B', cmd = 'ab-loop', key = 'l' },
   { title = 'Repetir archivo', cmd = 'cycle-values loop-file inf no', key = 'L' },
-  { title = 'Subtítulos: alternar visibilidad', cmd = 'cycle sub-visibility', key = 'v' },
+  { title = 'Subtítulos: mostrar / ocultar', cmd = 'cycle sub-visibility', key = 'v', kw = 'subtitles subs' },
   { title = 'Subtítulos: retrasar +100 ms', cmd = 'add sub-delay 0.1', key = 'x' },
   { title = 'Subtítulos: adelantar 100 ms', cmd = 'add sub-delay -0.1', key = 'z' },
   { title = 'Audio: retrasar +100 ms', cmd = 'add audio-delay 0.1', key = 'ctrl++' },
@@ -380,21 +390,39 @@ local function commands()
   for _, c in ipairs(CURATED) do
     if not seen[c.cmd] then
       seen[c.cmd] = true
-      table.insert(list, { title = c.title, cmd = c.cmd, key = c.key or '' })
+      table.insert(list, { title = c.title, cmd = c.cmd, key = c.key or '', kw = c.kw })
+    elseif c.kw then
+      for _, l in ipairs(list) do if l.cmd == c.cmd then l.kw = c.kw end end
     end
   end
-  for _, c in ipairs(list) do c.fold = fold(c.title .. ' ' .. c.cmd) end
+  for _, c in ipairs(list) do
+    c.fold = fold(c.title .. ' ' .. (c.kw or ''))  -- what the user reads (and says) matters
+    c.fold_cmd = fold(c.cmd)                        -- the raw command only as a weak fallback
+  end
   commands_cache = list
   return list
 end
 mp.observe_property('input-bindings', 'native', function() commands_cache = nil end)
 
+-- Word-aware matching: every query word must appear; start of text > start of a word > inside a word. Words of one
+-- or two characters ("la", "1") only count at the start of a word, so "la 1" finds the channel La 1 and not
+-- "adelantar 100 ms".
 local function score(folded, words)
+  if not folded then return nil end
   local total = 0
   for _, w in ipairs(words) do
-    local pos = folded:find(w, 1, true)
-    if not pos then return nil end
-    total = total + (pos == 1 and 3 or (folded:sub(pos - 1, pos - 1) == ' ' and 2 or 1))
+    local best, init = nil, 1
+    while true do
+      local pos = folded:find(w, init, true)
+      if not pos then break end
+      local prev = pos > 1 and folded:sub(pos - 1, pos - 1) or ' '
+      local at_word = pos == 1 or prev:match('[%s%p]') ~= nil
+      local val = pos == 1 and 3 or (at_word and 2 or (#w > 2 and 1 or nil))
+      if val and (not best or val > best) then best = val end
+      init = pos + 1
+    end
+    if not best then return nil end
+    total = total + best
   end
   return total
 end
@@ -420,6 +448,10 @@ local function command_items(query, limit)
   local scored = {}
   for _, c in ipairs(commands()) do
     local s = #words == 0 and 1 or score(c.fold, words)
+    if not s and #words > 0 then
+      local weak = score(c.fold_cmd, words)
+      s = weak and weak / 4 or nil
+    end
     if s then table.insert(scored, { s = s, c = c }) end
   end
   table.sort(scored, function(a, b) if a.s ~= b.s then return a.s > b.s end return a.c.title < b.c.title end)
@@ -462,13 +494,18 @@ local function run_palette(query)
       table.insert(dl, { title = hit.text, hint = fmt_time(hit.start), icon = 'forum', value = { seek = hit.start } })
     end
     section(dialogue_mode == 'semantic' and 'Diálogo (semántico)' or 'Diálogo', dl, out)
-    section('Comandos', command_items(query, query == '' and 6 or limit), out)
     local ch = {}
+    local fq = fold(query)
+    local channel_first = false
     for _, c in ipairs(channels) do
       table.insert(ch, { title = c.name, hint = c.group or c.source, icon = c.kind == 'radio' and 'radio' or 'live_tv',
                          value = { channel = c.id } })
+      if fq ~= '' and fold(c.name):sub(1, #fq) == fq then channel_first = true end
     end
-    section('Canales', ch, out)
+    -- "la 1" is a channel search: its name starts with the query, so channels go before commands
+    if channel_first then section('Canales', ch, out) end
+    section('Comandos', command_items(query, query == '' and 6 or limit), out)
+    if not channel_first then section('Canales', ch, out) end
     local rc = {}
     for _, r in ipairs(recents) do table.insert(rc, recent_item(r)) end
     section('Recientes', rc, out)
@@ -481,6 +518,7 @@ local function run_palette(query)
   end
   if rpc.connected() then
     pending = 2
+    finish()  -- local commands right away; channels, recents and dialogue are added when mpvd answers
     local path = mp.get_property('path') or ''
     local is_local = path ~= '' and (path:match('^file://') ~= nil or path:match('^%a[%w+.-]*://') == nil)
     if query ~= '' and is_local then
@@ -662,6 +700,19 @@ local function maybe_start_screen()
 end
 
 mp.add_timeout(opts.start_delay, maybe_start_screen)
+
+-- After a failed load mpv stays idle on an empty window (bin/mpv-uos always runs with --idle=yes): bring the
+-- home screen back once the error message had time to show, unless another menu is open.
+local last_end_reason = ''
+mp.register_event('end-file', function(ev) last_end_reason = ev.reason or '' end)
+mp.observe_property('idle-active', 'bool', function(_, idle)
+  if not idle or not opts.start_screen or not state.start_shown or last_end_reason ~= 'error' then return end
+  mp.add_timeout(1.5, function()
+    if not mp.get_property_native('idle-active') or uosc.open_type() then return end
+    state.stack = {}
+    open_view({ name = 'start' })
+  end)
+end)
 mp.observe_property('user-data/mu/core', 'native', function(_, core)
   if core and core.uosc and not state.start_shown then mp.add_timeout(0.2, maybe_start_screen) end
 end)

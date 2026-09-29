@@ -1,7 +1,8 @@
 # Atajos de teclado de MPV-UOS
 
 Configurados en `mpv-config/input.conf` (validado por `tests/test_atajos.py`). Los que llevan `#!` aparecen también en el
-menú completo de uosc. Los atajos por defecto de mpv siguen activos salvo que se indique lo contrario.
+menú **Más opciones** de uosc (`ctrl+m`). Los atajos por defecto de mpv siguen activos salvo los de la tabla
+[Teclas de mpv que cambian](#teclas-de-mpv-que-cambian). `Todas las teclas` (menú principal) abre un buscador con todas.
 
 ## Menús de MPV-UOS
 | Tecla | Acción |
@@ -9,17 +10,22 @@ menú completo de uosc. Los atajos por defecto de mpv siguen activos salvo que s
 | `MBTN_RIGHT`, `MENU`, `alt+m` | Menú principal **MPV-UOS** (buscar, abrir, continuar viendo, TV y radio, yt-dlp, lista, subtítulos, audio, capítulos, captura, salir) |
 | `alt+p` | Paleta global: comandos (todas las teclas con título), canales de TV/radio, vídeos recientes y acciones de mpvd; escribe para filtrar (sin acentos); con transcripción IA, sección **Diálogo** (búsqueda semántica multilingüe, Enter salta al momento) |
 | `alt+h` | Recientes / continuar viendo (Tab sobre un elemento: olvidar) |
-| `ctrl+m` | Menú completo generado por uosc a partir de input.conf |
+| `ctrl+m` | Más opciones: menú de uosc agrupado (Ver, Audio, Subtítulos, Velocidad, Repetir…) |
 
 ## Archivo y reproducción (uosc)
 | Tecla | Acción |
 |---|---|
+| `SPACE` | Reproducir / pausa (también el botón ▶ de la barra) |
 | `o` | Abrir archivo |
+| `ctrl+v` | Abrir la URL o ruta copiada (portapapeles) |
+| `ctrl+u` | Abrir URL… (pegar o escribir; YouTube y más de mil webs vía yt-dlp) |
+| `ctrl+f` | Buscar en YouTube |
 | `p` | Lista de reproducción |
 | `c` | Capítulos |
 | `s` | Subtítulos · `alt+s` cargar subtítulos |
-| `a` | Pistas de audio |
-| `v` | Pistas de vídeo |
+| `a` | Pistas de audio · `m` silenciar |
+| `v` | Mostrar / ocultar subtítulos · `ctrl+alt+v` los secundarios |
+| `A` | Relación de aspecto · `d` desentrelazar (auto / sí / no) |
 | `e` | Ediciones |
 | `ctrl+q` | Calidad del stream (uosc) |
 | `ctrl+s` | Captura de pantalla |
@@ -36,7 +42,7 @@ menú completo de uosc. Los atajos por defecto de mpv siguen activos salvo que s
 | `alt+r` | Grabar / detener la grabación del directo (`~/Escritorio/MPV-UOS`) |
 | `Tab` (sobre un canal) | Acciones: favorito, copiar URL |
 
-## yt-dlp (mu-ytdl)
+## Vídeos de internet (mu-ytdl)
 | Tecla | Acción |
 |---|---|
 | `alt+y` | Menú yt-dlp (solo audio, calidad, descargar, descargas, estado) |
@@ -96,3 +102,17 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 |---|---|
 | `alt+z` | Mostrar / ocultar el código QR para emparejar el móvil (la URL también aparece en pantalla; el código vale una vez y caduca a los 10 min) |
 | `alt+Z` | Menú **Mando a distancia**: estado del servidor, móviles emparejados, olvidar mandos, arrancar/detener |
+
+## Teclas de mpv que cambian
+Estas teclas por defecto de mpv 0.41 hacen otra cosa en MPV-UOS:
+
+| Tecla | En mpv | En MPV-UOS |
+|---|---|---|
+| `s` | Captura de pantalla | Pistas de subtítulos (la captura está en `ctrl+s` y `S`) |
+| `p` | Pausa | Lista de reproducción (la pausa está en `SPACE`) |
+| `o` | Mostrar la posición | Abrir archivo |
+| `e` | Zoom (panscan) | Ediciones |
+| `ctrl+v` | Añadir el portapapeles a la lista | Abrir el portapapeles ahora (sustituye lo que suena) |
+| `alt+v` | Subtítulo secundario visible | Menú Sonido e imagen (el secundario está en `ctrl+alt+v`) |
+| `alt+←/→/↑/↓` | Desplazar el vídeo | Estudio (repetir línea anterior/siguiente) y zapping de TV |
+| Botón derecho, `MENU` | Pausa / menú contextual | Menú principal MPV-UOS |
