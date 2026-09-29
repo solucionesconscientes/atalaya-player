@@ -41,6 +41,10 @@ INFO_TTL = 6 * 3600.0          # googlevideo URLs expire after ~6 h (docs/YTDLP.
 INFO_TIMEOUT = 120.0
 DEFAULT_NOTIFY = "mu_ytdl"
 AUTO_UPDATE_DELAY = 30.0
+SEARCH_TTL = 3600.0            # in-memory cache per (query, limit)
+SEARCH_TIMEOUT = 30.0
+SEARCH_MAX_RESULTS = 50
+SEARCH_CACHE_SIZE = 200
 
 
 class YtdlService:
@@ -55,6 +59,8 @@ class YtdlService:
         self.updater = YtdlpUpdater(self.http, target)
         self.downloads = DownloadManager(server.jobs, self.binary, settings.data_dir, on_change=self._download_changed)
         self._info_tasks: dict[str, asyncio.Task[dict[str, Any]]] = {}
+        self._search_tasks: dict[tuple[str, int], asyncio.Task[dict[str, Any]]] = {}
+        self._search_cache: dict[tuple[str, int], tuple[float, list[dict[str, Any]]]] = {}
         self._auto_task: asyncio.Task[None] | None = None
         self.last_update_check: dict[str, Any] = {}
 
@@ -154,6 +160,7 @@ class YtdlService:
             out, err = await asyncio.wait_for(proc.communicate(), timeout)
         except asyncio.TimeoutError:
             proc.kill()
+            await proc.wait()  # reap it (no zombie, no transport left behind)
             raise RpcError(UNAVAILABLE, f"yt-dlp timed out after {timeout:.0f}s") from None
         text = out.decode("utf-8", "replace").strip()
         if proc.returncode != 0 or not text:
@@ -218,6 +225,44 @@ class YtdlService:
                     "has_combined": False}
         return {**info_mod.analyze(data), "url": url}
 
+    # -- search -------------------------------------------------------------------------------
+
+    async def search(self, query: str, limit: int = 15) -> list[dict[str, Any]]:
+        """YouTube search: one ``yt-dlp --flat-playlist -J -- ytsearchN:<query>`` run (same binary, safe args and JS
+        runtime as everything else), 30 s timeout, results cached in memory per (query, limit) for one hour.
+        Concurrent identical searches share the same yt-dlp process; failures are not cached."""
+        if not isinstance(query, str) or not query.strip():
+            raise RpcError(INVALID_PARAMS, "query required")
+        try:
+            n = max(1, min(SEARCH_MAX_RESULTS, int(limit)))
+        except (TypeError, ValueError):
+            raise RpcError(INVALID_PARAMS, "limit must be an integer") from None
+        q = " ".join(query.split())
+        key = (q.casefold(), n)
+        hit = self._search_cache.get(key)
+        if hit is not None and time.monotonic() - hit[0] < SEARCH_TTL:
+            return hit[1]
+        task = self._search_tasks.get(key)
+        if task is None or task.done():
+            task = asyncio.create_task(self._run_json(["--flat-playlist", "-J", "--", f"ytsearch{n}:{q}"],
+                                                      timeout=SEARCH_TIMEOUT))
+            # the error still reaches the callers; this only avoids "exception never retrieved" if they all left
+            task.add_done_callback(lambda t: t.cancelled() or t.exception())
+            self._search_tasks[key] = task
+        try:
+            data = await asyncio.shield(task)
+        finally:
+            if task.done():
+                self._search_tasks.pop(key, None)
+        results = info_mod.search_results(data, n)
+        now = time.monotonic()
+        self._search_cache[key] = (now, results)
+        if len(self._search_cache) > SEARCH_CACHE_SIZE:
+            live = {k: v for k, v in self._search_cache.items() if now - v[0] < SEARCH_TTL}
+            newest = sorted(live.items(), key=lambda kv: kv[1][0])[-SEARCH_CACHE_SIZE:]
+            self._search_cache = dict(newest)
+        return results
+
     # -- downloads ----------------------------------------------------------------------------
 
     def _download_changed(self, item: DownloadItem) -> None:
@@ -254,6 +299,7 @@ class YtdlService:
 def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - flat list of handlers
     d = server.dispatcher
     server.services["ytdl"] = True
+    server.services["ytdl_search"] = True
 
     @d.method("ytdl.status")
     async def status(ctx: RpcContext) -> dict[str, Any]:
@@ -292,6 +338,12 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
         """Flat playlist entries (``--flat-playlist -J``)."""
         data = await service.raw_info(url, flat=True, force=force)
         return {**info_mod.summary(data), "entries": info_mod.flat_entries(data)}
+
+    @d.method("ytdl.search")
+    async def search(ctx: RpcContext, query: str, limit: int = 15) -> list[dict[str, Any]]:
+        """YouTube search (``ytsearchN:``, flat, 30 s timeout, cached 1 h per query):
+        ``[{url, title, duration, channel, view_count, is_live}]``."""
+        return await service.search(query, limit)
 
     @d.method("ytdl.presets")
     async def presets(ctx: RpcContext) -> dict[str, Any]:

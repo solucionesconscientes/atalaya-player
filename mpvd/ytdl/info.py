@@ -209,3 +209,27 @@ def flat_entries(info: dict[str, Any]) -> list[dict[str, Any]]:
             "live_status": e.get("live_status"), "view_count": _int(e.get("view_count")),
         })
     return rows
+
+
+def search_results(info: dict[str, Any], limit: int | None = None) -> list[dict[str, Any]]:
+    """``--flat-playlist -J ytsearchN:<query>`` → ``[{url, title, duration, channel, view_count, is_live}]``.
+
+    Entries without a playable URL are skipped (a bare YouTube id is turned into its watch URL). ``is_live`` comes from
+    the search badge (``live_status == "is_live"``); upcoming premieres are not live."""
+    rows: list[dict[str, Any]] = []
+    for e in info.get("entries") or []:
+        if not isinstance(e, dict):
+            continue
+        url = e.get("url") or e.get("webpage_url")
+        if not url and e.get("id") and str(e.get("ie_key") or "").lower() == "youtube":
+            url = f"https://www.youtube.com/watch?v={e['id']}"
+        if not isinstance(url, str) or not url:
+            continue
+        rows.append({
+            "url": url, "title": e.get("title") or url, "duration": _num(e.get("duration")),
+            "channel": e.get("channel") or e.get("uploader") or "", "view_count": _int(e.get("view_count")),
+            "is_live": e.get("live_status") == "is_live" or e.get("is_live") is True,
+        })
+        if limit is not None and len(rows) >= limit:
+            break
+    return rows
