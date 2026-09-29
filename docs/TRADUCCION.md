@@ -112,3 +112,42 @@ repartir la traducción proporcionalmente a la longitud de cada cue; los diálog
   terminar, "Duales" = `secondary-sid` original + `sid` traducción. Runtime: extra `translate` del pyproject (`uv sync --extra translate`).
 - Tests: `tests/test_subs_translate.py` (unidad + traducción real es→en), `tests/test_subs_service.py` (job, caché, errores),
   `tests/test_mu_subs.py` (menú, pista traducida, duales con `secondary-sub-text`).
+
+## 7. Segundo motor: OPUS-MT "tc-big" (2026-09-30)
+Diagnóstico (`tmp/diag-subs`, diálogo coloquial es→en de 39 cues): Argos 1.0 (OPUS-MT *base* de 2020, 94 MB, int8) acierta 1 de 10
+giros ("No me tomes el pelo" → "Don't take my hair"); OPUS-MT **tc-big** acierta 5 de 10 ("Don't tease me"). NLLB (licencia CC-BY-NC)
+y un LLM local (lento en CPU) se descartaron.
+
+| Modelo (Helsinki-NLP, CC-BY 4.0) | Zip oficial (object storage de CSC) | SHA-256 | Tras convertir |
+|---|---|---|---|
+| `cat+oci+spa-eng` (es/ca→en) | `https://object.pouta.csc.fi/Tatoeba-MT-models/cat+oci+spa-eng/opusTCv20210807+bt_transformer-big_2022-03-13.zip` (863 152 463 B) | `a2d13b90c2d59fdd6b5db723fea7aaf32f1a5ef25d7119806c94df753e70f17f` | 234 MB |
+| `eng-cat+oci+spa` (en→es/ca, token `>>spa<<`/`>>cat<<`) | `…/eng-cat+oci+spa/opusTCv20210807+bt_transformer-big_2022-03-13.zip` (862 895 279 B) | `a5f01f26b1f22cc840b9f94e98a4fe2b517fca85296f7f802771272fbfcd659e` | 234 MB |
+
+- El zip trae el modelo Marian en fp32 (`.npz` de 930 MB, casi incompresible), `decoder.yml`, vocabulario YAML y `source.spm`/`target.spm`.
+  `mpvd/subs/opus.py` lo descarga (progreso), verifica el SHA-256, extrae solo esos miembros, borra el zip, convierte con
+  `ctranslate2.converters.OpusMTConverter(dir).convert(out, quantization="int8")` (solo numpy + pyyaml, ya dependencias de
+  ctranslate2; sin torch; ≈30 s y ≈1,7 GB de RAM de pico en el i5-6200U), copia los `.spm`, LICENSE y README y escribe
+  `mpv-uos.json` (URL, SHA-256, versión de CTranslate2). Destino: `<data_dir>/models/opus-mt/<id>/` (o `MPV_UOS_OPUS_MODELS`);
+  un zip ya descargado en `vendor/dl` o `MPV_UOS_OPUS_DL` se reutiliza (y no se borra).
+- Uso: `Translator(dir, compute_type="int8")`, piezas de `source.spm` (con `>>spa<<` delante para en→es), `beam_size=4`
+  (`MPV_UOS_TRANSLATE_BEAM_OPUS`), `target.spm` para decodificar; normalización ligera del `preprocess.sh` oficial (comillas
+  tipográficas, `…`, caracteres de control). ≈430 MB de RAM por modelo: se descarga de memoria al terminar cada trabajo.
+- `subs.translate {…, engine: auto|argos|opus-big}`: el `TranslationRouter` elige motor por tramo — `opus-big` donde OPUS-MT cubre el
+  par (con `auto`, solo si ya está descargado), Argos para el resto y para pivotar (fr→es = Argos fr→en + OPUS-MT en→es). Si falta
+  un modelo, error `-32002` con `data.missing = [[origen, destino, motor], …]`; mu-subs llama a
+  `subs.translate.download {source, target, engine}` (trabajo con progreso, eventos `subs-translate-model`) y reintenta al acabar.
+  `subs.translate.models` devuelve además `engines` (id, nombre, tamaño, pares y cuáles están descargados).
+- Caché: `TRANSLATE_VERSION` 2; ruta `motor:origen_destino[+…]` y beams en los parámetros.
+- Medido (i5-6200U, 3 hilos, carga ≈2): las 39 líneas del diagnóstico en 4,8 s con OPUS-MT beam 4 (≈110 ms/cue, 0,4 s de carga
+  del modelo) frente a 1,0 s con Argos beam 2 (≈26 ms/cue); una película de ~1200 cues ≈ 2 min en segundo plano.
+
+## 8. Reparto de la traducción entre cues (2026-09-30)
+- `group_cues`: si ≥25 % de los cues acaban frase, une hasta el punto final (≤4 cues, pausa ≤1,5 s); si no hay puntuación (Whisper
+  base), corta por pausas ≥0,6 s (≤4 cues). Un cue de diálogo (o que empieza con guion) nunca se pega a sus vecinos.
+- Diálogos: los turnos se traducen por separado sin el guion y se reconstruyen con `- ` y el mismo separador (salto de línea o espacio)
+  que el original; `load_cues` conserva los saltos de línea solo en cues de diálogo (`lines="dialogue"`).
+- `distribute`: cada corte parte del punto proporcional (recalculado sobre lo que queda) y se mueve ±3 palabras al mejor límite:
+  fin de frase o guion (10) > coma/punto y coma (8) > antes de conjunción (6); nunca tras artículo/preposición/conjunción (−10); la
+  distancia en palabras resta. Si la traducción no llena todos los cues de la frase, el cue vacío cede su tiempo al vecino (antes
+  se mostraba el texto original sin traducir). Casos del diagnóstico en `tests/test_subs_translate.py`.
+
