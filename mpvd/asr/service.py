@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from mpvd.asr.audio import AudioError, extract_wav, probe_duration, wav_duration
 from mpvd.asr.engine import EngineError, WhisperEngine
-from mpvd.asr.models import CATALOG, VAD_MODEL, ModelError, ModelStore, default_model_dirs
+from mpvd.asr.models import CATALOG, LIVE_ORDER, VAD_MODEL, ModelError, ModelStore, default_model_dirs
 from mpvd.asr.srt import Segment, merge_segments, render_srt
 from mpvd.hardware import hardware_info
 from mpvd.hashing import file_hash
@@ -37,12 +37,37 @@ log = logging.getLogger("mpvd.asr")
 ARTIFACT = "asr"
 STATE_VERSION = "1"
 DEFAULT_NOTIFY = "mu_subs"
-DEFAULT_CHUNK = float(os.environ.get("MPV_UOS_ASR_CHUNK", "20"))   # ADR-024: the 30 s encoder pass is the fixed cost
+# ADR-024: whisper always encodes a 30 s window, so a chunk costs the same whether it holds 20 or 28.5 s of audio;
+# 28.5 s + PRE_ROLL + TAIL = 29.7 s still fits in one window (docs/BENCHMARKS.md).
+DEFAULT_CHUNK = float(os.environ.get("MPV_UOS_ASR_CHUNK", "28.5"))
+LEGACY_CHUNKS = (20.0,)   # earlier default: finished chunks cached with it are reused (see AsrTask.load_state)
 PRE_ROLL = 0.8     # seconds of audio before the chunk start handed to whisper (context; cues there are dropped)
 TAIL = 0.4         # seconds after the chunk end
 MIN_CHUNK = 2.0
+PROMPT_CHARS = 200  # end of the previous chunk's text handed to whisper as --prompt (style, names, punctuation)
 FINAL = ("done", "failed", "cancelled")
 LANG_RE = re.compile(r"^[a-z]{2,3}$")
+
+
+def plan_chunks(duration: float, chunk_seconds: float) -> list[tuple[float, float]]:
+    chunks: list[tuple[float, float]] = []
+    t = 0.0
+    while t < duration - 0.05:
+        end = min(t + chunk_seconds, duration)
+        if duration - end < MIN_CHUNK:      # absorb a tiny tail into the last chunk
+            end = duration
+        chunks.append((t, end))
+        t = end
+    return chunks
+
+
+def prompt_tail(text: str, limit: int = PROMPT_CHARS) -> str:
+    """Last ``limit`` characters of ``text``, starting at a word boundary."""
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    cut = text[-limit:]
+    return cut.split(" ", 1)[1] if " " in cut else cut
 
 
 @dataclass
@@ -72,6 +97,7 @@ class AsrTask:
     rtf_elapsed: float = 0.0
     rtf_audio: float = 0.0
     last_chunk: tuple[float, float] | None = None
+    saved: list[dict[str, Any]] = field(default_factory=list)   # SRT files saved from this task (subs.save)
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     seq: int = 0
@@ -79,14 +105,15 @@ class AsrTask:
     # -- plan ---------------------------------------------------------------------
 
     def plan(self) -> None:
-        self.chunks = []
-        t = 0.0
-        while t < self.duration - 0.05:
-            end = min(t + self.chunk_seconds, self.duration)
-            if self.duration - end < MIN_CHUNK:      # absorb a tiny tail into the last chunk
-                end = self.duration
-            self.chunks.append((t, end))
-            t = end
+        self.chunks = plan_chunks(self.duration, self.chunk_seconds)
+
+    def prompt_for(self, i: int) -> str | None:
+        """Text of the previous chunk (when it is transcribed) as context for chunk ``i``."""
+        if i <= 0 or (i - 1) not in self.done:
+            return None
+        a, b = self.chunks[i - 1]
+        text = " ".join(s.text for s in self.segments if a - 0.01 <= s.start < b)
+        return prompt_tail(text) or None
 
     def next_chunk(self) -> int | None:
         """First undone chunk covering or after the cursor; when everything ahead is done, the earliest behind."""
@@ -136,6 +163,7 @@ class AsrTask:
             "srt": str(self.srt_path) if self.srt_path else None, "cues": len(self.segments),
             "chunk_seconds": self.chunk_seconds, "last_chunk": list(self.last_chunk) if self.last_chunk else None,
             "job": self.job.id if self.job else None, "updated_at": self.updated_at, "seq": self.seq,
+            "saved": [dict(x) for x in self.saved],
         }
         if with_segments:
             d["segments"] = [s.to_dict() for s in self.segments]
@@ -143,16 +171,35 @@ class AsrTask:
 
     def state(self) -> dict[str, Any]:
         return {"segments": [s.to_dict() for s in self.segments], "done": sorted(self.done), "detected": self.detected,
-                "chunk_seconds": self.chunk_seconds, "duration": self.duration, "complete": self.complete}
+                "chunk_seconds": self.chunk_seconds, "duration": self.duration, "complete": self.complete,
+                "saved": self.saved}
 
     def load_state(self, data: dict[str, Any]) -> None:
+        """Restore cached progress. A state planned with another chunk size (the old 20 s default) keeps every new
+        chunk fully covered by old finished chunks; the rest is transcribed again (merge replaces its cues)."""
         if not isinstance(data, dict):
             return
-        if abs(float(data.get("chunk_seconds", self.chunk_seconds)) - self.chunk_seconds) > 1e-6:
-            return  # different plan: start over (the cache entry gets overwritten)
         self.segments = [Segment.from_dict(s) for s in data.get("segments", [])]
-        self.done = {int(i) for i in data.get("done", []) if 0 <= int(i) < len(self.chunks)}
         self.detected = str(data.get("detected") or "")
+        self.saved = [dict(x) for x in data.get("saved") or [] if isinstance(x, dict)]
+        old_chunk = float(data.get("chunk_seconds", self.chunk_seconds))
+        done_old = {int(i) for i in data.get("done", [])}
+        if abs(old_chunk - self.chunk_seconds) <= 1e-6:
+            self.done = {i for i in done_old if 0 <= i < len(self.chunks)}
+            return
+        if data.get("complete"):
+            self.done = set(range(len(self.chunks)))
+            return
+        old_plan = plan_chunks(float(data.get("duration") or self.duration), old_chunk)
+        covered = sorted(old_plan[i] for i in done_old if 0 <= i < len(old_plan))
+        merged: list[list[float]] = []
+        for a, b in covered:
+            if merged and a <= merged[-1][1] + 1e-6:
+                merged[-1][1] = max(merged[-1][1], b)
+            else:
+                merged.append([a, b])
+        self.done = {i for i, (a, b) in enumerate(self.chunks)
+                     if any(ma - 1e-6 <= a and b <= mb + 1e-6 for ma, mb in merged)}
 
 
 class AsrService:
@@ -254,16 +301,19 @@ class AsrService:
         if language != "auto" and not LANG_RE.match(language):
             raise RpcError(INVALID_PARAMS, f"bad language {language!r}")
         purpose = purpose if purpose in ("live", "precompute") else "live"
-        if not model or model == "auto":
+        auto = not model or model == "auto"
+        if auto:
             model = self.recommended(purpose)
         if model != VAD_MODEL and model not in CATALOG:
             raise RpcError(INVALID_PARAMS, f"unknown model {model!r}")
         if not self.engine.available:
             raise RpcError(UNAVAILABLE, "whisper-cli no encontrado: ejecuta tools/vendor_whisper.sh")
-        if self.models.find(model) is None:
-            raise RpcError(UNAVAILABLE, f"el modelo {model} no está descargado (asr.models.download)")
         key, duration = await self._resolve(path)
         chunk = float(chunk_seconds or DEFAULT_CHUNK)
+        if auto:
+            model = await self._adopt_model(key, language, translate, chunk) or model
+        if self.models.find(model) is None:
+            raise RpcError(UNAVAILABLE, f"el modelo {model} no está descargado (asr.models.download)")
         task = self.find_task(key, model, language, translate)
         if task is not None and abs(task.chunk_seconds - chunk) < 1e-6:
             if session_id:
@@ -289,6 +339,12 @@ class AsrService:
             task.sessions.add(session_id)
         entry = await asyncio.to_thread(self.server.cache.get, key, ARTIFACT, model, STATE_VERSION,
                                         self._cache_params(task))
+        for legacy in LEGACY_CHUNKS:
+            if entry is not None:
+                break
+            if abs(legacy - chunk) > 1e-6:
+                entry = await asyncio.to_thread(self.server.cache.get, key, ARTIFACT, model, STATE_VERSION,
+                                                {**self._cache_params(task), "chunk": legacy})
         if entry is not None:
             task.load_state(entry.data)
         # always (re)write the SRT so mpv can sub-add it right away, even when empty
@@ -300,6 +356,29 @@ class AsrService:
             self._submit(task, session_id if purpose == "live" else None)
         self._prune_tasks()
         return task
+
+    async def _adopt_model(self, key: str, language: str, translate: bool, chunk: float) -> str | None:
+        """With ``model=auto``, reuse a finished transcription of this file made with another model (typically the
+        pre-subtitling one, small-q8_0, while live uses base) instead of starting a worse one from scratch."""
+        best: AsrTask | None = None
+        for t in self.tasks.values():
+            if (t.key == key and t.language == language and t.translate == translate and t.complete
+                    and t.model in CATALOG and self.models.find(t.model) is not None):
+                if best is None or LIVE_ORDER.index(t.model) > LIVE_ORDER.index(best.model):
+                    best = t
+        if best is not None:
+            return best.model
+        for name in reversed(LIVE_ORDER):
+            if self.models.find(name) is None:
+                continue
+            probe = AsrTask(id="", key=key, path="", duration=0.0, model=name, language=language, translate=translate,
+                            chunk_seconds=chunk)
+            for c in (chunk, *LEGACY_CHUNKS):
+                entry = await asyncio.to_thread(self.server.cache.get, key, ARTIFACT, name, STATE_VERSION,
+                                                {**self._cache_params(probe), "chunk": c})
+                if entry is not None and isinstance(entry.data, dict) and entry.data.get("complete"):
+                    return name
+        return None
 
     def _write_srt_only(self, task: AsrTask) -> None:
         assert task.srt_path is not None
@@ -346,7 +425,7 @@ class AsrService:
                     await extract_wav(task.path, ext_start, ext_end - ext_start, wav, task.audio_track)
                     lang = task.detected or (None if task.language == "auto" else task.language)
                     result = await self.engine.transcribe(wav, task.model, lang, translate=task.translate,
-                                                          audio_seconds=wav_duration(wav))
+                                                          prompt=task.prompt_for(i), audio_seconds=wav_duration(wav))
                 except (AudioError, EngineError, ModelError) as exc:
                     task.failed[i] = str(exc)
                     log.warning("asr %s chunk %d failed: %s", task.id, i, exc)
@@ -401,6 +480,16 @@ class AsrService:
                 task.status = "cancelled"
                 self._push(task, final=True)
         return task
+
+    def mark_saved(self, task: AsrTask, path: str, complete: bool) -> None:
+        """Remember that this transcription was saved as ``path`` (mu-subs then adopts that file when mpv auto-loads
+        it next to the video instead of adding the same subtitles twice)."""
+        task.saved = [x for x in task.saved if x.get("path") != path]
+        task.saved.append({"path": path, "complete": bool(complete), "cues": len(task.segments), "at": time.time()})
+        task.seq += 1
+        if task.model != "injected":
+            self.server.cache.put(task.key, ARTIFACT, model=task.model, version=STATE_VERSION,
+                                  params=self._cache_params(task), data=task.state())
 
     async def close(self) -> None:
         for t in list(self.tasks.values()):
@@ -521,13 +610,17 @@ def register(server: MpvdServer, service: AsrService) -> None:  # noqa: C901 - f
 
     @d.method("asr.inject")
     async def inject(ctx: RpcContext, path: str, segments: list[dict[str, Any]], duration: float | None = None,
-                     language: str = "es") -> dict[str, Any]:
-        """Test/tooling hook: register a finished transcription for ``path`` from given cues (no whisper involved)."""
+                     language: str = "es", done_fraction: float = 1.0) -> dict[str, Any]:
+        """Test/tooling hook: register a transcription for ``path`` from given cues (no whisper involved); finished
+        unless ``done_fraction`` < 1 (then only that share of the chunks counts as transcribed)."""
         key, dur = await service._resolve(path)
         task = AsrTask(id=uuid.uuid4().hex[:12], key=key, path=str(Path(path.removeprefix("file://"))),
                        duration=float(duration or dur or 0.0), model="injected", language=language, purpose="precompute")
+        task.plan()
+        n_done = round(len(task.chunks) * max(0.0, min(1.0, float(done_fraction))))
+        task.done = set(range(n_done))
         task.segments = [Segment.from_dict(s) for s in segments]
-        task.status = "done"
+        task.status = "done" if task.complete else "cancelled"
         task.detected = language
         task.updated_at = time.time()
         service.tasks[task.id] = task

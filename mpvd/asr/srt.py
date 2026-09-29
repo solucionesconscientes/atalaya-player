@@ -2,11 +2,100 @@
 
 from __future__ import annotations
 
+import math
+import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
 MAX_SEGMENT_SECONDS = 7.0
 MAX_CHARS = 84
+MIN_PIECE_CHARS = 30   # a long-but-sparse segment is not split into pieces shorter than this
+
+# -- where to cut a line of text (shared with the translation redistribution, mpvd/subs/translate.py) -------------
+STRONG_END = re.compile(r"[.!?…][\"'»”’)\]]*$")
+WEAK_END = re.compile(r"[,;:][\"'»”’)\]]*$")
+DASH_START = re.compile(r"^[-–—]")
+_BARE = re.compile(r"^[¿¡\"'«»“”‘’(\[]+|[\"'«»“”‘’)\].,;:!?…]+$")
+# Words a subtitle line should not end with (articles, prepositions, possessives) and conjunctions/relatives a line may
+# start with, for the languages of the menus (es, en, ca, fr, it, pt, de). Ambiguous short words go to CONJUNCTIONS;
+# Catalan "i" is left out (it is English "I").
+FUNCTION_WORDS = frozenset("""
+a an the of to in on at by for from with into onto my your his her its our their this these those
+el la los las un una unos unas lo al del de en con por para sin sobre mi mis tu tus su sus nuestro nuestra nuestros
+nuestras vuestro vuestra este esta estos estas ese esa esos esas
+les des du le au aux une mon ton son ma ta sa mes tes ses
+il gli di da nel nella nei sul sulla
+os as um uma do dos das na no pelo pela
+der die das den dem des ein eine einen einem einer zu im am vom zum zur
+""".split())
+CONJUNCTIONS = frozenset("""
+and or but so because when while if although though that which who whom whose where then nor unless until
+y e o u ni pero porque cuando mientras si aunque que quien quienes donde pues entonces sino
+però perquè quan mentre
+et ou mais donc parce quand qui où
+ma perché quando mentre che
+mas enquanto
+und oder aber weil wenn als dass
+""".split())
+
+
+def _bare(word: str) -> str:
+    return _BARE.sub("", word).lower()
+
+
+def cut_score(words: list[str], j: int) -> float:
+    """How good it is to end a line after ``words[j-1]`` and start the next one with ``words[j]``: the best of sentence
+    end (10), new speaker dash (10), comma/colon (8) and conjunction (6), +1 when two coincide; −10 for leaving an
+    article, preposition or conjunction dangling at the end of the line."""
+    prev, nxt = words[j - 1], words[j]
+    marks = []
+    if STRONG_END.search(prev):
+        marks.append(10.0)
+    elif WEAK_END.search(prev):
+        marks.append(8.0)
+    elif _bare(prev) in FUNCTION_WORDS or _bare(prev) in CONJUNCTIONS:
+        return -10.0          # "... coming to my" | "parents' dinner"
+    if DASH_START.match(nxt):
+        marks.append(10.0)
+    if _bare(nxt) in CONJUNCTIONS:
+        marks.append(6.0)
+    return max(marks) + (1.0 if len(marks) > 1 else 0.0) if marks else 0.0
+
+
+def cut_words(words: list[str], weights: list[float], window: int = 3) -> list[int]:
+    """Word indices where to cut ``words`` into ``len(weights)`` parts of lengths roughly proportional to ``weights``
+    (increasing, every part keeps ≥1 word; needs more words than parts).
+
+    Each cut starts at the character position that gives the rest of the text proportionally to the remaining weights
+    and moves within ±``window`` words to the best boundary (:func:`cut_score`); the distance, in average words,
+    is subtracted from the score."""
+    n, parts = len(words), len(weights)
+    if parts <= 1:
+        return []
+    if n < parts:
+        raise ValueError("more parts than words")
+    ends = [0] * (n + 1)
+    pos = 0
+    for j, w in enumerate(words):
+        pos += len(w) + (1 if j else 0)
+        ends[j + 1] = pos
+    avg = max(1.0, ends[n] / n)
+    w = [max(1e-6, float(x)) for x in weights]
+    cuts: list[int] = []
+    prev = 0
+    for k in range(parts - 1):
+        start = ends[prev] + (1 if prev else 0)
+        target = start + (ends[n] - start) * w[k] / sum(w[k:])
+        lo, hi = prev + 1, n - (parts - 1 - k)
+        base = min(range(lo, hi + 1), key=lambda j: abs(ends[j] - target))
+        best_j, best = base, -math.inf
+        for j in range(max(lo, base - window), min(hi, base + window) + 1):
+            score = cut_score(words, j) - abs(ends[j] - target) / avg
+            if score > best + 1e-9:
+                best_j, best = j, score
+        cuts.append(best_j)
+        prev = best_j
+    return cuts
 
 
 @dataclass
@@ -39,30 +128,40 @@ def clean_text(text: str) -> str:
     return t
 
 
+def split_text(text: str, parts: int) -> list[str]:
+    """Split ``text`` into ``parts`` pieces of similar length, cutting at punctuation/conjunctions when close."""
+    words = text.split()
+    parts = max(1, min(parts, len(words)))
+    if parts == 1:
+        return [" ".join(words)]
+    bounds = [0, *cut_words(words, [1.0] * parts), len(words)]
+    return [" ".join(words[a:b]) for a, b in zip(bounds, bounds[1:], strict=False)]
+
+
 def split_long(seg: Segment) -> list[Segment]:
-    """Split a long segment into readable pieces, distributing time by character count."""
+    """Split a long segment into readable pieces of similar length (no short leftovers), cutting at punctuation when
+    possible, and distribute its time by character count."""
     text = clean_text(seg.text)
     if not text:
         return []
-    if seg.end - seg.start <= MAX_SEGMENT_SECONDS and len(text) <= MAX_CHARS:
+    duration = seg.end - seg.start
+    if duration <= MAX_SEGMENT_SECONDS and len(text) <= MAX_CHARS:
         return [Segment(seg.start, seg.end, text)]
-    words = text.split()
-    pieces: list[str] = []
-    cur: list[str] = []
-    for w in words:
-        if cur and len(" ".join([*cur, w])) > MAX_CHARS:
-            pieces.append(" ".join(cur))
-            cur = [w]
-        else:
-            cur.append(w)
-    if cur:
-        pieces.append(" ".join(cur))
+    n_words = len(text.split())
+    parts = max(math.ceil(len(text) / MAX_CHARS),
+                min(math.ceil(duration / MAX_SEGMENT_SECONDS), len(text) // MIN_PIECE_CHARS), 1)
+    while True:
+        pieces = split_text(text, parts)
+        if all(len(p) <= MAX_CHARS for p in pieces) or parts >= n_words:
+            break
+        parts += 1
     total = sum(len(p) for p in pieces) or 1
     out, t = [], seg.start
     for p in pieces:
-        d = (seg.end - seg.start) * len(p) / total
+        d = duration * len(p) / total
         out.append(Segment(t, t + d, p))
         t += d
+    out[-1].end = seg.end
     return out
 
 
@@ -93,8 +192,9 @@ def render_srt(segments: list[Segment]) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
-def parse_srt(text: str) -> list[Segment]:
-    """Minimal SRT parser (used to read back cached files and by tests)."""
+def parse_srt(text: str, keep_lines: bool = False) -> list[Segment]:
+    """Minimal SRT parser (used to read back cached files and by tests). Multi-line cues are joined with a space, or
+    with ``\\n`` when ``keep_lines``."""
     segs: list[Segment] = []
     for block in text.replace("\r", "").strip().split("\n\n"):
         lines = [ln for ln in block.split("\n") if ln.strip()]
@@ -104,7 +204,7 @@ def parse_srt(text: str) -> list[Segment]:
         if "-->" not in lines[idx]:
             continue
         a, b = [t.strip() for t in lines[idx].split("-->")]
-        segs.append(Segment(_parse_time(a), _parse_time(b), " ".join(lines[idx + 1:])))
+        segs.append(Segment(_parse_time(a), _parse_time(b), ("\n" if keep_lines else " ").join(lines[idx + 1:])))
     return segs
 
 

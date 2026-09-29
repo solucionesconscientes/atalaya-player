@@ -36,6 +36,10 @@ def test_model_store_catalogue_and_pick(tmp_path):
     assert store.pick("medium", "live") == "tiny"            # base wanted but only tiny present → cheaper present one
     assert store.pick("medium", "live", prefer_present=False) == "base"
     assert store.pick("large", "precompute", prefer_present=False) == "small"
+    # 4-core laptop: live stays on base, pre-subtitling uses small-q8_0 (28.5 s chunks, docs/BENCHMARKS.md)
+    assert store.pick("small", "live", prefer_present=False) == "base"
+    assert store.pick("small", "precompute", prefer_present=False) == "small-q8_0"
+    assert store.pick("small", "precompute") == "tiny"      # small-q8_0 absent → cheaper model on disk
     assert model_url("tiny").endswith("/ggml-tiny.bin") and "whisper-vad" in model_url(VAD_MODEL)
     names = [m.name for m in store.list()]
     assert names[:-1] == list(CATALOG) and names[-1] == VAD_MODEL and store.list()[-1].is_vad
