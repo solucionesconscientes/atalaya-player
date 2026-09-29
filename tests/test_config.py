@@ -4,14 +4,40 @@ import re
 from pathlib import Path
 
 
+PROFILE_KEYS = {"profile-desc", "profile-cond", "profile-restore"}  # valid only inside a [profile] section
+
+
 def _conf_keys(path: Path) -> list[str]:
     keys = []
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
-        if not line or line.startswith("#"):
+        if not line or line.startswith("#") or (line.startswith("[") and line.endswith("]")):
             continue
-        keys.append(line.split("=", 1)[0].strip())
+        key = line.split("=", 1)[0].strip()
+        if key not in PROFILE_KEYS:
+            keys.append(key)
     return keys
+
+
+def test_deinterlace_profile_switches_to_copy_decoding(mpv_headless, media_dir):
+    """With hwdec=vaapi mpv would deinterlace with vavpp, missing on Intel Skylake's iHD driver: deinterlacing must
+    switch decoding to copy (bwdif) and switch back afterwards."""
+    import asyncio
+
+    async def go(c):
+        await c.set_property("hwdec", "vaapi,auto-safe")
+        await c.command("loadfile", str(media_dir / "video30.mkv"))
+        await c.wait_property("time-pos", lambda v: isinstance(v, (int, float)) and v > 0.2, timeout=20)
+        await c.set_property("deinterlace", "yes")
+        await asyncio.sleep(0.8)
+        during = await c.get_property("hwdec")
+        await c.set_property("deinterlace", "no")
+        await asyncio.sleep(0.8)
+        return during, await c.get_property("hwdec")
+
+    during, after = mpv_headless.run(go)
+    assert during[0] == "vaapi-copy"
+    assert after[0] == "vaapi"
 
 
 def test_mpv_conf_options_exist_in_installed_mpv(project_root: Path, mpv_option_names: set[str]):
