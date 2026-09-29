@@ -20,6 +20,13 @@ KINDS = ("video", "exact", "audio_original", "audio_convert")
 # are remuxed; mkv accepts anything.
 MERGE_PREFERENCES = {"mp4": "mp4/mkv", "mkv": "mkv", "webm": "webm/mkv"}
 REMUX_RULES = {"mp4": "mov>mp4/m4v>mp4/flv>mp4/3gp>mp4", "mkv": "mkv", "webm": ""}
+# Format sort (-S) for the resolution presets. yt-dlp's default order ranks AV1/VP9 + Opus first; that pair does not
+# fit mp4, so the merge silently fell back to .mkv. "vcodec:h264" = best codec no better than H.264 (H.264 wins over
+# AV1/VP9; older codecs such as Theora still qualify when nothing else exists); "res" right after it keeps the highest
+# resolution among those (otherwise a combined 360p H.264+AAC format beats a 1080p video-only one on "acodec").
+# mkv takes any codec: no -S. Checked with the vendored yt-dlp on the recorded YouTube -J: 360p mp4 → 18 (.mp4),
+# best mp4 → 299+140 (1080p .mp4), 360p webm → 243+251 (.webm); archive.org keeps its best ≤360p file.
+FORMAT_SORT = {"mp4": "vcodec:h264,res,acodec:aac", "mkv": "", "webm": "vcodec:vp9,res,acodec:opus"}
 
 PROGRESS_PREFIX = "MU_PROGRESS"
 POSTPROCESS_PREFIX = "MU_PP"
@@ -126,6 +133,8 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
     spec.validate()
     args: list[str] = ["--no-overwrites", "--continue", "--ignore-errors", "--retries", "5", "--socket-timeout", "30"]
     args += ["-f", spec.format_expression()]
+    if spec.kind == "video" and FORMAT_SORT[spec.container]:
+        args += ["-S", FORMAT_SORT[spec.container]]
     if spec.is_audio:
         args += ["-x"]
         if spec.kind == "audio_convert":
