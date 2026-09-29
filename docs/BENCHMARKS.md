@@ -23,5 +23,19 @@ El coste por llamada tiene una parte fija (encoder sobre la ventana de 30 s), po
 - El FLAC leído directamente por whisper-cli (miniaudio) devolvió vacío en esta versión: mpvd siempre pasa WAV 16 kHz mono extraído con ffmpeg.
 - Los cuantizados q5_1 son MÁS lentos que q8_0 y que el modelo completo en esta CPU (sin AVX-512); solo ahorran disco.
   (El 7,51 s de tiny-q5_1 sin VAD coincidió con otro proceso de tests en paralelo: valor contaminado.)
-- Tabla de elección por tier (mpvd/asr/models.py): small (≤4 núcleos) → en vivo base, pre-cálculo base · medium → base / small-q8_0 ·
-  large → small-q8_0 / small. El usuario puede forzar otro modelo desde el menú Subtítulos IA → Modelo.
+- Tabla de elección por tier (mpvd/asr/models.py): small (≤4 núcleos) → en vivo base, pre-cálculo **small-q8_0** · medium → base /
+  small-q8_0 · large → small-q8_0 / small. El usuario puede forzar otro modelo desde el menú Subtítulos IA → Modelo.
+
+## Trozos de 28,5 s (2026-09-30, medida corta, no regenerada por bench_asr.sh)
+Una llamada de whisper cuesta casi lo mismo con 20 s que con 28,5 s de audio (la ventana es siempre de 30 s). `voz_es.flac` en bucle,
+`-l es` + VAD, 3 hilos, una pasada por caso, con otros procesos de tests en la máquina (carga media 1,7–2,8: los tiempos absolutos
+salen inflados; la comparación entre filas es lo que vale):
+
+| Modelo | Trozo 20 s (+1,2 s) | Trozo 28,5 s (+1,2 s) | RTF por segundo útil |
+|---|---|---|---|
+| base | 8,3 s | 9,7 s | 0,41 → 0,34 |
+| small-q8_0 | 18,3 s | 16,5 s | 0,91 → 0,58 |
+
+Con la máquina en reposo la tabla de arriba da ≈0,45 para small-q8_0 con trozos de 28,5 s. Suficiente para pre-subtitular (RTF < 1);
+en vivo sigue base, porque mpv necesita la CPU que queda. small-q8_0 transcribe casi perfecto y con puntuación el diálogo del
+diagnóstico (`tmp/diag-subs/asr`), mientras que base se equivoca y apenas puntúa, que es lo que más estropea las traducciones.

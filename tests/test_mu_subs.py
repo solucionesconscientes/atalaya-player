@@ -186,3 +186,86 @@ def test_remote_url_is_refused_politely(subs_mpv):
     h.command("script-binding", "mu_subs/subs-toggle")   # nothing loaded → OSD only, no task, no error
     st = h.get("user-data/mu/subs")
     assert st["active"] is False and st["task_id"] == "" and h.script_errors() == []
+
+
+def test_save_srt_menu_binding_engines_and_no_duplicate_ai_track(subs_mpv, media_dir, tmp_path):
+    """Guardar subtítulos (SRT): binding on an embedded track, save menu, translation engine choice (+ translating an
+    embedded track), AI track saved next to the video and adopted (not duplicated) when mpv auto-loads it again."""
+    from tests.test_subs_save import make_video
+
+    h, d = subs_mpv
+    h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
+    vdir = tmp_path / "videos"
+    vdir.mkdir()
+    video = make_video(media_dir, vdir / "peli.mkv")
+    h.command("loadfile", str(video))
+    h.wait_property("path", lambda v: bool(v) and v.endswith("peli.mkv"), timeout=20)
+    tracks = h.wait_property("track-list", lambda tl: sum(1 for t in tl or [] if t.get("type") == "sub") >= 2, timeout=20)
+    srt_track = next(t for t in tracks if t.get("type") == "sub" and t.get("codec") == "subrip")
+    assert srt_track["ff-index"] == 1 and srt_track["lang"] == "spa"
+    h.command("set_property", "sid", srt_track["id"])
+
+    # 1. binding: saves the selected (embedded) track as peli.es.srt next to the video
+    h.command("script-binding", "mu_subs/subs-save")
+    st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("save_status") in ("done", "failed"),
+                         timeout=60)
+    assert st["save_status"] == "done" and st["save_out"] == str(vdir / "peli.es.srt") and st["save_lines"] == 3, st
+    assert st["save_kind"] == "track" and st["save_name"] == "peli.es.srt"
+
+    # 2. menu: root entry → save view lists what can be saved
+    h.command("script-binding", "mu_subs/subs-menu")
+    h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-subs", timeout=15)
+    st = wait_view(h, "root")
+    item = next(i for i in st["items"] if i["title"] == "Guardar subtítulos (SRT)")
+    assert item["hint"] == "peli.es.srt"
+    send_event(h, {"type": "activate", "index": 1, "value": {"view": "save"}})
+    st = wait_view(h, "save")
+    titles = [i["title"] for i in st["items"]]
+    assert "Pista IA: no iniciada" in titles and "Pista seleccionada (subrip)" in titles, titles
+
+    # 3. translation engines in the Traducir menu; choosing one is remembered
+    send_event(h, {"type": "back"})
+    wait_view(h, "root")
+    send_event(h, {"type": "activate", "index": 1, "value": {"view": "translate"}})
+    st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("view") == "translate"
+                         and any(i["title"] == "Inglés" for i in v.get("items", [])), timeout=30)
+    titles = [i["title"] for i in st["items"]]
+    assert titles[:3] == ["Automático", "Rápido (Argos)", "Calidad (OPUS-MT, 234 MB, se descarga una vez)"], titles
+    assert st["items"][0]["active"] and st["translate_engine"] == "auto"
+    send_event(h, {"type": "activate", "index": 2, "value": {"engine": "argos"}})
+    h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("translate_engine") == "argos"
+                    and v.get("view") == "translate"
+                    and any(i["title"] == "Rápido (Argos)" and i["active"] for i in v.get("items", [])), timeout=15)
+    h.command("script-message-to", "uosc", "close-menu", "mu-subs")
+
+    from mpvd.subs.translate import ArgosStore, runtime_available
+    from tests.asr_helpers import ROOT
+    if runtime_available() and ArgosStore([ROOT / "vendor" / "models" / "argos"], ROOT / "vendor" / "dl").find("es", "en"):
+        # the embedded track is extracted by mpvd and translated; then saved as peli.en.srt
+        h.command("script-message-to", "mu_subs", "mu-subs-translate", "en")
+        st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("translate_status") in ("done", "failed"),
+                             timeout=120)
+        assert st["translate_status"] == "done" and st["translate_engines"] == "argos" and st["extract_status"] == "done"
+        h.command("script-message-to", "mu_subs", "mu-subs-save", "translation")
+        st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("save_kind") == "translation"
+                             and v.get("save_status") == "done", timeout=30)
+        assert st["save_name"] == "peli.en.srt"
+
+    # 4. AI track: finished, saved (peli.es.srt exists → peli.es.ia.srt), then adopted when mpv auto-loads it
+    h.command("script-message-to", "mu_subs", "mu-subs-set", "language", "es")
+    h.command("script-binding", "mu_subs/subs-toggle")
+    st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("status") == "done", timeout=180)
+    cache_srt = st["srt"]
+    h.command("script-message-to", "mu_subs", "mu-subs-save", "ai")
+    st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("save_kind") == "ai"
+                         and v.get("save_status") in ("done", "failed", "partial"), timeout=30)
+    assert st["save_status"] == "done" and st["save_name"] == "peli.es.ia.srt", st
+    saved = str(vdir / "peli.es.ia.srt")
+    h.command("loadfile", str(video))
+    h.wait_property("track-list", lambda tl: any(t.get("external-filename") == saved for t in tl or []), timeout=20)
+    h.command("script-binding", "mu_subs/subs-toggle")
+    st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("adopted") == saved, timeout=60)
+    ext = [t for t in h.get("track-list") if t.get("type") == "sub" and t.get("external")]
+    assert not any(t.get("external-filename") == cache_srt for t in ext), "the cached AI SRT must not be added again"
+    assert h.get("sid") == next(t["id"] for t in ext if t.get("external-filename") == saved)
+    assert h.script_errors() == []

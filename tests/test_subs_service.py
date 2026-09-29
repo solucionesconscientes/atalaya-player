@@ -4,6 +4,7 @@ transcription of the Spanish test voice (pending → done, offset recovered)."""
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import pytest
 
@@ -59,11 +60,17 @@ def test_subs_translate_job_cache_and_errors(daemon_env, media_dir, tmp_path):
     if ArgosStore([ROOT / "vendor" / "models" / "argos"], ROOT / "vendor" / "dl").find("es", "en") is None:
         pytest.skip("Argos es→en package not vendored")
     d = daemon_env
+    d.extra_env["MPV_UOS_OPUS_MODELS"] = str(tmp_path / "opus")      # OPUS-MT big not downloaded here
     d.cli("ensure")
     d.wait(d.alive, timeout=30)
     assert d.call("capabilities")["services"]["translate"] is True
     st = d.call("subs.translate.models")
     assert st["engine"]["available"] and any(p["source"] == "es" and p["target"] == "en" and p["present"] for p in st["packages"])
+    engines = {e["id"]: e for e in st["engines"]}
+    assert engines["argos"]["name"] == "Rápido (Argos)" and "es_en" in engines["argos"]["present"]
+    big = engines["opus-big"]
+    assert big["size_mb"] == 234 and big["present"] == [] and "CC-BY" in big["license"]
+    assert {(p["source"], p["target"]) for p in big["pairs"]} == {("es", "en"), ("en", "es"), ("ca", "en"), ("en", "ca")}
 
     srt = tmp_path / "pelicula.srt"
     srt.write_text(render_srt([Segment(0.0, 2.0, "Bienvenido a MPV-UOS,"), Segment(2.0, 4.0, "el reproductor del futuro."),
@@ -76,10 +83,20 @@ def test_subs_translate_job_cache_and_errors(daemon_env, media_dir, tmp_path):
     with pytest.raises(RpcError) as exc:
         d.call("subs.translate", {"srt": str(srt), "target": "de", "source": "fr"})
     assert exc.value.code == UNAVAILABLE and exc.value.data and exc.value.data["missing"]
+    # engine choice: OPUS-MT asked for but not downloaded → the missing model says which engine; unknown engine
+    with pytest.raises(RpcError) as exc:
+        d.call("subs.translate", {"srt": str(srt), "target": "en", "source": "spa", "engine": "opus-big"})
+    assert exc.value.code == UNAVAILABLE and exc.value.data["missing"] == [["es", "en", "opus-big"]]
+    with pytest.raises(RpcError) as exc:
+        d.call("subs.translate", {"srt": str(srt), "target": "en", "source": "es", "engine": "deepl"})
+    assert exc.value.code == INVALID_PARAMS
+    with pytest.raises(RpcError) as exc:
+        d.call("subs.translate.download", {"source": "fr", "target": "en", "engine": "opus-big"})
+    assert exc.value.code == INVALID_PARAMS and "OPUS-MT" in exc.value.message
 
     # 1. job → done → English SRT with the same timing
     r = d.call("subs.translate", {"srt": str(srt), "target": "en", "source": "es", "path": str(media_dir / "voz_es.flac")})
-    assert r["status"] == "queued" and r["route"] == "es_en" and r["cues"] == 4
+    assert r["status"] == "queued" and r["route"] == "argos:es_en" and r["cues"] == 4 and r["engines"] == ["argos"]
     job_id = r["job"]["id"]
     deadline = time.monotonic() + 120
     job = None
@@ -98,3 +115,19 @@ def test_subs_translate_job_cache_and_errors(daemon_env, media_dir, tmp_path):
     # 2. same request → served from the artifact cache without a job
     r2 = d.call("subs.translate", {"srt": str(srt), "target": "en", "source": "es", "path": str(media_dir / "voz_es.flac")})
     assert r2["status"] == "done" and r2["cached"] is True and r2["srt"] == r["srt"]
+
+    # 3. an embedded text track: subs.extract → SRT in the cache → translated like any file (language tag "spa")
+    from tests.test_subs_save import make_video
+
+    video = make_video(media_dir, tmp_path / "peli.mkv")
+    ex = d.call("subs.extract", {"path": str(video), "ff_index": 1})
+    if ex["status"] == "queued":
+        d.wait(lambda: d.call("subs.extract", {"path": str(video), "ff_index": 1})["status"] == "done", timeout=30)
+    r3 = d.call("subs.translate", {"srt": ex["srt"], "target": "en", "source": ex["lang"], "path": str(video),
+                                   "engine": "auto"})
+    assert r3["source"] == "es" and r3["route"] == "argos:es_en"
+    if r3["status"] == "queued":
+        d.wait(lambda: Path(r3["srt"]).is_file() and len(parse_srt(Path(r3["srt"]).read_text(encoding="utf-8"))) == 3,
+               timeout=120, interval=0.3)
+    out = parse_srt(Path(r3["srt"]).read_text(encoding="utf-8"), keep_lines=True)
+    assert "welcome" in fold(out[0].text) and out[2].text.startswith("- ") and "\n- " in out[2].text, out

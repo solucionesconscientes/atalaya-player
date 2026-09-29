@@ -2,8 +2,11 @@
 -- position with whisper.cpp, adds the incremental SRT as an external subtitle track (`sub-add`) and reloads it
 -- (`sub-reload`) on every push event; the look-ahead cursor follows seeks (`asr.seek`). Menu "Subtítulos IA" (uosc):
 -- start/stop, language, model (download on demand), automatic start, pre-subtitling of the next playlist item, status.
--- Script name: mu_subs. Bindings: subs-menu (alt+i), subs-toggle (alt+c). Commands verified against mpv 0.41
--- (`mpv --input-cmdlist`: sub-add url [flags] [title] [lang] · sub-reload [id] · sub-remove [id]).
+-- Also: translation (Argos / OPUS-MT, subs.translate), resync (subs.resync), extraction of embedded text tracks
+-- (subs.extract) and "Guardar subtítulos (SRT)" (subs.save: AI track, translation, resync or the selected track).
+-- Script name: mu_subs. Bindings: subs-menu (alt+i), subs-toggle (alt+c), subs-resync (alt+x), subs-save (alt+S).
+-- Commands verified against mpv 0.41 (`mpv --input-cmdlist`: sub-add url [flags] [title] [lang] · sub-reload [id] ·
+-- sub-remove [id]; track-list/N/ff-index and track-list/N/codec exist in 0.41).
 local mp = require('mp')
 local msg = require('mp.msg')
 local utils = require('mp.utils')
@@ -26,9 +29,11 @@ local opts = {
   reload_min_interval = 1,  -- seconds between two sub-reload of the same track
   notify_done = true,       -- OSD when a transcription finishes or fails
   osd_seconds = 3,
-  chunk_seconds = 0,        -- 0 = mpvd default (20 s, ADR-024)
+  chunk_seconds = 0,        -- 0 = mpvd default (28.5 s: one 30 s whisper window, ADR-024)
   chapter_min_seconds = 180, -- minimum length of an AI chapter (semantic.chapters)
   chapter_window = 45,      -- seconds per topic window (semantic.chapters)
+  translate_engine = 'auto', -- auto (OPUS-MT when downloaded for the pair, else Argos) | argos | opus-big
+  save_dir = '',            -- folder for "Guardar subtítulos"; empty = next to the video (fallback ~/Vídeos/MPV-UOS/…)
 }
 options.read_options(opts, 'mu-subs')
 
@@ -39,6 +44,20 @@ local LANGUAGES = {
   { 'pl', 'Polaco' }, { 'ru', 'Ruso' }, { 'uk', 'Ucraniano' }, { 'tr', 'Turco' }, { 'ar', 'Árabe' }, { 'hi', 'Hindi' },
   { 'zh', 'Chino' }, { 'ja', 'Japonés' }, { 'ko', 'Coreano' },
 }
+
+-- Bitmap subtitle codecs (mpv/FFmpeg names): they cannot become SRT without OCR.
+local IMAGE_CODECS = { hdmv_pgs_subtitle = true, dvd_subtitle = true, dvb_subtitle = true, xsub = true }
+local IMAGE_MSG = 'subtítulo de imagen: necesita OCR'
+
+-- ISO 639-2 codes that containers use (mpv track-list lang) → the ISO 639-1 codes of the menus and mpvd
+local ISO3 = { spa = 'es', eng = 'en', cat = 'ca', fra = 'fr', fre = 'fr', deu = 'de', ger = 'de', ita = 'it',
+  por = 'pt', glg = 'gl', eus = 'eu', baq = 'eu', nld = 'nl', dut = 'nl', pol = 'pl', rus = 'ru', ukr = 'uk',
+  tur = 'tr', ara = 'ar', hin = 'hi', zho = 'zh', chi = 'zh', jpn = 'ja', kor = 'ko' }
+
+local function norm_lang(code)
+  code = (code or ''):lower():gsub('[-_].*$', '')
+  return ISO3[code] or code
+end
 
 local function language_name_for(code)
   for _, l in ipairs(LANGUAGES) do if l[1] == code then return l[2] end end
@@ -72,6 +91,10 @@ local state = {
   translate = nil,        -- {srt=, source=, target=, status=, out=, job=, progress=} last translation request
   packages = nil,         -- subs.translate.models result (present pairs)
   dual = false,           -- original on top (secondary-sid) + translation below (sid)
+  translate_engine = opts.translate_engine,
+  save = nil,             -- {kind=, status=, out=, name=, lines=, error=, coverage=, fallback=} last subs.save
+  extract = nil,          -- {job=, srt=, status=, cb=} pending subs.extract of an embedded track
+  adopted = '',           -- saved SRT (auto-loaded by mpv) shown instead of re-adding the cached AI track
 }
 
 local set_button_state -- defined with the bindings
@@ -102,7 +125,15 @@ local function publish()
     translate_out = state.translate and state.translate.out or '',
     translate_target = state.translate and state.translate.target or '',
     translate_progress = state.translate and state.translate.progress or 0, dual = state.dual,
+    translate_engine = state.translate_engine,
+    translate_engines = state.translate and state.translate.engines or '',
     ai_chapters = state.ai_chapters or 0, chapters_status = state.chapters_status or '',
+    save_status = state.save and state.save.status or '', save_kind = state.save and state.save.kind or '',
+    save_out = state.save and state.save.out or '', save_name = state.save and state.save.name or '',
+    save_lines = state.save and state.save.lines or 0, save_error = state.save and state.save.error or '',
+    save_coverage = state.save and state.save.coverage or 0, save_fallback = state.save and state.save.fallback or false,
+    extract_status = state.extract and state.extract.status or '', extract_srt = state.extract and state.extract.srt or '',
+    adopted = state.adopted,
   })
 end
 
@@ -174,8 +205,30 @@ end
 -- ---------------------------------------------------------------------------------------------
 -- subtitle track: add once, reload on updates (throttled)
 
+-- A finished AI track that was saved next to the video comes back through sub-auto on the next play: select that
+-- track instead of adding the cached copy (same subtitles twice).
+local function saved_ai_track()
+  local t = state.task
+  if not t or not (t.complete or t.status == 'done') then return nil end
+  for _, sv in ipairs(t.saved or {}) do
+    if sv.complete and sv.path then
+      local tr = find_track(sv.path)
+      if tr then return tr end
+    end
+  end
+  return nil
+end
+
 local function add_track()
   if state.srt == '' then return end
+  local saved = not find_track(state.srt) and saved_ai_track() or nil
+  if saved then
+    state.sid = saved.id
+    state.adopted = saved['external-filename']
+    mp.set_property_native('sid', saved.id)
+    publish()
+    return
+  end
   local t = find_track(state.srt)
   if t then
     state.sid = t.id
@@ -367,6 +420,8 @@ end
 -- ---------------------------------------------------------------------------------------------
 -- resync of an external subtitle file against the Whisper transcription (subs.resync)
 
+local selected_sub_file, with_extracted -- defined with the translation helpers below
+
 local function selected_external_sub()
   for _, t in ipairs(mp.get_property_native('track-list') or {}) do
     if t.type == 'sub' and t.selected and t.external and t['external-filename'] and t['external-filename'] ~= state.srt
@@ -426,22 +481,32 @@ local function resync_selected()
   if not rpc.connected() then osd('mpvd no está disponible') return end
   if not is_local(mp.get_property('path')) then osd('Solo archivos locales por ahora') return end
   local t = selected_external_sub()
-  if not t then
-    osd('Selecciona primero una pista de subtítulos externa (archivo .srt/.ass/.vtt)')
+  if t then
+    state.resync = { srt = t['external-filename'], status = 'requested', lang = t.lang }
+    publish()
+    resync_request(t['external-filename'], false)
     return
   end
-  state.resync = { srt = t['external-filename'], status = 'requested' }
-  publish()
-  resync_request(t['external-filename'], false)
+  local _, embedded = selected_sub_file()
+  if not embedded then
+    osd('Selecciona primero una pista de subtítulos (archivo .srt/.ass/.vtt o pista interna de texto)')
+    return
+  end
+  with_extracted(embedded, 'Resincronizar', function(srt)
+    state.resync = { srt = srt, status = 'requested', lang = embedded.lang }
+    publish()
+    resync_request(srt, false)
+  end)
 end
 
 -- ---------------------------------------------------------------------------------------------
 -- translation (subs.translate) and dual subtitles (secondary-sid = original on top, sid = translation below)
 
-local function selected_sub_file()
-  -- the selected subtitle track, as long as it is an external file (embedded tracks cannot be read by mpvd yet)
+selected_sub_file = function()
+  -- the primary selected subtitle track: (external track) or (nil, embedded track)
+  local sid = mp.get_property_native('sid')
   for _, t in ipairs(mp.get_property_native('track-list') or {}) do
-    if t.type == 'sub' and t.selected then
+    if t.type == 'sub' and t.selected and (type(sid) ~= 'number' or t.id == sid) then
       if t.external and t['external-filename'] then return t end
       return nil, t
     end
@@ -451,8 +516,30 @@ end
 
 local function source_language(track)
   if track['external-filename'] == state.srt then return 'auto' end   -- the AI track: mpvd knows its language
-  if track.lang and track.lang ~= '' then return track.lang:sub(1, 2) end
+  if track.lang and track.lang ~= '' then return track.lang end        -- mpvd maps spa → es, en-US → en
   return state.language   -- 'auto' → mpvd will ask for it (OSD)
+end
+
+-- Embedded text track → SRT in mpvd's cache (subs.extract); cb(srt, result) runs now or when the job ends.
+with_extracted = function(track, what, cb)
+  if IMAGE_CODECS[track.codec or ''] then
+    osd(what .. ': ' .. IMAGE_MSG .. ' (' .. track.codec .. ')')
+    return
+  end
+  if not is_local(mp.get_property('path')) then osd(what .. ': las pistas internas solo se leen en archivos locales') return end
+  rpc.call('subs.extract', { path = current_path(), ff_index = track['ff-index'], codec = track.codec, notify = SCRIPT },
+    function(err, res)
+      if err then osd(what .. ': ' .. fail(err, 'subs.extract')) return end
+      if res.status == 'done' then
+        state.extract = { srt = res.srt, status = 'done' }
+        publish()
+        cb(res.srt, res)
+        return
+      end
+      state.extract = { job = res.job and res.job.id or nil, srt = res.srt, status = 'running', cb = cb, what = what }
+      publish()
+      osd('Extrayendo la pista de subtítulos (' .. (track.codec or '?') .. ')…')
+    end, 60)
 end
 
 local function translated_track()
@@ -462,6 +549,11 @@ end
 local function apply_dual(on)
   local tr = translated_track()
   local orig = state.translate and find_track(state.translate.srt) or nil
+  if not orig and state.translate and state.translate.orig_id then   -- an embedded track that was extracted
+    for _, t in ipairs(mp.get_property_native('track-list') or {}) do
+      if t.type == 'sub' and t.id == state.translate.orig_id then orig = t end
+    end
+  end
   if on and tr and orig then
     mp.set_property_native('sid', tr.id)
     mp.set_property_native('secondary-sid', orig.id)
@@ -479,6 +571,7 @@ local function translate_apply(res)
   state.translate.status = 'done'
   state.translate.out = res.srt
   state.translate.progress = 1
+  state.translate.engines = table.concat(res.engines or {}, '+')
   publish()
   local existing = find_track(res.srt)
   local title = 'Traducción (' .. (res.target or state.translate.target or '?') .. ')'
@@ -496,22 +589,33 @@ local function translate_apply(res)
 end
 
 local function download_packages(missing, target)
+  local big = false
   for _, pair in ipairs(missing) do
-    rpc.call('subs.translate.download', { source = pair[1], target = pair[2], notify = SCRIPT }, function(err)
-      if err then osd('Paquete ' .. pair[1] .. '→' .. pair[2] .. ': ' .. fail(err, 'subs.translate.download')) end
-    end)
+    local engine = pair[3] or 'argos'
+    if engine == 'opus-big' then big = true end
+    rpc.call('subs.translate.download', { source = pair[1], target = pair[2], engine = engine, notify = SCRIPT },
+      function(err)
+        if err then osd('Modelo ' .. pair[1] .. '→' .. pair[2] .. ': ' .. fail(err, 'subs.translate.download')) end
+      end)
   end
   state.translate.status = 'downloading'
   state.translate.retry_target = target
+  state.translate.pending = #missing
   publish()
-  osd('Descargando el paquete de traducción (' .. #missing .. ')… se traducirá al terminar')
+  if big then
+    osd('Descargando OPUS-MT (≈860 MB, se convierte a 234 MB una sola vez)… se traducirá al terminar')
+  else
+    osd('Descargando el paquete de traducción (' .. #missing .. ')… se traducirá al terminar')
+  end
 end
 
 translate_request = function(track, target)
   local srt = track['external-filename']
-  state.translate = { srt = srt, target = target, status = 'requested', progress = 0 }
+  state.translate = { srt = srt, target = target, status = 'requested', progress = 0, track = track,
+    orig_id = track.orig_id }
   publish()
-  local params = { srt = srt, target = target, source = source_language(track), notify = SCRIPT }
+  local params = { srt = srt, target = target, source = source_language(track), notify = SCRIPT,
+    engine = state.translate_engine }
   if is_local(mp.get_property('path')) then params.path = current_path() end
   rpc.call('subs.translate', params, function(err, res)
     if err then
@@ -535,12 +639,140 @@ end
 local function translate_selected(target)
   if not rpc.connected() then osd('mpvd no está disponible') return end
   local track, embedded = selected_sub_file()
-  if not track then
-    osd(embedded and 'La pista seleccionada va dentro del vídeo: extráela primero (solo archivos .srt/.ass/.vtt o la pista IA)'
-      or 'Selecciona primero una pista de subtítulos (o inicia los subtítulos IA)')
-    return
+  if track then translate_request(track, target) return end
+  if not embedded then osd('Selecciona primero una pista de subtítulos (o inicia los subtítulos IA)') return end
+  with_extracted(embedded, 'Traducir', function(srt)
+    translate_request({ ['external-filename'] = srt, lang = embedded.lang, orig_id = embedded.id }, target)
+  end)
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- save as SRT next to the video (subs.save): AI track, translation, resync or the selected track
+
+local open_save_menu -- defined with the menus
+
+local function base_name(p) return (p or ''):match('[^/\\]+$') or '' end
+
+local function track_kind(t)
+  local f = t.external and t['external-filename'] or nil
+  if f and (f == state.srt or f == state.adopted) then return 'ai' end
+  if f and state.translate and f == state.translate.out then return 'translation' end
+  if f and state.resync and f == state.resync.out then return 'resync' end
+  return 'track'
+end
+
+local function ai_lang()
+  local t = state.task
+  if not t then return state.language ~= 'auto' and state.language or '' end
+  if t.detected and t.detected ~= '' then return t.detected end
+  return t.language ~= 'auto' and t.language or ''
+end
+
+local function pct(x) return math.floor((x or 0) * 100 + 0.5) end
+
+local function save_done(res)
+  state.save = { kind = res.kind, status = 'done', out = res.path, name = res.name, lines = res.lines or 0,
+    coverage = res.coverage or 1, fallback = res.fallback or false }
+  publish()
+  local extra = ''
+  if res.partial then extra = string.format(' · parcial: %d%%', pct(res.coverage)) end
+  if res.already then extra = extra .. ' · ya estaba guardado' end
+  if res.fallback then extra = extra .. '\nen ' .. (res.dir or '') end
+  osd(string.format('✓ Guardado: %s (%d líneas)%s', res.name or base_name(res.path), res.lines or 0, extra))
+end
+
+local function save_failed(message)
+  state.save = state.save or {}
+  state.save.status = 'failed'
+  state.save.error = message
+  publish()
+  osd('✗ No se pudo guardar: ' .. message)
+end
+
+local function save_request(kind, extra)
+  extra = extra or {}
+  if not rpc.connected() then osd('mpvd no está disponible') return end
+  local raw = mp.get_property('path') or ''
+  if raw == '' then osd('No hay ningún archivo abierto') return end
+  local params = { path = is_local(raw) and current_path() or raw, kind = kind, notify = SCRIPT,
+    title = mp.get_property('media-title') }
+  if opts.save_dir ~= '' then params.dest_dir = mp.command_native({ 'expand-path', opts.save_dir }) end
+  if kind == 'ai' then
+    if state.srt == '' and not state.task then osd('No hay pista IA: inicia los subtítulos IA (alt+c)') return end
+    params.srt = state.srt ~= '' and state.srt or nil
+    params.lang = ai_lang()
+    params.allow_partial = extra.partial or nil
+    params.complete = extra.complete or nil
+  elseif kind == 'translation' then
+    if not (state.translate and state.translate.out and state.translate.out ~= '') then
+      osd('No hay ninguna traducción que guardar')
+      return
+    end
+    params.srt = state.translate.out
+    params.lang = state.translate.target
+  elseif kind == 'resync' then
+    if not (state.resync and state.resync.out and state.resync.out ~= '') then
+      osd('No hay ningún subtítulo resincronizado que guardar')
+      return
+    end
+    params.srt = state.resync.out
+    params.lang = norm_lang(state.resync.lang)
+  else
+    local t = extra.track
+    if not t then
+      local ext, emb = selected_sub_file()
+      t = ext or emb
+    end
+    if not t then osd('Selecciona primero una pista de subtítulos') return end
+    if IMAGE_CODECS[t.codec or ''] then
+      state.save = { kind = 'track', status = 'failed', error = IMAGE_MSG }
+      publish()
+      osd('✗ No se pudo guardar: ' .. IMAGE_MSG .. ' (' .. t.codec .. ')')
+      return
+    end
+    if t.external and t['external-filename'] then
+      params.srt = t['external-filename']
+    else
+      params.ff_index = t['ff-index']
+      params.codec = t.codec
+    end
+    params.lang = norm_lang(t.lang)
   end
-  translate_request(track, target)
+  state.save = { kind = kind, status = 'requested' }
+  publish()
+  rpc.call('subs.save', params, function(err, res)
+    if err then save_failed(fail(err, 'subs.save')) return end
+    if res.status == 'done' then
+      save_done(res)
+    elseif res.status == 'partial' then
+      state.save = { kind = 'ai', status = 'partial', coverage = res.coverage or 0, lines = res.lines or 0 }
+      publish()
+      osd(string.format('La pista IA va por el %d%%: elige «Completar y guardar» o «Guardar lo transcrito»',
+        pct(res.coverage)))
+      if extra.menu ~= false and open_save_menu then open_save_menu() end
+    elseif res.status == 'waiting' then
+      state.save = { kind = 'ai', status = 'waiting', coverage = res.coverage or 0 }
+      publish()
+      osd(string.format('Completando la transcripción (%d%%)… se guardará al terminar', pct(res.coverage)))
+    else -- queued: an embedded track is being extracted first
+      state.save = { kind = kind, status = 'queued' }
+      publish()
+      osd('Extrayendo la pista… se guardará al terminar')
+    end
+  end, 60)
+end
+
+-- binding: the selected track (whatever it is: AI, translation, resync, external or embedded), else the AI track
+local function save_default()
+  local ext, emb = selected_sub_file()
+  local t = ext or emb
+  if t then
+    save_request(track_kind(t), { track = t })
+  elseif state.srt ~= '' or state.task then
+    save_request('ai')
+  else
+    osd('No hay subtítulos que guardar: selecciona una pista o inicia los subtítulos IA')
+  end
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -594,14 +826,45 @@ mp.register_script_message('mu-event', function(payload)
       publish()
       set_button_state()
     end
+  elseif ev.event == 'subs-save' then
+    if type(ev.result) == 'table' then
+      save_done(ev.result)
+    elseif ev.error then
+      save_failed(ev.error)
+    elseif ev.status == 'waiting' then
+      state.save = state.save or { kind = 'ai' }
+      state.save.status = 'waiting'
+      state.save.coverage = ev.coverage or 0
+      publish()
+    end
+  elseif ev.event == 'subs-extract' and type(ev.job) == 'table' then
+    local ex = state.extract
+    if ex and ex.job and ev.job.id == ex.job then
+      if ev.job.status == 'done' then
+        ex.status = 'done'
+        publish()
+        local cb = ex.cb
+        ex.cb = nil
+        if cb then cb((type(ev.result) == 'table' and ev.result.srt) or ex.srt, ev.result) end
+      elseif ev.job.status == 'failed' then
+        ex.status = 'failed'
+        publish()
+        osd('✗ ' .. (ex.what or 'Extraer') .. ': ' .. (ev.job.error or 'no se pudo extraer la pista'))
+      end
+    end
   elseif ev.event == 'subs-translate-model' and type(ev.job) == 'table' then
     state.packages = nil
+    if state.translate and state.translate.status == 'downloading' then
+      state.translate.dl_progress = ev.job.progress or 0
+      publish()
+    end
     if ev.job.status == 'done' then
-      osd('Paquete de traducción ' .. (ev.pair or '') .. ' listo')
-      if state.translate and state.translate.status == 'downloading' and state.translate.retry_target then
-        local target = state.translate.retry_target
-        local track = find_track(state.translate.srt)
-        if track then translate_request(track, target) end
+      osd((ev.engine == 'opus-big' and 'Modelo OPUS-MT ' or 'Paquete de traducción ') .. (ev.pair or '') .. ' listo')
+      local tr = state.translate
+      if tr and tr.status == 'downloading' and tr.retry_target then
+        tr.pending = (tr.pending or 1) - 1
+        local track = tr.track or find_track(tr.srt)
+        if track and tr.pending <= 0 then translate_request(track, tr.retry_target) end
       end
     elseif ev.job.status == 'failed' then
       if state.translate then state.translate.status = 'failed' end
@@ -638,6 +901,9 @@ mp.register_event('file-loaded', function()
     state.resync = nil
     state.translate = nil
     state.dual = false
+    state.save = nil
+    state.extract = nil
+    state.adopted = ''
     state.ai_chapters = 0
     state.chapters_status = ''
     state.orig_chapters = nil
@@ -673,6 +939,7 @@ mp.register_event('end-file', function()
   state.srt = ''
   state.sid = nil
   state.path = ''
+  state.adopted = ''
   state.ai_chapters = 0
   state.chapters_status = ''
   state.orig_chapters = nil
@@ -786,9 +1053,9 @@ views.root = function()
   local t = state.task
   local path = mp.get_property('path') or ''
   if task_running() or state.starting then
-    local pct = t and math.floor((t.progress or 0) * 100 + 0.5) or 0
+    local done_pct = t and pct(t.progress) or 0
     table.insert(items, { title = 'Detener subtítulos IA', icon = 'stop',
-      hint = state.starting and 'iniciando…' or string.format('%d%% · %d cues · %s', pct, t.cues or 0, task_label(t)),
+      hint = state.starting and 'iniciando…' or string.format('%d%% · %d cues · %s', done_pct, t.cues or 0, task_label(t)),
       value = { toggle = true } })
   elseif path == '' then
     table.insert(items, { title = 'Abre un archivo local para subtitularlo', icon = 'info', selectable = false, muted = true })
@@ -811,15 +1078,16 @@ views.root = function()
     table.insert(items, { title = 'Siguiente: ' .. (state.precompute.path:match('[^/\\]+$') or ''),
       hint = state.precompute.status, icon = 'skip_next', selectable = false, muted = true })
   end
-  local sel = selected_sub_file()
+  local sel, sel_emb = selected_sub_file()
   local tr = state.translate
   local tr_hint = 'selecciona una pista'
   if tr and tr.status == 'running' then tr_hint = string.format('traduciendo %d%%', math.floor((tr.progress or 0) * 100 + 0.5))
-  elseif tr and tr.status == 'downloading' then tr_hint = 'descargando paquete…'
+  elseif tr and tr.status == 'downloading' then tr_hint = string.format('descargando modelo %d%%', pct(tr.dl_progress))
   elseif tr and tr.status == 'done' then tr_hint = 'lista: ' .. language_name_for(tr.target)
-  elseif sel then tr_hint = (sel.title or sel['external-filename']:match('[^/\\]+$') or '') end
+  elseif sel then tr_hint = (sel.title or sel['external-filename']:match('[^/\\]+$') or '')
+  elseif sel_emb then tr_hint = 'pista interna (' .. (sel_emb.codec or '?') .. ')' end
   table.insert(items, { title = 'Traducir la pista seleccionada a…', icon = 'translate', hint = tr_hint,
-    value = { view = 'translate' }, separator = true, muted = sel == nil and not tr })
+    value = { view = 'translate' }, separator = true, muted = sel == nil and sel_emb == nil and not tr })
   if translated_track() then
     table.insert(items, { title = 'Duales: original arriba + traducción abajo', icon = 'vertical_split',
       hint = yesno(state.dual), value = { dual = true } })
@@ -830,6 +1098,12 @@ views.root = function()
     hint = ext and ((rs and rs.srt == ext['external-filename'] and rs.status ~= 'done') and rs.status
       or (ext['external-filename']:match('[^/\\]+$'))) or 'selecciona un .srt/.ass externo',
     value = { resync = true }, muted = ext == nil })
+  local sv = state.save
+  local sv_hint = 'alt+S'
+  if sv and sv.status == 'done' then sv_hint = sv.name or 'guardado'
+  elseif sv and sv.status == 'waiting' then sv_hint = string.format('completando %d%%…', pct(sv.coverage))
+  elseif sv and sv.status == 'queued' then sv_hint = 'extrayendo…' end
+  table.insert(items, { title = 'Guardar subtítulos (SRT)', icon = 'save', hint = sv_hint, value = { view = 'save' } })
   local nch = state.ai_chapters or 0
   table.insert(items, { title = 'Capítulos por tema (IA)', icon = 'bookmarks', active = nch > 0,
     hint = nch > 0 and (nch .. ' capítulos · quitar') or (state.chapters_status ~= '' and state.chapters_status
@@ -903,24 +1177,52 @@ local function translate_items(res)
   for _, pk in ipairs((res and res.packages) or {}) do
     if pk.present then present[pk.source .. '_' .. pk.target] = true end
   end
-  local track = selected_sub_file()
-  local src = track and source_language(track) or state.language
-  local items = {}
+  local opus_pairs, opus_present, opus = {}, {}, {}
+  for _, e in ipairs((res and res.engines) or {}) do
+    if e.id == 'opus-big' then
+      opus = e
+      for _, pr in ipairs(e.pairs or {}) do
+        opus_pairs[pr.source .. '_' .. pr.target] = true
+        if pr.present then opus_present[pr.source .. '_' .. pr.target] = true end
+      end
+    end
+  end
+  local eng = state.translate_engine
+  local listo = {}
+  for k in pairs(opus_present) do table.insert(listo, (k:gsub('_', '→'))) end
+  table.sort(listo)
+  local items = {
+    { title = 'Automático', hint = 'OPUS-MT donde ya esté descargado; si no, Argos', icon = 'auto_awesome',
+      active = eng == 'auto', value = { engine = 'auto' } },
+    { title = 'Rápido (Argos)', hint = 'todos los idiomas · ~90 MB por par', icon = 'bolt', active = eng == 'argos',
+      value = { engine = 'argos' } },
+    { title = 'Calidad (OPUS-MT, ' .. tostring(opus.size_mb or 234) .. ' MB, se descarga una vez)',
+      hint = #listo > 0 and ('listo: ' .. table.concat(listo, ', '))
+        or ('español/catalán ↔ inglés · descarga de ' .. tostring(opus.download_mb or 863) .. ' MB'),
+      icon = 'workspace_premium', active = eng == 'opus-big', value = { engine = 'opus-big' }, separator = true },
+  }
+  local ext, emb = selected_sub_file()
+  local track = ext or emb
+  local src = track and norm_lang(source_language(track)) or state.language
   for _, l in ipairs(LANGUAGES) do
     if l[1] ~= 'auto' and l[1] ~= src then
-      local direct = present[src .. '_' .. l[1]]
+      local key = src .. '_' .. l[1]
+      local direct = present[key]
       local pivot = src ~= 'auto' and present[src .. '_en'] and present['en_' .. l[1]]
+      local use_opus = eng ~= 'argos' and opus_pairs[key] and (eng == 'opus-big' or opus_present[key])
       local hint
       if src == 'auto' then hint = 'idioma de origen según la pista'
+      elseif use_opus then hint = opus_present[key] and 'OPUS-MT listo' or 'se descargará OPUS-MT (234 MB)'
       elseif direct then hint = 'paquete listo'
       elseif pivot then hint = 'vía inglés'
       else hint = 'se descargará el paquete (~90 MB)' end
-      table.insert(items, { title = l[2], hint = hint, icon = (direct or pivot) and 'check' or 'cloud_download',
+      local ready = direct or pivot or (use_opus and opus_present[key])
+      table.insert(items, { title = l[2], hint = hint, icon = ready and 'check' or 'cloud_download',
         active = state.translate ~= nil and state.translate.target == l[1], value = { translate = l[1] } })
     end
   end
   if not (res and res.engine and res.engine.available) then
-    table.insert(items, 1, { title = 'Falta el runtime de traducción: uv sync --extra translate', icon = 'error',
+    table.insert(items, 4, { title = 'Falta el runtime de traducción: uv sync --extra translate', icon = 'error',
       selectable = false, muted = true })
   end
   return items
@@ -935,6 +1237,55 @@ views.translate = function()
     state.packages = res
     if state.view == 'translate' then show('Traducir a', translate_items(res)) end
   end)
+end
+
+views.save = function()
+  local items = {}
+  local t = state.task
+  if t or state.srt ~= '' then
+    local lang = ai_lang()
+    local label = 'Pista IA' .. (lang ~= '' and (' (' .. lang .. ')') or '')
+    if t and (t.complete or t.status == 'done') then
+      table.insert(items, { title = label, hint = string.format('completa · %d líneas', t.cues or 0),
+        icon = 'closed_caption', value = { save = 'ai' } })
+    else
+      table.insert(items, { title = label .. ': guardar lo transcrito', icon = 'closed_caption',
+        hint = string.format('%d%% hecho', pct(t and t.progress)), value = { save = 'ai', partial = true } })
+      table.insert(items, { title = 'Completar y guardar', hint = 'sigue transcribiendo y guarda al terminar',
+        icon = 'hourglass_top', value = { save = 'ai', complete = true } })
+    end
+  else
+    table.insert(items, { title = 'Pista IA: no iniciada', hint = 'alt+c', icon = 'closed_caption',
+      selectable = false, muted = true })
+  end
+  local tr = state.translate
+  if tr and tr.out and tr.out ~= '' then
+    table.insert(items, { title = 'Traducción (' .. (tr.target or '?') .. ')', hint = tr.engines or '', icon = 'translate',
+      value = { save = 'translation' } })
+  end
+  local rs = state.resync
+  if rs and rs.out and rs.out ~= '' then
+    table.insert(items, { title = 'Resincronizado', hint = base_name(rs.srt), icon = 'sync_alt', value = { save = 'resync' } })
+  end
+  local ext, emb = selected_sub_file()
+  local sel = ext or emb
+  if sel and track_kind(sel) == 'track' then
+    local codec = sel.codec or '?'
+    local img = IMAGE_CODECS[codec] == true
+    local desc = sel.title or base_name(sel['external-filename'])
+    if desc == '' then desc = 'pista ' .. tostring(sel.id) end
+    table.insert(items, { title = 'Pista seleccionada (' .. codec .. ')', icon = img and 'image' or 'subtitles',
+      hint = img and IMAGE_MSG or (desc .. ((sel.lang and sel.lang ~= '') and (' · ' .. sel.lang) or '')),
+      muted = img or nil, value = { save = 'track' } })
+  end
+  local sv = state.save
+  if sv and sv.status == 'done' and sv.name then
+    table.insert(items, { title = 'Último guardado: ' .. sv.name, hint = string.format('%d líneas', sv.lines or 0),
+      icon = 'check_circle', selectable = false, muted = true })
+  end
+  show('Guardar subtítulos (SRT)', items, {
+    footnote = 'Junto al vídeo como <nombre>.<idioma>.srt (si existe: .ia / .resync / (2)). Si la carpeta no admite '
+      .. 'escritura o es una URL: ~/Vídeos/MPV-UOS/Subtítulos. alt+S guarda la pista seleccionada.' })
 end
 
 views.status = function()
@@ -980,6 +1331,13 @@ mp.register_script_message(EVENT, function(json)
     elseif v.translate then
       translate_selected(v.translate)
       uosc.close(MENU)
+    elseif v.engine then
+      state.translate_engine = v.engine
+      publish()
+      reopen_current()
+    elseif v.save then
+      uosc.close(MENU)
+      save_request(v.save, { partial = v.partial, complete = v.complete, menu = false })
     elseif v.dual then
       apply_dual(not state.dual)
       reopen_current()
@@ -1062,17 +1420,33 @@ local function open_root()
   open_view({ name = 'root' })
 end
 
+open_save_menu = function()
+  if not uosc.available() then return end
+  state.stack = { { name = 'root' } }
+  state.force_open = uosc.open_type() ~= MENU
+  open_view({ name = 'save' })
+end
+
 mp.add_key_binding(nil, 'subs-menu', open_root)
 mp.add_key_binding(nil, 'subs-toggle', toggle)
 mp.add_key_binding(nil, 'subs-resync', resync_selected)
+mp.add_key_binding(nil, 'subs-save', save_default)
 mp.register_script_message('mu-subs-start', function() start(false) end)
 mp.register_script_message('mu-subs-stop', stop)
 mp.register_script_message('mu-subs-resync', resync_selected)
-mp.register_script_message('mu-subs-translate', function(target) translate_selected(target or 'en') end)
+mp.register_script_message('mu-subs-translate', function(target, engine)
+  if engine and engine ~= '' then state.translate_engine = engine end
+  translate_selected(target or 'en')
+end)
+-- mu-subs-save [auto|ai|translation|resync|track] [partial|complete]
+mp.register_script_message('mu-subs-save', function(kind, mode)
+  if not kind or kind == '' or kind == 'auto' then save_default() return end
+  save_request(kind, { partial = mode == 'partial', complete = mode == 'complete' })
+end)
 mp.register_script_message('mu-subs-dual', function(v) apply_dual(v ~= 'no' and v ~= 'false') end)
 mp.register_script_message('mu-subs-chapters', function(on) apply_chapters(on ~= 'no' and on ~= 'false') end)
 mp.register_script_message('mu-subs-set', function(key, value)
-  if key == 'language' or key == 'model' then state[key] = value
+  if key == 'language' or key == 'model' or key == 'translate_engine' then state[key] = value
   elseif key == 'auto_start' or key == 'precompute_next' then state[key] = (value == 'yes' or value == 'true')
   end
   publish()

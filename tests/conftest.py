@@ -9,6 +9,7 @@ import re
 import shutil
 import signal
 import subprocess
+import tempfile
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -175,6 +176,9 @@ class DaemonEnv:
     def __init__(self, base: Path):
         self.base = base
         self.runtime_dir = base / "rt"
+        if len(str(self.runtime_dir / "mpv-00000000.sock")) > 100:
+            # AF_UNIX socket paths are limited to 107 bytes: long checkouts (git worktrees) use a short private dir
+            self.runtime_dir = Path(tempfile.mkdtemp(prefix="mu-rt-"))
         self.cache_dir = base / "cache"
         self.data_dir = base / "data"  # favourites, recents, user lists: never the developer's .cache/data
         self.extra_env: dict[str, str] = {}  # per-test daemon switches (e.g. MPVD_SEMANTIC_FAKE=1)
@@ -245,3 +249,5 @@ def daemon_env() -> Any:
         d.stop()
         if not os.environ.get("MU_KEEP_LOGS"):
             shutil.rmtree(base, ignore_errors=True)
+        if base not in d.runtime_dir.parents:
+            shutil.rmtree(d.runtime_dir, ignore_errors=True)

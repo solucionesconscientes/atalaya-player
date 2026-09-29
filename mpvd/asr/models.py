@@ -43,10 +43,12 @@ CATALOG: dict[str, tuple[int, bool, str]] = {
 LIVE_ORDER = ["tiny-q5_1", "tiny", "base-q5_1", "base", "small-q5_1", "small-q8_0", "small", "medium-q5_0", "medium",
               "large-v3-turbo-q5_0", "large-v3-turbo", "large-v3"]
 
-# Live captions need RTF <= 0.5 while mpv keeps decoding; precompute tolerates RTF < 1 (docs/BENCHMARKS.md, 4-core i5:
-# base RTF 0.26-0.38, small-q8_0 ~1.0, small-q5_1 slower than q8_0 on CPU).
+# Live captions need RTF <= 0.5 while mpv keeps decoding; precompute tolerates RTF < 1 (docs/BENCHMARKS.md, 4-core i5).
+# With 28.5 s chunks one whisper call covers a full 30 s window, so small-q8_0 (RTF ~1.0 with 12 s of audio) gets
+# close to 0.4-0.5: good enough to pre-subtitle on a 4-core laptop, while base transcribes badly and with almost no
+# punctuation (which is what ruins the translations). Live stays on base there: mpv needs the spare CPU.
 TIER_LIVE = {"small": "base", "medium": "base", "large": "small-q8_0"}
-TIER_PRECOMPUTE = {"small": "base", "medium": "small-q8_0", "large": "small"}
+TIER_PRECOMPUTE = {"small": "small-q8_0", "medium": "small-q8_0", "large": "small"}
 
 
 class ModelError(RuntimeError):
