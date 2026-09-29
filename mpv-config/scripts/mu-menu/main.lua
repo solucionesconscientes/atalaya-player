@@ -8,6 +8,7 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local prefs = require('mu.prefs')
 
 local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-menu-event'
@@ -25,6 +26,9 @@ local opts = {
   osd_seconds = 3,
 }
 options.read_options(opts, 'mu-menu')
+-- remembered "continue watching" switch (mu/prefs.lua; --script-opts=mu-menu-resume=… still wins)
+local P = prefs.ns('mu-menu', { resume = opts.resume })
+P:apply_opts(opts, 'mu-menu', { 'resume' })
 
 local state = {
   view = '', stack = {}, items = {},
@@ -37,6 +41,7 @@ local function publish()
     view = state.view, depth = #state.stack, items = state.items, path = state.path, tracked = state.tracked,
     resumed = state.resumed, position = state.position, palette_query = state.palette_query,
     palette_results = state.palette_results, last_error = state.last_error, start_shown = state.start_shown,
+    resume = opts.resume,
   })
 end
 
@@ -259,6 +264,12 @@ local function static_root_items()
     table.insert(items, { title = 'Captura de pantalla', hint = 'ctrl+s', icon = 'photo_camera',
                           value = { cmd = { 'async', 'screenshot' } } })
   end
+  table.insert(items, { title = 'Preferencias', icon = 'settings', items = {
+    { title = 'Continuar viendo', hint = opts.resume and 'activado' or 'desactivado', icon = 'history',
+      active = opts.resume, value = { cmd = { 'script-binding', SCRIPT .. '/resume-toggle' } } },
+    { title = 'Restablecer preferencias…', hint = 'se guarda una copia', icon = 'restart_alt',
+      value = { cmd = { 'script-message-to', 'mu_prefs', 'reset-ask' } } },
+  } })
   table.insert(items, { title = 'Más opciones (ver, audio, subtítulos, repetir…)', hint = 'ctrl+m', icon = 'menu',
                         value = { cmd = { 'script-binding', 'uosc/menu' } } })
   table.insert(items, { title = 'Todas las teclas', icon = 'keyboard',
@@ -364,6 +375,7 @@ local CURATED = {
   { title = 'Rotar vídeo 90°', cmd = 'cycle-values video-rotate 90 180 270 0' },
   { title = 'Desentrelazar', cmd = 'cycle deinterlace', key = 'd' },
   { title = 'Guardar posición y salir', cmd = 'quit-watch-later', key = 'Q' },
+  { title = 'Restablecer preferencias', cmd = 'script-message-to mu_prefs reset-ask' },
 }
 
 local ACTIONS = {
@@ -682,7 +694,12 @@ mp.add_key_binding(nil, 'palette', open_palette)
 mp.add_key_binding(nil, 'recents', function() state.stack = { { name = 'root' } }; open_view({ name = 'recents' }) end)
 mp.add_key_binding(nil, 'resume-toggle', function()
   opts.resume = not opts.resume
+  P:set('resume', opts.resume)
+  publish()
   osd(opts.resume and 'Continuar viendo: activado' or 'Continuar viendo: desactivado')
+end)
+P:on_change(function(reason)
+  if reason == 'reset' then opts.resume = P:get('resume'); publish() end
 end)
 
 local function set_button()

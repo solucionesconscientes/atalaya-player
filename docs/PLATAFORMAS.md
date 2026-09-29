@@ -41,6 +41,9 @@ Hoy no funciona sin trabajo: falta el lanzador PowerShell y el transporte por na
   (suma en vendor.lock) o node ≥ 22.
 - «Abrir URL» (mu-ytdl) lee el portapapeles con la propiedad `clipboard/text` de mpv 0.41 (backend `win32`): sin probar. Si no hay
   backend, la paleta funciona igual pero sin la entrada «Pegar: …».
+- Preferencias (`mu/prefs.lua`, no probado): `prefs.json` va a `%APPDATA%\mpv-uos` si no hay `MPV_UOS_DATA_DIR`; como `os.rename` no
+  sobrescribe en Windows, la escritura hace borrar + renombrar (no atómica: un corte justo entre ambos deja solo `prefs.json.tmp-<pid>`)
+  y la carpeta se crea con `cmd /c mkdir`. macOS: `~/Library/Application Support/mpv-uos`.
 
 ## macOS
 - `readlink -f` requiere macOS ≥ 12.3 (o coreutils). `XDG_RUNTIME_DIR` no existe: el lanzador cae a `$TMPDIR/mpv-uos`.
