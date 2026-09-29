@@ -12,3 +12,4 @@ mpv-config/cache/
 mpv-config/scripts/uosc/bin/
 tests/fixtures/media/
 .mcp.json
+.claude/worktrees/

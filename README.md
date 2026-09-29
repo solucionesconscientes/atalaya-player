@@ -35,7 +35,7 @@ bin/mpv-uos https://www.youtube.com/watch?v=...
 bin/mpv-uos --fs pelicula.mp4              # cualquier opción de mpv se pasa tal cual
 ```
 `bin/mpv-uos` lanza el mpv del sistema con `--config-dir=<proyecto>/mpv-config` (no toca `~/.config/mpv`) y crea un socket IPC único
-por instancia en `$XDG_RUNTIME_DIR/mpv-uos/mpv-<pid>.sock` (variable `MPV_UOS_SOCKET`). Botón derecho o tecla `MENU` abre el menú de uosc.
+por instancia en `$XDG_RUNTIME_DIR/mpv-uos/mpv-<pid>.sock` (nunca se hereda de otra instancia). Tus datos (favoritos, notas, recientes, preferencias, posición de reanudación) viven en `~/.local/share/mpv-uos` (`MPV_UOS_DATA_DIR`). Botón derecho o tecla `MENU` abre el menú de uosc.
 
 ## El daemon mpvd
 `mu-core.lua` arranca `mpvd` automáticamente al abrir mpv (se apaga solo a los 10 min sin sesiones). CLI:
