@@ -21,9 +21,28 @@ Opciones del instalador: `--xdg` (caché y datos en `~/.cache/mpv-uos` y `~/.loc
 
 ## 2. Ver la tele y escuchar la radio
 1. `alt+t` → *España TV* / *España radio* (TDTChannels), *Mundo* (iptv-org por país y categoría), *Radio mundial* (Radio Browser).
+   En *Mundo* y *Radio mundial* tu país sale primero; países y categorías van en español.
 2. `alt+f` busca un canal por nombre sin acentos; `Tab` sobre un canal: favorito o copiar URL.
 3. `alt+↑` / `alt+↓` cambian de canal dentro del grupo; `alt+r` graba el directo en `~/Escritorio/MPV-UOS`.
 4. Tus listas: *TV y radio → Mis listas → Añadir* (pega la URL de una M3U). Más en docs/FUENTES_IPTV.md.
+5. *Comprobar canales en segundo plano* (al final de cada lista) marca los caídos con ✕ y apunta la calidad real de cada
+   canal. Lo que ves a la derecha de un canal:
+
+   | Pista | Significa |
+   |---|---|
+   | `720p50 · 2,7 Mb` | mejor calidad que da la fuente (resolución, imágenes por segundo, megabits por segundo) |
+   | `bitrate bajo` | es HD pero con menos de 1,6 Mb/s: se verá borroso aunque diga 720p/1080p |
+   | `con anuncios` | copia FAST del canal, con cortes publicitarios insertados |
+   | `+2 fuentes` | la lista trae el canal varias veces: se abre la oficial y, si falla, se prueba sola la siguiente ("Probando otra fuente de «La 1»…") |
+   | `geobloqueado` | la fuente avisa de que solo funciona desde su país |
+
+**Lo que depende de la fuente y lo que no.** La resolución, las imágenes por segundo y el bitrate los pone cada cadena:
+RTVE emite como mucho 720p a 25 fps y 3 Mb/s, casi todo va a 25 fps y algunos canales "HD" llevan muy poco bitrate; eso
+no se puede mejorar desde el reproductor. Tampoco los canales caídos o geobloqueados. Lo que sí hace MPV-UOS: no guarda
+posición ni pistas de los directos (siempre entran en su mejor calidad y desde "ahora"), abre cada petición HLS con
+una conexión nueva (evita que canales como 101TV se congelen a los pocos segundos), se presenta como un navegador si la
+lista no dice otra cosa (Canal Sur oficial rechaza a mpv) y cambia solo a otra fuente del mismo canal si la primera no
+abre. Si un canal entrelazado se ve con "peines" (7TV), pulsa `d`. Detalles en docs/FUENTES_IPTV.md §7.
 
 ## 3. YouTube y otras webs (yt-dlp)
 - `mpv-uos 'https://www.youtube.com/watch?v=…'` reproduce con el yt-dlp vendorizado (se actualiza solo a diario).
