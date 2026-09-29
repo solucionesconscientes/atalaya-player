@@ -65,6 +65,36 @@ El móvil queda emparejado hasta que lo olvides (`alt+Z`). Si no conecta, abre e
 Copia `.mcp.json.example` a `.mcp.json` para que Claude Code u otro cliente MCP controle el reproductor (reproducir, buscar en el
 diálogo, canales, descargas, notas). Lo que interrumpe lo que ves pide confirmación en pantalla. Más en docs/MCP.md.
 
+## 11. Preferencias: qué se recuerda y qué no
+Lo que eliges se queda para la próxima vez que abras el reproductor. Se guarda en `prefs.json`, en la carpeta de datos
+(`$MPV_UOS_DATA_DIR`; por defecto `~/.local/share/mpv-uos/`). Lo que pases en la línea de órdenes (`mpv-uos --volume=40 …`,
+`--script-opts=…`) manda sobre lo recordado, solo en esa sesión. Con varias ventanas abiertas se guardan los cambios de todas; si dos
+cambian lo mismo, gana el último.
+
+| Se recuerda para todo lo que abras | Cómo se cambia |
+|---|---|
+| Volumen, silencio y velocidad | `9`/`0`, `m`, `[`/`]`, barra de uosc, mando del móvil |
+| Subtítulos: tamaño, posición y visibilidad (también de los secundarios), estilo ASS, márgenes | teclas y menús de mpv/uosc |
+| Imagen: contraste, brillo, gamma, saturación, tono | teclas de mpv |
+| Pantalla completa, siempre encima, repetir la lista, decodificación por hardware (`auto-safe`/`no`), formato de yt-dlp | `f`, menús |
+| Idiomas de audio y subtítulos: al elegir una pista con idioma, ese idioma pasa a ser el preferido | `a`, `s` |
+| Subtítulos quitados: los siguientes archivos empiezan sin subtítulos hasta que actives una pista | `s` → ninguno |
+| Filtros de *Sonido e imagen* y perfil ligero | `alt+v`, `alt+n` |
+| Velocidad inteligente (se reactiva en el siguiente archivo local) y su velocidad en silencios | `alt+g`, `alt+e` |
+| Continuar viendo activado o no | *Menú → Preferencias* |
+
+| No se recuerda, a propósito | Por qué |
+|---|---|
+| Pausa, posición, pista concreta, retardos de audio/subtítulos, zoom, encuadre, aspecto, rotación, desentrelazado | dependen de cada archivo: mpv los guarda por archivo al salir y *Continuar viendo* recuerda la posición |
+| Repetir archivo (`L`) y aleatorio | te quedarías repitiendo o mezclando todo lo que abras después |
+| Cambios automáticos: al cargar un archivo, opciones por archivo, la velocidad que pone la velocidad inteligente en los silencios, pistas creadas por la IA | no son elecciones tuyas |
+
+**Restablecer**: *Menú (`alt+m`) → Preferencias → Restablecer preferencias…* o, en la paleta (`alt+p`), "Restablecer preferencias".
+Pide confirmación, mueve `prefs.json` a `prefs.json.bak-<fecha>` (no se borra nada: para recuperarlo, renómbralo) y vuelve al momento a
+los valores de `mpv.conf`. Desde la consola de mpv: `script-message-to mu_prefs reset`. Para no recordar nada: `MPV_UOS_PREFS=0` o
+`--script-opts=mu-prefs-enabled=no`. Si `prefs.json` se estropea, se aparta como `prefs.json.corrupt-<fecha>` y se sigue con los valores
+por defecto.
+
 ## Dónde se guardan las cosas
 | Qué | Dónde (instalación por defecto) | Con `--xdg` |
 |---|---|---|

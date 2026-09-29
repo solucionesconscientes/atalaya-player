@@ -109,7 +109,9 @@ def start_mpv(run_dir: Path, extra_args: list[str] | None = None, env: dict[str,
               start_screen: bool = False) -> MpvHeadless:
     """Launch bin/mpv-uos headless: --vo=null --ao=null --idle=yes, socket and log under run_dir.
 
-    The mu-menu start screen is off unless ``start_screen`` (it would open a menu in every test)."""
+    The mu-menu start screen is off unless ``start_screen`` (it would open a menu in every test). User data (prefs.json
+    of mu-prefs, favourites...) goes to a fresh ``run_dir/data-<tag>`` unless ``env`` sets MPV_UOS_DATA_DIR: tests never
+    read or write the user's real data, and one test's remembered volume/filters never leak into the next one."""
     run_dir.mkdir(parents=True, exist_ok=True)
     tag = uuid.uuid4().hex[:8]
     socket = run_dir / f"mpv-{tag}.sock"
@@ -126,7 +128,8 @@ def start_mpv(run_dir: Path, extra_args: list[str] | None = None, env: dict[str,
     ]
     proc = subprocess.Popen(
         args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        env={**os.environ, "MPV_UOS_RUNTIME_DIR": str(run_dir), **(env or {})},
+        env={**os.environ, "MPV_UOS_RUNTIME_DIR": str(run_dir), "MPV_UOS_DATA_DIR": str(run_dir / f"data-{tag}"),
+             **(env or {})},
     )
     h = MpvHeadless(proc, socket, log, run_dir)
     h.run(lambda c: c.get_property("mpv-version"))  # waits for the socket
@@ -145,6 +148,7 @@ def mpv_headless(media_dir: Path) -> Any:
         if not os.environ.get("MU_KEEP_LOGS"):
             for p in (h.socket, h.log):
                 p.unlink(missing_ok=True)
+            shutil.rmtree(run_dir / f"data-{h.socket.stem.removeprefix('mpv-')}", ignore_errors=True)
 
 
 # -- mpvd -------------------------------------------------------------------------------------

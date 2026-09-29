@@ -3,6 +3,8 @@
 -- (arnndn with an RNNoise model from mpvd, afftdn fallback), binaural for headphones (sofalizer with a SOFA HRTF, crossfeed
 -- fallback), photosensitivity protection (video), plus a stutter diagnosis view with a "light profile" toggle.
 -- Script name: mu_av. Bindings: av-menu (alt+v), av-night (alt+n). State in user-data/mu/av.
+-- Preferences (mu/prefs.lua, namespace mu-av): active filters by name and the light profile, saved only on explicit
+-- user actions (menu, keys, script messages) and restored when mpv starts.
 local mp = require('mp')
 local msg = require('mp.msg')
 local utils = require('mp.utils')
@@ -10,6 +12,7 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local prefs = require('mu.prefs')
 
 local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-av-event'
@@ -54,6 +57,12 @@ local FILTERS = {
     graph = function() return 'photosensitivity=frames=30:threshold=1:bypass=0' end },
 }
 local ORDER = { 'dialog', 'night', 'denoise', 'binaural', 'photo' }
+
+local P = prefs.ns('mu-av', { filters = {}, light = false }, function(key, v)
+  if key ~= 'filters' then return true end
+  for _, name in pairs(v) do if type(name) ~= 'string' then return false end end
+  return true
+end)
 
 -- light profile: cheap scalers, no debanding/interpolation (applied with `set`, remembered to restore)
 local LIGHT = { scale = 'bilinear', dscale = 'bilinear', cscale = 'bilinear', deband = 'no', interpolation = 'no',
@@ -209,6 +218,14 @@ local function set_light(on)
     state.light_saved = nil
   end
   publish()
+end
+
+-- remember the user's choice (explicit actions only; never from observers or automatic re-applies)
+local function save_prefs()
+  local active, list = active_filters(), {}
+  for _, name in ipairs(ORDER) do if active[name] then table.insert(list, name) end end
+  P:set('filters', list)
+  P:set('light', state.light)
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -379,12 +396,15 @@ mp.register_script_message(EVENT, function(json)
     local v = type(ev.value) == 'table' and ev.value or {}
     if v.toggle then
       toggle_filter(v.toggle, true)
+      save_prefs()
       reopen_current()
     elseif v.light then
       set_light(not state.light)
+      save_prefs()
       reopen_current()
     elseif v.clear then
       for _, name in ipairs(ORDER) do set_filter(name, false) end
+      save_prefs()
       osd('Filtros de sonido e imagen quitados')
       reopen_current()
     elseif v.download then
@@ -458,10 +478,10 @@ local function open_root()
 end
 
 mp.add_key_binding(nil, 'av-menu', open_root)
-mp.add_key_binding(nil, 'av-night', function() toggle_filter('night') end)
-mp.register_script_message('mu-av-toggle', function(name) toggle_filter(name) end)
-mp.register_script_message('mu-av-set', function(name, on) set_filter(name, on == 'yes' or on == 'true') end)
-mp.register_script_message('mu-av-light', function(on) set_light(on ~= 'no' and on ~= 'false') end)
+mp.add_key_binding(nil, 'av-night', function() toggle_filter('night'); save_prefs() end)
+mp.register_script_message('mu-av-toggle', function(name) toggle_filter(name); save_prefs() end)
+mp.register_script_message('mu-av-set', function(name, on) set_filter(name, on == 'yes' or on == 'true'); save_prefs() end)
+mp.register_script_message('mu-av-light', function(on) set_light(on ~= 'no' and on ~= 'false'); save_prefs() end)
 mp.register_script_message('mu-av-diagnose', function() diagnose() end)
 
 mp.register_script_message('uosc-version', set_button_state)
@@ -473,5 +493,16 @@ mp.observe_property('af', 'native', function() publish(); set_button_state() end
 mp.observe_property('vf', 'native', function() publish(); set_button_state() end)
 
 resolve_models_local()
+-- restore the user's filters and light profile (before the first file: `af/vf add` is accepted while idle)
+for _, name in ipairs(P:get('filters')) do
+  if FILTERS[name] then set_filter(name, true) end
+end
+if P:get('light') then set_light(true) end
+P:on_change(function(reason)
+  if reason ~= 'reset' then return end
+  for _, name in ipairs(ORDER) do set_filter(name, false) end
+  set_light(false)
+  if uosc.open_type() == MENU then reopen_current() end
+end)
 publish()
 msg.info('mu-av loaded')

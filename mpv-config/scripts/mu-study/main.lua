@@ -2,6 +2,8 @@
 -- docs/ESTUDIO.md), smart speed (faster over silences mapped by mpvd study.silences), quick notes with time links
 -- (mpvd notes.add) and clip/GIF export of the A-B loop or the current line (mpvd study.clip). Script name: mu_study.
 -- State in user-data/mu/study. Menu type 'mu-study'.
+-- Preferences (mu/prefs.lua, namespace mu-study): smart speed on/off (re-armed on the next local file) and the speed
+-- used inside silences, saved only on explicit user actions.
 local mp = require('mp')
 local msg = require('mp.msg')
 local utils = require('mp.utils')
@@ -9,6 +11,7 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local prefs = require('mu.prefs')
 
 local SCRIPT = mp.get_script_name()
 local MENU = 'mu-study'
@@ -28,11 +31,19 @@ local opts = {
 }
 options.read_options(opts, 'mu-study')
 
+local SILENCE_SPEEDS = { 1.5, 2, 2.5, 3, 4 }
+local P = prefs.ns('mu-study', { smart = false, silence_speed = opts.silence_speed }, function(key, v)
+  if key == 'silence_speed' then return v >= 1 and v <= 8 end
+  return true
+end)
+P:apply_opts(opts, 'mu-study', { 'silence_speed' })
+
 local state = {
   repeat_line = false, line = nil,                 -- {start, end, text} of the repeated cue (with sub-delay applied)
   smart = false, base_speed = 1.0, in_silence = false, silences = {}, silence_from = -1, silence_to = -1,
   silence_pending = false, silence_stats = nil,
   clips = {}, formats = nil, last_clip = nil, last_note = nil, notes = 0, view = '', last_error = '',
+  smart_wanted = P:get('smart'),                  -- user's choice: re-armed on every local file
 }
 
 local function osd(text) mp.osd_message(text, opts.osd_seconds) end
@@ -41,6 +52,7 @@ local function publish()
   mp.set_property_native('user-data/mu/study', {
     repeat_line = state.repeat_line, line = state.line or {}, smart = state.smart, base_speed = state.base_speed,
     in_silence = state.in_silence, silences = #state.silences, silence_from = state.silence_from, silence_to = state.silence_to,
+    smart_wanted = state.smart_wanted, silence_speed = opts.silence_speed,
     clips = state.clips, last_clip = state.last_clip or {}, last_note = state.last_note or {}, notes = state.notes,
     view = state.view, last_error = state.last_error,
   })
@@ -178,8 +190,8 @@ local function smart_tick()
   if quiet and not state.in_silence then
     state.base_speed = mp.get_property_number('speed') or 1.0
     state.in_silence = true
+    publish()   -- before touching speed: mu-prefs ignores speed changes while in_silence
     mp.set_property_number('speed', opts.silence_speed)
-    publish()
   elseif not quiet and state.in_silence then
     restore_speed()
     publish()
@@ -189,23 +201,58 @@ end
 local smart_timer = mp.add_periodic_timer(opts.poll_seconds, smart_tick)
 smart_timer:kill()
 
-local function smart_set(on)
+local function smart_set(on, quiet)
   if on == state.smart then return end
   state.smart = on
   if on then
-    if not is_local(current_path()) then osd('Velocidad inteligente: solo archivos locales'); state.smart = false; return end
+    if not is_local(current_path()) then
+      if not quiet then osd('Velocidad inteligente: solo archivos locales') end
+      state.smart = false
+      return
+    end
     state.base_speed = mp.get_property_number('speed') or 1.0
     state.silences = {}
     state.silence_from, state.silence_to = -1, -1
     smart_timer:resume()
     request_silences(mp.get_property_number('time-pos') or 0)
-    osd(string.format('⏩ Velocidad inteligente: ×%.1f en silencios', opts.silence_speed))
+    if not quiet then osd(string.format('⏩ Velocidad inteligente: ×%.1f en silencios', opts.silence_speed)) end
   else
     smart_timer:kill()
     restore_speed()
-    osd('Velocidad inteligente: desactivada')
+    if not quiet then osd('Velocidad inteligente: desactivada') end
   end
   publish()
+end
+
+-- explicit user action: apply and remember (turning it on only counts once it really started, or with nothing open)
+local function user_smart(on)
+  if on and (mp.get_property('path') or '') == '' then
+    state.smart_wanted = true
+    P:set('smart', true)
+    osd('⏩ Velocidad inteligente: se activará al abrir un archivo local')
+    publish()
+    return
+  end
+  local was_active = state.smart
+  smart_set(on)
+  if not on or state.smart then
+    if not on and not was_active and state.smart_wanted then osd('Velocidad inteligente: desactivada') end
+    state.smart_wanted = on
+    P:set('smart', on)
+  end
+  publish()
+end
+
+local function user_smart_toggle() user_smart(not (state.smart or state.smart_wanted)) end
+
+local function set_silence_speed(x)
+  x = tonumber(x)
+  if not x or x < 1 or x > 8 then return end
+  opts.silence_speed = x
+  P:set('silence_speed', x)
+  if state.in_silence then mp.set_property_number('speed', x) end
+  publish()
+  osd(string.format('Velocidad en silencios: ×%g', x))
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -325,7 +372,14 @@ local function root_items()
   table.insert(items, { title = 'Velocidad inteligente (acelera silencios)', icon = 'speed', active = state.smart,
     hint = (state.smart and (string.format('×%.1f', opts.silence_speed) .. (state.silence_stats and
       string.format(' · %d%% silencio', math.floor((state.silence_stats.quiet_ratio or 0) * 100 + 0.5)) or ''))
-      or 'alt+g'), value = { smart = true }, separator = true })
+      or (state.smart_wanted and 'en el próximo archivo local' or 'alt+g')), value = { smart = true } })
+  local speeds = {}
+  for _, x in ipairs(SILENCE_SPEEDS) do
+    table.insert(speeds, { title = string.format('×%g', x), active = math.abs(x - opts.silence_speed) < 1e-6,
+      value = { silence_speed = x } })
+  end
+  table.insert(items, { title = 'Velocidad en silencios', hint = string.format('×%g', opts.silence_speed),
+    icon = 'fast_forward', items = speeds, separator = true })
   table.insert(items, { title = 'Nota con enlace de tiempo…', hint = 'alt+b', icon = 'edit_note', value = { note = true },
     separator = true })
   local a, b, what = clip_range()
@@ -384,7 +438,10 @@ mp.register_script_message(EVENT, function(json)
     repeat_toggle()
     refresh_menu()
   elseif v.smart then
-    smart_set(not state.smart)
+    user_smart_toggle()
+    refresh_menu()
+  elseif v.silence_speed then
+    set_silence_speed(v.silence_speed)
     refresh_menu()
   elseif v.note then
     uosc.close(MENU)
@@ -410,7 +467,9 @@ mp.register_event('file-loaded', function()
   state.silence_from, state.silence_to = -1, -1
   if state.smart then
     restore_speed()
-    if is_local(current_path()) then request_silences(0) else smart_set(false) end
+    if is_local(current_path()) then request_silences(0) else smart_set(false, true) end
+  elseif state.smart_wanted and is_local(current_path()) then
+    smart_set(true, true)   -- remembered choice (a stream in between only pauses it)
   end
   publish()
 end)
@@ -433,14 +492,24 @@ mp.add_key_binding(nil, 'study-menu', open_menu)
 mp.add_key_binding(nil, 'repeat-line', repeat_toggle)
 mp.add_key_binding(nil, 'repeat-prev', function() repeat_step(-1) end)
 mp.add_key_binding(nil, 'repeat-next', function() repeat_step(1) end)
-mp.add_key_binding(nil, 'smart-speed', function() smart_set(not state.smart) end)
+mp.add_key_binding(nil, 'smart-speed', user_smart_toggle)
 mp.add_key_binding(nil, 'note', open_note_menu)
 mp.add_key_binding(nil, 'clip', function() export_clip(opts.clip_format) end)
 mp.register_script_message('mu-study-note', function(text) add_note(text or '') end)
 mp.register_script_message('mu-study-clip', function(fmt) export_clip(fmt ~= '' and fmt or nil) end)
-mp.register_script_message('mu-study-smart', function(on) smart_set(on ~= 'no' and on ~= 'false') end)
+mp.register_script_message('mu-study-smart', function(on) user_smart(on ~= 'no' and on ~= 'false') end)
+mp.register_script_message('mu-study-silence-speed', set_silence_speed)
 mp.register_script_message('mu-study-repeat', function(on)
   if on == 'no' or on == 'false' then repeat_stop(true) elseif not state.repeat_line then repeat_toggle() end
+end)
+
+P:on_change(function(reason)
+  if reason ~= 'reset' then return end
+  opts.silence_speed = P:get('silence_speed')
+  state.smart_wanted = false
+  smart_set(false, true)
+  publish()
+  refresh_menu()
 end)
 
 publish()

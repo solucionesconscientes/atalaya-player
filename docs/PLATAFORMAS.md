@@ -39,6 +39,9 @@ Hoy no funciona sin trabajo: falta el lanzador PowerShell y el transporte por na
   tools/vendor.sh tendría que instalar `yt-dlp.exe` (SHA en docs/YTDLP.md §3) y mu-ytdl ya usa `;` como separador de rutas y
   `vendor/bin/yt-dlp.exe`. mpvd sí puede ejecutar el zipimport con su propio Python. Runtime JS: deno `deno-x86_64-pc-windows-msvc.zip`
   (suma en vendor.lock) o node ≥ 22.
+- Preferencias (`mu/prefs.lua`, no probado): `prefs.json` va a `%APPDATA%\mpv-uos` si no hay `MPV_UOS_DATA_DIR`; como `os.rename` no
+  sobrescribe en Windows, la escritura hace borrar + renombrar (no atómica: un corte justo entre ambos deja solo `prefs.json.tmp-<pid>`)
+  y la carpeta se crea con `cmd /c mkdir`. macOS: `~/Library/Application Support/mpv-uos`.
 
 ## macOS
 - `readlink -f` requiere macOS ≥ 12.3 (o coreutils). `XDG_RUNTIME_DIR` no existe: el lanzador cae a `$TMPDIR/mpv-uos`.
