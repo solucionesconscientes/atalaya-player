@@ -12,6 +12,7 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local prefs = require('mu.prefs')
 
 local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-ytdl-event'
@@ -35,10 +36,12 @@ local opts = {
   clipboard_text = '',              -- tests: fixed clipboard contents instead of mpv's clipboard/text
 }
 options.read_options(opts, 'mu-ytdl')
+-- remembered choices: "solo audio" for internet videos and the download options (container, subtitles…)
+local P = prefs.ns('mu-ytdl', { prefer_audio = false, dl_options = {} })
 
 local platform = mp.get_property_native('platform') or ''
 local is_windows = platform == 'windows'
-local default_video_format = mp.get_property('ytdl-format') or ''
+local function default_video_format() return mp.get_property('options/ytdl-format') or '' end
 
 local state = {
   active = false,        -- current file was resolved by ytdl_hook
@@ -237,6 +240,10 @@ mp.register_event('file-loaded', function()
   set_button_state()
 end)
 
+P:on_change(function(reason)
+  if reason == 'reset' then state.dl_options = nil end  -- back to mpvd's defaults on next use
+end)
+
 mp.register_event('end-file', function()
   state.active = false
   state.url = ''
@@ -270,13 +277,28 @@ local function toggle_audio()
     return
   end
   if state.mode == 'audio' then
-    reload(default_video_format, false)
+    reload(default_video_format(), false)
     osd('🎬 Vídeo')
+    P:set('prefer_audio', false)
   else
     reload(opts.audio_format, true)
-    osd('🎧 Solo audio (' .. opts.audio_format .. ')')
+    osd('🎧 Solo audio (' .. opts.audio_format .. ') · se recordará')
+    P:set('prefer_audio', true)
   end
 end
+
+-- "Solo audio" remembered: internet videos open without video. Runs before ytdl_hook's on_load (priority 10) so the
+-- audio format is the one yt-dlp resolves; a format chosen for this file (loadfile options) is left alone.
+mp.add_hook('on_load', 9, function()
+  if not P:get('prefer_audio') then return end
+  local path = mp.get_property('path') or ''
+  if not (path:match('^https?://') or path:match('^ytdl://')) then return end
+  local tv = mp.get_property_native('user-data/mu/iptv') or {}
+  if type(tv.current) == 'table' and tv.current.url == path then return end  -- TV channels keep their video
+  if mp.get_property_native('option-info/ytdl-format/set-locally') then return end
+  mp.set_property('file-local-options/ytdl-format', opts.audio_format)
+  mp.set_property('file-local-options/vid', 'no')
+end)
 
 -- ---------------------------------------------------------------------------------------------
 -- menus
@@ -398,8 +420,8 @@ local function quality_items(info)
     end
   end
   if #sections == 1 then return sections[1].items end
-  table.insert(sections, 1, { title = 'Automático (mejor ≤1080p)', hint = default_video_format, icon = 'auto_awesome',
-                              value = { quality = { format = default_video_format, audio_only = false, id = 'auto' } } })
+  table.insert(sections, 1, { title = 'Automático (mejor ≤1080p)', hint = default_video_format(), icon = 'auto_awesome',
+                              value = { quality = { format = default_video_format(), audio_only = false, id = 'auto' } } })
   return sections
 end
 
@@ -448,7 +470,11 @@ local function with_presets(cb)
   rpc.call('ytdl.presets', nil, function(err, res)
     if not err then
       state.presets = res
-      if not state.dl_options then state.dl_options = default_dl_options(res.settings or {}) end
+      if not state.dl_options then
+        state.dl_options = default_dl_options(res.settings or {})
+        for k, v in pairs(P:get('dl_options')) do state.dl_options[k] = v end  -- the user's last choices
+        state.dl_options.playlist = false  -- "whole playlist" is per download, never remembered
+      end
     end
     cb(err, res)
   end)
@@ -940,6 +966,9 @@ local function on_event(source, json)
       uosc.close(MENU)
     elseif v.opt then
       toggle_option(v.opt)
+      local remembered = {}
+      for k, val in pairs(state.dl_options or {}) do if k ~= 'playlist' then remembered[k] = val end end
+      P:set('dl_options', remembered)
       reopen_current()
     elseif v.download then
       if ev.action then download_action(v.download, ev.action) else download_details(v.download) end
