@@ -70,7 +70,7 @@ Aceptación: con el audio de prueba ES/EN el SRT contiene las frases esperadas (
 - [x] Subtítulos duales (secondary-sid) con original arriba y traducción abajo, activables desde menú.
 
 ## H7 · Sonido e imagen (B13, B14, B15, D5, D8, D9)
-- [ ] Menú "Sonido e imagen": diálogo claro (niveles lavfi), modo noche, reducción de ruido (arnndn con modelo descargado), binaural (sofalizer
+- [x] Menú "Sonido e imagen": diálogo claro (niveles lavfi), modo noche, reducción de ruido (arnndn con modelo descargado), binaural (sofalizer
       si hay SOFA libre), protección fotosensible (filtro photosensitivity) y diagnóstico de tirones. Cada filtro validado contra el mpv instalado.
 
 ## H8 · MCP rico (H1, H2)

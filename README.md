@@ -103,6 +103,16 @@ tools/bench_asr.sh                                                              
 ```
 La traducción necesita el extra opcional `uv sync --extra translate` (ctranslate2 + sentencepiece, ≈190 MB; docs/TRADUCCION.md).
 
+## Sonido e imagen
+Menú **Sonido e imagen** (`alt+v`, botón de ajustes en la barra): diálogo claro, modo noche (`alt+n`), reducción de ruido (RNNoise
+o afftdn), binaural para auriculares (HRTF SOFA o crossfeed), protección fotosensible, perfil ligero y diagnóstico de tirones con
+recomendaciones. Cada filtro es un grafo libavfilter validado contra el mpv instalado (docs/AUDIO_VIDEO.md); los modelos se descargan
+desde el propio menú.
+```bash
+.venv/bin/python -m mpvd call av.models
+.venv/bin/python -m mpvd call av.models.download '{"name":"rnnoise-sh"}'
+```
+
 ## Estructura
 - `bin/mpv-uos` lanzador · `mpv-config/` configuración portable (mpv.conf, input.conf, scripts `mu-*`, uosc, thumbfast)
 - `mpvd/` daemon Python (JSON-RPC 2.0) · `tests/` pytest (unit + integración con mpv headless) · `tools/` scripts de build/check

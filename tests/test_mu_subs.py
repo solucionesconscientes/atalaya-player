@@ -77,8 +77,8 @@ def test_live_subtitles_track_seek_precompute_and_menu(subs_mpv, media_dir, tmp_
     track = external_sub(h, srt)
     assert track is not None and track["selected"] is True
     h.command("seek", max(0.2, segs[0].start + 0.3), "absolute")
-    h.wait_property("sub-text", lambda v: isinstance(v, str) and len(v) > 0, timeout=15)
-    assert h.get("sub-text").split()[0].lower() in text.lower()
+    shown = h.wait_property("sub-text", lambda v: isinstance(v, str) and len(v) > 0, timeout=15)
+    assert shown.split()[0].lower() in text.lower()
 
     # 2b. an external SRT written 2.5 s late is resynchronised against the transcription (cached → instant)
     late = tmp_path / "externo.srt"
@@ -120,10 +120,10 @@ def test_live_subtitles_track_seek_precompute_and_menu(subs_mpv, media_dir, tmp_
         st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("dual") is True, timeout=10)
         assert h.get("secondary-sid") == external_sub(h, srt)["id"] and h.get("sid") == tr_track["id"]
         h.command("seek", segs[0].start + 0.3, "absolute")
-        h.wait_property("secondary-sub-text", lambda v: isinstance(v, str) and len(v) > 0, timeout=15)
-        assert fold(h.get("secondary-sub-text")).split()[0] in fold(text)
-        h.wait_property("sub-text", lambda v: isinstance(v, str) and len(v) > 0, timeout=15)
-        assert fold(h.get("sub-text")).split()[0] in en_text
+        shown = h.wait_property("secondary-sub-text", lambda v: isinstance(v, str) and len(v) > 0, timeout=15)
+        assert fold(shown).split()[0] in fold(text)
+        shown = h.wait_property("sub-text", lambda v: isinstance(v, str) and len(v) > 0, timeout=15)
+        assert fold(shown).split()[0] in en_text
         h.command("script-message-to", "mu_subs", "mu-subs-dual", "no")
         h.wait_property("secondary-sid", lambda v: v in (False, "no", None), timeout=10)
         h.command("set_property", "sid", track["id"])

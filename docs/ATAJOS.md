@@ -68,3 +68,9 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 | `alt+c` | Iniciar / detener los subtítulos IA del archivo actual (la transcripción parcial queda en caché y se reanuda) |
 | `alt+x` | Resincronizar la pista de subtítulos externa seleccionada con la transcripción IA (desfase + deriva por tramos) |
 | (menú `alt+i`) | Traducir la pista seleccionada a otro idioma (offline, Argos/CTranslate2) · Duales: original arriba + traducción abajo |
+
+## Sonido e imagen (mu-av, filtros libavfilter validados)
+| Tecla | Acción |
+|---|---|
+| `alt+v` | Menú **Sonido e imagen**: diálogo claro, modo noche, reducción de ruido (RNNoise/afftdn), binaural para auriculares (HRTF/crossfeed), protección fotosensible, perfil ligero, diagnóstico de tirones, modelos |
+| `alt+n` | Modo noche (compresor + limitador) activar/desactivar |

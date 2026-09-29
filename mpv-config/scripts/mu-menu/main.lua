@@ -234,6 +234,8 @@ local function static_root_items()
       value = { cmd = { 'script-binding', 'mu_ytdl/ytdl-menu' } } },
     { title = 'Subtítulos IA (whisper)', hint = 'alt+i', icon = 'closed_caption',
       value = { cmd = { 'script-binding', 'mu_subs/subs-menu' } } },
+    { title = 'Sonido e imagen (filtros, diagnóstico)', hint = 'alt+v', icon = 'tune',
+      value = { cmd = { 'script-binding', 'mu_av/av-menu' } } },
     { title = 'Lista de reproducción', hint = 'p', icon = 'list_alt', value = { cmd = { 'script-binding', 'uosc/playlist' } },
       separator = true },
   }

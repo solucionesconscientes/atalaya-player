@@ -1,16 +1,47 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 ## SIGUIENTE PASO
-H7 · Sonido e imagen: menú "Sonido e imagen" en un script nuevo `mu-av` (o dentro de mu-menu) con filtros validados contra el mpv 0.41
-instalado (`mpv --af=help`, `mpv --vf=help`, `ffmpeg -filters`): diálogo claro (`af=lavfi=[...]` con `dynaudnorm`/`compand` o
-`loudnorm` en un solo paso), modo noche (compresión + limitador `alimiter`), reducción de ruido (`arnndn` con modelo `.rnnn`
-descargado bajo demanda a vendor/models/rnnoise; verificar `ffmpeg -filters | grep arnndn`), binaural (`sofalizer` solo si hay un
-SOFA libre descargable; si no, `haas`/`stereotools` como aproximación documentada), protección fotosensible (`vf=lavfi=[photosensitivity]`
-verificar existencia), diagnóstico de tirones (lee `frame-drop-count`, `vo-delayed-frame-count`, `estimated-vf-fps`, `hwdec-current` y
-propone hwdec/vo). Cada filtro con toggle en el menú y estado publicado en `user-data/mu/av`; tests headless que activan cada filtro
-(`af`/`vf` property) y comprueban que mpv no registra errores y sigue reproduciendo.
+H8 · MCP rico: servidor MCP (stdio) en mpvd como subcomando `python -m mpvd mcp` que habla con el daemon por su socket JSON-RPC.
+Verificar antes: `uv add mcp` (SDK oficial `mcp`, FastMCP; comprobar versión y peso con `uv pip install --dry-run mcp`) o, si pesa
+demasiado, implementar el protocolo MCP mínimo a mano (JSON-RPC sobre stdio: initialize, tools/list, tools/call, resources/list,
+resources/read; spec 2025-06-18). Tools: status, play(path|url), pause/resume, seek(seconds|absolute), search_dialogue(query) sobre
+`asr.segments`/caché, list_channels(query), play_channel(id), download(url, preset), add_note(text) (guarda en `<data_dir>/notas/<hash>.md`
+con enlace de tiempo). Resource `mpv://transcript/<hash>` con el SRT de la tarea asr. Acciones destructivas/perturbadoras (play que
+sustituye, seek, download) piden confirmación en OSD vía script-message a mu_menu (`mu-confirm`) con timeout 10 s, salvo
+`MPVD_MCP_AUTOCONFIRM=1`. Sesión objetivo: la última activa (`sessions` en mpvd) o la indicada. Tests con un cliente MCP mínimo por
+stdio (initialize → tools/list → tools/call status/search_dialogue con el daemon de test). `.mcp.json.example` + README.
 ## Registro por iteración
 ### Iteración 3 · 2026-09-29
+#### H7 · Sonido e imagen — hecho (commit "H7: sonido e imagen")
+- `mpvd/av.py`: servicio `av.models` / `av.models.download` / `av.models.path` (RNNoise sh/bd y HRTF MIT KEMAR fijados por SHA-256 en
+  vendor.lock; descarga con progreso por eventos `av-model`). Modelos ya descargados en vendor/models/{rnnoise,sofa}.
+- `mu-av/main.lua`: menú "Sonido e imagen" (alt+v, botón en la barra, entrada en el menú raíz): diálogo claro, modo noche (alt+n),
+  reducción de ruido (arnndn→afftdn), binaural (sofalizer→crossfeed), protección fotosensible (vf), perfil ligero (guarda/restaura),
+  diagnóstico de tirones con contadores y consejos, vista de modelos con descarga, "quitar todos". Filtros etiquetados `@mu-<x>`.
+- docs/AUDIO_VIDEO.md (grafos validados, propiedades, alternativas), ADR-027, README, ATAJOS.
+- Tests: test_mu_av (cada filtro añade su grafo lavfi y la reproducción sigue sin errores lavfi, RNNoise/SOFA usados si están,
+  toggles, perfil ligero restaura, menú raíz/diagnóstico/quitar todos), av.models y errores.
+- Probar a mano:
+  ```bash
+  bin/mpv-uos pelicula.mkv        # alt+v → activa "Diálogo claro" y "Modo noche"; alt+n alterna noche; Diagnóstico de tirones
+  .venv/bin/python -m mpvd call av.models
+  ```
+#### H7 · Sonido e imagen — plan
+- Verificado (mpv 0.41 `--af=help`/`--vf=help` + ejecución headless con `--end=3` sin errores en el log): lavfi disponible con
+  acompressor, afftdn, alimiter, anlmdn, arnndn, compand, crossfeed, deesser, dynaudnorm, equalizer, haas, highpass, loudnorm, lowpass,
+  sofalizer (libmysofa compilado), speechnorm, stereotools; vídeo: photosensitivity, deband, deflicker, eq, hqdn3d, nlmeans, tmix,
+  unsharp. Filtros con etiqueta `@mu-<x>:lavfi=[grafo]` (`af add/remove/toggle`). Propiedades de diagnóstico: frame-drop-count,
+  decoder-frame-drop-count, mistimed-frame-count, vo-delayed-frame-count, estimated-vf-fps, container-fps, display-fps,
+  estimated-display-fps, hwdec-current, current-vo, video-out-params.
+- Modelos descargados y fijados por SHA-256 en vendor.lock: RNNoise `sh.rnnn` (somnolent-hogwash, general) y `bd.rnnn`
+  (beguiling-drafter, voz), ~300 KB cada uno (GregorR/rnnoise-models, BSD); HRTF `mit_kemar_normal_pinna.sofa` (1,1 MB, sofacoustics.org).
+- Grafos: diálogo claro `highpass=f=70,dynaudnorm=f=250:g=11:p=0.85:m=8,equalizer=f=2800:t=q:w=1.2:g=2.5`; modo noche
+  `acompressor=threshold=-24dB:ratio=6:attack=5:release=400:makeup=4dB,alimiter=limit=0.7`; ruido `arnndn=m=<rnnn>:mix=0.9`
+  (sin modelo: `afftdn=nr=12:nf=-40`); binaural `sofalizer=sofa=<sofa>:type=freq` (sin SOFA: `crossfeed=strength=0.5:range=0.5`);
+  fotosensible `vf @mu-photo:lavfi=[photosensitivity=frames=30:threshold=1:bypass=0]`.
+- Pasos: `mpvd/av.py` (`av.models`, `av.models.download` con eventos `av-model`) → `mu-av/main.lua` (menú "Sonido e imagen" alt+v,
+  modo noche alt+n, toggles por etiqueta, diagnóstico de tirones con recomendaciones y "perfil ligero") → tests headless (cada filtro
+  activo en `af`/`vf`, reproducción sigue, sin errores; diagnóstico; perfil ligero) → docs/AUDIO_VIDEO.md, ADR-027, README, ATAJOS.
 #### H6 · Sincronía, traducción y duales — hecho (commit "H6: sincronía, traducción y duales")
 - `mpvd/subs/formats.py` (SRT/VTT/ASS, BOM/utf-8/utf-16/cp1252, etiquetas fuera), `resync.py` (ADR-026: emparejamiento por palabras en
   banda ±120 s, cadena monótona de máximo peso, recta robusta Theil–Sen por ventana con cortes y extrapolación), `translate.py`

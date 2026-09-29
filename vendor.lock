@@ -31,3 +31,12 @@ ARGOS_ES_EN_URL=https://argos-net.com/v1/translate-es_en-1_0.argosmodel
 ARGOS_ES_EN_SHA256=1b963aa0e0cb6e5ce874f0aa1a1949a19bc4d762e833532239a8834340f6b378
 ARGOS_EN_ES_URL=https://argos-net.com/v1/translate-en_es-1_0.argosmodel
 ARGOS_EN_ES_SHA256=d698d0ef87ad70d5d184b7fa6965905bf4368f09a2bb9ffb165a79bac96af0c4
+
+# Audio/video models for mu-av (H7): RNNoise models (GregorR/rnnoise-models, BSD) and a free HRTF (MIT KEMAR, sofacoustics.org).
+# Downloaded on demand by mpvd (mpvd/av.py) into vendor/models/{rnnoise,sofa}/.
+RNNOISE_SH_URL=https://github.com/GregorR/rnnoise-models/raw/master/somnolent-hogwash-2018-09-01/sh.rnnn
+RNNOISE_SH_SHA256=70bb6685eb0c2a1d18e2918dca3fbfbd39317010b1802eb1b6ea73a92f3fdec0
+RNNOISE_BD_URL=https://github.com/GregorR/rnnoise-models/raw/master/beguiling-drafter-2018-08-30/bd.rnnn
+RNNOISE_BD_SHA256=ae3f7411e1e6a884f839a4a145c394408398f09854dbc1216ee02faafc98a17b
+SOFA_KEMAR_URL=https://sofacoustics.org/data/database/mit/mit_kemar_normal_pinna.sofa
+SOFA_KEMAR_SHA256=e7035994f5fd754058424c061380ee92b1d5ed58fccef2887a4266916616acdf
