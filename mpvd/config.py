@@ -62,9 +62,8 @@ def default_data_dir() -> Path:
     env = os.environ.get("MPV_UOS_DATA_DIR")
     if env:
         return Path(env)
-    root = project_root()
-    if root is not None:
-        return root / ".cache" / "data"
+    # Always outside the checkout, also in development: a `rm -rf .cache` must never take the user's favourites,
+    # notes or paired phones with it (bin/mpv-uos migrates the old <checkout>/.cache/data once).
     if sys.platform == "win32":
         return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "mpv-uos"
     if sys.platform == "darwin":

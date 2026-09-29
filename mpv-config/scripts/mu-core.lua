@@ -13,14 +13,15 @@ local msg = require('mp.msg')
 local utils = require('mp.utils')
 local options = require('mp.options')
 
-local VERSION = '0.2.0'
+local VERSION = '0.3.0'
 
 local opts = {
   autostart = true,          -- start/attach mpvd on load
   python = '',               -- interpreter with the mpvd package (default: <root>/.venv/bin/python)
   retry_seconds = 10,        -- base delay between failed ensure attempts (exponential backoff, max 120 s)
   max_retries = 20,
-  watchdog_seconds = 30,     -- ping period while connected (0 = off)
+  watchdog_seconds = 10,     -- ping period while connected (0 = off)
+  load_errors = true,        -- explain on screen why a file/URL/channel could not be opened
   rpc_timeout = 15,          -- seconds before a pending call fails with a timeout error
   ensure_timeout = 20,       -- seconds the ensure subprocess may take (daemon start + attach)
 }
@@ -171,6 +172,11 @@ ensure = function()
     capture_stdout = true, capture_stderr = true,
   }, function(ok, res, err)
     local info = ok and res and last_json_line(res.stdout) or nil
+    local sess_pid = info and info.ok and info.session and tonumber(info.session.pid) or nil
+    if sess_pid and sess_pid ~= utils.getpid() then
+      -- mpvd handed us another player's session (same socket path): never talk through it
+      info = { ok = false, error = 'mpvd session belongs to pid ' .. sess_pid .. ', not ' .. utils.getpid() }
+    end
     if info and info.ok then
       state.mpvd = 'connected'
       state.mpvd_socket = info.socket or ''
@@ -261,6 +267,99 @@ mp.observe_property('user-data/osc/margins', 'native', function(_, value)
     publish()
   end
 end)
+
+-- ---------------------------------------------------------------------------------------------
+-- load errors: mpv only logs why a file/URL/channel failed ("[ytdl_hook] ERROR: …", "[stream] Failed to open …")
+-- and the window just stays empty. Catch the last error line and explain it in Spanish when the load fails.
+
+local load = { path = '', errors = {} }  -- every error line logged while opening the current file
+
+local EXPLAIN = {
+  -- { lua pattern on the lowercased error text, explanation }
+  { 'drm', 'el contenido está protegido con DRM y no se puede reproducir' },
+  { 'sign in', 'la plataforma exige iniciar sesión (o no deja reproducirlo fuera de su web)' },
+  { 'log in', 'la plataforma exige iniciar sesión (o no deja reproducirlo fuera de su web)' },
+  { 'logged%-in', 'la plataforma exige iniciar sesión (o no deja reproducirlo fuera de su web)' },
+  { 'login', 'la plataforma exige iniciar sesión (o no deja reproducirlo fuera de su web)' },
+  { 'private video', 'es un vídeo privado' },
+  { 'your country', 'no está disponible en tu país (geobloqueo)' },
+  { 'your location', 'no está disponible en tu país (geobloqueo)' },
+  { 'geo.?restrict', 'no está disponible en tu país (geobloqueo)' },
+  { 'geo.?block', 'no está disponible en tu país (geobloqueo)' },
+  { 'unsupported url', 'yt-dlp no reconoce esta dirección' },
+  { 'unavailable', 'el vídeo ya no está disponible' },
+  { 'not available', 'el vídeo ya no está disponible' },
+  { 'has been removed', 'el vídeo ya no está disponible' },
+  { 'http error 403', 'el servidor ha denegado el acceso (403)' },
+  { '403 forbidden', 'el servidor ha denegado el acceso (403)' },
+  { 'http error 404', 'no se encuentra en el servidor (404)' },
+  { '404 not found', 'no se encuentra en el servidor (404)' },
+  { 'timed out', 'el servidor no responde (tiempo agotado)' },
+  { 'timeout', 'el servidor no responde (tiempo agotado)' },
+  { 'no such file', 'el archivo no existe' },
+  { 'permission denied', 'no hay permiso para leer el archivo' },
+  { 'recognize file format', 'formato no reconocido' },
+  { 'unrecognized file format', 'formato no reconocido' },
+  { 'connection refused', 'no se pudo conectar con el servidor' },
+  { 'failed to open', 'no se pudo abrir la dirección (servidor caído o sin conexión)' },
+}
+
+-- The most specific explanation found in any of the lines (EXPLAIN is ordered from specific to generic).
+local function explain(lines, file_error)
+  local all = table.concat(lines, ' | '):lower()
+  for _, e in ipairs(EXPLAIN) do
+    if all:find(e[1]) then return e[2] end
+  end
+  local fe = tostring(file_error or ''):lower()
+  if fe:find('no audio or video') then return 'no llega audio ni vídeo (canal caído o señal cortada)' end
+  if fe:find('unrecognized') then return 'formato no reconocido' end
+  for _, l in ipairs(lines) do  -- yt-dlp's own words beat generic demuxer noise
+    if l:find('^ERROR:') then return (l:gsub('^ERROR:%s*', ''):sub(1, 140)) end
+  end
+  if lines[1] then return lines[1]:sub(1, 140) end
+  return fe ~= '' and fe or 'error desconocido'
+end
+
+local function display_name(path)
+  local tv = mp.get_property_native('user-data/mu/iptv') or {}
+  if type(tv.current) == 'table' and tv.current.url == path and tv.current.name then
+    return '«' .. tv.current.name .. '»', true
+  end
+  if path:find('^%a[%w+.-]*://') then
+    local short = path:gsub('^%a[%w+.-]*://', ''):gsub('^www%.', '')
+    return #short > 60 and (short:sub(1, 57) .. '…') or short, false
+  end
+  local _, file = utils.split_path(path)
+  return '«' .. (file ~= '' and file or path) .. '»', false
+end
+
+if opts.load_errors then
+  mp.enable_messages('error')
+  mp.register_event('log-message', function(e)
+    local prefix = e.prefix or ''
+    if prefix:find('^mu[_-]') or prefix == 'uosc' or prefix == 'thumbfast' then return end
+    local text = (e.text or ''):gsub('%s+$', '')
+    if text == '' or #load.errors >= 20 then return end
+    table.insert(load.errors, text)
+  end)
+  mp.register_event('start-file', function()
+    load.path = mp.get_property('path') or ''
+    load.errors = {}
+  end)
+  mp.register_event('end-file', function(ev)
+    if ev.reason ~= 'error' then return end
+    local path = load.path ~= '' and load.path or ''
+    local name, is_tv = display_name(path)
+    local reason = explain(load.errors, ev.file_error)
+    local text = '⚠ No se pudo abrir ' .. (name ~= '' and name or 'el archivo') .. ':\n' .. reason
+    if is_tv then text = text .. '\nalt+↑ / alt+↓ para probar otro canal' end
+    local raw = table.concat(load.errors, ' | '):sub(1, 400)
+    state.last_load_error = { path = path, reason = reason, raw = raw, at = os.time() }
+    publish()
+    mp.osd_message(text, 8)
+    msg.warn('load failed: ' .. path .. ' · ' .. reason .. ' · ' .. raw)
+  end)
+end
 
 -- ---------------------------------------------------------------------------------------------
 

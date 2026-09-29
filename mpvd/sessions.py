@@ -73,6 +73,8 @@ class Session:
         Status changes are always delivered; same-status updates at most every ``min_interval`` seconds.
         ``final`` drops the throttle entry (the key will not be seen again).
         """
+        if not self.connected:
+            return  # the session is going away (e.g. jobs cancelled while closing): nothing to deliver
         now = time.monotonic()
         last = self._pushed.get(key)
         if last is not None and last[0] == status and now - last[1] < min_interval:
@@ -112,14 +114,16 @@ class SessionManager:
     def __len__(self) -> int:
         return len(self._sessions)
 
-    def find_by_ipc(self, ipc_path: str) -> Session | None:
+    def find_by_ipc(self, ipc_path: str, pid: int | None = None) -> Session | None:
+        """Connected session on ``ipc_path``; with ``pid``, only if it belongs to that mpv process (two players
+        can end up on the same socket path, and the path alone would hand one the other's session)."""
         for s in self._sessions.values():
-            if s.ipc_path == ipc_path and s.connected:
+            if s.ipc_path == ipc_path and s.connected and (pid is None or s.pid is None or s.pid == pid):
                 return s
         return None
 
     async def register(self, ipc_path: str, pid: int | None = None, timeout: float = 5.0) -> Session:
-        existing = self.find_by_ipc(ipc_path)
+        existing = self.find_by_ipc(ipc_path, pid)
         if existing is not None:
             return existing
         client = MpvIpcClient(ipc_path)
@@ -127,6 +131,11 @@ class SessionManager:
         session = Session(ipc_path=ipc_path, client=client, pid=pid)
         with contextlib.suppress(MpvIpcError, ConnectionError, TimeoutError):
             session.pid = int(await client.get_property("pid"))
+        if pid is not None and session.pid is not None and session.pid != pid:
+            # The socket path answers for another player (the requester could not bind it): attaching would give
+            # that player's session to the requester.
+            await client.close()
+            raise ValueError(f"{ipc_path} belongs to mpv pid {session.pid}, not {pid}")
         self._sessions[session.id] = session
         session.task = asyncio.create_task(self._run(session), name=f"mpvd-session-{session.id}")
         self.server.touch()

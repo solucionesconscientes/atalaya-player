@@ -6,7 +6,7 @@ from pathlib import Path
 
 def test_scripts_load_without_errors(mpv_headless):
     core = mpv_headless.wait_property("user-data/mu/core", lambda v: bool(v and v.get("version")))
-    assert core["version"] == "0.2.0"
+    assert core["version"] == "0.3.0"
     assert core["ipc"] == str(mpv_headless.socket)
     assert core["platform"] == "linux"
     log = mpv_headless.log_text()

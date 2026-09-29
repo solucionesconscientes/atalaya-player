@@ -23,6 +23,20 @@ from mpvd.mpvipc import MpvIpcClient
 ROOT = Path(__file__).resolve().parents[1]
 MEDIA = ROOT / "tests" / "fixtures" / "media"
 TMP = ROOT / "tmp"
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _isolated_user_data(tmp_path_factory: pytest.TempPathFactory) -> Any:
+    """Tests never read or write the user's data (favourites, notes, prefs, watch_later): every mpvd or
+    bin/mpv-uos started without an explicit data dir lands in a throwaway directory."""
+    data = tmp_path_factory.mktemp("user-data")
+    old = os.environ.get("MPV_UOS_DATA_DIR")
+    os.environ["MPV_UOS_DATA_DIR"] = str(data)
+    yield data
+    if old is None:
+        os.environ.pop("MPV_UOS_DATA_DIR", None)
+    else:
+        os.environ["MPV_UOS_DATA_DIR"] = old
 PYTHON = ROOT / ".venv" / "bin" / "python"
 
 
@@ -106,7 +120,7 @@ class MpvHeadless:
 
 
 def start_mpv(run_dir: Path, extra_args: list[str] | None = None, env: dict[str, str] | None = None,
-              start_screen: bool = False) -> MpvHeadless:
+              start_screen: bool = False, wait_socket: Path | None = None) -> MpvHeadless:
     """Launch bin/mpv-uos headless: --vo=null --ao=null --idle=yes, socket and log under run_dir.
 
     The mu-menu start screen is off unless ``start_screen`` (it would open a menu in every test)."""
@@ -128,7 +142,7 @@ def start_mpv(run_dir: Path, extra_args: list[str] | None = None, env: dict[str,
         args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         env={**os.environ, "MPV_UOS_RUNTIME_DIR": str(run_dir), **(env or {})},
     )
-    h = MpvHeadless(proc, socket, log, run_dir)
+    h = MpvHeadless(proc, wait_socket or socket, log, run_dir)
     h.run(lambda c: c.get_property("mpv-version"))  # waits for the socket
     return h
 

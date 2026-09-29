@@ -48,7 +48,7 @@ def register(server: MpvdServer) -> None:  # noqa: C901 - flat list of small han
         """Attach to an mpv instance by its --input-ipc-server path (idempotent)."""
         try:
             session = await server.sessions.register(ipc, pid=pid)
-        except (TimeoutError, OSError) as exc:
+        except (TimeoutError, OSError, ValueError) as exc:
             raise RpcError(UNAVAILABLE, f"cannot connect to mpv IPC {ipc}: {exc}") from exc
         return session.to_dict()
 

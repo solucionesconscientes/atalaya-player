@@ -1,29 +1,69 @@
 #!/usr/bin/env bash
 # Launch the system mpv with the project's portable config dir and a unique IPC socket per instance.
 # Usage: bin/mpv-uos [mpv options] [files/URLs]   (any mpv option given here overrides mpv-config/mpv.conf)
-# Env: MPV_UOS_MPV (mpv binary, default "mpv"), MPV_UOS_RUNTIME_DIR (socket dir), MPV_UOS_SOCKET (explicit socket).
+# Env: MPV_UOS_MPV (mpv binary, default "mpv"), MPV_UOS_RUNTIME_DIR (socket dir),
+#      MPV_UOS_DATA_DIR (user data: favourites, notes, watch_later, prefs; default $XDG_DATA_HOME/mpv-uos).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 CONFIG_DIR="$ROOT/mpv-config"
 MPV_BIN="${MPV_UOS_MPV:-mpv}"
 RUNTIME_DIR="${MPV_UOS_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/mpv-uos}"
 mkdir -p "$RUNTIME_DIR"
+
+# Sockets of mpv processes that are gone (mpv never removes its IPC socket on exit).
+for s in "$RUNTIME_DIR"/mpv-*.sock; do
+  [ -e "$s" ] || continue
+  pid="${s##*/mpv-}"; pid="${pid%.sock}"
+  case "$pid" in ''|*[!0-9]*) continue ;; esac
+  kill -0 "$pid" 2>/dev/null || rm -f "$s"
+done
+
+# One socket per instance, never inherited: a file manager opened from mpv would otherwise pass it on to the
+# next mpv-uos, and two players would share one socket (and one mpvd session).
 # `exec` below keeps this shell's PID for mpv, so the socket name matches the mpv process.
-SOCKET="${MPV_UOS_SOCKET:-$RUNTIME_DIR/mpv-$$.sock}"
+unset MPV_UOS_SOCKET
+SOCKET="$RUNTIME_DIR/mpv-$$.sock"
+
+# User data lives outside the checkout (a `rm -rf .cache` must never take favourites or notes with it).
+# One-time migration from the old in-checkout locations, only for the default location (tests and scripts that
+# choose their own MPV_UOS_DATA_DIR never receive the user's data). Copied: the originals stay as a backup.
+migrate=0
+[ -z "${MPV_UOS_DATA_DIR:-}" ] && migrate=1
+DATA_DIR="${MPV_UOS_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mpv-uos}"
+if [ ! -d "$DATA_DIR" ]; then
+  mkdir -p "$DATA_DIR"
+  if [ "$migrate" = 1 ] && [ -d "$ROOT/.cache/data" ]; then cp -a "$ROOT/.cache/data/." "$DATA_DIR/" 2>/dev/null || true; fi
+fi
+if [ ! -d "$DATA_DIR/watch_later" ]; then
+  mkdir -p "$DATA_DIR/watch_later"
+  # Old watch_later entries also carried global options (volume, speed, filters) that leaked into the next file:
+  # keep only the per-file keys listed in mpv.conf (watch-later-options).
+  if [ "$migrate" = 1 ] && [ -d "$CONFIG_DIR/watch_later" ]; then
+    keep='^(#|start=|edition=|aid=|sid=|secondary-sid=|audio-delay=|sub-delay=|secondary-sub-delay=|sub-speed=|ab-loop-a=|ab-loop-b=|video-aspect-override=|panscan=|video-zoom=|video-pan-x=|video-pan-y=|video-rotate=|video-crop=|deinterlace=)'
+    for f in "$CONFIG_DIR"/watch_later/*; do
+      [ -f "$f" ] && grep -E "$keep" "$f" > "$DATA_DIR/watch_later/${f##*/}" || true
+    done
+  fi
+fi
 export MPV_UOS_ROOT="$ROOT"
-export MPV_UOS_SOCKET="$SOCKET"
-# Without files/URLs mpv prints its usage and exits: open the window with the home screen instead
-# (same as the desktop entry), unless the caller already chose --idle or an operation mode.
+export MPV_UOS_DATA_DIR="$DATA_DIR"
+
+# Always stay open when idle: with idle=no (or pseudo-gui's idle=once) a file that fails to load closes the
+# player without a word; idle keeps the window, shows the error and the home screen. Without files/URLs, open
+# the window like the desktop entry does, unless the caller chose --idle or an operation mode.
 extra=()
-has_target=0; has_mode=0; after_dd=0
+has_target=0; has_mode=0; has_idle=0; after_dd=0
 for a in "$@"; do
   if [ "$after_dd" = 1 ]; then has_target=1; continue; fi
   case "$a" in
     --) after_dd=1 ;;
-    --idle|--idle=*|--player-operation-mode=*) has_mode=1 ;;
+    --idle|--idle=*|--no-idle) has_idle=1; has_mode=1 ;;
+    --player-operation-mode=*) has_mode=1 ;;
     -*) ;;
     *) has_target=1 ;;
   esac
 done
-[ "$has_target" = 0 ] && [ "$has_mode" = 0 ] && extra=(--player-operation-mode=pseudo-gui)
-exec "$MPV_BIN" --config-dir="$CONFIG_DIR" --input-ipc-server="$SOCKET" "${extra[@]}" "$@"
+[ "$has_target" = 0 ] && [ "$has_mode" = 0 ] && extra+=(--player-operation-mode=pseudo-gui)
+[ "$has_idle" = 0 ] && extra+=(--idle=yes)
+exec "$MPV_BIN" --config-dir="$CONFIG_DIR" --input-ipc-server="$SOCKET" --watch-later-dir="$DATA_DIR/watch_later" \
+  "${extra[@]}" "$@"

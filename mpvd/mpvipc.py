@@ -130,9 +130,16 @@ class MpvIpcClient:
         fut: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
         self._pending[rid] = fut
         payload = json.dumps({"command": list(args), "request_id": rid}).encode("utf-8") + b"\n"
-        self._writer.write(payload)
-        await self._writer.drain()
-        msg = await asyncio.wait_for(fut, timeout)
+        try:
+            self._writer.write(payload)
+            await self._writer.drain()
+            msg = await asyncio.wait_for(fut, timeout)
+        finally:
+            # A failed write, a timeout or a cancellation must not leave the future behind: the read loop would
+            # later set "connection closed" on it and asyncio would log "Future exception was never retrieved".
+            self._pending.pop(rid, None)
+            if not fut.done():
+                fut.cancel()
         if msg.get("error") != "success":
             raise MpvIpcError(str(msg.get("error")), list(args))
         return msg.get("data")

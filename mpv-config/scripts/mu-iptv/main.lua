@@ -95,11 +95,7 @@ mp.register_event('file-loaded', function()
   end
 end)
 
-mp.register_event('end-file', function(ev)
-  if ev.reason == 'error' and state.current and state.current ~= '' then
-    osd('⚠ ' .. state.current.name .. ': no se pudo abrir (' .. tostring(ev.file_error or ev.error or '') .. ')')
-  end
-end)
+-- A channel that fails to open is explained by mu-core (reason in Spanish + zapping hint).
 
 -- ICY / stream titles (radio and some TV streams)
 mp.observe_property('metadata/by-key/icy-title', 'string', function(_, value)
@@ -158,6 +154,11 @@ end
 -- clipboard
 
 local function copy_to_clipboard(text)
+  -- mpv 0.41 native clipboard (Wayland/X11/Windows/macOS) first; the helpers below are the fallback
+  if mp.set_property('clipboard/text', text) then
+    osd('URL copiada')
+    return
+  end
   local platform = mp.get_property_native('platform')
   local candidates
   if platform == 'windows' then
