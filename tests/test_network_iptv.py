@@ -144,3 +144,48 @@ def test_play_real_channels_headless(real_server, mpv_headless):
         # The pipeline is proven by the two sources above; iptv-org streams die or get geo-blocked all the time,
         # so this is recorded as an expected failure with the per-channel log instead of failing the run.
         pytest.xfail("no iptv-org stream played (geo-blocking or dead streams):\n" + "\n".join(logs["iptv-org"]))
+
+
+# Canal Sur Andalucía, broadcaster's own CDN (TDTChannels, 2026-09-30): answers 403 to mpv's default User-Agent.
+CANAL_SUR = ("https://live-24-canalsur.interactvty.pro/9bb0f4edcb8946e79f5017ddca6c02b0/"
+             "74cdbd1b401a7598ab8f3e9b5652c9909daa60dd4f6f96f28396a3f1cfd926f2.m3u8")
+
+
+def test_canal_sur_official_opens_without_ytdlp(real_server):
+    """With the browser User-Agent mpvd adds when the list gives none, the official Canal Sur stream opens
+    directly in mpv; --ytdl=no rules out yt-dlp's fallback."""
+    from mpvd.iptv.model import BROWSER_USER_AGENT, Channel
+    from tests.conftest import TMP, start_mpv
+
+    async def fn(server, c):
+        await c.call("iptv.refresh", {"source": "tdt_tv"}, timeout=180)
+        found = await c.call("iptv.search", {"q": "canal sur andalucia", "source": "tdt_tv", "limit": 10})
+        official = next((f for f in found if "canalsur" in f["url"] and "cloudfront" not in f["url"]), None)
+        if official is None:
+            return None
+        return await c.call("iptv.play", {"id": official["id"]})
+
+    info = real_server(fn)
+    if info is None:  # the list changed: still check the known URL with what mpvd would send
+        ch = Channel(id="cs", name="Canal Sur", url=CANAL_SUR, kind="tv", source="t")
+        info = {"url": CANAL_SUR, "options": ch.mpv_options()}
+    assert info["options"]["user-agent"] == BROWSER_USER_AGENT
+    h = start_mpv(TMP / "test-mpv-net", ["--script-opts=mu-core-autostart=no", "--ytdl=no"])
+    try:
+        async def go(c):
+            without = await try_play(c, info["url"], {"force-media-title": "libmpv"}, timeout=20)
+            await c.command("stop")
+            with_ua = await try_play(c, info["url"], info["options"], timeout=30)
+            fmt = await c.get_property("file-format") if with_ua[0] else None
+            lavf = await c.get_property("options/demuxer-lavf-o") if with_ua[0] else None
+            await c.command("stop")
+            return without, with_ua, fmt, lavf
+
+        without, with_ua, fmt, lavf = h.run(go, timeout=90)
+        print(f"\nCanal Sur ({info['url'][:60]}…): libmpv → {without}; navegador → {with_ua}, formato {fmt}")
+        assert with_ua[0], with_ua
+        assert fmt == "hls" and lavf == {"http_persistent": "0", "seg_max_retry": "3"}
+        if without[0]:
+            print("aviso: el CDN ya no rechaza el User-Agent por defecto de mpv")
+    finally:
+        h.stop()

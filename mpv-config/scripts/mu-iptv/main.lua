@@ -34,13 +34,16 @@ local state = {
   search_results = 0,
   last_error = '',    -- last mpvd/uosc error shown (diagnostics)
   force_open = false, -- next show() replaces the menu instead of updating it (leaving the palette)
+  alternatives = {},  -- other copies of the current channel still untried ({id, name, url, options})
+  entry_id = nil,     -- playlist entry of the URL we loaded (its end-file error triggers the next alternative)
+  fallbacks = 0,      -- alternatives tried for the current channel
 }
 
 local function publish()
   mp.set_property_native('user-data/mu/iptv', {
     current = state.current or '', current_url = state.current_url, recording = state.recording, icy_title = state.icy_title,
     view = state.view, search_results = state.search_results, last_error = state.last_error,
-    depth = #state.stack,
+    depth = #state.stack, fallbacks = state.fallbacks, alternatives_left = #state.alternatives,
   })
 end
 
@@ -59,14 +62,44 @@ end
 -- ---------------------------------------------------------------------------------------------
 -- playback
 
+-- Live streams have no position to resume: forget any watch_later entry of the URL before loading it (the
+-- per-file option save-position-on-quit=no from mpvd keeps a new one from being written).
+local function load_url(url, file_options)
+  mp.commandv('delete-watch-later-config', url)
+  if url:find('^file://') then  -- mpv keys local files by their plain path, not by the file:// URL
+    local path = url:gsub('^file://', ''):gsub('%%(%x%x)', function(h) return string.char(tonumber(h, 16)) end)
+    mp.commandv('delete-watch-later-config', path)
+  end
+  state.current_url = url
+  if type(state.current) == 'table' then state.current.url = url end  -- mu-core names failures by this URL
+  local res = mp.command_native({ 'loadfile', url, 'replace', -1, file_options or {} })
+  if res == nil then msg.warn('loadfile failed for ' .. url) end
+  state.entry_id = type(res) == 'table' and res.playlist_entry_id or nil
+  publish()
+end
+
 local function apply_play_info(info)
   state.current = info.channel
-  state.current_url = info.url or ''
-  publish()
-  local ok = mp.command_native({ 'loadfile', info.url, 'replace', -1, info.options or {} })
-  if ok == nil then msg.warn('loadfile failed for ' .. info.url) end
+  state.alternatives = info.alternatives or {}
+  state.fallbacks = 0
+  load_url(info.url, info.options)
   osd((info.channel.kind == 'radio' and '📻 ' or '📺 ') .. info.channel.name)
 end
+
+-- The list repeats some channels (mirrors, FAST copies): when the preferred URL fails to open, try the next one.
+mp.register_event('end-file', function(ev)
+  if ev.reason ~= 'error' or not state.entry_id or ev.playlist_entry_id ~= state.entry_id then return end
+  state.entry_id = nil
+  local alt = table.remove(state.alternatives, 1)
+  if not alt or type(state.current) ~= 'table' then publish() return end
+  state.fallbacks = state.fallbacks + 1
+  local text = 'Probando otra fuente de «' .. (state.current.name or alt.name or '') .. '»…'
+  msg.info(text .. ' (' .. alt.url .. ')')
+  load_url(alt.url, alt.options)
+  osd(text)
+  -- mu-core explains the failed load on the OSD at the same moment; keep ours on top
+  mp.add_timeout(0.3, function() if state.current_url == alt.url then osd(text) end end)
+end)
 
 local function play(channel_id, cb)
   rpc.call('iptv.play', { id = channel_id }, function(err, info)
@@ -90,7 +123,8 @@ end
 mp.register_event('file-loaded', function()
   if state.current and state.current ~= '' then
     local title = state.current.name
-    if state.current.group then title = title .. '  ·  ' .. state.current.group end
+    local group = state.current.group_label or state.current.group
+    if group then title = title .. '  ·  ' .. group end
     osd((state.current.kind == 'radio' and '📻 ' or '📺 ') .. title)
   end
 end)
@@ -187,15 +221,25 @@ local ACTIONS = {
   { name = 'copy', icon = 'content_copy', label = 'Copiar URL' },
 }
 
-local function channel_item(ch)
+-- Hint of a channel: what we know about it, most useful first ("★ · 720p50 · 2,7 Mb · con anuncios").
+local function channel_hint(ch)
   local hints = {}
   if ch.favorite then table.insert(hints, '★') end
-  if ch.quality then table.insert(hints, ch.quality) end
-  if ch.geo_blocked then table.insert(hints, 'geo') end
+  local quality = ch.quality_label or ch.quality
+  if quality then table.insert(hints, quality) end
+  if ch.low_bitrate then table.insert(hints, 'bitrate bajo') end
+  if ch.ads then table.insert(hints, 'con anuncios') end
+  if ch.geo_blocked then table.insert(hints, 'geobloqueado') end
+  local alts = tonumber(ch.alternatives) or 0
+  if alts > 0 then table.insert(hints, '+' .. alts .. (alts == 1 and ' fuente' or ' fuentes')) end
   if ch.health == false then table.insert(hints, '✕') end
+  return #hints > 0 and table.concat(hints, ' · ') or nil
+end
+
+local function channel_item(ch)
   return {
     title = ch.name,
-    hint = #hints > 0 and table.concat(hints, ' ') or nil,
+    hint = channel_hint(ch),
     icon = ch.kind == 'radio' and 'radio' or 'live_tv',
     value = { play = ch.id },
     muted = ch.health == false or nil,
@@ -203,15 +247,24 @@ local function channel_item(ch)
   }
 end
 
+local FOLD = {
+  ['á'] = 'a', ['é'] = 'e', ['í'] = 'i', ['ó'] = 'o', ['ú'] = 'u', ['ü'] = 'u', ['ñ'] = 'n~', ['à'] = 'a', ['è'] = 'e',
+  ['ò'] = 'o', ['ç'] = 'c', ['Á'] = 'a', ['É'] = 'e', ['Í'] = 'i', ['Ó'] = 'o', ['Ú'] = 'u', ['Ñ'] = 'n~', ['À'] = 'a',
+}
+local function sort_key(text)
+  return (tostring(text):gsub('[%z\1-\127\194-\244][\128-\191]*', function(c) return FOLD[c] or c end):lower())
+end
+
+-- Submenus by `key` (group/category), titled with the Spanish label mpvd sends (`<key>_label`).
 local function grouped_items(channels, key)
   local order, groups = {}, {}
   for _, ch in ipairs(channels) do
-    local g = ch[key] or 'Otros'
+    local g = ch[key .. '_label'] or ch[key] or 'Otros'
     if not groups[g] then groups[g] = {}; table.insert(order, g) end
     table.insert(groups[g], channel_item(ch))
   end
   if #order == 1 then return groups[order[1]] end
-  table.sort(order, function(a, b) return a:lower() < b:lower() end)
+  table.sort(order, function(a, b) return sort_key(a) < sort_key(b) end)
   local items = {}
   for _, g in ipairs(order) do
     table.insert(items, { title = g, hint = tostring(#groups[g]), items = groups[g] })
@@ -229,7 +282,24 @@ local function base_menu(title, items, extra)
   return menu
 end
 
+-- Titles and hints of the menu shown (two levels, capped): uosc does not expose its items (tests/diagnostics).
+local function menu_rows(items, depth)
+  local rows = {}
+  for i, it in ipairs(items) do
+    if i > 60 then break end
+    local row = { title = it.title or '', hint = it.hint or '', separator = it.separator or false }
+    if it.items and depth < 2 then row.items = menu_rows(it.items, depth + 1) end
+    table.insert(rows, row)
+  end
+  return rows
+end
+
+local function publish_menu(title, items)
+  mp.set_property_native('user-data/mu/iptv-menu', { title = title, items = menu_rows(items, 1) })
+end
+
 local function show(title, items, extra)
+  publish_menu(title, items)
   if uosc.open_type() == MENU and not state.force_open then
     uosc.update(base_menu(title, items, extra))
   else
@@ -295,7 +365,7 @@ views.source = function(args)
   local title = args.name or SOURCE_TITLES[args.id] or args.id
   if not require_mpvd(title) then return end
   show_loading(title)
-  rpc.call('iptv.channels', { source = args.id, compact = true, limit = 5000 }, function(err, res)
+  rpc.call('iptv.channels', { source = args.id, compact = true, merge = true, limit = 5000 }, function(err, res)
     if err then show(title, uosc.message_items(fail(err, 'iptv.channels'), 'error')) return end
     if #res.items == 0 then
       show(title, uosc.message_items('Lista vacía o no descargada (Actualizar listas)', 'info'))
@@ -414,8 +484,9 @@ views.world = function()
     if err then show('Mundo · TV', uosc.message_items(fail(err, 'iptv.countries'), 'error')) return end
     local items = {}
     for _, c in ipairs(rows) do
-      table.insert(items, { title = (c.flag and (c.flag .. ' ') or '') .. c.name, hint = tostring(c.count),
-                            value = { view = 'country', id = c.code, name = c.name } })
+      -- the user's country comes first (mpvd marks it `home`), set apart from the A-Z list
+      table.insert(items, { title = ((c.flag or '') ~= '' and (c.flag .. ' ') or '') .. c.name, hint = tostring(c.count),
+                            value = { view = 'country', id = c.code, name = c.name }, separator = c.home or nil })
     end
     if #items == 0 then items = uosc.message_items('Sin canales (Actualizar listas)', 'info') end
     show('Mundo · TV', items)
@@ -424,7 +495,8 @@ end
 
 views.country = function(args)
   show_loading(args.name or args.id)
-  rpc.call('iptv.channels', { source = 'iptv_org', country = args.id, compact = true, limit = opts.world_limit },
+  rpc.call('iptv.channels', { source = 'iptv_org', country = args.id, compact = true, merge = true,
+                              limit = opts.world_limit },
     function(err, res)
       if err then show(args.name or args.id, uosc.message_items(fail(err, 'iptv.channels'), 'error')) return end
       show(args.name or args.id, grouped_items(res.items, 'category'))
@@ -439,8 +511,8 @@ views.radio = function()
     local items = { { title = 'Más votadas del mundo', icon = 'trending_up', value = { view = 'radio_top' } } }
     for i, c in ipairs(rows) do
       if i > opts.radio_countries then break end
-      table.insert(items, { title = c.name, hint = tostring(c.count),
-                            value = { view = 'radio_country', id = c.code, name = c.name } })
+      table.insert(items, { title = ((c.flag or '') ~= '' and (c.flag .. ' ') or '') .. c.name, hint = tostring(c.count),
+                            value = { view = 'radio_country', id = c.code, name = c.name }, separator = c.home or nil })
     end
     show('Radio mundial', items)
   end, 60)
@@ -543,15 +615,17 @@ local function run_search(query)
     local items = {}
     for _, ch in ipairs(results) do
       local it = channel_item(ch)
-      it.hint = (ch.source == 'radio_browser' and 'radio mundial')
+      local where = (ch.source == 'radio_browser' and 'radio mundial')
         or (ch.source == 'iptv_org' and ('iptv-org · ' .. (ch.country or ''):upper()))
-        or (ch.group or ch.source)
+        or (ch.group_label or ch.group or ch.source)
+      it.hint = it.hint and (where .. ' · ' .. it.hint) or where
       table.insert(items, it)
     end
     if #items == 0 then items = uosc.message_items('Sin resultados para «' .. query .. '»', 'search_off') end
+    publish_menu('Buscar: ' .. query, items)
     uosc.update(search_menu(items, query))
   end
-  rpc.call('iptv.search', { q = query, limit = opts.search_limit, compact = true }, function(err, rows)
+  rpc.call('iptv.search', { q = query, limit = opts.search_limit, compact = true, merge = true }, function(err, rows)
     if not err then for _, r in ipairs(rows) do table.insert(results, r) end end
     finish()
   end)

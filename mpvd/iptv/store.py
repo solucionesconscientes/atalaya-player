@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS sources (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, url TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'tv',
   enabled INTEGER NOT NULL DEFAULT 1, added_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS health (
-  channel_id TEXT PRIMARY KEY, ok INTEGER NOT NULL, checked_at REAL NOT NULL, detail TEXT);
+  channel_id TEXT PRIMARY KEY, ok INTEGER NOT NULL, checked_at REAL NOT NULL, detail TEXT, quality TEXT);
 """
 
 
@@ -35,6 +35,9 @@ class IptvStore:
         with self._lock:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.executescript(_SCHEMA)
+            cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(health)")}
+            if "quality" not in cols:  # databases created before the quality hints
+                self._conn.execute("ALTER TABLE health ADD COLUMN quality TEXT")
 
     def close(self) -> None:
         with self._lock:
@@ -123,11 +126,15 @@ class IptvStore:
 
     # -- health ---------------------------------------------------------------------------------
 
-    def set_health(self, channel_id: str, ok: bool, detail: str = "") -> None:
+    def set_health(self, channel_id: str, ok: bool, detail: str = "", quality: dict[str, Any] | None = None) -> None:
+        """``quality``: best stream seen ({height, width, fps, bandwidth}), shown as a hint in the menus."""
         with self._lock:
-            self._conn.execute("INSERT OR REPLACE INTO health VALUES (?,?,?,?)", (channel_id, int(ok), time.time(), detail))
+            self._conn.execute(
+                "INSERT OR REPLACE INTO health (channel_id, ok, checked_at, detail, quality) VALUES (?,?,?,?,?)",
+                (channel_id, int(ok), time.time(), detail, json.dumps(quality) if quality else None))
 
     def health(self) -> dict[str, dict[str, Any]]:
         with self._lock:
             rows = self._conn.execute("SELECT * FROM health").fetchall()
-        return {r["channel_id"]: {"ok": bool(r["ok"]), "checked_at": r["checked_at"], "detail": r["detail"]} for r in rows}
+        return {r["channel_id"]: {"ok": bool(r["ok"]), "checked_at": r["checked_at"], "detail": r["detail"],
+                                  "quality": json.loads(r["quality"]) if r["quality"] else None} for r in rows}

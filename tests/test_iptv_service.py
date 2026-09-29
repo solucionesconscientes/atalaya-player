@@ -130,7 +130,9 @@ def test_refresh_facets_channels_search_play_zap(tmp_path, web):
     assert [f["name"] for f in found] == ["Antena 3 Internacional"]
     assert [f["name"] for f in found_es] == ["La 1", "La 2"]
     assert play["url"] == "https://tv.example/la1.m3u8"
-    assert play["options"] == {"force-media-title": "La 1", "user-agent": "UA-TDT"}
+    assert play["options"] == {"force-media-title": "La 1", "save-position-on-quit": "no", "user-agent": "UA-TDT",
+                               "demuxer-lavf-o": "http_persistent=0,seg_max_retry=3"}
+    assert play["alternatives"] == []
     assert play["channel"]["favorite"] is False and play["channel"]["health"] is None
     assert nxt["channel"]["name"] == "La 2" and prev["channel"]["name"] == "La 2"  # group of 2 wraps
     assert [r["name"] for r in recents] == ["La 2", "La 1"]

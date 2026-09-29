@@ -9,16 +9,18 @@ import asyncio
 import json
 import logging
 import shutil
+import urllib.request
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 
-from mpvd.iptv.index import SearchIndex
-from mpvd.iptv.model import Channel
+from mpvd.iptv import labels
+from mpvd.iptv.index import SearchIndex, normalize
+from mpvd.iptv.model import Channel, best_variant, hls_variants
 from mpvd.iptv.radiobrowser import SOURCE_ID as RADIO_SOURCE, RadioBrowser
 from mpvd.iptv.sources import BUILTIN_SOURCES, Source, SourceState, load_source
 from mpvd.iptv.store import IptvStore
 from mpvd.jobs import Job
-from mpvd.net import FetchError, HttpCache
+from mpvd.net import HttpCache
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -27,7 +29,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("mpvd.iptv")
 
 FACETS = ("group", "country", "category", "language")
-COUNTRIES_URL = "https://iptv-org.github.io/api/countries.json"  # [{name, code, flag, languages}]
+MASTER_MAX_BYTES = 1 << 20  # an HLS master playlist is a few KB; never read a stream by mistake
 
 
 def _sources_from_env() -> list[Source] | None:
@@ -58,13 +60,12 @@ class IptvService:
         self._states: dict[str, SourceState] = {}
         self._index = SearchIndex()
         self._by_id: dict[str, Channel] = {}
+        self._dups: dict[str, list[str]] = {}  # channel id -> ids of the same channel in its list, preferred first
         self._loads: dict[str, asyncio.Task[SourceState]] = {}
         self._lock = asyncio.Lock()
         import os  # noqa: PLC0415
 
         self.radio = RadioBrowser(self.http, base_url=radio_base_url or os.environ.get("MPV_UOS_RADIO_BROWSER_URL"))
-        self.countries_url = os.environ.get("MPV_UOS_COUNTRIES_URL", COUNTRIES_URL)
-        self._country_names: dict[str, dict[str, str]] | None = None
 
     # -- sources ------------------------------------------------------------------------------
 
@@ -100,10 +101,43 @@ class IptvService:
     def _rebuild_index(self) -> None:
         self._index = SearchIndex()
         self._by_id = {}
+        self._dups = {}
         for state in self._states.values():
+            groups: dict[tuple[str, str, str, str], list[Channel]] = {}
             for ch in state.channels:
                 self._by_id[ch.id] = ch
                 self._index.add(ch)
+                groups.setdefault(labels.duplicate_key(ch), []).append(ch)
+            for members in groups.values():
+                if len(members) < 2:
+                    continue
+                # the broadcaster's own stream first, FAST copies (ads inserted) last; list order otherwise
+                ids = [c.id for c in sorted(members, key=lambda c: labels.has_ads(c.url))]
+                for cid in ids:
+                    self._dups[cid] = ids
+
+    def alternatives_of(self, channel_id: str) -> list[Channel]:
+        """Other copies of the same channel (same list, name and group), in the order to try them."""
+        return [self._by_id[i] for i in self._dups.get(channel_id, []) if i != channel_id and i in self._by_id]
+
+    def primary_id(self, channel_id: str) -> str:
+        ids = self._dups.get(channel_id)
+        return ids[0] if ids else channel_id
+
+    def _merge(self, channels: list[Channel]) -> list[tuple[Channel, int]]:
+        """One entry per channel: the preferred copy, with how many alternatives it has."""
+        present = {c.id for c in channels}
+        out = []
+        for ch in channels:
+            ids = self._dups.get(ch.id)
+            if ids:
+                first = next(i for i in ids if i in present)
+                if first != ch.id:
+                    continue
+                out.append((ch, sum(1 for i in ids if i != ch.id)))
+            else:
+                out.append((ch, 0))
+        return out
 
     async def ensure_loaded(self, source_id: str | None = None) -> None:
         if source_id is not None:
@@ -145,44 +179,56 @@ class IptvService:
             counter[getattr(ch, facet) or ""] += 1
         return [{"value": k, "count": n} for k, n in sorted(counter.items(), key=lambda kv: (kv[0] == "", kv[0]))]
 
-    def country_names(self) -> dict[str, dict[str, str]]:
-        """ISO2 (lower) -> {name, flag} from the iptv-org API (cached a week); empty when unreachable."""
-        if self._country_names is None:
-            try:
-                res = self.http.fetch(self.countries_url, ttl=7 * 24 * 3600, timeout=20)
-                rows = json.loads(res.read_text())
-                self._country_names = {r["code"].lower(): {"name": r.get("name", r["code"]), "flag": r.get("flag", "")}
-                                       for r in rows if r.get("code")}
-            except (FetchError, ValueError, KeyError, TypeError) as exc:
-                log.warning("country names unavailable: %s", exc)
-                self._country_names = {}
-        return self._country_names
+    @staticmethod
+    def _home_first(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The user's country (labels.user_country) on top, marked with ``home``; the rest keep their order."""
+        home = labels.user_country()
+        top = [r for r in rows if labels.country_code(r["code"]) == home]
+        for r in top:
+            r["home"] = True
+        return top + [r for r in rows if labels.country_code(r["code"]) != home]
 
     def countries(self, source_id: str | None = None, **filters: Any) -> list[dict[str, Any]]:
-        names = self.country_names()
+        """Countries with channels, named in Spanish (system iso-codes), home country first, then A-Z."""
         out = []
         for row in self.facet("country", source_id, **filters):
             code = row["value"]
             if not code:
                 continue
-            meta = names.get(code, {})
-            out.append({"code": code, "name": meta.get("name") or code.upper(), "flag": meta.get("flag", ""),
-                        "count": row["count"]})
-        return sorted(out, key=lambda r: r["name"].casefold())
+            out.append({"code": code, "name": labels.country_name(code), "flag": labels.flag(code), "count": row["count"]})
+        out.sort(key=lambda r: normalize(r["name"]))
+        return self._home_first(out)
+
+    def radio_countries(self) -> list[dict[str, Any]]:
+        """Radio Browser countries in Spanish, home country first, then by number of stations."""
+        rows = [{**r, "name": labels.country_name(r["code"], r.get("name")), "flag": labels.flag(r["code"])}
+                for r in self.radio.countries()]
+        return self._home_first(rows)
 
     def list_channels(self, source_id: str | None = None, offset: int = 0, limit: int = 500, compact: bool = False,
-                      **filters: Any) -> dict[str, Any]:
+                      merge: bool = False, **filters: Any) -> dict[str, Any]:
+        """``merge``: one entry per channel when a list repeats it (see ``alternatives_of``)."""
         items = [ch for ch in self.channels_of(source_id) if self._matches(ch, filters)]
+        rows = self._merge(items) if merge else [(ch, 0) for ch in items]
         favs = self.store.favorite_ids()
         health = self.store.health()
-        page = items[offset: offset + limit]
+        page = rows[offset: offset + limit]
         return {
-            "total": len(items), "offset": offset,
-            "items": [self._decorate(ch, favs, health, compact) for ch in page],
+            "total": len(rows), "offset": offset,
+            "items": [self._decorate(ch, favs, health, compact, alternatives=n) for ch, n in page],
         }
 
+    def _merged_health(self, ch: Channel, health: dict[str, Any]) -> bool | None:
+        """A repeated channel is alive when any of its copies is (mu-iptv falls back to it by itself)."""
+        own = health.get(ch.id)
+        if own and own["ok"]:
+            return True
+        if any((health.get(a.id) or {}).get("ok") for a in self.alternatives_of(ch.id)):
+            return True
+        return own["ok"] if own else None
+
     def _decorate(self, ch: Channel, favs: set[str] | None = None, health: dict[str, Any] | None = None,
-                  compact: bool = False) -> dict[str, Any]:
+                  compact: bool = False, alternatives: int = 0) -> dict[str, Any]:
         if compact:  # what menus need; keeps big lists small on the wire
             d: dict[str, Any] = {"id": ch.id, "name": ch.name, "kind": ch.kind, "group": ch.group,
                                  "category": ch.category, "country": ch.country, "source": ch.source}
@@ -194,9 +240,27 @@ class IptvService:
                 d["quality"] = ch.extra["quality"]
         else:
             d = ch.to_dict()
+        # Spanish display labels (the raw values stay for filters and the other APIs)
+        if ch.source == RADIO_SOURCE and ch.country:
+            d["group_label"] = labels.country_name(ch.country, ch.group)
+        else:
+            d["group_label"] = labels.group_label(ch.group)
+        d["category_label"] = labels.category_label(ch.category)
+        if labels.has_ads(ch.url):
+            d["ads"] = True
+        if alternatives:
+            d["alternatives"] = alternatives
         d["favorite"] = ch.id in (favs if favs is not None else self.store.favorite_ids())
-        h = (health if health is not None else self.store.health()).get(ch.id)
-        d["health"] = h["ok"] if h else None
+        health = health if health is not None else self.store.health()
+        h = health.get(ch.id)
+        d["health"] = self._merged_health(ch, health) if alternatives else (h["ok"] if h else None)
+        quality = h.get("quality") if h else None
+        if quality:
+            d["quality_label"] = labels.quality_label(quality)
+            if labels.low_bitrate(quality):
+                d["low_bitrate"] = True
+        elif ch.extra.get("quality"):
+            d["quality_label"] = ch.extra["quality"]  # what the list title says ("(720p)")
         return d
 
     def get(self, channel_id: str) -> Channel:
@@ -209,16 +273,18 @@ class IptvService:
         return ch
 
     def search(self, query: str, limit: int = 50, kind: str | None = None, source_id: str | None = None,
-               compact: bool = False) -> list[dict[str, Any]]:
+               compact: bool = False, merge: bool = False) -> list[dict[str, Any]]:
         favs = self.store.favorite_ids()
         health = self.store.health()
-        return [self._decorate(ch, favs, health, compact)
-                for ch in self._index.search(query, limit=limit, kind=kind, source=source_id)]
+        found = self._index.search(query, limit=limit, kind=kind, source=source_id)
+        rows = self._merge(found) if merge else [(ch, 0) for ch in found]
+        return [self._decorate(ch, favs, health, compact, alternatives=n) for ch, n in rows]
 
     def neighbours(self, channel_id: str, delta: int) -> Channel:
-        """Zapping: the channel ``delta`` positions away inside the same source and group (wrapping)."""
-        ch = self.get(channel_id)
-        group = [c for c in self.channels_of(ch.source) if c.group == ch.group] or [ch]
+        """Zapping: the channel ``delta`` positions away inside the same source and group (wrapping); the
+        other copies of a repeated channel are skipped (they are its alternatives, not other channels)."""
+        ch = self.get(self.primary_id(channel_id))
+        group = [c for c in self.channels_of(ch.source) if c.group == ch.group and self.primary_id(c.id) == c.id] or [ch]
         idx = next((i for i, c in enumerate(group) if c.id == ch.id), 0)
         return group[(idx + delta) % len(group)]
 
@@ -229,7 +295,10 @@ class IptvService:
             uuid = ch.extra["stationuuid"]
             self.server.jobs.submit("radio.click", lambda job: asyncio.to_thread(self.radio.click, uuid),
                                     priority="index", meta={"uuid": uuid})
-        return {"channel": self._decorate(ch), "url": ch.url, "options": ch.mpv_options()}
+        # mu-iptv tries these in order when the stream fails to open (end-file error)
+        alternatives = [{"id": a.id, "name": a.name, "url": a.url, "options": a.mpv_options(),
+                         "ads": labels.has_ads(a.url)} for a in self.alternatives_of(ch.id)]
+        return {"channel": self._decorate(ch), "url": ch.url, "options": ch.mpv_options(), "alternatives": alternatives}
 
     async def radio_stations(self, country: str | None = None, tag: str | None = None, q: str | None = None,
                              top: int | None = None, limit: int = 200, compact: bool = False) -> list[dict[str, Any]]:
@@ -247,36 +316,65 @@ class IptvService:
 
     # -- health -------------------------------------------------------------------------------
 
-    async def probe(self, ch: Channel, timeout: float = 10.0) -> tuple[bool, str]:
+    async def probe(self, ch: Channel, timeout: float = 10.0) -> tuple[bool, str, dict[str, Any] | None]:
+        """ffprobe the stream with the same headers mpv sends -> (alive, detail, best video {height, fps})."""
         ffprobe = shutil.which("ffprobe")
         if ffprobe is None:
-            return False, "ffprobe not found"
+            return False, "ffprobe not found", None
         cmd = [ffprobe, "-v", "error", "-rw_timeout", str(int(timeout * 1_000_000)), "-icy", "0"]
-        ua = ch.headers.get("User-Agent")
+        headers = ch.request_headers()
+        ua = headers.get("User-Agent")
         if ua:
             cmd += ["-user_agent", ua]
-        ref = ch.headers.get("Referer")
+        ref = headers.get("Referer")
         if ref:
             cmd += ["-referer", ref]
-        others = [f"{k}: {v}\r\n" for k, v in ch.headers.items() if k not in ("User-Agent", "Referer")]
+        others = [f"{k}: {v}\r\n" for k, v in headers.items() if k not in ("User-Agent", "Referer")]
         if others:
             cmd += ["-headers", "".join(others)]
-        cmd += ["-show_entries", "stream=codec_type", "-of", "json", "-i", ch.url]
+        cmd += ["-show_entries", "stream=codec_type,width,height,avg_frame_rate,r_frame_rate", "-of", "json", "-i", ch.url]
         proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout + 5)
         except asyncio.TimeoutError:
             proc.kill()
             await proc.wait()
-            return False, "timeout"
+            return False, "timeout", None
         if proc.returncode != 0:
-            return False, err.decode("utf-8", "replace").strip()[-200:] or f"ffprobe exit {proc.returncode}"
+            return False, err.decode("utf-8", "replace").strip()[-200:] or f"ffprobe exit {proc.returncode}", None
         try:
             streams = json.loads(out or b"{}").get("streams", [])
         except ValueError:
             streams = []
         kinds = sorted({s.get("codec_type", "?") for s in streams})
-        return bool(streams), ",".join(kinds)
+        return bool(streams), ",".join(kinds), _best_video(streams)
+
+    def hls_master(self, ch: Channel, timeout: float = 10.0) -> dict[str, Any] | None:
+        """Best variant of an HLS master playlist ({height, width, fps, bandwidth}); None for media playlists."""
+        req = urllib.request.Request(ch.url, headers={**ch.request_headers(), "Accept-Encoding": "identity"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - channel URL, http(s) only
+                text = resp.read(MASTER_MAX_BYTES).decode("utf-8", "replace")
+        except (OSError, ValueError) as exc:
+            log.info("hls master %s: %s", ch.url, exc)
+            return None
+        best = best_variant(hls_variants(text))
+        if not best:
+            return None
+        return {k: best[k] for k in ("height", "width", "fps", "bandwidth") if best.get(k)}
+
+    async def check_one(self, ch: Channel) -> tuple[bool, str, dict[str, Any] | None]:
+        """Health + quality: the master playlist says resolution/fps/bitrate; ffprobe fills what it omits."""
+        good, detail, video = await self.probe(ch)
+        quality: dict[str, Any] = {}
+        if good and ch.is_hls():
+            quality = await asyncio.to_thread(self.hls_master, ch) or {}
+        if good and video:
+            if not quality.get("height"):
+                quality.update({k: v for k, v in video.items() if v})
+            elif not quality.get("fps") and video.get("fps") and video.get("height") == quality["height"]:
+                quality["fps"] = video["fps"]
+        return good, detail, quality or None
 
     def submit_health_check(self, channels: list[Channel], concurrency: int = 4, session_id: str | None = None) -> Job:
         async def body(job: Job) -> dict[str, Any]:
@@ -287,8 +385,8 @@ class IptvService:
             async def one(ch: Channel) -> None:
                 nonlocal done, ok
                 async with sem:
-                    good, detail = await self.probe(ch)
-                    self.store.set_health(ch.id, good, detail)
+                    good, detail, quality = await self.check_one(ch)
+                    self.store.set_health(ch.id, good, detail, quality)
                     done += 1
                     ok += int(good)
                     job.report(done / max(1, len(channels)), f"{done}/{len(channels)} · {ok} ok")
@@ -301,6 +399,25 @@ class IptvService:
 
     def close(self) -> None:
         self.store.close()
+
+
+def _fps(rate: str | None) -> float | None:
+    """ffprobe "25/1" / "30000/1001" -> 25.0 / 29.97 (None for "0/0")."""
+    try:
+        num, _, den = (rate or "").partition("/")
+        value = float(num) / float(den or 1)
+    except (ValueError, ZeroDivisionError):
+        return None
+    return round(value, 3) if 0 < value < 1000 else None
+
+
+def _best_video(streams: list[dict[str, Any]]) -> dict[str, Any] | None:
+    videos = [s for s in streams if s.get("codec_type") == "video" and s.get("height")]
+    if not videos:
+        return None
+    best = max(videos, key=lambda s: (s.get("height") or 0, _fps(s.get("avg_frame_rate")) or 0))
+    return {"height": best.get("height"), "width": best.get("width"),
+            "fps": _fps(best.get("avg_frame_rate")) or _fps(best.get("r_frame_rate"))}
 
 
 # -- JSON-RPC surface ------------------------------------------------------------------------------
@@ -341,18 +458,20 @@ def register(server: MpvdServer, service: IptvService) -> None:  # noqa: C901
     @d.method("iptv.channels")
     async def channels(ctx: RpcContext, source: str | None = None, group: str | None = None,
                        country: str | None = None, category: str | None = None, language: str | None = None,
-                       kind: str | None = None, offset: int = 0, limit: int = 500, compact: bool = False) -> dict[str, Any]:
-        """Channels filtered by facets, paginated (compact=true for menus)."""
+                       kind: str | None = None, offset: int = 0, limit: int = 500, compact: bool = False,
+                       merge: bool = False) -> dict[str, Any]:
+        """Channels filtered by facets, paginated (compact=true for menus; merge=true: one entry per repeated
+        channel, the others become its alternatives)."""
         await service.ensure_loaded(source)
-        return service.list_channels(source, offset, limit, compact, group=group, country=country, category=category,
-                                     language=language, kind=kind)
+        return service.list_channels(source, offset, limit, compact, merge, group=group, country=country,
+                                     category=category, language=language, kind=kind)
 
     @d.method("iptv.search")
     async def search(ctx: RpcContext, q: str, limit: int = 50, kind: str | None = None,
-                     source: str | None = None, compact: bool = False) -> list[dict[str, Any]]:
+                     source: str | None = None, compact: bool = False, merge: bool = False) -> list[dict[str, Any]]:
         """Accent-insensitive search across loaded sources."""
         await service.ensure_loaded()
-        return service.search(q, limit=limit, kind=kind, source_id=source, compact=compact)
+        return service.search(q, limit=limit, kind=kind, source_id=source, compact=compact, merge=merge)
 
     @d.method("iptv.channel")
     async def channel(ctx: RpcContext, id: str) -> dict[str, Any]:  # noqa: A002
@@ -413,9 +532,9 @@ def register(server: MpvdServer, service: IptvService) -> None:  # noqa: C901
 
     @d.method("radio.countries")
     async def radio_countries(ctx: RpcContext) -> list[dict[str, Any]]:
-        """Countries in Radio Browser with station counts."""
+        """Countries in Radio Browser with station counts (Spanish names, the user's country first)."""
         try:
-            return await asyncio.to_thread(service.radio.countries)
+            return await asyncio.to_thread(service.radio_countries)
         except Exception as exc:  # noqa: BLE001 - network
             raise RpcError(UNAVAILABLE, f"radio-browser: {exc}") from exc
 

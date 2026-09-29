@@ -148,8 +148,9 @@ https://cdn-globecast.akamaized.net/live/eds/2m_monde/hls_video_ts_tuhawxpiemz25
 ## 4. Traducción de `#EXTVLCOPT` / `#KODIPROP` a mpv (POR VERIFICAR con `mpv --list-options`)
 | Directiva de la lista | Opción mpv candidata (por verificar) |
 |---|---|
-| `#EXTVLCOPT:http-user-agent=X` / atributo `http-user-agent="X"` | `--user-agent=X` |
+| `#EXTVLCOPT:http-user-agent=X` / atributo `http-user-agent="X"` | `--user-agent=X` (verificado; sin ella, User-Agent de navegador: §7) |
 | `#EXTVLCOPT:http-referrer=X` / atributo `http-referrer="X"` | `--referrer=X` |
+| `#EXTVLCOPT:demuxer-lavf-o=k=v,…` / `stream-lavf-o` (extensión propia, no la usa ninguna fuente) | la misma opción por archivo (verificado); en HLS se le añaden las nuestras sin pisar sus claves (§7) |
 | `#EXTVLCOPT:network-caching=N` (ms) | `--cache-secs=N/1000` o `--demuxer-readahead-secs` |
 | `#EXTVLCOPT:http-reconnect=true` | `--stream-lavf-o=reconnect=1,reconnect_streamed=1` |
 | `#KODIPROP:inputstream.adaptive.stream_headers=k=v&k2=v2` | `--http-header-fields="k: v","k2: v2"` |
@@ -180,3 +181,54 @@ soporte DRM no es prioritario.
 7. URLs sin extensión, con puerto, con `;session=`, con query; esquemas rtmp/mmsh/srt (mpv los abre vía ffmpeg, por verificar).
 8. `tvg-id` con `@Feed` en iptv-org; título con `(720p)`, `[Not 24/7]`, `[Geo-blocked]` → extraer a campos aparte.
 9. `radio="true"` (TDT) y grupo `Radio_*` para separar TV/radio; `XXX`/`is_nsfw` para filtrar.
+
+## 7. Calidad y fiabilidad de los directos (diagnóstico 2026-09-30, host dell)
+
+Evidencia en `tmp/diag-tv/` (probe.json, survey.json, 101tv_long.log vs 101tv_np.log). Encuesta de las 442 entradas
+de TV de TDTChannels sin los grupos internacionales, pidiendo cada lista maestra con curl.
+
+### 7.1 Lo que depende de la fuente ("lo que hay")
+- **Resolución y bitrate los decide la cadena.** De 315 listas maestras con variantes: 148 llegan a 1080p, 124 a
+  720p, 2 a 576p y 15 se quedan en 360p. RTVE (La 1, La 2, Clan, Teledeporte) da como máximo **720p25 a 3,0 Mb/s**
+  (`BANDWIDTH=3012608`); no hay 1080p ni 50 fps de RTVE en abierto por internet. 37 canales "HD" emiten por debajo de
+  1,6 Mb/s (Real Madrid TV 720p a 1,0 Mb/s, Penedès TV 720p a 0,5 Mb/s…): se verán peor que un buen SD.
+- **Casi todo va a 25 fps** (las que lo declaran: 25 → 87, 29,97 → 12, 30 → 5; 200 maestras no declaran
+  `FRAME-RATE`). TVG (europa) es de las pocas a 50 fps.
+- **Entrelazado sin marcar**: 7TV Andalucía emite 1080i (idet: 36 campos TFF de 251) sin `field_order`, así que ni mpv
+  ni ffmpeg lo saben; Canal Extremadura y Clan muestran algo de entrelazado mezclado. Desentrelazar a mano (`d`).
+- **80 entradas son listas de medios** (sin variantes): no se puede elegir calidad.
+- **Copias FAST** (canal re-emitido con anuncios insertados): hosts `ottera`, `amagi`, `samsungtv.plus`, `rakuten`,
+  `getpublica`, `pluto.tv`/`jmp2.uk`, y CloudFront/MediaTailor con `/v1/master/`. A veces tienen más resolución
+  (La 1 de ottera: 1080p25 a 4,2 Mb/s, reescalado) pero cortan para publicidad.
+- **Duplicados**: la misma cadena aparece varias veces con el mismo nombre y grupo (oficial + espejos + FAST).
+- **Cabeceras**: Canal Sur Andalucía oficial (`live-24-canalsur.interactvty.pro`) responde **403** al User-Agent por
+  defecto de mpv (`libmpv`) y 200 a uno de navegador; es el único de la encuesta (393 responden igual con ambos).
+- **Servidores que cortan conexiones persistentes**: 101TV Málaga (Wowza) se congela a los ~12 s con
+  `hls: Failed to reload playlist 0` porque ffmpeg reutiliza una conexión que el servidor ya ha cerrado.
+- Canales caídos (404, sin respuesta) o geobloqueados fuera de España: no hay arreglo en el cliente.
+
+### 7.2 Lo que hace el reproductor
+- **Sin watch_later en directos**: mu-iptv ejecuta `delete-watch-later-config <url>` antes de cada `loadfile` de un
+  canal (y también con la ruta simple si es `file://`, que es como mpv la guarda) y mpvd añade siempre
+  `save-position-on-quit=no` como opción por archivo, así que ni el zapping ni salir escriben posición ni pistas.
+  (Antes La 1 quedaba en 360p por un `vid` guardado por URL; ver ADR-036.)
+- **HLS**: a toda URL HLS (`.m3u8`, `format=m3u8`, `hls=1` de Radio Browser o KODIPROP) se le pasa
+  `demuxer-lavf-o=http_persistent=0,seg_max_retry=3` (opciones del demuxer hls de FFmpeg 8.0, `ffmpeg -h demuxer=hls`):
+  una conexión nueva por petición y 3 reintentos por segmento. Si la lista trae su propio `demuxer-lavf-o`, se
+  conservan sus claves y solo se añaden las que falten.
+- **User-Agent**: si la lista no da uno, se envía el de un Chrome de escritorio actual (`model.BROWSER_USER_AGENT`,
+  cambiable con `MPV_UOS_USER_AGENT`) tanto al reproducir como en la comprobación de salud. Verificado con un test
+  `@network`: Canal Sur oficial abre con `--ytdl=no` (antes solo funcionaba si yt-dlp lo rescataba).
+- **Calidad visible**: *Comprobar canales en segundo plano* (`iptv.health.check`) lee además la lista maestra HLS y
+  guarda la mejor variante (resolución, `FRAME-RATE`, `BANDWIDTH`); si la maestra no declara resolución o fps, los
+  toma de ffprobe. En el menú: `720p50 · 2,7 Mb`, más `bitrate bajo` si es HD (≥720p) por debajo de 1,6 Mb/s.
+- **FAST y duplicados**: las copias FAST salen como `con anuncios`. Los canales repetidos (mismo nombre normalizado y
+  grupo en la misma lista) se muestran una sola vez (`+N fuentes`), con la copia oficial primero y las FAST al final; el
+  zapping se salta las copias. Si la primera no abre (`end-file` con error), mu-iptv prueba sola la siguiente con el
+  aviso "Probando otra fuente de «La 1»…".
+- **En español**: países por código ISO con los nombres del sistema (`/usr/share/iso-codes/json/iso_3166-1.json` +
+  catálogo gettext `iso_3166-1` en español; sin ellos, `mpvd/iptv/data/countries_es.json`, copia de esos mismos nombres),
+  con `uk`→Reino Unido y `xk`→Kosovo; categorías de iptv-org traducidas (News → Noticias, Undefined → Sin categoría…);
+  grupos limpios ("General;Public" → "General · Público", "Radio_C. Valenciana" → "Radio C. Valenciana");
+  "geobloqueado". El país del usuario (`MPV_UOS_COUNTRY`, si no el territorio del locale, si no España) va primero en
+  *Mundo* y *Radio mundial*. Los valores originales no cambian (filtros, favoritos, MCP y mando siguen igual).
