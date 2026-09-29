@@ -19,10 +19,12 @@ INSTALL = ROOT / "tools" / "install.sh"
 def prefix():
     base = TMP / "test-install" / uuid.uuid4().hex[:8]
     (base / "bin").mkdir(parents=True)
+    (base / "config").mkdir()
+    # XDG_CONFIG_HOME too: --default/--uninstall edit mimeapps.list, never the user's real one
     env = dict(os.environ, MPV_UOS_BIN_DIR=str(base / "bin"), XDG_DATA_HOME=str(base / "share"),
-               PATH=f"{base / 'bin'}:{os.environ['PATH']}")
+               XDG_CONFIG_HOME=str(base / "config"), XDG_CURRENT_DESKTOP="",
+               MPV_UOS_DATA_DIR=str(base / "data"), PATH=f"{base / 'bin'}:{os.environ['PATH']}")
     env.pop("MPV_UOS_CACHE_DIR", None)
-    env.pop("MPV_UOS_DATA_DIR", None)
     try:
         yield base, env
     finally:
@@ -66,6 +68,7 @@ def test_install_xdg_env_and_refuses_foreign_launcher(prefix):
     fake.chmod(0o755)
     run(env, "--no-sync", "--no-vendor", "--xdg")
     env2 = dict(env, MPV_UOS_MPV=str(fake), XDG_CACHE_HOME=str(base / "cache"), XDG_RUNTIME_DIR=str(base / "rt"))
+    env2.pop("MPV_UOS_DATA_DIR")  # the default location is what is being checked here
     out = subprocess.run([str(base / "bin" / "mpv-uos"), "a.mkv"], env=env2, capture_output=True, text=True, timeout=30).stdout
     assert f"CACHE={base / 'cache' / 'mpv-uos'}" in out and f"DATA={base / 'share' / 'mpv-uos'}" in out
     assert f"--config-dir={ROOT / 'mpv-config'}" in out and out.rstrip().endswith("a.mkv")
@@ -84,3 +87,38 @@ def test_install_dry_run_writes_nothing(prefix):
     out = run(env, "--dry-run", "--default").stdout
     assert "(dry-run) uv sync" in out and "(dry-run)" in out
     assert not (base / "bin" / "mpv-uos").exists() and not (base / "share").exists()
+
+
+def test_moved_checkout_is_reported(prefix):
+    base, env = prefix
+    run(env, "--no-sync", "--no-vendor")
+    launcher = base / "bin" / "mpv-uos"
+    launcher.write_text(launcher.read_text(encoding="utf-8").replace(str(ROOT), str(base / "movida")), encoding="utf-8")
+    out = subprocess.run([str(launcher), "--version"], env=env, capture_output=True, text=True, timeout=30)
+    assert out.returncode == 1 and "has movido la carpeta" in out.stderr
+
+
+def test_mime_types_include_the_system_mpv_ones(prefix):
+    base, env = prefix
+    fake = base / "mpv.desktop"
+    fake.write_text("[Desktop Entry]\nMimeType=audio/x-ape;audio/x-wavpack;video/mp4;\n", encoding="utf-8")
+    run({**env, "MPV_UOS_SYSTEM_MPV_DESKTOP": str(fake)}, "--no-sync", "--no-vendor")
+    mime = next(line for line in (base / "share" / "applications" / "mpv-uos.desktop").read_text(encoding="utf-8")
+                .splitlines() if line.startswith("MimeType="))
+    types = mime.removeprefix("MimeType=").split(";")
+    assert "audio/x-ape" in types and "audio/x-wavpack" in types and types.count("video/mp4") == 1
+
+
+@pytest.mark.skipif(not shutil.which("xdg-mime"), reason="xdg-mime not installed")
+def test_default_player_is_restored_on_uninstall(prefix):
+    base, env = prefix
+    fake = base / "mpv.desktop"
+    fake.write_text("[Desktop Entry]\nMimeType=video/mp4;\n", encoding="utf-8")
+    env = {**env, "MPV_UOS_SYSTEM_MPV_DESKTOP": str(fake)}
+    mimeapps = base / "config" / "mimeapps.list"
+    mimeapps.write_text("[Default Applications]\nvideo/mp4=vlc.desktop\n", encoding="utf-8")
+    run(env, "--no-sync", "--no-vendor", "--default")
+    assert "video/mp4=mpv-uos.desktop" in mimeapps.read_text(encoding="utf-8")
+    run(env, "--uninstall")
+    text = mimeapps.read_text(encoding="utf-8")
+    assert "video/mp4=vlc.desktop" in text and "mpv-uos.desktop" not in text

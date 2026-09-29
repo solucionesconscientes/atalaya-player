@@ -93,6 +93,13 @@ local function draw_qr()
   ass:new_event()
   ass:append(string.format('{\\pos(%d,%d)\\an8\\bord2\\shad0\\fs20\\1c&HCCCCCC&\\3c&H000000&}', cx, y0 + total + 48))
   ass:append('El código vale una vez y caduca en 10 min · alt+z oculta')
+  local fw = state.status and state.status.firewall
+  if type(fw) == 'table' and fw.command then
+    ass:new_event()
+    ass:append(string.format('{\\pos(%d,%d)\\an8\\bord2\\shad0\\fs18\\1c&H66CCFF&\\3c&H000000&}', cx, y0 + total + 78))
+    ass:append('¿El móvil no conecta? El cortafuegos (' .. fw.tool .. ') bloquea el puerto ' .. tostring(fw.port) ..
+               '. En una terminal: ' .. fw.command:gsub('\\', '\\\\'))
+  end
   overlay.res_x = res_w
   overlay.res_y = 720
   overlay.z = 1000
@@ -112,6 +119,7 @@ local function show(result)
   state.token = result.token or ''
   state.expires_at = mp.get_time() + (result.expires_in or 600)
   state.qr = result.qr
+  state.status = result.status or state.status  -- includes the firewall hint shown under the code
   state.visible = true
   if not overlay then overlay = mp.create_osd_overlay('ass-events') end
   draw_qr()
@@ -145,6 +153,10 @@ local function menu_items()
                           icon = 'wifi', value = { action = 'copy' } }
   else
     items[#items + 1] = { title = 'Servidor del mando detenido', icon = 'wifi_off', muted = true, selectable = false }
+  end
+  if type(st.firewall) == 'table' and st.firewall.command then
+    items[#items + 1] = { title = 'El cortafuegos (' .. st.firewall.tool .. ') puede bloquear al móvil',
+                          hint = 'copiar la orden', icon = 'shield', value = { action = 'copy-fw' } }
   end
   local paired = st.paired or {}
   if #paired > 0 then
@@ -187,8 +199,12 @@ local function menu_action(v)
   if v.action == 'toggle' then
     toggle()
     uosc.close(MENU)
-  elseif v.action == 'copy' then
-    osd('Mando: ' .. tostring(state.status and state.status.url or ''))
+  elseif v.action == 'copy' or v.action == 'copy-fw' then
+    local fw = state.status and state.status.firewall
+    local text = v.action == 'copy' and tostring(state.status and state.status.url or '') or (fw and fw.command or '')
+    -- mpv 0.41 has a native clipboard (Wayland/X11/Windows/macOS): no wl-copy/xclip needed
+    local ok = text ~= '' and mp.set_property('clipboard/text', text)
+    osd(ok and ('Copiado: ' .. text) or ('Mando: ' .. text))
   elseif v.action == 'forget' then
     rpc.call('remote.forget', nil, function(err, r)
       if err then fail(err, 'olvidar mandos'); return end

@@ -12,7 +12,9 @@ import json
 import logging
 import os
 import secrets
+import shutil
 import socket
+import subprocess
 import time
 from collections.abc import AsyncIterator
 from hashlib import sha256
@@ -53,6 +55,33 @@ def lan_ip() -> str:
         return "127.0.0.1"
     finally:
         s.close()
+
+
+_FIREWALL_CACHE: dict[str, Any] = {"at": 0.0, "value": None}
+
+
+def firewall_hint(port: int, ip: str) -> dict[str, Any] | None:
+    """A host firewall that may drop the phone's connection (checked without root: unit state only), with the
+    exact command to open the port for the local network. None when no known firewall is active."""
+    now = time.monotonic()
+    if now - _FIREWALL_CACHE["at"] < 60:
+        return _FIREWALL_CACHE["value"]
+    value = None
+    subnet = ".".join(ip.split(".")[:3]) + ".0/24" if ip.count(".") == 3 and not ip.startswith("127.") else "192.168.1.0/24"
+    if shutil.which("systemctl"):
+        for unit, command in (
+            ("ufw", f"sudo ufw allow from {subnet} to any port {port} proto tcp comment 'mpv-uos mando'"),
+            ("firewalld", f"sudo firewall-cmd --permanent --add-port={port}/tcp && sudo firewall-cmd --reload"),
+        ):
+            try:
+                out = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=3).stdout
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if out.strip() == "active":
+                value = {"tool": unit, "port": port, "subnet": subnet, "command": command}
+                break
+    _FIREWALL_CACHE.update(at=now, value=value)
+    return value
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
@@ -145,8 +174,11 @@ class RemoteService:
     def status(self) -> dict[str, Any]:
         now = time.time()
         self.tokens = {t: v for t, v in self.tokens.items() if v["expires"] > now}
-        return {"running": self.http.running, "host": self.host, "port": self.http.port or self.port_pref,
-                "url": self.base_url() if self.http.running else None, "lan_ip": lan_ip(), "autostart": self.autostart,
+        ip = lan_ip()
+        port = self.http.port or self.port_pref
+        return {"running": self.http.running, "host": self.host, "port": port,
+                "url": self.base_url() if self.http.running else None, "lan_ip": ip, "autostart": self.autostart,
+                "firewall": firewall_hint(port, ip) if self.host in ("0.0.0.0", "") else None,
                 "paired": [{"id": p["id"][:8], "name": p["name"], "created": p["created"], "last_seen": p.get("last_seen")}
                            for p in self.paired.values()],
                 "pending_tokens": len(self.tokens), "clients": self.clients}

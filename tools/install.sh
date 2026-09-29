@@ -4,6 +4,8 @@
 # Usage: tools/install.sh [--xdg] [--extras] [--no-sync] [--no-vendor] [--default] [--dry-run]
 #        tools/install.sh --uninstall [--dry-run]
 # Env:   MPV_UOS_BIN_DIR (default ~/.local/bin), XDG_DATA_HOME (default ~/.local/share).
+# User data (favourites, notes, prefs, watch_later) always lives in $XDG_DATA_HOME/mpv-uos (bin/mpv-uos);
+# --xdg also moves the cache (models, lists, thumbnails) out of the checkout.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 BIN_DIR="${MPV_UOS_BIN_DIR:-$HOME/.local/bin}"
@@ -20,11 +22,19 @@ audio/x-wav;audio/x-ms-wma;audio/flac;audio/mp4;audio/opus;audio/webm;audio/x-ma
 audio/x-vorbis+ogg;video/mpeg;video/mp4;video/x-m4v;video/ogg;video/quicktime;video/x-msvideo;video/avi;video/vnd.avi;video/x-flv;\
 video/x-matroska;video/mkv;video/webm;video/x-ms-wmv;video/x-ms-asf;video/mp2t;video/3gpp;video/3gpp2;video/dv;\
 application/x-matroska;application/x-mpegurl;application/vnd.apple.mpegurl;video/vnd.mpegurl;"
+# Everything the system mpv declares too (123 types on Ubuntu 26.04: ape, wv, dts, asf, cue…).
+SYS_MPV_DESKTOP="${MPV_UOS_SYSTEM_MPV_DESKTOP:-/usr/share/applications/mpv.desktop}"
+if [ -f "$SYS_MPV_DESKTOP" ]; then
+  extra_mime="$(sed -n 's/^MimeType=//p' "$SYS_MPV_DESKTOP" | head -1)"
+  MIME="$(printf '%s;%s' "$MIME" "$extra_mime" | tr ';' '\n' | awk 'NF && !seen[$0]++' | tr '\n' ';')"
+fi
+MIME_BACKUP="$DATA_HOME/mpv-uos/mime-defaults.bak"
+MIMEAPPS="${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
 
 XDG=0 EXTRAS=0 SYNC=1 VENDOR=1 DEFAULT=0 DRY=0 UNINSTALL=0
 for arg in "$@"; do
   case "$arg" in
-    --xdg) XDG=1 ;;             # cache/data in ~/.cache/mpv-uos and ~/.local/share/mpv-uos instead of <checkout>/.cache
+    --xdg) XDG=1 ;;             # cache in ~/.cache/mpv-uos instead of <checkout>/.cache (data is always there)
     --extras) EXTRAS=1 ;;       # also install the optional translate + semantic extras (~220 MB)
     --no-sync) SYNC=0 ;;
     --no-vendor) VENDOR=0 ;;
@@ -54,6 +64,18 @@ if [ "$UNINSTALL" = 1 ]; then
     elif [ -e "$f" ]; then say "no es de MPV-UOS, se deja: $f"; fi
   done
   if [ -f "$ICON" ] && grep -qF "MPV-UOS" "$ICON"; then say "borrando $ICON"; run rm -f "$ICON"; fi
+  # Undo --default: give each type back the player it had before; drop our remaining default lines.
+  if [ -f "$MIME_BACKUP" ] && command -v xdg-mime >/dev/null 2>&1; then
+    say "restaurando los reproductores por defecto anteriores"
+    while IFS='=' read -r type prev; do
+      [ -n "$type" ] && [ -n "$prev" ] && [ "$prev" != "mpv-uos.desktop" ] && run xdg-mime default "$prev" "$type" 2>/dev/null
+    done <"$MIME_BACKUP"
+    run mv -f "$MIME_BACKUP" "$MIME_BACKUP.restored"
+  fi
+  if [ -f "$MIMEAPPS" ] && grep -q '=mpv-uos.desktop;\{0,1\}$' "$MIMEAPPS"; then
+    say "quitando MPV-UOS de $MIMEAPPS"
+    run sed -i '/^[^=]*=mpv-uos\.desktop;\{0,1\}$/d' "$MIMEAPPS"
+  fi
   refresh_caches
   say "desinstalado (el checkout, .cache/ y los datos de usuario no se tocan)"
   exit 0
@@ -70,7 +92,7 @@ if [ ${#missing[@]} -gt 0 ]; then
   echo "Debian/Ubuntu: sudo apt install mpv ffmpeg  ·  uv: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
   exit 1
 fi
-ver="$(mpv --version 2>/dev/null | sed -n '1s/^mpv v\{0,1\}\([0-9]*\)\.\([0-9]*\).*/\1 \2/p' || true)"
+ver="$(mpv --no-config --version 2>/dev/null | sed -n '1s/^mpv v\{0,1\}\([0-9]*\)\.\([0-9]*\).*/\1 \2/p' || true)"
 if [ -n "$ver" ]; then
   read -r major minor <<<"$ver"
   if [ "$major" -eq 0 ] && [ "$minor" -lt 41 ]; then say "aviso: mpv $major.$minor < 0.41; algunas funciones no irán"; fi
@@ -99,6 +121,13 @@ if [ "$DRY" = 0 ]; then
   cat >"$LAUNCHER" <<EOF
 #!/usr/bin/env bash
 $MARK
+if [ ! -x "$ROOT/bin/mpv-uos" ]; then
+  # the checkout was moved or deleted: say so instead of failing silently from the desktop
+  msg="No encuentro MPV-UOS en $ROOT (¿has movido la carpeta?). Ejecuta tools/install.sh desde su nueva ubicación."
+  notify-send -a MPV-UOS "MPV-UOS" "\$msg" 2>/dev/null || true
+  echo "\$msg" >&2
+  exit 1
+fi
 $env_lines
 exec "$ROOT/bin/mpv-uos" "\$@"
 EOF
@@ -133,8 +162,14 @@ refresh_caches
 
 if [ "$DEFAULT" = 1 ]; then
   if command -v xdg-mime >/dev/null 2>&1; then
-    say "MPV-UOS como reproductor por defecto (xdg-mime)"
+    say "MPV-UOS como reproductor por defecto (xdg-mime; --uninstall devuelve los anteriores)"
     IFS=';' read -r -a types <<<"$MIME"
+    if [ ! -f "$MIME_BACKUP" ] && [ "$DRY" = 0 ]; then
+      mkdir -p "$(dirname "$MIME_BACKUP")"
+      for t in "${types[@]}"; do
+        [ -n "$t" ] && printf '%s=%s\n' "$t" "$(xdg-mime query default "$t" 2>/dev/null || true)"
+      done >"$MIME_BACKUP"
+    fi
     run xdg-mime default mpv-uos.desktop "${types[@]}"
   else
     say "xdg-mime no está: no se cambia el reproductor por defecto"

@@ -164,9 +164,11 @@ class HttpServer:
             request = await asyncio.wait_for(self._read_request(reader, peer_s), 30)
         except HttpError as exc:
             await self._write(writer, Response.text(exc.message, exc.status))
+            await self._linger(reader, writer)
             return
         except (asyncio.TimeoutError, ValueError):
             await self._write(writer, Response.text("Bad Request", 400))
+            await self._linger(reader, writer)
             return
         if request is None:
             return
@@ -210,6 +212,22 @@ class HttpServer:
         url = urlsplit(target)
         query = {k: v[-1] for k, v in parse_qs(url.query, keep_blank_values=True).items()}
         return Request(method.upper(), unquote(url.path) or "/", query, headers, body, peer)
+
+    @staticmethod
+    async def _linger(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, limit: int = 4 * MAX_BODY,
+                      timeout: float = 1.0) -> None:
+        """After rejecting a request that was not fully read (e.g. 413 on a big body), half-close and discard what the
+        client is still sending: closing with unread input makes the kernel send a RST, and the client then sees
+        "connection reset" instead of our error response."""
+        with contextlib.suppress(Exception):
+            if writer.can_write_eof():
+                writer.write_eof()
+            total = 0
+            while total < limit:
+                chunk = await asyncio.wait_for(reader.read(65536), timeout)
+                if not chunk:
+                    break
+                total += len(chunk)
 
     async def _write(self, writer: asyncio.StreamWriter, response: Response, head_only: bool = False) -> None:
         status = response.status
