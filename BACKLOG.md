@@ -84,7 +84,7 @@ Aceptación: con el audio de prueba ES/EN el SRT contiene las frases esperadas (
 - [x] Embeddings multilingües ligeros (ONNX) + sqlite-vec sobre la transcripción; integrado en la paleta; capítulos por cambio de tema.
 
 ## H11 · Estudio (C4, C6, C8, C10)
-- [ ] Repetir línea, velocidad inteligente (silencios), notas → Markdown con enlaces de tiempo, clips/GIF desde el bucle A-B.
+- [x] Repetir línea, velocidad inteligente (silencios), notas → Markdown con enlaces de tiempo, clips/GIF desde el bucle A-B.
 
 ## H12 · Mando QR/PWA (E3)
 - [ ] PWA local servida por mpvd con token de un solo uso mostrado como QR en OSD; control, canales y búsqueda.

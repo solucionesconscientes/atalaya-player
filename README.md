@@ -143,6 +143,20 @@ uv sync --extra translate --extra semantic
 .venv/bin/python -m mpvd call semantic.chapters '{"path":"/ruta/charla.mkv"}'  # incluye ffmetadata para ffmpeg
 ```
 
+## Estudio: repetir línea, velocidad inteligente, notas y clips
+Menú **Estudio** (`alt+e`, entrada en el menú raíz; docs/ESTUDIO.md): `alt+w` repite en bucle la línea de subtítulo en pantalla
+(`alt+←`/`alt+→` pasan a la anterior/siguiente; `l` o `alt+w` lo quitan), `alt+g` activa la velocidad inteligente (×2,5 en los
+silencios que mpvd mapea con `silencedetect`, velocidad normal cuando hay voz), `alt+b` guarda una nota con enlace de tiempo y la
+cita del subtítulo en `<datos>/notas/<clave>.md` (Markdown, `mpv://seek?t=`), y `alt+u` exporta el bucle A-B (o la línea actual)
+como clip: mp4 exacto, mp4/mkv sin recodificar, GIF, mp3, opus o wav a `<Vídeos|Música>/MPV-UOS/clips`, con progreso y aviso.
+```bash
+.venv/bin/python -m mpvd call study.formats
+.venv/bin/python -m mpvd call study.clip '{"path":"/ruta/video.mkv","start":65,"end":72.5,"format":"gif"}'
+.venv/bin/python -m mpvd call study.clips.list
+.venv/bin/python -m mpvd call study.silences '{"path":"/ruta/charla.mkv","start":0,"length":600}'
+.venv/bin/python -m mpvd call notes.list
+```
+
 ## MCP: controla el reproductor desde Claude Code u otro asistente
 `python -m mpvd mcp` es un servidor MCP por stdio (docs/MCP.md): tools `status`, `play`, `pause`, `resume`, `seek`, `search_dialogue`
 (busca en la transcripción IA), `list_channels`, `play_channel`, `download`, `add_note`, `subtitles_ai`; resources con la transcripción

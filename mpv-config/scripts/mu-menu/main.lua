@@ -238,6 +238,8 @@ local function static_root_items()
       value = { cmd = { 'script-binding', 'mu_av/av-menu' } } },
     { title = 'Saltar intro y créditos', hint = 'alt+j', icon = 'skip_next',
       value = { cmd = { 'script-binding', 'mu_intro/intro-menu' } } },
+    { title = 'Estudio (repetir línea, velocidad inteligente, notas, clips)', hint = 'alt+e', icon = 'school',
+      value = { cmd = { 'script-binding', 'mu_study/study-menu' } } },
     { title = 'Lista de reproducción', hint = 'p', icon = 'list_alt', value = { cmd = { 'script-binding', 'uosc/playlist' } },
       separator = true },
   }

@@ -1,16 +1,38 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 ## SIGUIENTE PASO
-H11 · Estudio: (1) mu-study.lua (o ampliar mu-subs) con "repetir línea" (bucle sobre el cue actual de la pista de subtítulos
-seleccionada: `sub-start`/`sub-end` de mpv 0.41 → ab-loop-a/b; tecla), (2) velocidad inteligente = acelerar silencios
-(`asr` ya tiene VAD/segmentos: mpvd calcula tramos sin voz y mu-study ajusta `speed` en caliente al entrar/salir; alternativa sin
-transcripción: `silencedetect` de mpvd/intro/detect.py), (3) notas → Markdown con enlaces de tiempo (ya existe `notes.add/list`
-del H8: añadir tecla y menú con la cita del subtítulo actual, exportar `<data_dir>/notas/<clave>.md`), (4) clips/GIF desde el bucle
-A-B (`ytdl`/ffmpeg en mpvd: `clip.export {path, a, b, format: mp4|gif|mp3}` a la carpeta de vídeos; progreso por eventos).
-Verificar antes: propiedades `sub-start`, `sub-end`, `ab-loop-a/b`, `ab-loop-count` en el manual de mpv 0.41; `ffmpeg -filter_complex`
-para GIF (palettegen/paletteuse).
+H12 · Mando QR/PWA: (1) verificar con subagente qué hay para el QR sin dependencias (`qrencode` en PATH? si no, implementar QR en
+Python puro en mpvd/remote/qr.py: versión 1-6, nivel M, modo byte; o `segno` como extra) y cómo mostrarlo en mpv (overlay-add
+con BGRA crudo escrito a un archivo en runtime dir: verificar sintaxis `overlay-add id x y file offset fmt w h stride` en mpv 0.41);
+(2) mpvd `remote/`: servidor HTTP asyncio propio (sin aiohttp) en 127.0.0.1+LAN (0.0.0.0, puerto libre) con token de un solo uso
+en la URL del QR que se canjea por una cookie de sesión (HMAC, caduca al cerrar mpv), rutas `/`, `/app.js`, `/api/state`,
+`/api/cmd` (play/pause/seek/volume/next/prev/sub/audio), `/api/channels?q=`, `/api/search?q=` (semantic.search + asr.search),
+`/events` (SSE con time-pos/pausa/título a ≤2 Hz); (3) PWA estática en mpvd/remote/www (manifest, service worker mínimo,
+HTML+JS sin framework, botones grandes, barra de progreso, lista de canales, búsqueda); (4) mu-remote.lua: `alt+z` muestra/oculta
+el QR (overlay + URL en OSD), estado en user-data/mu/remote; (5) tests: cliente HTTP con urllib contra el servidor de test, token
+inválido rechazado, comandos aplicados en mpv headless, SSE recibe eventos; QR decodificable si hay `zbarimg` (si no, se omite).
 ## Registro por iteración
 ### Iteración 4 · 2026-09-29
+#### H11 · Estudio — hecho (commit "H11: modo estudio")
+- Verificación real (subagente → docs/ESTUDIO.md): sub-start/sub-end sin sub-delay y `unavailable` sin cue; `ab-loop-a` = "no";
+  speed en caliente sin errores; ffmpeg copy corta en keyframe; silencedetect -30 dB/0,3–0,5 s para pausas de voz; VAD Silero disponible.
+- `mpvd/study/`: `clips.py` (argv por formato mp4/mp4-copy/mkv-copy/gif/mp3/opus/wav, `-progress pipe:1`, nombres
+  `<stem> [hh.mm.ss-hh.mm.ss].ext`), `silence.py` (mapa de silencios con padding adaptativo), `service.py` (`study.formats`,
+  `study.clip` job con eventos `clip` a todas las sesiones e historial `clips.json`, `study.clips.list/cancel`, `study.silences`
+  cacheado por hash). ADR-031.
+- `mu-study/main.lua`: alt+e menú Estudio; alt+w repetir línea (alt+←/→ anterior/siguiente; se apaga si el usuario quita el A-B);
+  alt+g velocidad inteligente (opciones `mu-study-silence_speed/silence_db/silence_min`); alt+b nota (cuadro de búsqueda de uosc
+  como campo de texto + cita del subtítulo → notes.add); alt+u clip del A-B o de la línea (formato por menú; abrir el clip
+  terminado desde el menú). Estado en `user-data/mu/study`; mensajes `mu-study-note/clip/smart/repeat`.
+- Tests (tests/test_study.py): argv y nombres, 5 formatos reales con ffprobe, métodos vía daemon (cola, historial, errores,
+  silencios cacheados), mu-study headless (bucle con sub-delay, apagado al quitar A-B, nota con cita y enlace, clip mp3 del A-B
+  con evento, velocidad ×2,5 en pausa y vuelta a ×1,25, menú).
+- Probar a mano:
+  ```bash
+  bin/mpv-uos pelicula.mkv    # con subtítulos: alt+w repite la línea; alt+g acelera silencios; alt+b nota; l l marca A-B y alt+u exporta
+  .venv/bin/python -m mpvd call study.clips.list
+  cat "$(.venv/bin/python -m mpvd call notes.list | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["file"])')"
+  ```
 #### H10 · Búsqueda semántica y capítulos automáticos — hecho (commit "H9+H10")
 - `mpvd/semantic/`: `embed.py` (Embedder ONNX + sentencepiece, 2 hilos, descarga verificada del modelo a vendor/models/embed),
   `index.py` (frases desde cues, blob float32, búsqueda coseno + bonus literal, capítulos por cambio de tema, ffmetadata),

@@ -72,6 +72,8 @@ class MpvdServer:
         from mpvd.iptv.service import IptvService  # noqa: PLC0415
         from mpvd.semantic.service import SemanticService  # noqa: PLC0415
         from mpvd.semantic.service import register as register_semantic  # noqa: PLC0415
+        from mpvd.study.service import StudyService  # noqa: PLC0415
+        from mpvd.study.service import register as register_study  # noqa: PLC0415
         from mpvd.subs.service import SubsService  # noqa: PLC0415
         from mpvd.subs.service import register as register_subs  # noqa: PLC0415
         from mpvd.iptv.service import register as register_iptv  # noqa: PLC0415
@@ -97,6 +99,8 @@ class MpvdServer:
         register_intro(self, self.intro)
         self.semantic = SemanticService(self, embedder_factory=_semantic_factory())
         register_semantic(self, self.semantic)
+        self.study = StudyService(self)
+        register_study(self, self.study)
         control.register(self)
 
     # -- lifecycle -------------------------------------------------------------
