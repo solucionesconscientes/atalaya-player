@@ -77,10 +77,28 @@ Menú **yt-dlp** (botón ⬇ en la barra, `alt+y`):
 .venv/bin/python -m mpvd call ytdl.settings.set '{"video_dir":"~/Descargas/video","auto_update":false}'
 ```
 
+## Subtítulos IA en vivo (whisper.cpp)
+Para cualquier **archivo local**, mpvd transcribe el audio por delante de la posición de reproducción con `whisper-cli`
+(vendorizado en `vendor/whisper` por `tools/vendor_whisper.sh`, ver docs/WHISPER.md) y va escribiendo un SRT que mpv añade como
+pista externa y recarga solo. Menú **Subtítulos IA** (botón CC en la barra, `alt+i`); `alt+c` inicia/detiene.
+- Idioma automático o fijado; modelo automático según el hardware (docs/BENCHMARKS.md) o elegido y **descargado bajo demanda**
+  desde el menú (tiny → large-v3, cuantizados incluidos; VAD Silero).
+- Un seek mueve el cursor de transcripción: primero se transcribe lo que vas a ver. Lo transcrito queda en caché por contenido
+  (hash) y se reanuda al instante aunque cierres mpv o renombres el archivo.
+- "Pre-subtitular el siguiente de la lista": el próximo elemento de la playlist se transcribe en baja prioridad mientras ves el actual.
+```bash
+LD_LIBRARY_PATH=vendor/whisper/bin vendor/whisper/bin/whisper-cli --version    # ¿está whisper?
+.venv/bin/python -m mpvd call asr.models                                        # modelos presentes / recomendados
+.venv/bin/python -m mpvd call asr.start '{"path":"/ruta/video.mkv","language":"es"}'
+.venv/bin/python -m mpvd call asr.status
+tools/bench_asr.sh                                                              # RTF por modelo → docs/BENCHMARKS.md
+```
+
 ## Estructura
 - `bin/mpv-uos` lanzador · `mpv-config/` configuración portable (mpv.conf, input.conf, scripts `mu-*`, uosc, thumbfast)
 - `mpvd/` daemon Python (JSON-RPC 2.0) · `tests/` pytest (unit + integración con mpv headless) · `tools/` scripts de build/check
-- `vendor.lock` versiones fijadas de terceros · `vendor/` descargas y binarios (yt-dlp, deno opcional; ignorado por git)
+- `vendor.lock` versiones fijadas de terceros · `vendor/` descargas y binarios (yt-dlp, deno opcional, whisper.cpp + modelos;
+  ignorado por git)
 
 ## Tests a mano
 ```bash

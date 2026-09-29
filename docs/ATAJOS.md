@@ -60,3 +60,9 @@ menú completo de uosc. Los atajos por defecto de mpv siguen activos salvo que s
 | `Q` | Salir guardando la posición (`quit-watch-later`) |
 
 Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muestra las acciones del elemento, `ctrl+v` pega.
+
+## Subtítulos IA (mu-subs, whisper.cpp vía mpvd)
+| Tecla | Acción |
+|---|---|
+| `alt+i` | Menú **Subtítulos IA**: iniciar/detener, idioma, modelo (descarga bajo demanda), activar automáticamente, pre-subtitular el siguiente de la lista, estado del motor |
+| `alt+c` | Iniciar / detener los subtítulos IA del archivo actual (la transcripción parcial queda en caché y se reanuda) |

@@ -26,6 +26,13 @@ else
   tools/vendor.sh || fail=1
 fi
 
+step "vendor (whisper.cpp)"
+if [ -x vendor/whisper/bin/whisper-cli ]; then
+  echo "whisper-cli presente ($(head -1 vendor/whisper/VERSION 2>/dev/null || echo '?')); modelos: $(ls vendor/whisper/models 2>/dev/null | grep -c '^ggml-')"
+else
+  tools/vendor_whisper.sh || echo "AVISO: sin whisper.cpp los tests de ASR se omiten (ver docs/WHISPER.md)"
+fi
+
 step "medios de prueba"
 [ -f tests/fixtures/media/manifest.json ] && echo "presentes" || tools/make_test_media.sh || fail=1
 

@@ -232,6 +232,8 @@ local function static_root_items()
     { title = 'TV y radio', hint = 'alt+t', icon = 'live_tv', value = { cmd = { 'script-binding', 'mu_iptv/tv-menu' } } },
     { title = 'yt-dlp: calidad y descargas', hint = 'alt+y', icon = 'download',
       value = { cmd = { 'script-binding', 'mu_ytdl/ytdl-menu' } } },
+    { title = 'Subtítulos IA (whisper)', hint = 'alt+i', icon = 'closed_caption',
+      value = { cmd = { 'script-binding', 'mu_subs/subs-menu' } } },
     { title = 'Lista de reproducción', hint = 'p', icon = 'list_alt', value = { cmd = { 'script-binding', 'uosc/playlist' } },
       separator = true },
   }

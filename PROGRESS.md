@@ -1,21 +1,60 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 ## SIGUIENTE PASO
-H5 · Subtítulos IA en vivo: (1) inspeccionar ~/proyectos/live-captions-linux (solo lectura) para reutilizar su whisper.cpp
-(binario/modelos ya compilados: copiar a vendor/whisper, no compilar si ya existe whisper-server/whisper-cli); si no, clonar un tag
-estable de ggml-org/whisper.cpp en vendor/ y compilar con cmake (CPU; probar -DGGML_VULKAN=ON solo si compila y mejora RTF).
-(2) tools/bench_asr.sh: RTF por modelo (tiny/base/small, q5/q8) sobre tests/fixtures/media/voz_es.flac → docs/BENCHMARKS.md;
-elegir modelo por tier de hardware (mpvd/hardware.py). (3) mpvd `asr/`: extracción de audio por delante de time-pos (ffmpeg
-16 kHz mono), VAD (Silero vía whisper-server --vad o energía), transcripción por trozos, SRT incremental en caché por hash;
-mu-subs.lua añade/recarga la pista (`sub-add`/`sub-reload`) y repriorizar en seek. Verificar antes: opciones reales de
-whisper-server/whisper-cli (`--help`), formato de salida JSON y si admite `--vad-model`.
-(H4 antiguo) H4 · UX base: menú raíz "MPV-UOS" (mu-core o nuevo mu-menu) que agrupe TV y radio, yt-dlp, subtítulos… y botón en la barra;
-paleta de comandos global (comandos de mpv + canales + recientes + acciones de mpvd) reutilizando `iptv.search` y un nuevo
-`recents.*` por hash (`file.hash` + `cache.*` ya existen); "continuar viendo" por hash independiente de la ruta (mpvd guarda
-time-pos en `watch.*`, mu-core lo restaura en file-loaded); pantalla de inicio en modo idle (menú uosc abierto al arrancar sin
-archivo) y docs/ATAJOS.md con todas las teclas. Verificar antes: `mp.get_property('input-bindings')` para listar comandos en la
-paleta, y cómo uosc muestra menús en idle (docs/UOSC_API.md §4).
+H6 · Sincronía, traducción y duales: (1) `mpvd/subs/` (nuevo): parser/serializador SRT/ASS→cues (reusar asr/srt.py) y `subs.resync`:
+alinear un SRT externo contra las palabras/segmentos de Whisper de la tarea `asr` del archivo (DTW sobre tiempos de inicio de cue
+vs. segmentos con texto similar, deriva por tramos = offset + factor por ventana) → escribe `<nombre>.resync.srt` en caché y
+mu-subs lo carga con `sub-add`. (2) Traducción offline: probar en el .venv `argostranslate` (paquetes es↔en descargables) y si pesa
+demasiado `ctranslate2` + opus-mt; caché por (hash, par de idiomas, modelo); servicio `subs.translate` que traduce la pista
+seleccionada (SRT externo o la de la IA) → SRT traducido. (3) Duales: `secondary-sid` con el original arriba (`secondary-sub-pos`,
+verificar en `mpv --list-options`) y la traducción abajo desde el menú Subtítulos IA. Verificar antes: opciones
+`--sub-delay/--sub-speed`, `secondary-sid`, `sub-pos`/`secondary-sub-pos` en el mpv 0.41 instalado; `pip index versions argostranslate`.
 ## Registro por iteración
+### Iteración 3 · 2026-09-29
+#### H5 · Subtítulos IA en vivo — hecho (commit "H5: subtítulos IA en vivo")
+- `tools/vendor_whisper.sh` copia whisper-cli/whisper-server + libs ggml/whisper + modelos desde el build de live-captions-linux
+  (ADR-023); `vendor/whisper/VERSION`. `tools/bench_asr.sh` → docs/BENCHMARKS.md (i5-6200U, 3 hilos: base RTF 0,26–0,38, tiny 0,20,
+  small-q8_0 ≈1,0; q5_1 más lentos que q8_0). Tablas de tier en `asr/models.py`: small/medium → base en vivo; large → small-q8_0.
+- mpvd `asr/`: `audio.py` (WAV 16 kHz vía ffmpeg), `srt.py` (cues, fusión por trozos, SRT), `models.py` (catálogo, descarga bajo
+  demanda con magia ggml, elección por tier), `engine.py` (whisper-cli por trozo, JSON, cerrojo global), `service.py` (tareas por
+  archivo+modelo+idioma, plan de trozos de 20 s ordenado por distancia al cursor, `asr.seek` mueve el cursor, estado en caché de
+  artefactos → reanudación instantánea, eventos push `asr` y `asr-model`). Métodos: asr.status/models/models.download/models.remove/
+  start/precompute/seek/stop/segments. Solo archivos locales con duración (ADR-023).
+- `mu-subs/main.lua`: menú "Subtítulos IA" (alt+i; botón CC): iniciar/detener (alt+c), idioma, modelo (descargar/borrar, progreso),
+  activar automáticamente, pre-subtitular el siguiente de la lista, estado del motor. `sub-add` de la primera versión del SRT y
+  `sub-reload` (≤1/s) en cada evento; `asr.seek` en seeks y cada 5 s; adopta desde caché la tarea pre-calculada del siguiente.
+- mu-menu: entrada "Subtítulos IA (whisper)"; uosc.conf: `button:mu-subs`; input.conf + docs/ATAJOS.md; check.sh: paso whisper.
+- Docs: docs/WHISPER.md (opciones reales, JSON, hallazgos: coste fijo del encoder de 30 s, FLAC vacío por miniaudio, tiny confunde
+  idioma en `auto` con voz sintética), docs/BENCHMARKS.md, ADR-023/024, README, PLATAFORMAS.
+- Tests: test_asr_engine (argv vs `--help` real, JSON, catálogo/tier, transcripción real de voz_es ≥3 palabras clave con base),
+  test_asr_service (daemon: errores, tarea en vivo sobre la pista inglesa de voz_es_en.mkv, SRT sin solapes, reanudación desde caché
+  y tras reiniciar mpvd, trozo bajo el cursor primero, precompute), test_mu_subs (mpv headless: pista externa añadida y seleccionada,
+  `sub-text` muestra la cue tras un seek, precompute del siguiente adoptado al cambiar, menús root/idioma/modelos/estado, URL/idle
+  rechazados con OSD). Se omiten si falta whisper (tools/vendor_whisper.sh).
+- Latencia medida en tests (base, 3 hilos): primer trozo de 6 s listo en ≈4 s; trozo de 20 s en ≈5–6 s (RTF ≈0,3); mpv sin drops
+  (headless). Pendiente de H5 ampliado: URLs/directos (grabar el audio desde la URL resuelta).
+- Probar a mano:
+  ```bash
+  tools/vendor_whisper.sh && tools/bench_asr.sh          # binarios + tabla de RTF
+  bin/mpv-uos tests/fixtures/media/voz_es_en.mkv          # alt+i → Iniciar (o alt+c); aparece la pista "Subtítulos IA (base · es)"
+  .venv/bin/python -m mpvd call asr.status                # tareas, RTF, modelos; asr.models para descargar otros
+  MPV_UOS_TEST_ASR_MODEL=tiny uv run pytest tests/test_asr_service.py tests/test_mu_subs.py -q
+  ```
+#### H5 · Subtítulos IA en vivo — plan
+- Verificado en esta máquina (vendor/whisper/bin, libwhisper 1.9.3 de live-captions-linux): `whisper-cli --help` real
+  (-m/-f/-t/-l/-oj/-of/-np/-tr/-bs/-bo/-nf/--prompt/--vad/--vad-model/-ml/-sow), JSON `transcription[].offsets{from,to}` en ms,
+  `result.language`. El FLAC leído por miniaudio da vacío → siempre WAV vía ffmpeg (ya lo hace asr/audio.py). Coste fijo por
+  llamada = encoder de 30 s (tiny 1.3 s, base 3.0 s, small-q5_1 12 s con 3 hilos, incluso con 1 s de audio): el modelo se carga
+  rápido, así que whisper-server no aporta nada y se descarta (ADR-024); trozos de 20 s por defecto.
+- mpv 0.41 (`--input-cmdlist`): `sub-add url [flags] [title] [lang]`, `sub-reload [id]`, `sub-remove [id]`. mu-subs localiza la
+  pista por `external-filename` en `track-list` (el id puede cambiar al recargar) y recarga como mucho 1 vez/s.
+- Pasos: tools/vendor_whisper.sh (copia binarios+libs+modelos desde live-captions-linux o $WHISPER_BUILD) → tools/bench_asr.sh →
+  docs/BENCHMARKS.md (RTF por modelo/hilos/VAD) → ajustar tablas de tier en asr/models.py → repaso asr/service.py (chunk 20 s,
+  progreso de descarga de modelos por push) → mu-subs/main.lua (menú "Subtítulos IA": iniciar/parar, idioma, modelo, descargar
+  modelo, pre-subtitular el siguiente; sub-add/sub-reload; asr.seek en seek y cada 5 s; botón uosc con progreso; alt+i / alt+c)
+  → tests (engine con tiny/base sobre voz_es/voz_en por palabras clave; servicio asr.* vía daemon con reanudación desde caché;
+  mu-subs headless: pista externa añadida, cues correctas, precompute del siguiente) → docs (WHISPER.md, ATAJOS.md, ADR-023/024,
+  PLATAFORMAS) → check.sh → commit.
 ### Iteración 1 · 2026-09-28
 #### H0 · Cimientos — plan
 - Entorno verificado: mpv 0.41.0 (Lua OK; vo gpu-next; hwdec vulkan/vaapi/nvdec), uv 0.12.14 con CPython 3.12.14 disponible,
@@ -129,6 +168,22 @@ paleta, y cómo uosc muestra menús en idle (docs/UOSC_API.md §4).
 - Runner nocturno: `tools/nocturno.sh` espera al reset del cupo de sesión de Claude (hora del mensaje o 30 min) sin contarlo como fallo,
   tope de 3 h por iteración, effort `high` (.runner.env) y `DEADLINE=07:30`. Lanzamiento: `tmux kill-session -t mpvuos;
   tmux new-session -d -s mpvuos "cd <proyecto> && systemd-inhibit --what=sleep:idle bash tools/nocturno.sh; exec bash"`.
+#### H5 · Subtítulos IA en vivo — plan
+- Notion al día (2026-09-29): avances H3/H4, decisiones ADR-019/021 y Próximo paso en la ficha (vía subagente).
+- Verificación (subagente → docs/WHISPER.md): whisper.cpp de ~/proyectos/live-captions-linux (copiado a vendor/whisper si sirve,
+  si no compilado desde un tag estable), `--help` real de whisper-cli/whisper-server, VAD Silero, formato JSON, RTF por modelo.
+- Ya hecho sin depender del modelo: `mpvd/asr/audio.py` (ventana WAV 16 kHz mono con ffmpeg, verificado) y `mpvd/asr/srt.py`
+  (segmentos, SRT incremental, fusión por trozos con recorte de solapes) + tests.
+- Siguiente: `asr/engine.py` (whisper-server persistente con fallback a whisper-cli), `asr/service.py` (`asr.*`: start/seek/stop/
+  status/models; trozos de 10 s con solape, prioridad URGENT para el trozo por delante de time-pos, PRECOMPUTE para el resto y
+  el siguiente de la playlist; SRT en caché por hash; eventos push `asr`), `mu-subs.lua` (menú "Subtítulos IA": iniciar/parar,
+  idioma, modelo; `sub-add` la primera vez y `sub-reload` en cada actualización; `asr.seek` en seeks; progreso en uosc),
+  tools/bench_asr.sh → docs/BENCHMARKS.md, tests con el modelo tiny sobre voz_es/voz_en (palabras clave del manifest).
+- Iteración 2 (2026-09-29): binarios de whisper.cpp ya copiados en vendor/whisper (de live-captions-linux, libwhisper 1.9.3,
+  funcionan con LD_LIBRARY_PATH); la compilación de vendor/whisper-src (v1.9.4) murió por tiempo → se descarta (ADR-023).
+  Diseño: un solo trabajo `heavy` por archivo que recorre un plan de trozos ordenado por distancia a time-pos (seek = mover el
+  cursor, sin cancelar trabajos); semáforo global de 1 proceso whisper; SRT estable en .cache/asr/<clave>/ + estado en la caché
+  de artefactos (reanudable); modelos bajo demanda desde Hugging Face con verificación de magia ggml; eventos push a mu_subs.
 #### H4 · UX base — hecho (commit "H4: UX base")
 - mpvd `watch.py` (servicio `watch.*`: get/update/recents/search/remove/clear; clave por contenido; historial de 500 entradas).
 - `mu-menu/main.lua`: menú raíz "MPV-UOS" (MBTN_RIGHT/MENU/alt+m, botón `mu-menu` en la barra; "Continuar viendo" inline),

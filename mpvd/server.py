@@ -62,6 +62,8 @@ class MpvdServer:
         self._idle_task: asyncio.Task[None] | None = None
         self.services: dict[str, bool] = {}
         from mpvd import methods  # noqa: PLC0415 - avoid import cycle
+        from mpvd.asr.service import AsrService  # noqa: PLC0415
+        from mpvd.asr.service import register as register_asr  # noqa: PLC0415
         from mpvd.iptv.service import IptvService  # noqa: PLC0415
         from mpvd.iptv.service import register as register_iptv  # noqa: PLC0415
         from mpvd.watch import WatchService  # noqa: PLC0415
@@ -76,6 +78,8 @@ class MpvdServer:
         register_ytdl(self, self.ytdl)
         self.watch = WatchService(self)
         register_watch(self, self.watch)
+        self.asr = AsrService(self)
+        register_asr(self, self.asr)
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -115,6 +119,7 @@ class MpvdServer:
                 await self._idle_task
         await self.sessions.close_all()
         await self.ytdl.close()
+        await self.asr.close()
         await self.jobs.stop()
         for w in list(self._peers):
             w.close()
