@@ -1,17 +1,97 @@
 # PROGRESS
-ESTADO_GLOBAL: EN_CURSO
+ESTADO_GLOBAL: COMPLETADO
+
+## Resumen para Ser (2026-09-29)
+Todos los hitos H0–H13 de BACKLOG.md están [x]; ninguno quedó [~]. `tools/check.sh` pasa 202 tests sin red + 4 con red; lo único
+sensible es la CPU: los tests de Whisper (`test_asr_engine`, `test_mu_subs`) fallan por tiempo si el portátil está ocupado con otros
+trabajos (ver "Qué quedó pendiente").
+
+### Qué funciona
+- **Reproductor**: mpv 0.41 + uosc 5.13 con configuración portable (`mpv-config/`, nunca `~/.config/mpv`), menú MPV-UOS (`alt+m`,
+  botón derecho), paleta global (`alt+p`), pantalla de inicio y "continuar viendo" por hash del contenido.
+- **mpvd** (daemon Python sin dependencias obligatorias): JSON-RPC 2.0 con `capabilities`, sesiones por IPC, caché SQLite por hash,
+  cola con prioridades y guardián de rendimiento; lo arranca mu-core solo.
+- **TV y radio**: TDTChannels, iptv-org, Radio Browser y M3U propias; búsqueda sin acentos, favoritos, recientes, zapping, ICY y grabación.
+- **yt-dlp**: binario vendorizado con actualización diaria verificada, vídeo/solo audio en caliente, menú de todos los formatos,
+  descargas con presets (vídeo, audio original, MP3/Opus/M4A/FLAC/WAV con bitrate), cola con progreso.
+- **Subtítulos IA** en vivo (whisper.cpp, look-ahead, caché reanudable, pre-subtitulado del siguiente), resincronización, traducción
+  offline (Argos/CTranslate2) y subtítulos duales.
+- **Sonido e imagen**: diálogo claro, modo noche, RNNoise, binaural, fotosensible, perfil ligero, diagnóstico de tirones.
+- **MCP** para asistentes (Claude Code), **intro/créditos** por huellas de audio, **búsqueda semántica** y capítulos por tema,
+  **modo estudio** (repetir línea, velocidad inteligente, notas Markdown, clips/GIF) y **mando QR/PWA** desde el móvil.
+- **Instalación de usuario** en Linux sin sudo (`tools/install.sh`), guía `docs/USO.md`, teclas `docs/ATAJOS.md`, plataformas
+  `docs/PLATAFORMAS.md`, decisiones ADR-001…032 en `docs/DECISIONS.md`.
+
+### Cómo probarlo (comandos exactos)
+```bash
+cd ~/Documentos/PROJECTES/MPV-UOS
+tools/check.sh                                   # todo (genera tests/fixtures/media); mejor con el portátil libre (≈7 min)
+tools/install.sh --extras                        # instala mpv-uos en ~/.local/bin y "MPV-UOS" en el menú de aplicaciones
+mpv-uos                                          # pantalla de inicio · alt+m menú · alt+p paleta
+mpv-uos tests/fixtures/media/voz_es_en.mkv       # alt+c subtítulos IA · alt+i menú de subtítulos · alt+e estudio
+mpv-uos 'https://www.youtube.com/watch?v=aqz-KE-bpKQ'   # alt+a solo audio · alt+q calidad · alt+d descargar · alt+l descargas
+mpv-uos                                          # alt+t TV y radio · alt+f buscar canal · alt+↑/↓ zapping · alt+r grabar
+mpv-uos tests/fixtures/media/serie/ep02.mkv      # intro detectada: alt+k salta · alt+j menú
+mpv-uos tests/fixtures/media/chapters.mkv        # alt+z QR para el móvil (antes: sudo ufw allow … 8790, ver NEEDS_HUMAN.md)
+.venv/bin/python -m mpvd status                  # estado del daemon
+```
+Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteración".
+
+### Qué quedó pendiente o bloqueado (y por qué)
+- **Cortafuegos** (NEEDS_HUMAN.md): `ufw` bloquea la entrada, así que el móvil no llega al mando hasta ejecutar el `sudo ufw allow …`.
+- **Notion**: en esta sesión el conector de Notion no estaba autorizado (hay que autorizarlo en los ajustes de conectores de claude.ai),
+  así que la Bitácora no recoge H12–H13; las etiquetas de Stack siguen pendientes (NEEDS_HUMAN.md).
+- **Windows**: falta el lanzador PowerShell y el transporte de mpvd por named pipe; **macOS** sin probar (tabla en docs/PLATAFORMAS.md).
+- **Subtítulos IA en URLs/directos**: solo archivos locales (grabar el audio de la URL con ffmpeg está por hacer).
+- **Tests de Whisper y carga**: con otros procesos pesados en el portátil (load > 8), `whisper-cli` va hasta 45× más lento y esos dos
+  tests fallan por tiempo; con la máquina libre pasan. Repetir: `MU_KEEP_LOGS=1 uv run pytest tests/test_asr_engine.py tests/test_mu_subs.py`.
+- **Ideas siguientes** del TOP 10 de docs/VISION.md aún sin hito: "¿qué me he perdido?" (B11), OCR de subtítulos PGS (B6),
+  diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
+
 ## SIGUIENTE PASO
-H12 · Mando QR/PWA: (1) verificar con subagente qué hay para el QR sin dependencias (`qrencode` en PATH? si no, implementar QR en
-Python puro en mpvd/remote/qr.py: versión 1-6, nivel M, modo byte; o `segno` como extra) y cómo mostrarlo en mpv (overlay-add
-con BGRA crudo escrito a un archivo en runtime dir: verificar sintaxis `overlay-add id x y file offset fmt w h stride` en mpv 0.41);
-(2) mpvd `remote/`: servidor HTTP asyncio propio (sin aiohttp) en 127.0.0.1+LAN (0.0.0.0, puerto libre) con token de un solo uso
-en la URL del QR que se canjea por una cookie de sesión (HMAC, caduca al cerrar mpv), rutas `/`, `/app.js`, `/api/state`,
-`/api/cmd` (play/pause/seek/volume/next/prev/sub/audio), `/api/channels?q=`, `/api/search?q=` (semantic.search + asr.search),
-`/events` (SSE con time-pos/pausa/título a ≤2 Hz); (3) PWA estática en mpvd/remote/www (manifest, service worker mínimo,
-HTML+JS sin framework, botones grandes, barra de progreso, lista de canales, búsqueda); (4) mu-remote.lua: `alt+z` muestra/oculta
-el QR (overlay + URL en OSD), estado en user-data/mu/remote; (5) tests: cliente HTTP con urllib contra el servidor de test, token
-inválido rechazado, comandos aplicados en mpv headless, SSE recibe eventos; QR decodificable si hay `zbarimg` (si no, se omite).
+Backlog completo. Si se reanuda: (1) Ser abre el puerto del mando y autoriza Notion (NEEDS_HUMAN.md) y ejecuta `/registrar`;
+(2) nuevos hitos a partir del TOP 10 de docs/VISION.md, empezando por B11 "¿qué me he perdido?" (resumen extractivo de la
+transcripción entre dos tiempos con los embeddings de H10) y E4 MPRIS (script mpv-mpris o DBus desde mpvd); (3) Windows: transporte
+named pipe en mpvd (`server.py`, `client.py`, `mpvipc.py`) + `bin/mpv-uos.ps1`.
+
 ## Registro por iteración
+### Iteración 5 · 2026-09-29
+#### H13 · Cierre — hecho (commit "H13: cierre")
+- `tools/install.sh` (lanzador `~/.local/bin/mpv-uos` → checkout, `.desktop` validado con tipos MIME y `--wayland-app-id=mpv-uos`,
+  icono SVG, `--xdg`, `--extras`, `--default`, `--dry-run`, `--uninstall` que solo borra lo que lleva su marca; se niega a
+  sobrescribir un `mpv-uos` ajeno). Tests (tests/test_install.py) en prefijos de `tmp/`: instalación, idempotencia, `--version` a
+  través del lanzador, variables XDG, desinstalación selectiva y dry-run. No se ha ejecutado contra el `~/.local` real.
+- `docs/USO.md` (guía por tareas), README (instalación, mando, guía), `docs/PLATAFORMAS.md` (tabla por componente, macOS/Windows).
+- Probar a mano:
+  ```bash
+  tools/install.sh --dry-run          # qué haría
+  tools/install.sh && mpv-uos --version && tools/install.sh --uninstall
+  ```
+#### H13 · Cierre — plan
+- `tools/install.sh`: instalación de usuario sin sudo (lanzador en `~/.local/bin` que apunta al checkout, `.desktop` validado con
+  tipos MIME, icono SVG, `--xdg` para caché/datos en rutas XDG, `--default` con xdg-mime, `--dry-run`, `--uninstall` que solo borra
+  lo que lleva su marca). Tests en prefijos de `tmp/` (nunca el `~/.local` real).
+- `docs/USO.md` (guía por tareas), README (instalación, mando, enlace a la guía), `docs/PLATAFORMAS.md` (tabla por componente,
+  instalación macOS/Windows), resumen final y `ESTADO_GLOBAL: COMPLETADO` en PROGRESS.md.
+#### H12 · Mando QR/PWA — hecho (commit "H12: mando QR/PWA")
+- Verificación real (subagente → docs/REMOTE_API.md): `overlay-add` exige fichero BGRA y coordenadas de pantalla → QR como overlay ASS
+  (`mp.create_osd_overlay`); ni `qrencode` ni `segno` instalados → QR en Python puro con tablas copiadas de una implementación de
+  referencia; `ufw` activo con entrada DROP (ver NEEDS_HUMAN.md).
+- `mpvd/remote/`: `qr.py` (modo byte, v1–10, nivel M, 8 máscaras), `http.py` (HTTP/1.1 + SSE sobre asyncio), `service.py`
+  (`remote.status/start/stop/pair/forget`; token de un solo uso de 10 min en `#t=` → cookie HMAC; lista blanca de órdenes; estado
+  por SSE ≤2 Hz; móviles emparejados en `<datos>/remote.json`), `www/` (PWA: control, canales, búsqueda, recientes, más). ADR-032.
+- `mu-remote/main.lua`: `alt+z` QR + URL (se oculta a los 120 s), `alt+Z` menú (estado, móviles, olvidar, arrancar/detener), entrada
+  en el menú raíz; estado en `user-data/mu/remote`. `SessionManager` avisa a oyentes al abrir/cerrar sesiones (el mando sigue al mpv
+  más reciente si se cierra el que mostró el QR).
+- Tests (tests/test_remote.py, 17): QR decodificado con zbarimg en todas las versiones y máscaras, servidor HTTP y SSE, emparejamiento
+  (token inválido/reutilizado rechazado, cookie falsa rechazada, Origin ajeno rechazado), órdenes aplicadas en mpv headless, SSE con
+  time-pos, persistencia y desemparejar, mu-remote headless (overlay y menú). Docs: docs/REMOTE.md.
+- Probar a mano (con el puerto abierto en ufw):
+  ```bash
+  bin/mpv-uos tests/fixtures/media/chapters.mkv     # alt+z → escanear el QR con el móvil (misma wifi); alt+Z menú
+  .venv/bin/python -m mpvd call remote.status
+  curl -s http://127.0.0.1:8790/api/state            # sin emparejar → 401
+  ```
 ### Iteración 4 · 2026-09-29
 #### H11 · Estudio — hecho (commit "H11: modo estudio")
 - Verificación real (subagente → docs/ESTUDIO.md): sub-start/sub-end sin sub-delay y `unavailable` sin cue; `ab-loop-a` = "no";

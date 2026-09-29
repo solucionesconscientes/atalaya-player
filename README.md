@@ -3,7 +3,7 @@
 Reproductor multiplataforma sobre **mpv ≥ 0.41 + uosc ≥ 5.13** con un daemon companion en Python (**mpvd**) que hace lo pesado
 (IA, red, índices, descargas) y habla con mpv por JSON IPC. Local-first; sin fork de mpv; configuración portable.
 
-Visión: `docs/VISION.md` · Plan: `BACKLOG.md` · Estado: `PROGRESS.md` · Decisiones: `docs/DECISIONS.md` · Plataformas: `docs/PLATAFORMAS.md`
+**Guía de uso: `docs/USO.md`** · Teclas: `docs/ATAJOS.md` · Visión: `docs/VISION.md` · Plan: `BACKLOG.md` · Estado: `PROGRESS.md` · Decisiones: `docs/DECISIONS.md` · Plataformas: `docs/PLATAFORMAS.md`
 
 ## Requisitos (Linux)
 - mpv ≥ 0.41 con Lua (`mpv --version`), ffmpeg/ffprobe, [uv](https://docs.astral.sh/uv/).
@@ -16,6 +16,17 @@ uv sync              # crea .venv con Python 3.12 y el paquete mpvd
 tools/vendor.sh      # descarga y verifica uosc 5.13.0 (+ ziggy), thumbfast y yt-dlp según vendor.lock
 tools/check.sh       # lint + tests headless; debe acabar en "✅ check OK"
 ```
+
+## Instalación de usuario (Linux, sin sudo)
+```bash
+tools/install.sh               # uv sync + vendor.sh + ~/.local/bin/mpv-uos + "MPV-UOS" en el menú de aplicaciones (icono y tipos MIME)
+tools/install.sh --extras      # + traducción offline y búsqueda semántica (≈220 MB)
+tools/install.sh --xdg         # caché y datos en ~/.cache/mpv-uos y ~/.local/share/mpv-uos en vez de <proyecto>/.cache
+tools/install.sh --default     # además, reproductor por defecto para vídeo y audio (xdg-mime)
+tools/install.sh --uninstall   # quita lanzador, .desktop e icono (solo si los creó el instalador); no toca datos ni el checkout
+```
+El lanzador instalado apunta a este checkout (no copia nada) y nunca toca `~/.config/mpv`. Subtítulos IA: `tools/vendor_whisper.sh`
+(docs/WHISPER.md). Windows y macOS: docs/PLATAFORMAS.md.
 
 ## Abrir un archivo o URL
 ```bash
@@ -163,8 +174,18 @@ como clip: mp4 exacto, mp4/mkv sin recodificar, GIF, mp3, opus o wav a `<Vídeos
 y las notas. Las acciones que interrumpen lo que ves piden confirmación en la pantalla de mpv. Configuración: copia `.mcp.json.example`
 a `.mcp.json` y ajusta las rutas.
 
+## Mando a distancia desde el móvil
+`alt+z` muestra un código QR: escanéalo con el móvil (misma wifi) y la PWA servida por mpvd hace de mando (play/pausa, saltos,
+volumen, velocidad, pistas, capítulos, lista, canales de TV/radio, búsqueda en el diálogo, recientes). El código vale una vez y caduca
+a los 10 min; el móvil queda emparejado con una cookie firmada hasta "Olvidar" (`alt+Z`). Solo LAN, sin nube (docs/REMOTE.md).
+Con `ufw` activo hay que abrir el puerto una vez: `sudo ufw allow from 192.168.1.0/24 to any port 8790 proto tcp`.
+```bash
+.venv/bin/python -m mpvd call remote.status
+.venv/bin/python -m mpvd call remote.pair        # URL de emparejamiento sin pasar por mpv
+```
+
 ## Estructura
-- `bin/mpv-uos` lanzador · `mpv-config/` configuración portable (mpv.conf, input.conf, scripts `mu-*`, uosc, thumbfast)
+- `bin/mpv-uos` lanzador · `tools/install.sh` instalación de usuario · `mpv-config/` configuración portable (mpv.conf, input.conf, scripts `mu-*`, uosc, thumbfast)
 - `mpvd/` daemon Python (JSON-RPC 2.0; `mpvd/mcp.py` servidor MCP) · `tests/` pytest (unit + integración con mpv headless) · `tools/` scripts de build/check
 - `vendor.lock` versiones fijadas de terceros · `vendor/` descargas y binarios (yt-dlp, deno opcional, whisper.cpp + modelos;
   ignorado por git)

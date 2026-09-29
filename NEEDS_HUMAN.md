@@ -14,3 +14,12 @@
 ## 2026-09-29 · Opcional (no bloquea)
 - "Saltar intro/créditos" necesita `fpcalc` (Chromaprint). En este portátil ya está (`/usr/bin/fpcalc` 1.6.0); en otra máquina:
   `sudo apt install libchromaprint-tools`. Sin él la función se desactiva sola (capabilities.services.intro=false).
+
+## 2026-09-29 · Mando QR/PWA (no bloquea los tests)
+- `ufw` está activo con entrada DROP, así que el móvil no llegará al mando (puerto 8790) hasta abrirlo una vez:
+  `sudo ufw allow from 192.168.1.0/24 to any port 8790 proto tcp comment 'mpv-uos remote'` (ajusta la subred a la de tu wifi).
+  Prueba a mano: `bin/mpv-uos tests/fixtures/media/chapters.mkv`, `alt+z`, escanear el QR con el móvil (misma wifi).
+
+## 2026-09-29 · Notion sin autorizar en la sesión nocturna (no bloquea)
+- El conector "claude.ai Notion" pedía autenticación y la sesión no interactiva no puede hacer OAuth: la Bitácora no recoge H12–H13
+  ni el cierre del proyecto. Autorízalo en claude.ai → Ajustes → Conectores y ejecuta `/registrar` en una sesión interactiva.

@@ -90,4 +90,4 @@ Aceptación: con el audio de prueba ES/EN el SRT contiene las frases esperadas (
 - [x] PWA local servida por mpvd con token de un solo uso mostrado como QR en OSD; control, canales y búsqueda.
 
 ## H13 · Cierre
-- [ ] README completo, docs/USO.md, instalación de usuario en Linux, notas Windows/macOS en docs/PLATAFORMAS.md, resumen final en PROGRESS.md.
+- [x] README completo, docs/USO.md, instalación de usuario en Linux, notas Windows/macOS en docs/PLATAFORMAS.md, resumen final en PROGRESS.md.
