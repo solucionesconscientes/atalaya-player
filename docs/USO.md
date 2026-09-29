@@ -31,12 +31,39 @@ Opciones del instalador: `--xdg` (caché y datos en `~/.cache/mpv-uos` y `~/.loc
   audio original o convertido a MP3/Opus/M4A/FLAC/WAV con el bitrate que quieras, subtítulos, capítulos, SponsorBlock…);
   `alt+l` muestra la cola con progreso. Destino: `~/Vídeos/MPV-UOS` y `~/Música/MPV-UOS`. Más en docs/YTDLP.md.
 
-## 4. Subtítulos con IA, traducción y duales
+## 4. Subtítulos con IA, traducción, duales y guardar SRT
 1. `alt+c` inicia los subtítulos IA del archivo local abierto (whisper.cpp; el modelo se elige según tu CPU, docs/BENCHMARKS.md).
    Aparecen unos segundos por delante de lo que ves; tras un salto, se transcribe primero lo nuevo. Quedan guardados para la próxima vez.
+   En un portátil de 4 núcleos, en vivo se usa `base` (rápido, pero se equivoca y apenas puntúa) y para **pre-subtitular** (el
+   siguiente de la lista, resincronizar, "Completar y guardar") `small-q8_0`, que transcribe mucho mejor. Si ya hay una
+   transcripción terminada con un modelo mejor, `alt+c` la reutiliza.
 2. `alt+i` abre el menú: idioma, modelo (descarga bajo demanda), pre-subtitular el siguiente de la lista.
-3. `alt+x` resincroniza un subtítulo descargado que va desfasado (retraso, deriva o cortes) contra la transcripción IA.
-4. Menú → *Traducir la pista seleccionada a…* (offline, requiere `--extras`) y *Subtítulos duales* (original arriba, traducción abajo).
+3. `alt+x` resincroniza un subtítulo que va desfasado (retraso, deriva o cortes) contra la transcripción IA. Sirve para archivos
+   `.srt/.ass/.vtt` y para pistas de texto que van dentro del vídeo (se extraen solas).
+4. Menú → *Traducir la pista seleccionada a…* (offline, requiere `--extras`). Arriba eliges el motor:
+   - **Rápido (Argos)**: todos los idiomas (≈90 MB por par, pivota por inglés). Traduce literal: "No me tomes el pelo" → "Don't take
+     my hair".
+   - **Calidad (OPUS-MT, 234 MB, se descarga una vez)**: español/catalán ↔ inglés con OPUS-MT *tc-big* (Helsinki-NLP, CC-BY 4.0).
+     Acierta muchas más expresiones coloquiales ("Don't tease me"). La primera vez descarga ≈860 MB, los convierte a 234 MB y
+     borra el resto; después funciona sin red. Tarda más (beam 4, en segundo plano) y usa ≈430 MB de RAM solo mientras traduce.
+   - **Automático** (por defecto): OPUS-MT donde ya esté descargado y Argos para lo demás (p. ej. francés → español = Argos
+     fr→en + OPUS-MT en→es).
+   La pista seleccionada puede ser la IA, un archivo externo o una pista de texto interna del vídeo (se extrae con ffmpeg).
+   *Subtítulos duales*: original arriba, traducción abajo.
+5. **Guardar subtítulos (SRT)** (`alt+S` o menú `alt+i` → *Guardar subtítulos (SRT)*): guarda como SRT normal, junto al vídeo, la
+   pista IA (con su idioma y el % transcrito), la traducción, el resincronizado o la pista seleccionada (externa o interna; ASS y
+   WebVTT se convierten a SRT). `alt+S` guarda lo que estés viendo o, si no hay pista seleccionada, la IA. Aparece
+   "✓ Guardado: película.es.srt (812 líneas)".
+   - Nombre: `película.<idioma>.srt`; si ya existe, `película.<idioma>.ia.srt` (IA o traducción) o `.resync.srt`, y luego `(2)`, `(3)`…
+   - Si la carpeta del vídeo no admite escritura o es una URL, va a `~/Vídeos/MPV-UOS/Subtítulos` (tu carpeta de vídeos XDG).
+   - Pista IA sin terminar: elige *Guardar lo transcrito* (lo que haya) o *Completar y guardar* (sigue en segundo plano, aunque
+     cierres el reproductor, y guarda al acabar).
+   - Al volver a abrir el vídeo, mpv carga el SRT guardado y los subtítulos IA lo reutilizan en vez de añadir otra pista igual.
+6. **Límites honestos**: la traducción solo puede ser tan buena como el texto de origen; con subtítulos IA, lo que más cuenta es la
+   transcripción (usa `small-q8_0` o mejor: pre-subtitula o *Completar y guardar* antes de traducir). Los subtítulos de imagen de
+   DVD/Blu-ray (PGS, VobSub, DVB) no se pueden guardar, traducir ni resincronizar: necesitan OCR, que MPV-UOS no incluye. Los tiempos
+   de la traducción son los del original: cuando una frase ocupa varios cues se reparte cortando en comas y conjunciones, pero con
+   idiomas de orden muy distinto alguna línea queda partida.
 Más en docs/WHISPER.md y docs/TRADUCCION.md.
 
 ## 5. Buscar dentro del vídeo y capítulos automáticos
@@ -72,6 +99,8 @@ diálogo, canales, descargas, notas). Lo que interrumpe lo que ves pide confirma
 | Datos (favoritos, recientes, notas, móviles emparejados) | `<proyecto>/.cache/data/` | `~/.local/share/mpv-uos/` |
 | Descargas y clips | `~/Vídeos/MPV-UOS`, `~/Música/MPV-UOS` | igual |
 | Grabaciones de TV/radio | `~/Escritorio/MPV-UOS` | igual |
+| Subtítulos guardados (SRT) | junto al vídeo; si no se puede, `~/Vídeos/MPV-UOS/Subtítulos` | igual |
+| Modelos de traducción | Argos: `<proyecto>/vendor/models/argos` · OPUS-MT: `<proyecto>/.cache/data/models/opus-mt` | Argos igual · OPUS-MT: `~/.local/share/mpv-uos/models/opus-mt` |
 | Configuración de mpv | `<proyecto>/mpv-config/` (nunca `~/.config/mpv`) | igual |
 
 ## Problemas frecuentes

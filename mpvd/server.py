@@ -149,6 +149,7 @@ class MpvdServer:
         await self.sessions.close_all()
         await self.remote.close()
         await self.ytdl.close()
+        await self.subs.close()
         await self.asr.close()
         await self.jobs.stop()
         for w in list(self._peers):
