@@ -22,7 +22,8 @@ from mpvd.mpvipc import MpvIpcClient
 
 ROOT = Path(__file__).resolve().parents[1]
 MEDIA = ROOT / "tests" / "fixtures" / "media"
-TMP = ROOT / "tmp"
+# MU_TEST_TMP: shorter base for sockets when the checkout path is long (git worktrees): AF_UNIX paths max ~107 bytes
+TMP = Path(os.environ["MU_TEST_TMP"]) if os.environ.get("MU_TEST_TMP") else ROOT / "tmp"
 
 
 @pytest.fixture(autouse=True, scope="session")

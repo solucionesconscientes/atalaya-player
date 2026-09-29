@@ -18,8 +18,8 @@ menú **Más opciones** de uosc (`ctrl+m`). Los atajos por defecto de mpv siguen
 | `SPACE` | Reproducir / pausa (también el botón ▶ de la barra) |
 | `o` | Abrir archivo |
 | `ctrl+v` | Abrir la URL o ruta copiada (portapapeles) |
-| `ctrl+u` | Abrir URL… (pegar o escribir; YouTube y más de mil webs vía yt-dlp) |
-| `ctrl+f` | Buscar en YouTube |
+| `ctrl+u` | Abrir URL: pega o escribe un enlace («Pegar: …» con el del portapapeles); con texto, busca en YouTube |
+| `ctrl+f` | Buscar en YouTube: Enter busca y Enter reproduce; Tab: añadir a la lista o descargar |
 | `p` | Lista de reproducción |
 | `c` | Capítulos |
 | `s` | Subtítulos · `alt+s` cargar subtítulos |
@@ -45,7 +45,7 @@ menú **Más opciones** de uosc (`ctrl+m`). Los atajos por defecto de mpv siguen
 ## Vídeos de internet (mu-ytdl)
 | Tecla | Acción |
 |---|---|
-| `alt+y` | Menú yt-dlp (solo audio, calidad, descargar, descargas, estado) |
+| `alt+y` | Menú de vídeos de internet (abrir URL, buscar en YouTube, solo audio, calidad, descargar, descargas, estado) |
 | `alt+a` | Solo audio ⇄ vídeo, manteniendo la posición |
 | `alt+q` | Calidad: todos los formatos; Enter cambia en caliente, Tab descarga ese formato |
 | `alt+d` | Descargar con un preset (vídeo/audio) y opciones |

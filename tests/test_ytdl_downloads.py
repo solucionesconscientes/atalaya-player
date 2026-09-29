@@ -162,6 +162,7 @@ def test_download_done_cancel_fail_retry_and_history(ytdl_env):
         assert done["total"] > 0 and done["downloaded"] == done["total"] and done["attempts"] == 1
         argv = [a for a in argv_lines(arglog) if a[-1] == url][-1]
         assert argv[argv.index("-f") + 1].startswith("bv*[height<=?360]+ba")
+        assert argv[argv.index("-S") + 1] == "vcodec:h264,res,acodec:aac"  # mp4 (settings default): H.264 + AAC
         assert "--embed-chapters" in argv and "--embed-metadata" in argv  # settings defaults
         assert "--embed-thumbnail" not in argv
         jobs = await c.call("jobs.list")

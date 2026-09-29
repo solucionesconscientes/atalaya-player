@@ -27,9 +27,18 @@ Opciones del instalador: `--xdg` (caché y datos en `~/.cache/mpv-uos` y `~/.loc
 
 ## 3. YouTube y otras webs (yt-dlp)
 - `mpv-uos 'https://www.youtube.com/watch?v=…'` reproduce con el yt-dlp vendorizado (se actualiza solo a diario).
+- **Abrir URL** (`ctrl+u`, o `alt+y` → *Abrir URL…*): si el portapapeles tiene un enlace, la primera entrada es *Pegar: …*;
+  también puedes escribir o pegar (`ctrl+v`) una URL (YouTube, Twitch, archive.org, una radio, `rtsp://`…; vale `youtu.be/…` sin
+  `https://`) y pulsar Enter. Si lo escrito no es una URL, la entrada pasa a ser *Buscar «texto» en YouTube*.
+  `Tab` sobre una URL: *Añadir a la lista* (se reproduce al terminar lo actual) o *Descargar*.
+- **Buscar en YouTube** (`ctrl+f`, o `alt+y` → *Buscar en YouTube…*): escribe y pulsa Enter; salen hasta 15 resultados con
+  duración y canal (*EN DIRECTO* en los directos). Enter reproduce el elegido; `Tab`: *Añadir a la lista* o *Descargar* (abre el
+  menú de descarga de ese vídeo sin tocar lo que suena). La misma búsqueda durante una hora sale al instante (caché de mpvd).
 - `alt+a` alterna vídeo / solo audio sin perder la posición; `alt+q` elige cualquier formato; `alt+d` descarga (vídeo por resolución,
   audio original o convertido a MP3/Opus/M4A/FLAC/WAV con el bitrate que quieras, subtítulos, capítulos, SponsorBlock…);
   `alt+l` muestra la cola con progreso. Destino: `~/Vídeos/MPV-UOS` y `~/Música/MPV-UOS`. Más en docs/YTDLP.md.
+- Contenedor de las descargas de vídeo: **mp4** prioriza H.264 + AAC (se abre en cualquier sitio; en YouTube el máximo es 1080p),
+  **webm** VP9 + Opus y **mkv** la mejor calidad sin restricciones (AV1, 4K…). Se cambia en *Descargar → Opciones → Contenedor*.
 
 ## 4. Subtítulos con IA, traducción y duales
 1. `alt+c` inicia los subtítulos IA del archivo local abierto (whisper.cpp; el modelo se elige según tu CPU, docs/BENCHMARKS.md).

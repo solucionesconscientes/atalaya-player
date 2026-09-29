@@ -9,9 +9,11 @@ Environment:
   FAKE_YTDLP_DELAY    seconds between progress lines (default 0.05)
   FAKE_YTDLP_STEPS    number of progress lines per file (default 6)
   FAKE_YTDLP_VERSION  what --version prints (default 2026.08.19)
+  FAKE_YTDLP_SEARCH_DELAY  seconds a synthetic "fake" search takes (default 0; lets tests see the loading state)
 
 URL conventions: ``*fail*`` → exit 1 with an ERROR line; ``youtube.com/watch`` → youtube_bbb.json; ``archive.org`` →
-archive_countdown.json; ``ytsearch`` → playlist_flat_search.json; ``/playlist``/``@`` → playlist_flat.json;
+archive_countdown.json; ``ytsearch`` → playlist_flat_search.json, except queries containing "fake", which get
+synthetic results pointing at ``https://fake.test/…`` (one of them live); ``/playlist``/``@`` → playlist_flat.json;
 ``https://fake.test/<name>`` → synthetic info whose format URLs point at local media (for mpv's ytdl_hook).
 """
 
@@ -126,6 +128,24 @@ def fake_info(url: str, fmt: str) -> dict:
     return info
 
 
+def fake_search(query: str, n: int) -> dict:
+    """Flat ``ytsearchN:`` result shaped like yt-dlp's (entries of ``_type: url``) for the fake.test media."""
+    entries = [
+        {"_type": "url", "ie_key": "Fake", "id": "fake-a", "url": "https://fake.test/a", "title": "Fake Result A",
+         "duration": 30, "channel": "MPV-UOS tests", "uploader": "MPV-UOS tests", "view_count": 1234,
+         "live_status": None},
+        {"_type": "url", "ie_key": "Fake", "id": "fake-live", "url": "https://fake.test/live",
+         "title": "Fake Live B", "duration": None, "channel": "MPV-UOS live", "view_count": None,
+         "live_status": "is_live"},
+        {"_type": "url", "ie_key": "Fake", "id": "fake-c", "url": "https://fake.test/c", "title": "Fake Result C",
+         "duration": 3725, "channel": None, "uploader": "Uploader C", "view_count": 7, "live_status": "not_live"},
+        {"_type": "url", "ie_key": "Fake", "id": "no-url", "title": "Entry without URL"},
+    ]
+    return {"id": query, "title": query, "_type": "playlist", "webpage_url": f"ytsearch{n}:{query}",
+            "extractor": "youtube:search", "extractor_key": "YoutubeSearch", "playlist_count": min(n, len(entries)),
+            "entries": entries[:n]}
+
+
 def dump_json(url: str, opts: dict[str, list[str]], flags: set[str]) -> int:
     fmt = first(opts, "-f", "--format")
     if "fail" in url:
@@ -135,6 +155,13 @@ def dump_json(url: str, opts: dict[str, list[str]], flags: set[str]) -> int:
         print(json.dumps(fake_info(url, fmt)))
         return 0
     if url.startswith("ytsearch"):
+        m = re.match(r"ytsearch(\d*):(.*)$", url, re.S)
+        if m and "fake" in m.group(2):
+            delay = float(os.environ.get("FAKE_YTDLP_SEARCH_DELAY", "0"))
+            if delay:
+                time.sleep(delay)
+            print(json.dumps(fake_search(m.group(2), int(m.group(1) or 1))))
+            return 0
         name = "playlist_flat_search.json"
     elif "--flat-playlist" in flags and ("/playlist" in url or "/@" in url):
         name = "playlist_flat.json"

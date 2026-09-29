@@ -39,12 +39,15 @@ Hoy no funciona sin trabajo: falta el lanzador PowerShell y el transporte por na
   tools/vendor.sh tendría que instalar `yt-dlp.exe` (SHA en docs/YTDLP.md §3) y mu-ytdl ya usa `;` como separador de rutas y
   `vendor/bin/yt-dlp.exe`. mpvd sí puede ejecutar el zipimport con su propio Python. Runtime JS: deno `deno-x86_64-pc-windows-msvc.zip`
   (suma en vendor.lock) o node ≥ 22.
+- «Abrir URL» (mu-ytdl) lee el portapapeles con la propiedad `clipboard/text` de mpv 0.41 (backend `win32`): sin probar. Si no hay
+  backend, la paleta funciona igual pero sin la entrada «Pegar: …».
 
 ## macOS
 - `readlink -f` requiere macOS ≥ 12.3 (o coreutils). `XDG_RUNTIME_DIR` no existe: el lanzador cae a `$TMPDIR/mpv-uos`.
 - `hwdec=auto-safe` elige videotoolbox automáticamente; no verificado.
 - yt-dlp zipimport funciona con el python3 del sistema (≥ 3.10) o el del .venv; deno para arm64/x86_64 con sumas en vendor.lock.
   Carpetas de descarga: `~/Videos`/`~/Music` (no hay user-dirs.dirs); configurable con `ytdl.settings.set`.
+  El portapapeles de «Abrir URL» usa el backend `mac` de `clipboard/text` (sin probar).
 
 ## Rutas
 - Config: siempre `<proyecto>/mpv-config` vía `--config-dir` (ADR-002). Caché de mpvd: `.cache/` en desarrollo; XDG/platformdirs en producción.

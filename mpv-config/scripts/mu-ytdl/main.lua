@@ -1,7 +1,9 @@
 -- mu-ytdl: yt-dlp integration for MPV-UOS. Points mpv's ytdl_hook at the vendored yt-dlp, switches video / audio-only
 -- keeping the position, "Calidad" (all formats from `yt-dlp -J` via mpvd), "Descargar" (presets + options) and a
--- live "Descargas" panel fed by mpvd push events. Script name: mu_ytdl.
--- Bindings: ytdl-menu, ytdl-toggle-audio, ytdl-quality, ytdl-download, ytdl-downloads (see input.conf).
+-- live "Descargas" panel fed by mpvd push events, plus two palettes: "Abrir URL" (typed/pasted URL or clipboard) and
+-- "Buscar en YouTube" (ytdl.search in mpvd). Script name: mu_ytdl.
+-- Bindings: ytdl-menu, ytdl-toggle-audio, ytdl-quality, ytdl-download, ytdl-downloads, open-url, yt-search
+-- (see input.conf).
 -- Everything about ytdl_hook below was verified against the script embedded in mpv 0.41 (docs/MPV_YTDL.md).
 local mp = require('mp')
 local msg = require('mp.msg')
@@ -13,7 +15,12 @@ local uosc = require('mu.uosc')
 
 local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-ytdl-event'
+local URL_EVENT = 'mu-ytdl-url-event'       -- one callback message per palette: `search` events carry no menu type
+local SEARCH_EVENT = 'mu-ytdl-search-event'
 local MENU = 'mu-ytdl'
+local URL_MENU = 'mu-ytdl-url'              -- palettes get their own type (a palette cannot be update-menu'd in/out)
+local SEARCH_MENU = 'mu-ytdl-search'
+local OUR_MENUS = { [MENU] = true, [URL_MENU] = true, [SEARCH_MENU] = true }
 
 local opts = {
   ytdl_path = '',                   -- override: path(s) for ytdl_hook (default <root>/vendor/bin/yt-dlp, then PATH)
@@ -21,6 +28,11 @@ local opts = {
   osd_seconds = 3,
   notify_done = true,               -- OSD when a download finishes
   panel_hz = 4,                     -- max refresh rate of the downloads panel
+  -- JS runtime enabled for ytdl_hook from the very first load (yt-dlp only enables deno by default; a runtime that
+  -- is not installed is just reported as unavailable). mpvd later refines it with the exact path. Empty = don't.
+  js_runtimes = 'node',
+  search_limit = 15,                -- results per YouTube search
+  clipboard_text = '',              -- tests: fixed clipboard contents instead of mpv's clipboard/text
 }
 options.read_options(opts, 'mu-ytdl')
 
@@ -48,6 +60,11 @@ local state = {
   info = nil,            -- last ytdl.info result (per url)
   items = {},            -- compact copy of the menu last shown (tests/diagnostics)
   force_open = false,
+  clipboard = nil,       -- clipboard URL read when the "Abrir URL" palette opened
+  search_query = '',     -- YouTube search palette: last submitted query, its status and result count
+  search_status = '',    -- '' | idle | loading | done | error | url
+  search_results = 0,
+  results = nil,         -- {query, rows} of the last successful search (shown again when coming back to it)
 }
 
 local set_button_state -- defined with the bindings below
@@ -65,7 +82,8 @@ local function publish()
     active = state.active, url = state.url, mode = state.mode, format = state.format, title = state.title,
     current_ids = state.current_ids, view = state.view, depth = #state.stack, downloads_active = count_active(),
     last_event = state.last_event or '', last_error = state.last_error, hook_path = state.hook_path,
-    items = state.items,
+    items = state.items, search_query = state.search_query, search_status = state.search_status,
+    search_results = state.search_results,
   })
 end
 
@@ -111,7 +129,22 @@ local function file_exists(p)
   return info and info.is_file
 end
 
+-- ytdl-raw-options set by this script before mpvd answered: mpvd may refine them (e.g. js-runtimes=node:/usr/bin/node
+-- or a vendored deno); a value the user set in mpv.conf or on the command line is never touched.
+local raw_defaults = {}
+
+local function apply_default_raw_options()
+  if opts.js_runtimes == '' then return end
+  local current = mp.get_property_native('ytdl-raw-options') or {}
+  if current['js-runtimes'] ~= nil then return end
+  -- Synchronous on purpose: mpv waits for the scripts' main chunk before loading the first file, so even
+  -- `mpv-uos <url>` runs its first yt-dlp with the runtime (mpvd's answer comes ~0.5 s later).
+  mp.commandv('change-list', 'ytdl-raw-options', 'append', 'js-runtimes=' .. opts.js_runtimes)
+  raw_defaults['js-runtimes'] = opts.js_runtimes
+end
+
 local function apply_hook_path()
+  apply_default_raw_options()
   local paths = {}
   if opts.ytdl_path ~= '' then
     table.insert(paths, opts.ytdl_path)
@@ -130,14 +163,18 @@ local function apply_hook_path()
   msg.info('ytdl_hook-ytdl_path=' .. value)
 end
 
-local raw_applied = {}
 local function apply_raw_options(raw)
   local current = mp.get_property_native('ytdl-raw-options') or {}
   for k, v in pairs(raw or {}) do
-    if current[k] == nil and not raw_applied[k] then
-      mp.commandv('change-list', 'ytdl-raw-options', 'append', k .. '=' .. tostring(v))
-      raw_applied[k] = true
-      msg.info('ytdl-raw-options += ' .. k .. '=' .. tostring(v))
+    v = tostring(v)
+    local cur = current[k]
+    -- only keys nobody set, or still holding our own early default (`append` replaces an existing key)
+    if cur == nil or (raw_defaults[k] ~= nil and cur == raw_defaults[k]) then
+      raw_defaults[k] = nil
+      if cur ~= v then
+        mp.commandv('change-list', 'ytdl-raw-options', 'append', k .. '=' .. v)
+        msg.info('ytdl-raw-options += ' .. k .. '=' .. v)
+      end
     end
   end
 end
@@ -293,8 +330,21 @@ local function short_format()
   return state.format ~= '' and state.format or 'auto'
 end
 
+-- Key bound to one of our script-bindings in input.conf (for hints), or nil.
+local function key_for(name)
+  local cmd = 'script-binding ' .. SCRIPT .. '/' .. name
+  for _, b in ipairs(mp.get_property_native('input-bindings') or {}) do
+    if b.cmd == cmd and not b.is_weak then return b.key end
+  end
+  return nil
+end
+
 views.root = function()
-  local items = {}
+  local items = {
+    { title = 'Abrir URL…', hint = key_for('open-url'), icon = 'link', value = { view = 'open_url' } },
+    { title = 'Buscar en YouTube…', hint = key_for('yt-search'), icon = 'youtube_searched_for',
+      value = { view = 'yt_search' }, separator = true },
+  }
   if state.active then
     table.insert(items, {
       title = state.mode == 'audio' and 'Volver al vídeo' or 'Solo audio',
@@ -304,7 +354,7 @@ views.root = function()
     table.insert(items, { title = 'Calidad', hint = short_format(), icon = 'high_quality', value = { view = 'quality' } })
     table.insert(items, { title = 'Descargar', icon = 'download', value = { view = 'download' } })
   else
-    table.insert(items, { title = 'Abre una URL (YouTube, archive.org…) para elegir calidad o descargar',
+    table.insert(items, { title = 'Con una URL abierta: solo audio, calidad y descargar',
                           icon = 'info', selectable = false, muted = true, align = 'center' })
   end
   local n = count_active()
@@ -437,8 +487,14 @@ local function toggle_option(name)
   end
 end
 
-views.download = function()
-  if not state.active then show('Descargar', uosc.message_items('Abre una URL de yt-dlp primero', 'info')) return end
+-- args.url/args.title: download something other than the current file (a YouTube search result).
+views.download = function(args)
+  local target = args.url
+  if not target and not state.active then
+    show('Descargar', uosc.message_items('Abre una URL de yt-dlp primero', 'info'))
+    return
+  end
+  local target_title = target and (args.title or target) or state.title
   if not require_mpvd('Descargar') then return end
   show('Descargar', uosc.loading_items())
   with_presets(function(err, res)
@@ -446,7 +502,8 @@ views.download = function()
     local o = state.dl_options
     local video, audio = {}, {}
     for _, p in ipairs(res.presets or {}) do
-      local it = { title = p.title, icon = p.group == 'audio' and 'audiotrack' or 'movie', value = { preset = p.id } }
+      local it = { title = p.title, icon = p.group == 'audio' and 'audiotrack' or 'movie',
+                   value = { preset = p.id, url = target, title = target and target_title or nil } }
       if p.group == 'audio' then table.insert(audio, it) else table.insert(video, it) end
     end
     local items = {
@@ -455,7 +512,7 @@ views.download = function()
       { title = 'Opciones', hint = (o.subtitles and 'subs ' or '') .. (o.sponsorblock ~= 'none' and 'SB ' or '') .. o.container,
         items = options_items(o) },
     }
-    show('Descargar · ' .. (state.title or ''), items, {
+    show('Descargar · ' .. (target_title or ''), items, {
       footnote = 'Enter descarga con el preset · Opciones: Enter alterna · ⌫ atrás',
     })
   end)
@@ -626,13 +683,249 @@ local function update_action(kind)
 end
 
 -- ---------------------------------------------------------------------------------------------
--- events from uosc
+-- "Abrir URL" and "Buscar en YouTube" palettes
 
-mp.register_script_message(EVENT, function(json)
+local URL_SCHEMES = {
+  http = true, https = true, ytdl = true, rtmp = true, rtmps = true, rtmpe = true, rtsp = true, rtsps = true,
+  rtp = true, srt = true, udp = true, mms = true, mmsh = true, ftp = true, ftps = true, sftp = true, file = true,
+}
+
+local function trim(s)
+  return (tostring(s or ''):gsub('^%s+', ''):gsub('%s+$', ''))
+end
+
+-- Something typed or pasted → a URL mpv can open, or nil. Bare "youtu.be/…" or "www.…" get https:// prepended.
+local function as_url(text)
+  local s = trim(text)
+  if s == '' or s:find('%s') then return nil end
+  local scheme = s:match('^(%a[%w+.-]*)://')
+  if scheme then return URL_SCHEMES[scheme:lower()] and s or nil end
+  if s:match('^www%.[%w-]+%.%a') or s:match('^[%w-]+%.[%w.-]*%a/%S*$') then return 'https://' .. s end
+  return nil
+end
+
+-- URL on the first line of the clipboard, or nil (mpv 0.41 `clipboard/text`; unavailable without a backend).
+local function clipboard_url()
+  local text = opts.clipboard_text
+  if text == '' then
+    local ok, value = pcall(mp.get_property, 'clipboard/text')
+    text = ok and value or ''
+  end
+  return as_url(tostring(text or ''):match('^%s*([^\r\n]*)'))
+end
+
+local function ellipsize(s, n)
+  if #s <= n then return s end
+  return s:sub(1, n - 1) .. '…'
+end
+
+local function fmt_duration(sec)
+  sec = tonumber(sec)
+  if not sec or sec <= 0 then return nil end
+  sec = math.floor(sec + 0.5)
+  local h, m, s = math.floor(sec / 3600), math.floor(sec % 3600 / 60), sec % 60
+  if h > 0 then return string.format('%d:%02d:%02d', h, m, s) end
+  return string.format('%d:%02d', m, s)
+end
+
+local function close_menus()
+  for t in pairs(OUR_MENUS) do uosc.close(t) end
+end
+
+local function load_url(url, append, title)
+  if append then
+    mp.commandv('loadfile', url, 'append-play')
+    osd('➕ Añadido a la lista: ' .. (title or url))
+  else
+    mp.commandv('loadfile', url, 'replace')
+    osd('Abriendo… ' .. (title or url))
+  end
+end
+
+local ITEM_ACTIONS = {
+  { name = 'append', icon = 'playlist_add', label = 'Añadir a la lista' },
+  { name = 'download', icon = 'download', label = 'Descargar' },
+}
+
+local function open_item(url)
+  return { title = 'Abrir ' .. url, icon = 'play_arrow', value = { open = url }, actions = ITEM_ACTIONS }
+end
+
+-- open_url: palette with instant updates (search_debounce 0): what is typed becomes "Abrir <url>" or
+-- "Buscar «texto» en YouTube"; the clipboard URL (read once when the palette opens) is offered as "Pegar: …".
+local function url_items(query)
+  local typed = trim(query)
+  local url = as_url(typed)
+  local items = {}
+  if url then
+    table.insert(items, open_item(url))
+  elseif typed ~= '' then
+    table.insert(items, { title = 'Buscar «' .. typed .. '» en YouTube', icon = 'youtube_searched_for',
+                          value = { yt_search = typed } })
+  end
+  if state.clipboard and state.clipboard ~= url then
+    table.insert(items, { title = 'Pegar: ' .. ellipsize(state.clipboard, 100), icon = 'content_paste',
+                          value = { open = state.clipboard }, actions = ITEM_ACTIONS })
+  end
+  if #items == 0 then
+    items = uosc.message_items('YouTube, Twitch, archive.org, radios… o texto para buscarlo en YouTube', 'link')
+  end
+  return items
+end
+
+local function url_menu(items, extra)
+  local menu = {
+    type = URL_MENU, title = 'Pega o escribe una URL y pulsa Enter', items = items, callback = { SCRIPT, URL_EVENT },
+    search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
+    footnote = 'Enter abre · Tab: añadir a la lista o descargar · ctrl+v pega · ⌫ atrás',
+  }
+  for k, v in pairs(extra or {}) do menu[k] = v end
+  return menu
+end
+
+views.open_url = function(args)
+  state.clipboard = clipboard_url()
+  local query = trim(args.query)
+  local items = url_items(query)
+  remember(items)
+  publish()
+  uosc.open(url_menu(items, { search_suggestion = query ~= '' and query or nil }))
+end
+
+-- update-menu goes out before the state is published: whoever sees the new state (tests) and then sends a key to
+-- uosc has its key queued after the update.
+local function url_typed(query)
+  local items = url_items(query)
+  remember(items)
+  uosc.update(url_menu(items))
+  publish()
+end
+
+-- yt_search: submit palette (Enter with nothing selected searches; typing deselects), results from ytdl.search.
+local SEARCH_HELP = 'Escribe y pulsa Enter para buscar en YouTube'
+local search_seq = 0
+
+local function result_items(rows)
+  local items = {}
+  for _, r in ipairs(rows or {}) do
+    local hint = {}
+    local duration = fmt_duration(r.duration)
+    if r.is_live then
+      table.insert(hint, 'EN DIRECTO')
+    elseif duration then
+      table.insert(hint, duration)
+    end
+    if type(r.channel) == 'string' and r.channel ~= '' then table.insert(hint, r.channel) end
+    table.insert(items, {
+      title = r.title or r.url, hint = #hint > 0 and table.concat(hint, ' · ') or nil,
+      icon = r.is_live and 'live_tv' or 'smart_display', bold = r.is_live or nil,
+      value = { result = { url = r.url, title = r.title } },
+    })
+  end
+  return items
+end
+
+local function search_menu(items, extra)
+  local menu = {
+    type = SEARCH_MENU, title = 'Buscar en YouTube', items = items, callback = { SCRIPT, SEARCH_EVENT },
+    search_style = 'palette', search_debounce = 'submit', on_search = 'callback', on_close = 'callback',
+    item_actions = ITEM_ACTIONS,
+    footnote = 'Enter busca / reproduce · Tab: añadir a la lista o descargar · ⌫ atrás',
+  }
+  for k, v in pairs(extra or {}) do menu[k] = v end
+  return menu
+end
+
+local function set_search(query, status, n)
+  state.search_query, state.search_status, state.search_results = query, status, n or 0
+end
+
+views.yt_search = function(args)
+  local query = trim(args.query)
+  local extra = { search_suggestion = query ~= '' and query or nil }
+  local items
+  if query ~= '' and state.results and state.results.query == query then
+    -- back from «Descargar»: the same results, no new search
+    items = result_items(state.results.rows)
+    set_search(query, 'done', #state.results.rows)
+  else
+    items = uosc.message_items(SEARCH_HELP, 'search')
+    set_search(query, 'idle')
+    extra.search_submit = query ~= '' or nil
+  end
+  remember(items)
+  publish()
+  uosc.open(search_menu(items, extra))
+end
+
+local function show_search(items)
+  remember(items)
+  uosc.update(search_menu(items))
+  publish()
+end
+
+local function run_search(query)
+  local q = trim(query)
+  search_seq = search_seq + 1
+  local seq = search_seq
+  local top = state.stack[#state.stack]
+  if top and top.name == 'yt_search' then top.args = { query = q } end  -- «back» returns to this query
+  if q == '' then
+    set_search(q, 'idle')
+    show_search(uosc.message_items(SEARCH_HELP, 'search'))
+    return
+  end
+  local url = as_url(q)
+  if url then
+    set_search(q, 'url')
+    show_search({ open_item(url) })
+    return
+  end
+  if not rpc.connected() then
+    set_search(q, 'error')
+    mp.commandv('script-message-to', 'mu_core', 'mu-ensure')
+    show_search(uosc.message_items('mpvd no está disponible: reintentando la conexión, vuelve a pulsar Enter', 'error'))
+    return
+  end
+  set_search(q, 'loading')
+  show_search(uosc.loading_items('Buscando «' .. q .. '» en YouTube…'))
+  rpc.call('ytdl.search', { query = q, limit = opts.search_limit }, function(err, rows)
+    if seq ~= search_seq then return end
+    if err then
+      set_search(q, 'error')
+      show_search(uosc.message_items('No se pudo buscar: ' .. fail(err, 'ytdl.search'), 'error'))
+      return
+    end
+    state.results = { query = q, rows = rows }
+    set_search(q, 'done', #rows)
+    local items = result_items(rows)
+    if #items == 0 then items = uosc.message_items('Sin resultados para «' .. q .. '»', 'search_off') end
+    show_search(items)
+  end, 45)
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- events from uosc (one handler; `source` = the menu type whose callback fired)
+
+local function on_event(source, json)
   local ev = utils.parse_json(json or '') or {}
   if ev.type == 'activate' then
     local v = type(ev.value) == 'table' and ev.value or {}
-    if v.toggle then
+    if v.open or v.result then
+      local target = v.result or { url = v.open }
+      if ev.action == 'download' then
+        open_view({ name = 'download', args = { url = target.url, title = target.title } })
+      elseif ev.action == 'append' then
+        load_url(target.url, true, target.title)
+      else
+        load_url(target.url, false, target.title)
+        close_menus()
+      end
+    elseif v.yt_search then
+      local top = state.stack[#state.stack]
+      if top and top.name == 'open_url' then top.args = { query = v.yt_search } end  -- «back» keeps the text
+      open_view({ name = 'yt_search', args = { query = v.yt_search } })
+    elseif v.toggle then
       toggle_audio()
       uosc.close(MENU)
     elseif v.quality then
@@ -643,7 +936,7 @@ mp.register_script_message(EVENT, function(json)
         uosc.close(MENU)
       end
     elseif v.preset then
-      start_download({ preset = v.preset })
+      start_download({ preset = v.preset, url = v.url, title = v.title })
       uosc.close(MENU)
     elseif v.opt then
       toggle_option(v.opt)
@@ -664,19 +957,26 @@ mp.register_script_message(EVENT, function(json)
       if v.view == 'root' then state.stack = {} end
       open_view({ name = v.view, args = v })
     end
+  elseif ev.type == 'search' then
+    if source == URL_MENU then url_typed(ev.query or '') elseif source == SEARCH_MENU then run_search(ev.query or '') end
   elseif ev.type == 'back' then
     table.remove(state.stack)
-    if #state.stack == 0 then uosc.close(MENU) else reopen_current() end
+    if #state.stack == 0 then close_menus() else reopen_current() end
   end
-end)
+  -- `close` is not used for state (racy, ADR-013): the observer below owns the reset
+end
+
+mp.register_script_message(EVENT, function(json) on_event(MENU, json) end)
+mp.register_script_message(URL_EVENT, function(json) on_event(URL_MENU, json) end)
+mp.register_script_message(SEARCH_EVENT, function(json) on_event(SEARCH_MENU, json) end)
 
 local reset_timer = nil
 mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
   if reset_timer then reset_timer:kill(); reset_timer = nil end
-  if t == MENU then return end
+  if OUR_MENUS[t or ''] then return end
   reset_timer = mp.add_timeout(0.2, function()
     reset_timer = nil
-    if uosc.open_type() == MENU then return end
+    if OUR_MENUS[uosc.open_type() or ''] then return end
     if #state.stack > 0 or state.view ~= '' then
       state.stack = {}
       state.view = ''
@@ -732,6 +1032,19 @@ mp.add_key_binding(nil, 'ytdl-toggle-audio', toggle_audio)
 mp.add_key_binding(nil, 'ytdl-quality', function() state.stack = { { name = 'root' } }; open_view({ name = 'quality' }) end)
 mp.add_key_binding(nil, 'ytdl-download', function() state.stack = { { name = 'root' } }; open_view({ name = 'download' }) end)
 mp.add_key_binding(nil, 'ytdl-downloads', function() state.stack = { { name = 'root' } }; open_view({ name = 'downloads' }) end)
+
+-- Palettes: bindings, plus messages with an optional initial text for other scripts
+-- (`script-message-to mu_ytdl mu-ytdl-open-url [texto]`, `script-message-to mu_ytdl mu-ytdl-search [consulta]`;
+-- a search query is submitted right away).
+local function open_palette(name, text)
+  if not uosc.available() then osd('uosc no está cargado') return end
+  state.stack = {}
+  open_view({ name = name, args = { query = text } })
+end
+mp.add_key_binding(nil, 'open-url', function() open_palette('open_url') end)
+mp.add_key_binding(nil, 'yt-search', function() open_palette('yt_search') end)
+mp.register_script_message('mu-ytdl-open-url', function(text) open_palette('open_url', text) end)
+mp.register_script_message('mu-ytdl-search', function(query) open_palette('yt_search', query) end)
 
 mp.register_script_message('uosc-version', set_button_state)
 mp.observe_property('user-data/mu/core', 'native', function(_, core)

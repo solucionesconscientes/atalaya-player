@@ -509,6 +509,10 @@ local function run_palette(query)
     local rc = {}
     for _, r in ipairs(recents) do table.insert(rc, recent_item(r)) end
     section('Recientes', rc, out)
+    if query ~= '' then
+      section('YouTube', { { title = 'Buscar «' .. query .. '» en YouTube', icon = 'travel_explore',
+        value = { cmd = { 'script-message-to', 'mu_ytdl', 'mu-ytdl-search', query } } } }, out)
+    end
     section('mpvd', action_items(query, query == '' and 2 or limit), out)
     if #out == 0 then out = uosc.message_items('Sin resultados para «' .. query .. '»', 'search_off') end
     state.palette_results = #out

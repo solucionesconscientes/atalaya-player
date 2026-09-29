@@ -1,10 +1,17 @@
 """Download specs → exact yt-dlp argv (every option verified against yt-dlp --help, docs/YTDLP.md §5/§9)."""
 
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 from mpvd.ytdl.presets import PRESETS, DownloadSpec, build_args, preset, spec_from_preset
 
 URL = "https://archive.org/details/Countdow1960"
+ROOT = Path(__file__).resolve().parents[1]
+FIX = Path(__file__).parent / "fixtures" / "ytdlp"
+VENDORED = ROOT / "vendor" / "bin" / "yt-dlp"
 
 
 def args_of(**kw):
@@ -109,3 +116,39 @@ def test_presets_build_and_describe():
     assert spec_from_preset("video_360", URL).describe() == "vídeo 360p (mp4)"
     assert spec_from_preset("audio_mp3_vbr", URL).describe() == "audio mp3 VBR q0"
     assert spec_from_preset("audio_flac", URL).describe() == "audio flac sin pérdida"
+
+
+def test_video_presets_sort_codecs_for_the_container():
+    """Bug: «Vídeo · 360p» in mp4 produced an .mkv with AV1+Opus (yt-dlp's default order ranks them first)."""
+    mp4 = args_of(kind="video", height=360)
+    assert mp4[mp4.index("-S") + 1] == "vcodec:h264,res,acodec:aac"
+    assert mp4.index("-f") < mp4.index("-S") < mp4.index("--merge-output-format") and mp4[-2:] == ["--", URL]
+    webm = args_of(kind="video", container="webm")
+    assert webm[webm.index("-S") + 1] == "vcodec:vp9,res,acodec:opus"
+    assert "-S" not in args_of(kind="video", container="mkv")  # mkv takes any codec
+    assert "-S" not in args_of(kind="exact", format="137+140")  # an explicit format is the user's choice
+    assert "-S" not in args_of(kind="audio_convert") and "-S" not in args_of(kind="audio_original")
+    for p in PRESETS:
+        argv = build_args(spec_from_preset(p["id"], URL, {"container": "mp4"}), "/tmp/out")
+        assert ("-S" in argv) == (p["group"] == "video"), p["id"]
+
+
+@pytest.mark.skipif(not VENDORED.is_file(), reason="vendored yt-dlp missing (tools/vendor.sh)")
+@pytest.mark.parametrize("container,height,expected", [
+    ("mp4", 360, ("avc1", "mp4a", "mp4", 360)),
+    ("mp4", None, ("avc1", "mp4a", "mp4", 1080)),   # H.264 tops out at 1080p on YouTube
+    ("webm", 360, ("vp9", "opus", "webm", 360)),
+    ("mkv", 360, ("av01", "opus", "mkv", 360)),     # unchanged: best codecs, any container
+])
+def test_real_ytdlp_selection_on_recorded_youtube_info(container, height, expected):
+    """The vendored yt-dlp picks formats from the recorded -J (offline: --load-info-json + simulate)."""
+    a = args_of(kind="video", height=height, container=container)
+    cmd = [sys.executable, str(VENDORED), "--no-update", "--no-remote-components", "--no-warnings",
+           "--load-info-json", str(FIX / "youtube_bbb.json"), "--simulate",
+           "--print", "%(vcodec)s|%(acodec)s|%(ext)s|%(height)s",
+           "-f", a[a.index("-f") + 1], "--merge-output-format", a[a.index("--merge-output-format") + 1]]
+    if "-S" in a:
+        cmd += ["-S", a[a.index("-S") + 1]]
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=True).stdout.strip().splitlines()
+    vcodec, acodec, ext, h = out[-1].split("|")
+    assert (vcodec.split(".")[0], acodec.split(".")[0], ext, int(h)) == expected, out
