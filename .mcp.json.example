@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mpv-uos": {
+      "command": "/home/pc/Documentos/PROJECTES/MPV-UOS/.venv/bin/python",
+      "args": ["-m", "mpvd", "mcp"],
+      "env": {
+        "MPV_UOS_ROOT": "/home/pc/Documentos/PROJECTES/MPV-UOS"
+      }
+    }
+  }
+}

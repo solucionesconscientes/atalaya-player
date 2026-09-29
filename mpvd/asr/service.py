@@ -519,6 +519,35 @@ def register(server: MpvdServer, service: AsrService) -> None:  # noqa: C901 - f
         """Cancel a task's job (partial results stay cached)."""
         return service.stop(id).to_dict()
 
+    @d.method("asr.search")
+    async def search(ctx: RpcContext, q: str, path: str | None = None, id: str | None = None,  # noqa: A002
+                     limit: int = 20) -> dict[str, Any]:
+        """Accent-insensitive search in transcribed cues (of one task/file, or of every known task)."""
+        import unicodedata  # noqa: PLC0415
+
+        def fold(t: str) -> str:
+            return "".join(c for c in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(c) != "Mn")
+
+        needle = fold(q or "").strip()
+        if not needle:
+            raise RpcError(INVALID_PARAMS, "empty query")
+        tasks = list(service.tasks.values())
+        if id:
+            tasks = [t for t in tasks if t.id == id]
+        elif path:
+            p = str(Path(path.removeprefix("file://")))
+            tasks = [t for t in tasks if t.path == p]
+        hits: list[dict[str, Any]] = []
+        for t in sorted(tasks, key=lambda t: -t.updated_at):
+            for s in t.segments:
+                if needle in fold(s.text):
+                    hits.append({"task": t.id, "path": t.path, "start": s.start, "end": s.end, "text": s.text})
+                    if len(hits) >= limit:
+                        break
+            if len(hits) >= limit:
+                break
+        return {"query": q, "hits": hits, "tasks": len(tasks)}
+
     @d.method("asr.segments")
     async def segments(ctx: RpcContext, id: str, start: float | None = None,  # noqa: A002
                        end: float | None = None) -> dict[str, Any]:

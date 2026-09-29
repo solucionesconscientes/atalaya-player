@@ -64,6 +64,7 @@ class MpvdServer:
         from mpvd import methods  # noqa: PLC0415 - avoid import cycle
         from mpvd.asr.service import AsrService  # noqa: PLC0415
         from mpvd.asr.service import register as register_asr  # noqa: PLC0415
+        from mpvd import control  # noqa: PLC0415
         from mpvd.av import AvService  # noqa: PLC0415
         from mpvd.av import register as register_av  # noqa: PLC0415
         from mpvd.iptv.service import IptvService  # noqa: PLC0415
@@ -88,6 +89,7 @@ class MpvdServer:
         register_subs(self, self.subs)
         self.av = AvService(self)
         register_av(self, self.av)
+        control.register(self)
 
     # -- lifecycle -------------------------------------------------------------
 

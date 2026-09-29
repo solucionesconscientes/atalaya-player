@@ -637,4 +637,52 @@ mp.observe_property('user-data/mu/core', 'native', function(_, core)
 end)
 
 publish()
+-- ---------------------------------------------------------------------------------------------
+-- confirmation dialog for mpvd / MCP actions: `mu-confirm <token> <text>` → user-data/mu/confirm = {token, answer}
+
+local CONFIRM_MENU = 'mu-confirm'
+local confirm_state = { token = nil, timer = nil }
+
+local function confirm_answer(token, answer)
+  if confirm_state.timer then confirm_state.timer:kill(); confirm_state.timer = nil end
+  confirm_state.token = nil
+  mp.set_property_native('user-data/mu/confirm', { token = token, answer = answer, at = mp.get_time() })
+  if uosc.open_type() == CONFIRM_MENU then uosc.close(CONFIRM_MENU) end
+end
+
+mp.register_script_message('mu-confirm', function(token, text, seconds)
+  token = token or ''
+  confirm_state.token = token
+  mp.set_property_native('user-data/mu/confirm_request', { token = token, text = text or '', at = mp.get_time() })
+  if not uosc.available() then
+    -- no UI to ask: refuse (the caller treats anything but "yes" as no)
+    confirm_answer(token, 'no-ui')
+    return
+  end
+  uosc.open({
+    type = CONFIRM_MENU, title = text or '¿Confirmar?', callback = { SCRIPT, 'mu-menu-confirm-event' }, on_close = 'callback',
+    items = {
+      { title = 'Sí, adelante', icon = 'check', value = { token = token, answer = 'yes' } },
+      { title = 'No', icon = 'close', value = { token = token, answer = 'no' } },
+    },
+  })
+  local wait = tonumber(seconds) or 15
+  confirm_state.timer = mp.add_timeout(wait, function()
+    if confirm_state.token == token then confirm_answer(token, 'timeout') end
+  end)
+end)
+
+mp.register_script_message('mu-confirm-close', function(token)
+  if confirm_state.token == token then confirm_answer(token, 'timeout') end
+end)
+
+mp.register_script_message('mu-menu-confirm-event', function(json)
+  local ev = utils.parse_json(json or '') or {}
+  if ev.type == 'activate' and type(ev.value) == 'table' then
+    confirm_answer(ev.value.token, ev.value.answer)
+  elseif ev.type == 'close' or ev.type == 'back' then
+    if confirm_state.token then confirm_answer(confirm_state.token, 'no') end
+  end
+end)
+
 msg.info('mu-menu loaded')

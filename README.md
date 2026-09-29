@@ -113,9 +113,15 @@ desde el propio menú.
 .venv/bin/python -m mpvd call av.models.download '{"name":"rnnoise-sh"}'
 ```
 
+## MCP: controla el reproductor desde Claude Code u otro asistente
+`python -m mpvd mcp` es un servidor MCP por stdio (docs/MCP.md): tools `status`, `play`, `pause`, `resume`, `seek`, `search_dialogue`
+(busca en la transcripción IA), `list_channels`, `play_channel`, `download`, `add_note`, `subtitles_ai`; resources con la transcripción
+y las notas. Las acciones que interrumpen lo que ves piden confirmación en la pantalla de mpv. Configuración: copia `.mcp.json.example`
+a `.mcp.json` y ajusta las rutas.
+
 ## Estructura
 - `bin/mpv-uos` lanzador · `mpv-config/` configuración portable (mpv.conf, input.conf, scripts `mu-*`, uosc, thumbfast)
-- `mpvd/` daemon Python (JSON-RPC 2.0) · `tests/` pytest (unit + integración con mpv headless) · `tools/` scripts de build/check
+- `mpvd/` daemon Python (JSON-RPC 2.0; `mpvd/mcp.py` servidor MCP) · `tests/` pytest (unit + integración con mpv headless) · `tools/` scripts de build/check
 - `vendor.lock` versiones fijadas de terceros · `vendor/` descargas y binarios (yt-dlp, deno opcional, whisper.cpp + modelos;
   ignorado por git)
 

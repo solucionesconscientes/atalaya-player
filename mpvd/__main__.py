@@ -164,6 +164,19 @@ def cmd_call(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mcp(args: argparse.Namespace) -> int:
+    """Run the MCP stdio server; starts the daemon first if needed (logs go to stderr, never stdout)."""
+    import asyncio  # noqa: PLC0415
+
+    from mpvd.mcp import serve  # noqa: PLC0415
+
+    settings = _settings(args)
+    logging.basicConfig(level=logging.WARNING, stream=sys.stderr, format="%(levelname)s %(name)s: %(message)s")
+    ensure_daemon(settings, root=getattr(args, "root", None))
+    autoconfirm = bool(args.yes) or os.environ.get("MPVD_MCP_AUTOCONFIRM", "0") == "1"
+    return asyncio.run(serve(str(settings.socket_path), args.session, autoconfirm))
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     settings = _settings(args)
     if not _ping(settings):
@@ -225,6 +238,10 @@ def build_parser() -> argparse.ArgumentParser:
     c.set_defaults(fn=cmd_call)
 
     sub.add_parser("status", parents=[common], help="show sessions, jobs and guardian").set_defaults(fn=cmd_status)
+    m = sub.add_parser("mcp", parents=[common], help="MCP server over stdio (for Claude Code, Claude Desktop, etc.)")
+    m.add_argument("--session", default=None, help="mpv session id to drive (default: the most recent one)")
+    m.add_argument("--yes", action="store_true", help="skip the on-screen confirmations")
+    m.set_defaults(fn=cmd_mcp)
     sub.add_parser("stop", parents=[common], help="ask the daemon to exit").set_defaults(fn=cmd_stop)
     return p
 

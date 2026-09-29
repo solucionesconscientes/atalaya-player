@@ -74,7 +74,7 @@ Aceptación: con el audio de prueba ES/EN el SRT contiene las frases esperadas (
       si hay SOFA libre), protección fotosensible (filtro photosensitivity) y diagnóstico de tirones. Cada filtro validado contra el mpv instalado.
 
 ## H8 · MCP rico (H1, H2)
-- [ ] Servidor MCP (stdio) en mpvd: tools status/play/pause/seek/search_dialogue/list_channels/play_channel/download/add_note y resource de
+- [x] Servidor MCP (stdio) en mpvd: tools status/play/pause/seek/search_dialogue/list_channels/play_channel/download/add_note y resource de
       transcripción; acciones destructivas con confirmación en OSD; .mcp.json.example + instrucciones en README; tests con cliente MCP.
 
 ## H9 · Salto de intro/créditos local (B10)

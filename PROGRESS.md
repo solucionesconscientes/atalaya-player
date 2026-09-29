@@ -1,17 +1,42 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 ## SIGUIENTE PASO
-H8 · MCP rico: servidor MCP (stdio) en mpvd como subcomando `python -m mpvd mcp` que habla con el daemon por su socket JSON-RPC.
-Verificar antes: `uv add mcp` (SDK oficial `mcp`, FastMCP; comprobar versión y peso con `uv pip install --dry-run mcp`) o, si pesa
-demasiado, implementar el protocolo MCP mínimo a mano (JSON-RPC sobre stdio: initialize, tools/list, tools/call, resources/list,
-resources/read; spec 2025-06-18). Tools: status, play(path|url), pause/resume, seek(seconds|absolute), search_dialogue(query) sobre
-`asr.segments`/caché, list_channels(query), play_channel(id), download(url, preset), add_note(text) (guarda en `<data_dir>/notas/<hash>.md`
-con enlace de tiempo). Resource `mpv://transcript/<hash>` con el SRT de la tarea asr. Acciones destructivas/perturbadoras (play que
-sustituye, seek, download) piden confirmación en OSD vía script-message a mu_menu (`mu-confirm`) con timeout 10 s, salvo
-`MPVD_MCP_AUTOCONFIRM=1`. Sesión objetivo: la última activa (`sessions` en mpvd) o la indicada. Tests con un cliente MCP mínimo por
-stdio (initialize → tools/list → tools/call status/search_dialogue con el daemon de test). `.mcp.json.example` + README.
+H9 · Salto de intro/créditos local: `mpvd/intro/` con (1) huellas Chromaprint por tramos: `fpcalc -raw -length N -json` sobre audio
+extraído con ffmpeg (verificar `fpcalc -version` y opciones reales; comparar huellas de los primeros 5 min de los episodios de la
+misma carpeta: ventana deslizante de 32-bit hashes con distancia Hamming → tramo común = intro; ídem últimos 5 min → créditos);
+(2) `ffmpeg -af silencedetect=n=-45dB:d=1.5` y `-vf blackdetect=d=0.5:pix_th=0.10` para afinar los bordes; (3) servicio
+`intro.analyze {path}` (job PRECOMPUTE, caché por hash + carpeta) → segmentos {intro:[a,b], credits:[a,b], recap?}; `intro.segments {path}`;
+exportar "media segments" JSON (formato Jellyfin/Plex-like: `{"type":"intro","start":…,"end":…}`) a `<carpeta>/.mpv-uos/segments.json`.
+(4) mu-intro.lua: botón "Saltar intro" en uosc (set-button + OSD) cuando time-pos entra en el tramo, salto automático opcional,
+tecla `alt+k`. Tests con medios generados: tools/make_test_media.sh añade 3 "episodios" con la misma intro (tono/voz) y cuerpo distinto.
 ## Registro por iteración
 ### Iteración 3 · 2026-09-29
+#### H8 · MCP rico — hecho (commit "H8: MCP")
+- `mpvd/mcp.py`: servidor MCP stdio sin dependencias (ADR-028): initialize/ping/tools/resources/prompts; 11 tools (status, play,
+  pause, resume, seek, search_dialogue, list_channels, play_channel, download, add_note, subtitles_ai) y resources
+  `mpv://transcript/<id>` y `mpv://notes/<clave>`; errores de tool como `isError`. CLI `python -m mpvd mcp [--session] [--yes]`
+  (arranca el daemon si hace falta; logs por stderr).
+- mpvd: `mpvd/control.py` (`session.get/set/command/confirm`, `notes.add/list/read` con enlaces `mpv://seek?t=`), `asr.search`,
+  `sessions.all()`. mu-menu: diálogo `mu-confirm <token> <texto>` (uosc Sí/No, 15 s, publica `user-data/mu/confirm{_request}`).
+- `.mcp.json.example`, docs/MCP.md, README.
+- Tests: test_mcp (handshake, tools/list, status idle, play/pause/resume/seek autoconfirmados, append, notas + resource, errores,
+  search_dialogue sin transcripción lanza una; diálogo real de confirmación: sí → salta, no → no salta).
+- Probar a mano:
+  ```bash
+  bin/mpv-uos tests/fixtures/media/video30.mkv &
+  cp .mcp.json.example .mcp.json   # y en Claude Code: /mcp → mpv-uos → status, "salta al minuto 0:20" (confirma en la pantalla de mpv)
+  printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"sh","version":"0"}}}' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"status","arguments":{}}}' | .venv/bin/python -m mpvd mcp
+  ```
+#### H8 · MCP rico — plan
+- Verificado: el SDK oficial `mcp` 2.2.0 arrastra ~30 paquetes (pydantic, starlette, uvicorn, cryptography, opentelemetry…): se
+  descarta (ADR-028). Se implementa el protocolo MCP mínimo a mano (JSON-RPC 2.0 por stdio, una línea por mensaje; spec 2025-06-18:
+  initialize, notifications/initialized, ping, tools/list, tools/call, resources/list, resources/read, prompts/list vacío).
+- mpvd: métodos nuevos `session.get/set/command` (control de una sesión de mpv por su id o la actual), `asr.search` (búsqueda sin
+  acentos en los segmentos transcritos), `notes.add/list` (Markdown en `<data_dir>/notas/<clave>.md` con enlaces de tiempo).
+  mu-menu: `mu-confirm <token> <texto>` abre un diálogo uosc Sí/No y publica `user-data/mu/confirm = {token, answer}`.
+- `python -m mpvd mcp`: tools status, play, pause, resume, seek, search_dialogue, list_channels, play_channel, download, add_note;
+  resources `mpv://transcript/<clave>`; confirmación en OSD (15 s) para play/seek/play_channel/download salvo `MPVD_MCP_AUTOCONFIRM=1`.
+  `.mcp.json.example` + README. Tests: cliente MCP mínimo por stdio contra el daemon de test + mpv headless.
 #### H7 · Sonido e imagen — hecho (commit "H7: sonido e imagen")
 - `mpvd/av.py`: servicio `av.models` / `av.models.download` / `av.models.path` (RNNoise sh/bd y HRTF MIT KEMAR fijados por SHA-256 en
   vendor.lock; descarga con progreso por eventos `av-model`). Modelos ya descargados en vendor/models/{rnnoise,sofa}.
