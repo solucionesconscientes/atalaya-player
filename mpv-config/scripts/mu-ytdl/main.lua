@@ -41,7 +41,16 @@ local P = prefs.ns('mu-ytdl', { prefer_audio = false, dl_options = {} })
 
 local platform = mp.get_property_native('platform') or ''
 local is_windows = platform == 'windows'
-local function default_video_format() return mp.get_property('options/ytdl-format') or '' end
+-- The global video format (mpv.conf, uosc's stream quality, or what mu-prefs restores). A file-local format (the
+-- audio-only reload, a quality picked for this file) also shows up in `ytdl-format` while that file plays, so only
+-- global changes are tracked.
+local global_video_format = mp.get_property('ytdl-format') or ''
+mp.observe_property('ytdl-format', 'string', function(_, value)
+  if value and value ~= '' and not mp.get_property_native('option-info/ytdl-format/set-locally') then
+    global_video_format = value
+  end
+end)
+local function default_video_format() return global_video_format end
 
 local state = {
   active = false,        -- current file was resolved by ytdl_hook
