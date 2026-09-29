@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import uuid
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +21,7 @@ from mpvd.asr.audio import extract_wav
 MASK_HIGH = 0xFFFFF000       # exact-match key: top 20 bits (the low bits flip with encoding noise)
 MAX_BITS = 6                 # Hamming distance considered "the same sound" (random audio differs in ~16 of 32)
 MAX_GAP = 2                  # consecutive misses tolerated inside a run
+MAX_BUCKET = 64              # a high-bits key seen more often than this is silence / a steady tone: no vote
 
 
 class FingerprintError(RuntimeError):
@@ -75,7 +77,7 @@ async def fingerprint_window(src: str, start: float, length: float, tmp_dir: Pat
                              timeout: float = 120.0) -> Fingerprint:
     """Fingerprint ``length`` seconds of ``src`` from ``start`` (audio extracted with ffmpeg first: any container)."""
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    wav = tmp_dir / f"fp-{abs(hash((src, start, length))) % 10**9}.wav"
+    wav = tmp_dir / f"fp-{uuid.uuid4().hex}.wav"  # unique: two jobs may fingerprint the same window at once
     try:
         await extract_wav(src, start, length, wav, audio_track)
         proc = await asyncio.create_subprocess_exec(fpcalc_path(), "-raw", "-json", "-length", str(int(length) + 1),
@@ -163,7 +165,10 @@ def match(a: Fingerprint, b: Fingerprint, min_seconds: float = 6.0, max_bits: in
         index.setdefault(v & MASK_HIGH, []).append(j)
     votes: Counter[int] = Counter()
     for i, v in enumerate(a.values):
-        for j in index.get(v & MASK_HIGH, ()):
+        js = index.get(v & MASK_HIGH, ())
+        if len(js) > MAX_BUCKET:
+            continue  # uninformative and quadratic (10 min of silence would be 23 M votes)
+        for j in js:
             votes[j - i] += 1
     if not votes:
         return []
