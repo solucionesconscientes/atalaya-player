@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111318">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Mando MPV-UOS</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div id="title" class="title">Mando MPV-UOS</div>
+  <div id="subtitle" class="subtitle">Conectando…</div>
+</header>
+
+<div id="notice" class="notice hidden"></div>
+
+<main>
+  <section id="tab-control" class="tab">
+    <div class="seek">
+      <span id="pos" class="time">0:00</span>
+      <input id="seekbar" type="range" min="0" max="1000" value="0" step="1" aria-label="Posición">
+      <span id="dur" class="time">0:00</span>
+    </div>
+    <div class="row big">
+      <button data-cmd="prev" title="Anterior">⏮</button>
+      <button data-cmd="seek" data-seconds="-60" title="−1 min">−60</button>
+      <button data-cmd="seek" data-seconds="-10" title="−10 s">−10</button>
+      <button id="playpause" data-cmd="toggle" class="primary" title="Reproducir / pausa">▶</button>
+      <button data-cmd="seek" data-seconds="10" title="+10 s">+10</button>
+      <button data-cmd="seek" data-seconds="60" title="+1 min">+60</button>
+      <button data-cmd="next" title="Siguiente">⏭</button>
+    </div>
+    <div class="row volume">
+      <button id="mute" data-cmd="mute" title="Silenciar">🔊</button>
+      <input id="volume" type="range" min="0" max="130" value="100" aria-label="Volumen">
+      <span id="volval" class="time">100</span>
+    </div>
+    <div class="row chips" id="speeds">
+      <span class="label">Velocidad</span>
+      <button data-speed="0.75">0.75×</button>
+      <button data-speed="1">1×</button>
+      <button data-speed="1.25">1.25×</button>
+      <button data-speed="1.5">1.5×</button>
+      <button data-speed="2">2×</button>
+    </div>
+    <div class="row chips">
+      <button data-cmd="chapter" data-delta="-1">Capítulo −</button>
+      <button data-cmd="chapter" data-delta="1">Capítulo +</button>
+      <button data-cmd="sub_toggle">Subtítulos</button>
+      <button data-cmd="fullscreen">Pantalla completa</button>
+      <button data-cmd="ab_loop">Bucle A-B</button>
+      <button data-cmd="stop" class="danger">Detener</button>
+    </div>
+    <div class="row chips">
+      <span class="label">TV</span>
+      <button data-cmd="zap" data-delta="-1">Canal −</button>
+      <button data-cmd="zap" data-delta="1">Canal +</button>
+      <button data-cmd="script_binding" data-name="mu_subs/subs-toggle">Subtítulos IA</button>
+      <button data-cmd="script_binding" data-name="mu_intro/skip">Saltar intro</button>
+    </div>
+  </section>
+
+  <section id="tab-channels" class="tab hidden">
+    <input id="channel-q" type="search" placeholder="Buscar canal o emisora…" autocomplete="off">
+    <div id="channel-list" class="list"></div>
+  </section>
+
+  <section id="tab-search" class="tab hidden">
+    <input id="search-q" type="search" placeholder="Buscar en el diálogo (IA)…" autocomplete="off">
+    <div id="search-info" class="muted"></div>
+    <div id="search-list" class="list"></div>
+  </section>
+
+  <section id="tab-recents" class="tab hidden">
+    <div id="recents-list" class="list"></div>
+  </section>
+
+  <section id="tab-more" class="tab hidden">
+    <h3>Subtítulos</h3><div id="sub-list" class="list"></div>
+    <h3>Audio</h3><div id="audio-list" class="list"></div>
+    <h3>Capítulos</h3><div id="chapter-list" class="list"></div>
+    <h3>Lista de reproducción</h3><div id="playlist" class="list"></div>
+    <h3>Abrir URL o ruta</h3>
+    <form id="open-form" class="row"><input id="open-url" type="url" placeholder="https://…" required><button class="primary">Abrir</button></form>
+    <h3>Este móvil</h3>
+    <button id="unpair" class="danger">Desemparejar este móvil</button>
+    <p class="muted" id="about"></p>
+  </section>
+</main>
+
+<nav>
+  <button data-tab="control" class="active">Mando</button>
+  <button data-tab="channels">Canales</button>
+  <button data-tab="search">Diálogo</button>
+  <button data-tab="recents">Recientes</button>
+  <button data-tab="more">Más</button>
+</nav>
+<script src="/app.js"></script>
+</body>
+</html>

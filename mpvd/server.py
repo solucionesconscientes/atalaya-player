@@ -9,6 +9,7 @@ import os
 import socket
 import time
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Any
 
 from mpvd import __version__
@@ -61,6 +62,7 @@ class MpvdServer:
         self._stop = asyncio.Event()
         self._idle_task: asyncio.Task[None] | None = None
         self.services: dict[str, bool] = {}
+        self.session_listeners: list[Callable[[str, Session], None]] = []  # ("open"|"closed", session)
         from mpvd import methods  # noqa: PLC0415 - avoid import cycle
         from mpvd.asr.service import AsrService  # noqa: PLC0415
         from mpvd.asr.service import register as register_asr  # noqa: PLC0415
@@ -77,6 +79,8 @@ class MpvdServer:
         from mpvd.subs.service import SubsService  # noqa: PLC0415
         from mpvd.subs.service import register as register_subs  # noqa: PLC0415
         from mpvd.iptv.service import register as register_iptv  # noqa: PLC0415
+        from mpvd.remote.service import RemoteService  # noqa: PLC0415
+        from mpvd.remote.service import register as register_remote  # noqa: PLC0415
         from mpvd.watch import WatchService  # noqa: PLC0415
         from mpvd.watch import register as register_watch  # noqa: PLC0415
         from mpvd.ytdl.service import YtdlService  # noqa: PLC0415
@@ -102,6 +106,8 @@ class MpvdServer:
         self.study = StudyService(self)
         register_study(self, self.study)
         control.register(self)
+        self.remote = RemoteService(self)
+        register_remote(self, self.remote)
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -124,6 +130,7 @@ class MpvdServer:
         s.pid_path.write_text(str(os.getpid()), encoding="utf-8")
         await self.jobs.start()
         await self.ytdl.start()
+        await self.remote.maybe_autostart()
         self._idle_task = asyncio.create_task(self._idle_watch(), name="mpvd-idle")
         log.info("mpvd %s listening on %s (cache %s, workers %d)", __version__, s.socket_path, s.cache_dir, s.workers)
 
@@ -140,6 +147,7 @@ class MpvdServer:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._idle_task
         await self.sessions.close_all()
+        await self.remote.close()
         await self.ytdl.close()
         await self.asr.close()
         await self.jobs.stop()
@@ -171,7 +179,7 @@ class MpvdServer:
             timeout = self.settings.idle_timeout
             if timeout <= 0:
                 continue
-            idle = not self.sessions and not self._peers and self.jobs.pending() == 0
+            idle = not self.sessions and not self._peers and self.jobs.pending() == 0 and self.remote.clients == 0
             if idle and time.time() - self.last_activity > timeout:
                 log.info("idle for %.0fs without sessions: exiting", timeout)
                 self.request_shutdown()

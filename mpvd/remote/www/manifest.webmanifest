@@ -1,0 +1,16 @@
+{
+  "name": "Mando MPV-UOS",
+  "short_name": "MPV-UOS",
+  "description": "Mando a distancia local del reproductor MPV-UOS",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#111318",
+  "theme_color": "#111318",
+  "lang": "es",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

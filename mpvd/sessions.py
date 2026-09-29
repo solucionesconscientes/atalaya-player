@@ -130,8 +130,16 @@ class SessionManager:
         self._sessions[session.id] = session
         session.task = asyncio.create_task(self._run(session), name=f"mpvd-session-{session.id}")
         self.server.touch()
+        self._notify("open", session)
         log.info("session %s registered (ipc=%s pid=%s)", session.id, ipc_path, session.pid)
         return session
+
+    def _notify(self, kind: str, session: Session) -> None:
+        for fn in list(getattr(self.server, "session_listeners", [])):
+            try:
+                fn(kind, session)
+            except Exception:  # noqa: BLE001
+                log.exception("session listener failed")
 
     async def unregister(self, session_id: str) -> bool:
         session = self._sessions.get(session_id)
@@ -158,6 +166,7 @@ class SessionManager:
         cancelled = self.server.jobs.cancel_session(session.id)
         await session.client.close()
         self.server.touch()
+        self._notify("closed", session)
         log.info("session %s closed (%d jobs cancelled)", session.id, cancelled)
 
     async def _run(self, session: Session) -> None:

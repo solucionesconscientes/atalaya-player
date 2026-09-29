@@ -90,3 +90,9 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 | `alt+g` | Velocidad inteligente: ×2,5 (opción `mu-study-silence_speed`) en los silencios detectados por mpvd, velocidad normal cuando hay voz |
 | `alt+b` | Nota con enlace de tiempo (escribe en el cuadro y Enter; o guarda la cita del subtítulo) → `<datos>/notas/<clave>.md` |
 | `alt+u` | Exportar el bucle A-B (o la línea actual) como clip: formato por defecto mp4 (`mu-study-clip_format`); GIF/mp3/opus desde el menú |
+
+## Mando a distancia (mu-remote)
+| Tecla | Acción |
+|---|---|
+| `alt+z` | Mostrar / ocultar el código QR para emparejar el móvil (la URL también aparece en pantalla; el código vale una vez y caduca a los 10 min) |
+| `alt+Z` | Menú **Mando a distancia**: estado del servidor, móviles emparejados, olvidar mandos, arrancar/detener |
