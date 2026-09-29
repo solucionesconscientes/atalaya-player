@@ -12,4 +12,18 @@ mkdir -p "$RUNTIME_DIR"
 SOCKET="${MPV_UOS_SOCKET:-$RUNTIME_DIR/mpv-$$.sock}"
 export MPV_UOS_ROOT="$ROOT"
 export MPV_UOS_SOCKET="$SOCKET"
-exec "$MPV_BIN" --config-dir="$CONFIG_DIR" --input-ipc-server="$SOCKET" "$@"
+# Without files/URLs mpv prints its usage and exits: open the window with the home screen instead
+# (same as the desktop entry), unless the caller already chose --idle or an operation mode.
+extra=()
+has_target=0; has_mode=0; after_dd=0
+for a in "$@"; do
+  if [ "$after_dd" = 1 ]; then has_target=1; continue; fi
+  case "$a" in
+    --) after_dd=1 ;;
+    --idle|--idle=*|--player-operation-mode=*) has_mode=1 ;;
+    -*) ;;
+    *) has_target=1 ;;
+  esac
+done
+[ "$has_target" = 0 ] && [ "$has_mode" = 0 ] && extra=(--player-operation-mode=pseudo-gui)
+exec "$MPV_BIN" --config-dir="$CONFIG_DIR" --input-ipc-server="$SOCKET" "${extra[@]}" "$@"
