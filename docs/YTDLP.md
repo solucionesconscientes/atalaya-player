@@ -536,3 +536,20 @@ Cada entrada: `_type: "url"`, `ie_key: "Youtube"`, `id`, `url` (`https://www.you
    existe; vendorizar `deno` v2.9.7 (41 MB zip) como opción en `tools/vendor.sh` con `--js-runtimes deno:vendor/bin/deno`.
 3. Selectores de formato siempre con `*`/`+` (`bv*+ba/b`, `ba/b`), nunca `best`/`worst` a secas.
 4. Test `@network`: `https://archive.org/details/Countdow1960` formato `3` (1.4 MB) y, opcionalmente, YouTube `aqz-KE-bpKQ -f 139`.
+
+## 11. Búsqueda, orden por contenedor y runtime JS desde la primera carga (2026-09-30)
+- **Runtime JS en la primera carga**: con `mpv-uos <url>` el primer `yt-dlp -J` de ytdl_hook salía sin `--js-runtimes` (mu-ytdl solo lo
+  añadía al responder mpvd, ~0,5 s después) y yt-dlp 2026.08.19 solo habilita deno por defecto. Ahora mu-ytdl añade
+  `ytdl-raw-options js-runtimes=node` de forma síncrona al cargar (opción `mu-ytdl-js_runtimes`; mpv espera al bloque principal de los
+  scripts antes del primer archivo) y mpvd lo sustituye después por `node:<ruta>` o por el deno vendorizado. Un valor puesto por el
+  usuario en `mpv.conf`/línea de órdenes no se toca. Sin node en PATH yt-dlp solo lo marca *unavailable*.
+  Test: `tests/test_mu_ytdl_palettes.py::test_first_ytdl_run_already_has_js_runtime`.
+- **`-S` por contenedor** (presets de vídeo, no formatos exactos): sin él, «Vídeo · 360p» en mp4 bajaba AV1 + Opus y el merge caía a
+  `.mkv`. `mp4` → `-S vcodec:h264,res,acodec:aac` (el mejor códec *no mejor que* H.264; `res` justo después para que un 360p combinado
+  no gane a un 1080p solo vídeo por el audio), `webm` → `-S vcodec:vp9,res,acodec:opus`, `mkv` → sin `-S`. Comprobado con el yt-dlp
+  vendorizado sobre `youtube_bbb.json` (`--load-info-json --simulate`): 360p mp4 → `134+140` (.mp4), mejor mp4 → `299+140` (1080p .mp4),
+  360p webm → `243+251` (.webm), 360p mkv → `396+251` (AV1). Semántica de `campo:límite` en `FormatSorter` (yt_dlp/utils/_utils.py).
+- **Búsqueda** `ytdl.search {query, limit=15}` → `yt-dlp --flat-playlist -J -- ytsearchN:<consulta>` con el mismo binario y argumentos
+  seguros (`--no-update --no-remote-components`, `--js-runtimes`), 30 s de tope, caché en memoria de 1 h por (consulta normalizada,
+  límite) y una sola ejecución para búsquedas idénticas simultáneas. Devuelve `[{url, title, duration, channel, view_count, is_live}]`
+  (`is_live` = `live_status == "is_live"` de la insignia de la búsqueda; `channel` cae a `uploader`). ~3 s por búsqueda real.
