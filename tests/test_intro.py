@@ -1,6 +1,6 @@
 """Intro/credits detection on the synthetic series (three episodes sharing an 8 s intro and a 6 s credits tail):
-fingerprint matching, edge snapping, the intro.* service through mpvd (analysis → cache → segments.json), and mu-intro
-in headless mpv (segments picked up, skip key, credits → next episode)."""
+fingerprint matching, edge snapping, the intro.* service through mpvd (analysis → cache; segments.json only on request),
+and mu-intro in headless mpv (segments picked up, skip key, credits → next episode). More cases in test_intro_season.py."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ pytestmark = pytest.mark.skipif(shutil.which("fpcalc") is None, reason="fpcalc (
 
 def test_siblings_and_snap(media_dir, tmp_path):
     sibs = siblings(media_dir / "serie" / "ep02.mkv")
-    assert [s.name for s in sibs] == ["ep01.mkv", "ep03.mkv"]
+    assert sorted(s.name for s in sibs) == ["ep01.mkv", "ep03.mkv"]
     assert siblings(media_dir / "video30.mkv")  # other videos in the fixtures root
     assert siblings(media_dir / "voz_es.flac") == []  # audio files are never analysed as episodes
     det = {"silence": [(31.59, 32.17)], "black": [(0.06, 1.58), (31.62, 38.02)]}
@@ -60,14 +60,14 @@ def test_fingerprint_match_between_episodes(media_dir, tmp_path):
 
 def test_intro_service_analysis_cache_and_export(daemon_env, media_dir, tmp_path):
     d = daemon_env
-    # work on a copy so the exported .mpv-uos/segments.json does not land in the fixtures
+    # work on a copy: the on-demand export writes segments.json next to the videos
     serie = tmp_path / "serie"
     shutil.copytree(media_dir / "serie", serie)
     d.cli("ensure")
     d.wait(d.alive, timeout=30)
     assert d.call("capabilities")["services"]["intro"] is True
     r = d.call("intro.segments", {"path": str(serie / "ep01.mkv")})
-    assert r["status"] == "analyzing" and r["siblings"] == ["ep02.mkv", "ep03.mkv"]
+    assert r["status"] == "analyzing" and sorted(r["siblings"]) == ["ep02.mkv", "ep03.mkv"]
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
         r = d.call("intro.segments", {"path": str(serie / "ep01.mkv")})
@@ -77,12 +77,17 @@ def test_intro_service_analysis_cache_and_export(daemon_env, media_dir, tmp_path
     assert r["status"] == "done", r
     assert r["intro"] and abs(r["intro"][0] - 1.5) < 1.0 and abs(r["intro"][1] - 9.5) < 1.0, r["intro"]
     assert r["credits"] and abs(r["credits"][0] - 32.0) < 1.5 and r["credits"][1] > 37.5, r["credits"]
-    assert r["matches"]["intro"] == 2
-    exported = json.loads((serie / ".mpv-uos" / "segments.json").read_text(encoding="utf-8"))
+    assert r["matches"]["intro"] == 2 and r["sources"] == {"intro": "auto", "credits": "auto"}
+    assert r["next"] == str(serie / "ep02.mkv")
+    # nothing is written next to the videos until the user asks for it
+    assert not (serie / ".mpv-uos").exists() and not (serie / "segments.json").exists()
+    ex = d.call("intro.export", {"path": str(serie / "ep01.mkv")})
+    assert ex["file"] == str(serie / "segments.json") and "ep01.mkv" in ex["entries"]
+    exported = json.loads((serie / "segments.json").read_text(encoding="utf-8"))
     types = {s["type"]: s for s in exported["ep01.mkv"]["segments"]}
     assert set(types) == {"intro", "credits"} and types["intro"]["end"] == r["intro"][1]
-    ex = d.call("intro.export", {"path": str(serie / "ep01.mkv")})
-    assert "ep01.mkv" in ex["entries"]
+    assert types["intro"]["Type"] == "Intro" and types["credits"]["Type"] == "Outro"
+    assert types["intro"]["EndTicks"] == int(r["intro"][1] * 10_000_000)
     # the second episode reuses the cached fingerprints and finishes quickly, synchronously
     t0 = time.monotonic()
     r2 = d.call("intro.analyze", {"path": str(serie / "ep02.mkv"), "wait": True}, timeout=120)
@@ -96,7 +101,8 @@ def test_mu_intro_skip_and_next_episode(daemon_env, media_dir, tmp_path):
     d = daemon_env
     serie = tmp_path / "serie"
     shutil.copytree(media_dir / "serie", serie)
-    h = start_mpv(d.runtime_dir, ["--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-intro-poll_seconds=0.2",
+    h = start_mpv(d.runtime_dir, ["--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-intro-poll_seconds=0.2,"
+                                  "mu-intro-countdown_seconds=0",
                                   "--keep-open=yes", "--pause=yes"], env=d.env)
     try:
         h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)

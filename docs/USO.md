@@ -100,8 +100,38 @@ allí. Menú de subtítulos IA → *Capítulos por tema* crea capítulos titulad
 modelo de embeddings (se descarga desde el menú). Más en docs/SEMANTICA.md.
 
 ## 6. Series: saltar intro y créditos
-Abre un episodio de una carpeta con varios: MPV-UOS compara su audio con los demás y detecta la intro y los créditos. Al llegar aparece el
-botón ⏭; `alt+k` salta (en los créditos, al siguiente episodio) y `alt+j` abre el menú (salto automático, reanalizar). Requiere `fpcalc`.
+Abre un episodio: mpvd compara su audio (huellas Chromaprint, requiere `fpcalc`) con los episodios vecinos y detecta la intro y los
+créditos. La primera vez tarda unos segundos por episodio (≈10 s en una serie de 50 min); después sale de la caché al instante.
+- **Dónde busca los otros episodios**: primero en la misma carpeta; si no hay ninguno de la misma serie, en las carpetas hermanas (una
+  carpeta por episodio, como `Descargas/Don Matteo 1x03 …/…mp4`). Se reconocen `S01E02`, `1x02`, `Temporada 1 Capítulo 2` y `Cap.102`;
+  el título se compara sin acentos, puntuación ni etiquetas entre corchetes, y debe coincidir la temporada. Se usan los 3 vecinos más
+  cercanos por número de episodio que se puedan leer (los rotos o sin audio se saltan). Con nombres sin serie (`ep01.mkv`) se usan los
+  demás vídeos de la carpeta.
+- **Qué verás**: el botón ⏭ está siempre en la barra con vídeos locales; si aún no hay nada que saltar, su tooltip dice por qué
+  (analizando, sin otros episodios, error). Dentro de la intro o los créditos se ilumina y aparece un recuadro **Saltar intro ▸**
+  clicable. `alt+k` salta (fuera de un segmento, al final del siguiente; durante el análisis dice «Analizando… NN %»). Si no se detecta
+  nada, un aviso breve lo explica (p. ej. «Saltar intro: no hay otros episodios para comparar · alt+j»).
+- **Saltar créditos** lleva al siguiente elemento de la lista; si no hay lista, abre el siguiente episodio encontrado (aunque esté en
+  otra carpeta). Unos créditos que acaban a menos de 15 s del final cuentan como final del episodio.
+- **Salto automático** (menú `alt+j` o `script-opts`: `mu-intro-auto_skip_intro=yes`, `mu-intro-auto_skip_credits=yes`): muestra
+  «Saltando intro en 3 s · Esc cancela» (`mu-intro-countdown_seconds`, 0 = sin espera; en pausa la cuenta se detiene). Esc solo actúa
+  durante la cuenta atrás.
+- **Marcar a mano** (menú `alt+j` → *Marcar inicio/final de la intro/créditos aquí*, o los bindings `mu_intro/intro-mark-start`,
+  `intro-mark-end`, `credits-mark-start`, `credits-mark-end`): si solo marcas el final de la intro, empieza en 0:00; el inicio de los
+  créditos se guarda hasta el final del archivo (marca también su final si hay escena poscréditos). mpvd busca ese mismo audio al
+  principio (intro) o al final (créditos) de los demás episodios de la temporada, aunque la intro empiece en otro minuto (avances de
+  distinta duración), y también en los episodios que añadas después. Las marcas manuales mandan sobre la detección automática; se
+  guardan en `<datos>/intro-marks.json` y se borran desde el menú.
+- **Analizar temporada** (menú): analiza en segundo plano todos los episodios de la temporada. Al abrir un episodio, además, se preparan
+  en prioridad baja las huellas de toda la temporada, así los siguientes se resuelven al momento.
+- **Exportar segmentos (Jellyfin)** (menú): escribe `segments.json` junto al vídeo con los segmentos de los vídeos de esa carpeta
+  (`type`/`start`/`end` en segundos y `Type`/`StartTicks`/`EndTicks` al estilo media-segments de Jellyfin). MPV-UOS nunca escribe en tus
+  carpetas si no se lo pides.
+
+Límites: una **película suelta** (sin otros episodios) no tiene intro detectable: solo sirve el marcado manual. Varias **versiones del
+mismo vídeo** en una carpeta (montajes, cortes para redes) se reconocen y no se marca nada («parecen versiones del mismo vídeo»). Se
+descartan coincidencias sin sentido: una intro que empiece después del 40 % del vídeo o unos créditos que acaben antes del 60 %. La intro
+se busca en los primeros 10 minutos y los créditos en los últimos 5. Hace falta pista de audio; solo archivos locales.
 
 ## 7. Sonido e imagen
 `alt+v`: diálogo claro, modo noche (`alt+n`), reducción de ruido, sonido binaural para auriculares, protección fotosensible, perfil ligero
@@ -154,7 +184,7 @@ por defecto.
 | Qué | Dónde (instalación por defecto) | Con `--xdg` |
 |---|---|---|
 | Caché (listas, transcripciones, índices, huellas) | `<proyecto>/.cache/` | `~/.cache/mpv-uos/` |
-| Datos (favoritos, recientes, notas, móviles emparejados) | `<proyecto>/.cache/data/` | `~/.local/share/mpv-uos/` |
+| Datos (favoritos, recientes, notas, móviles emparejados, marcas de intro) | `<proyecto>/.cache/data/` | `~/.local/share/mpv-uos/` |
 | Descargas y clips | `~/Vídeos/MPV-UOS`, `~/Música/MPV-UOS` | igual |
 | Grabaciones de TV/radio | `~/Escritorio/MPV-UOS` | igual |
 | Subtítulos guardados (SRT) | junto al vídeo; si no se puede, `~/Vídeos/MPV-UOS/Subtítulos` | igual |
