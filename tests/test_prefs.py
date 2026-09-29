@@ -324,3 +324,34 @@ def test_disabled_switch(pdir):
     finally:
         h.stop()
     assert prefs_file(pdir) == {"mpv": {"volume": 70}}
+
+
+def test_subtitle_ai_choices_survive_restart(pdir):
+    """mu-subs (menu alt+i): language, model, automatic start and translation engine are remembered."""
+    def ev(h, value):
+        base = {"type": "activate", "index": 1, "menu_id": "{root}", "is_pointer": False, "alt": False, "ctrl": False,
+                "shift": False}
+        h.command("script-message-to", "mu_subs", "mu-subs-event", json.dumps({**base, "value": value}))
+
+    h = launch(pdir)
+    try:
+        h.wait_property("user-data/mu/subs", bool, timeout=10)
+        ev(h, {"language": "en"})
+        ev(h, {"model": "small-q8_0"})
+        ev(h, {"opt": "auto_start"})
+        ev(h, {"engine": "opus-big"})
+        import time
+        deadline = time.time() + 10
+        while time.time() < deadline and prefs_file(pdir).get("mu-subs", {}).get("translate_engine") != "opus-big":
+            time.sleep(0.2)
+    finally:
+        h.stop()
+    saved = prefs_file(pdir)["mu-subs"]
+    assert saved["language"] == "en" and saved["model"] == "small-q8_0" and saved["auto_start"] is True
+    h = launch(pdir)
+    try:
+        st = h.wait_property("user-data/mu/subs", bool, timeout=10)
+        assert st["language"] == "en" and st["model"] == "small-q8_0" and st["auto_start"] is True
+        assert st["translate_engine"] == "opus-big"
+    finally:
+        h.stop()

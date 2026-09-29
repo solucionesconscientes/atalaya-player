@@ -73,7 +73,8 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 | `alt+i` | Menú **Subtítulos IA**: iniciar/detener, idioma, modelo (descarga bajo demanda), activar automáticamente, pre-subtitular el siguiente de la lista, estado del motor |
 | `alt+c` | Iniciar / detener los subtítulos IA del archivo actual (la transcripción parcial queda en caché y se reanuda) |
 | `alt+x` | Resincronizar la pista de subtítulos externa seleccionada con la transcripción IA (desfase + deriva por tramos) |
-| (menú `alt+i`) | Traducir la pista seleccionada a otro idioma (offline, Argos/CTranslate2) · Duales: original arriba + traducción abajo |
+| `alt+S` | Guardar subtítulos como SRT junto al vídeo (`<vídeo>.<idioma>.srt`): la pista seleccionada (IA, traducción, resincronizada, externa o interna de texto) o, si no hay, la pista IA |
+| (menú `alt+i`) | Traducir la pista seleccionada (también pistas internas de texto) con el motor Rápido (Argos) o Calidad (OPUS-MT, es/ca↔en) · Duales: original arriba + traducción abajo · Guardar subtítulos (SRT) |
 
 ## Sonido e imagen (mu-av, filtros libavfilter validados)
 | Tecla | Acción |

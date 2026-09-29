@@ -99,8 +99,11 @@ pista externa y recarga solo. Menú **Subtítulos IA** (botón CC en la barra, `
 - "Pre-subtitular el siguiente de la lista": el próximo elemento de la playlist se transcribe en baja prioridad mientras ves el actual.
 - **Resincronizar** (`alt+x`): alinea un .srt/.ass/.vtt externo con la transcripción IA (retraso constante, deriva por fps y cortes
   de publicidad: recta robusta por tramos) y lo carga como pista nueva.
-- **Traducir** (menú → "Traducir la pista seleccionada a…"): traducción offline con paquetes Argos sobre CTranslate2 (es↔en fijados;
-  el resto del índice se descarga bajo demanda y pivota por inglés). Los tiempos de los cues no cambian; resultado en caché.
+- **Traducir** (menú → "Traducir la pista seleccionada a…", también pistas internas): offline sobre CTranslate2 con dos motores,
+  *Rápido (Argos)* para cualquier par (pivota por inglés) y *Calidad (OPUS-MT tc-big, 234 MB, se descarga una vez)* para
+  español/catalán↔inglés. Los tiempos no cambian. La calidad depende sobre todo de la transcripción.
+- **Guardar subtítulos (SRT)** (`alt+S`): pista IA, traducción, resincronizado o pista seleccionada → `<vídeo>.<idioma>.srt` junto al
+  vídeo (o `~/Vídeos/MPV-UOS/Subtítulos`). Los subtítulos de imagen (PGS/VobSub) necesitarían OCR y no se pueden guardar.
 - **Duales**: original arriba (`secondary-sid`) y traducción abajo, activables desde el mismo menú.
 ```bash
 LD_LIBRARY_PATH=vendor/whisper/bin vendor/whisper/bin/whisper-cli --version    # ¿está whisper?
@@ -196,3 +199,7 @@ uv run pytest                     # sin red
 uv run pytest -m network          # solo los que necesitan internet
 tools/make_test_media.sh          # regenera tests/fixtures/media (ffmpeg + espeak-ng)
 ```
+
+## Créditos de modelos
+- Modelos OPUS-MT (Helsinki-NLP; Tiedemann & Thottingal 2020, Tatoeba Translation Challenge), CC-BY 4.0:
+  https://github.com/Helsinki-NLP/Tatoeba-Challenge

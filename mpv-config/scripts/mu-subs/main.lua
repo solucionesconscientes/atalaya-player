@@ -14,6 +14,7 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local prefs = require('mu.prefs')
 
 local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-subs-event'
@@ -36,6 +37,10 @@ local opts = {
   save_dir = '',            -- folder for "Guardar subtítulos"; empty = next to the video (fallback ~/Vídeos/MPV-UOS/…)
 }
 options.read_options(opts, 'mu-subs')
+-- remembered choices (menu alt+i): language, model, automatic start, pre-subtitling, translation engine/target, duals
+local P = prefs.ns('mu-subs', { language = opts.language, model = opts.model, auto_start = opts.auto_start,
+  precompute_next = opts.precompute_next, translate_engine = opts.translate_engine, translate_target = '', dual = false })
+P:apply_opts(opts, 'mu-subs', { 'language', 'model', 'auto_start', 'precompute_next', 'translate_engine' })
 
 local LANGUAGES = {
   { 'auto', 'Detectar automáticamente' }, { 'es', 'Español' }, { 'en', 'Inglés' }, { 'ca', 'Catalán' }, { 'fr', 'Francés' },
@@ -98,6 +103,13 @@ local state = {
 }
 
 local set_button_state -- defined with the bindings
+
+P:on_change(function(reason)
+  if reason ~= 'reset' then return end
+  state.language, state.model = P:get('language'), P:get('model')
+  state.auto_start, state.precompute_next = P:get('auto_start'), P:get('precompute_next')
+  state.translate_engine = P:get('translate_engine')
+end)
 local reopen_current   -- defined with the menus
 
 local function osd(text) mp.osd_message(text, opts.osd_seconds) end
@@ -581,7 +593,7 @@ local function translate_apply(res)
   else
     mp.command_native({ 'sub-add', res.srt, 'select', title, res.target or '' })
   end
-  if state.dual then apply_dual(true) end
+  if state.dual or P:get('dual') then apply_dual(true) end
   if opts.notify_done then
     osd('✓ ' .. title .. (res.cached and ' (caché)' or '') .. ': ' .. tostring(res.cues or 0) .. ' cues')
   end
@@ -1218,7 +1230,8 @@ local function translate_items(res)
       else hint = 'se descargará el paquete (~90 MB)' end
       local ready = direct or pivot or (use_opus and opus_present[key])
       table.insert(items, { title = l[2], hint = hint, icon = ready and 'check' or 'cloud_download',
-        active = state.translate ~= nil and state.translate.target == l[1], value = { translate = l[1] } })
+        active = (state.translate ~= nil and state.translate.target == l[1])
+          or (state.translate == nil and P:get('translate_target') == l[1]) or nil, value = { translate = l[1] } })
     end
   end
   if not (res and res.engine and res.engine.available) then
@@ -1329,10 +1342,12 @@ mp.register_script_message(EVENT, function(json)
       resync_selected()
       uosc.close(MENU)
     elseif v.translate then
+      P:set('translate_target', v.translate)
       translate_selected(v.translate)
       uosc.close(MENU)
     elseif v.engine then
       state.translate_engine = v.engine
+      P:set('translate_engine', v.engine)
       publish()
       reopen_current()
     elseif v.save then
@@ -1340,12 +1355,14 @@ mp.register_script_message(EVENT, function(json)
       save_request(v.save, { partial = v.partial, complete = v.complete, menu = false })
     elseif v.dual then
       apply_dual(not state.dual)
+      P:set('dual', state.dual)
       reopen_current()
     elseif v.chapters then
       apply_chapters((state.ai_chapters or 0) == 0)
       reopen_current()
     elseif v.language then
       state.language = v.language
+      P:set('language', v.language)
       publish()
       table.remove(state.stack)
       reopen_current()
@@ -1354,6 +1371,7 @@ mp.register_script_message(EVENT, function(json)
         rpc.call('asr.models.remove', { name = v.model }, function() state.models = nil; reopen_current() end)
       else
         state.model = v.model
+        P:set('model', v.model)
         publish()
         table.remove(state.stack)
         reopen_current()
@@ -1367,6 +1385,7 @@ mp.register_script_message(EVENT, function(json)
       end)
     elseif v.opt then
       state[v.opt] = not state[v.opt]
+      if v.opt == 'auto_start' or v.opt == 'precompute_next' then P:set(v.opt, state[v.opt]) end
       publish()
       if v.opt == 'precompute_next' and state.precompute_next and task_running() then precompute_next() end
       reopen_current()

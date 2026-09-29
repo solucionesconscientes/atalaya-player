@@ -165,3 +165,10 @@
   retardos, encuadre ni desentrelazado (son del archivo), ni repetir archivo (repetiría todo) ni el aleatorio de uosc (sin API).
   Elegir una pista con idioma lo pone al frente de alang/slang; apagar subtítulos se recuerda. «Solo audio» de mu-ytdl se aplica
   en un hook on_load previo al de ytdl_hook. Restablecer mueve el fichero a `prefs.json.bak-<ts>` y avisa a todos los scripts.
+- ADR-038 · Traducción con dos motores y SRT guardables: OPUS-MT tc-big (Helsinki-NLP, CC-BY 4.0) para es/ca↔en, descargado bajo
+  demanda (zips oficiales de 863 MB fijados por SHA-256) y convertido una vez a CTranslate2 int8 (234 MB, OpusMTConverter: solo
+  numpy+pyyaml) en <datos>/models/opus-mt; beam 4 en segundo plano y fuera de memoria tras cada trabajo. Argos queda para los demás
+  pares y el pivote; engine=auto usa OPUS-MT solo si ya está descargado. Descartados NLLB (CC-BY-NC) y LLM local (lento en CPU).
+  Pre-subtitulado con small-q8_0 en el tier small, trozos de 28,5 s (una ventana de 30 s de whisper) y --prompt con el final del
+  trozo anterior. subs.save escribe <vídeo>.<idioma>.srt atómico (.ia/.resync/(2); si no se puede, ~/Vídeos/MPV-UOS/Subtítulos);
+  los subtítulos de imagen (PGS/VobSub/DVB) se rechazan: el OCR queda fuera de alcance.
