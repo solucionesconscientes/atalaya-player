@@ -155,3 +155,13 @@
 - ADR-036 · watch_later solo guarda lo propio de cada archivo (`watch-later-options`: posición, pistas, retardos, encuadre) y
   `reset-on-next-file` impide que eso pase al siguiente; volumen, velocidad, filtros y estilo de subtítulos son preferencias
   globales (mu-prefs). Antes el archivo siguiente heredaba volumen, velocidad, filtros y un `aid` inexistente (sin sonido).
+- ADR-037 · Preferencias del usuario en `<datos>/prefs.json` (mu-prefs + `script-modules/mu/prefs.lua`), no en watch_later (es
+  por archivo) ni en `~~state/`/`~~cache/` (son del mpv personal). Un espacio de nombres por script; precedencia: CLI
+  (`option-info/<x>/set-from-commandline`, `--script-opts`) > prefs.json > script-opts/*.conf > código. Todos leen al arrancar y
+  aplican en su bloque principal (antes del primer archivo); escribe solo mu-prefs (los demás envían `mu-prefs-put`: cada script
+  es un hilo y varios volcando a la vez al salir perdían cambios), con debounce de 1,5 s y escritura atómica que mezcla solo las
+  claves cambiadas. Solo cuentan las acciones del usuario (menú, tecla, mensaje); mu-prefs ignora el valor inicial, lo que pasa
+  al abrir un archivo, lo `set-locally` y la velocidad de los silencios de mu-study. No se guardan pausa, posición, ids de pista,
+  retardos, encuadre ni desentrelazado (son del archivo), ni repetir archivo (repetiría todo) ni el aleatorio de uosc (sin API).
+  Elegir una pista con idioma lo pone al frente de alang/slang; apagar subtítulos se recuerda. «Solo audio» de mu-ytdl se aplica
+  en un hook on_load previo al de ytdl_hook. Restablecer mueve el fichero a `prefs.json.bak-<ts>` y avisa a todos los scripts.
