@@ -33,6 +33,13 @@ else
   tools/vendor_whisper.sh || echo "AVISO: sin whisper.cpp los tests de ASR se omiten (ver docs/WHISPER.md)"
 fi
 
+step "traducción (ctranslate2 + paquetes Argos)"
+if .venv/bin/python -c "import ctranslate2, sentencepiece" 2>/dev/null; then
+  echo "runtime presente; paquetes: $(ls vendor/models/argos 2>/dev/null | tr '\n' ' ')"
+else
+  uv sync --quiet --extra translate && echo "runtime instalado (extra translate)" || echo "AVISO: sin runtime de traducción los tests se omiten"
+fi
+
 step "medios de prueba"
 [ -f tests/fixtures/media/manifest.json ] && echo "presentes" || tools/make_test_media.sh || fail=1
 

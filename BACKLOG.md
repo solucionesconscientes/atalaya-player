@@ -65,9 +65,9 @@ de licencia libre en 2 presets (vídeo 360p y mp3 128k) y verifica con ffprobe c
 Aceptación: con el audio de prueba ES/EN el SRT contiene las frases esperadas (por palabras clave); latencia documentada; sin drops relevantes.
 
 ## H6 · Sincronía, traducción y duales (B5, B4, C1-básico)
-- [ ] Resincronizar un SRT externo contra las palabras de Whisper (DTW, deriva por tramos) desde el menú de subtítulos.
-- [ ] Traducción offline rápida (Argos Translate u opus-mt con CTranslate2) con caché por hash + par de idiomas; ruta opcional con LLM local si existe.
-- [ ] Subtítulos duales (secondary-sid) con original arriba y traducción abajo, activables desde menú.
+- [x] Resincronizar un SRT externo contra las palabras de Whisper (DTW, deriva por tramos) desde el menú de subtítulos.
+- [x] Traducción offline rápida (Argos Translate u opus-mt con CTranslate2) con caché por hash + par de idiomas; ruta opcional con LLM local si existe.
+- [x] Subtítulos duales (secondary-sid) con original arriba y traducción abajo, activables desde menú.
 
 ## H7 · Sonido e imagen (B13, B14, B15, D5, D8, D9)
 - [ ] Menú "Sonido e imagen": diálogo claro (niveles lavfi), modo noche, reducción de ruido (arnndn con modelo descargado), binaural (sofalizer

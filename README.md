@@ -86,13 +86,22 @@ pista externa y recarga solo. Menú **Subtítulos IA** (botón CC en la barra, `
 - Un seek mueve el cursor de transcripción: primero se transcribe lo que vas a ver. Lo transcrito queda en caché por contenido
   (hash) y se reanuda al instante aunque cierres mpv o renombres el archivo.
 - "Pre-subtitular el siguiente de la lista": el próximo elemento de la playlist se transcribe en baja prioridad mientras ves el actual.
+- **Resincronizar** (`alt+x`): alinea un .srt/.ass/.vtt externo con la transcripción IA (retraso constante, deriva por fps y cortes
+  de publicidad: recta robusta por tramos) y lo carga como pista nueva.
+- **Traducir** (menú → "Traducir la pista seleccionada a…"): traducción offline con paquetes Argos sobre CTranslate2 (es↔en fijados;
+  el resto del índice se descarga bajo demanda y pivota por inglés). Los tiempos de los cues no cambian; resultado en caché.
+- **Duales**: original arriba (`secondary-sid`) y traducción abajo, activables desde el mismo menú.
 ```bash
 LD_LIBRARY_PATH=vendor/whisper/bin vendor/whisper/bin/whisper-cli --version    # ¿está whisper?
 .venv/bin/python -m mpvd call asr.models                                        # modelos presentes / recomendados
 .venv/bin/python -m mpvd call asr.start '{"path":"/ruta/video.mkv","language":"es"}'
 .venv/bin/python -m mpvd call asr.status
+.venv/bin/python -m mpvd call subs.resync '{"path":"/ruta/video.mkv","srt":"/ruta/video.srt","language":"es"}'
+.venv/bin/python -m mpvd call subs.translate '{"srt":"/ruta/video.srt","source":"es","target":"en"}'
+.venv/bin/python -m mpvd call subs.translate.models '{"index":true}'          # paquetes Argos presentes / descargables
 tools/bench_asr.sh                                                              # RTF por modelo → docs/BENCHMARKS.md
 ```
+La traducción necesita el extra opcional `uv sync --extra translate` (ctranslate2 + sentencepiece, ≈190 MB; docs/TRADUCCION.md).
 
 ## Estructura
 - `bin/mpv-uos` lanzador · `mpv-config/` configuración portable (mpv.conf, input.conf, scripts `mu-*`, uosc, thumbfast)

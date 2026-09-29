@@ -28,3 +28,7 @@ Desarrollado y probado en Linux (Ubuntu, Wayland/KDE, mpv 0.41). Lo siguiente NO
 - macOS: mismo mecanismo con `DYLD_LIBRARY_PATH` (no probado). Windows: `whisper-cli.exe` con sus DLL en la misma carpeta, sin variable
   de entorno (no probado; `find_binary` busca `vendor/whisper/bin/whisper-cli` y luego el PATH).
 - Los modelos se descargan al primer directorio escribible de `MPV_UOS_WHISPER_MODELS`, `vendor/whisper/models`, `<data_dir>/models/whisper`.
+
+## Traducción (H6)
+- `ctranslate2` publica wheels para Linux x86_64/aarch64, macOS (arm64/x86_64) y Windows x86_64 con CPython 3.12; `sentencepiece` también.
+  Solo se ha probado en Linux x86_64 (int8 disponible). En CPU sin AVX2 CTranslate2 cae a un kernel más lento pero funciona.

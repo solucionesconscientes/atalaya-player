@@ -65,6 +65,8 @@ class MpvdServer:
         from mpvd.asr.service import AsrService  # noqa: PLC0415
         from mpvd.asr.service import register as register_asr  # noqa: PLC0415
         from mpvd.iptv.service import IptvService  # noqa: PLC0415
+        from mpvd.subs.service import SubsService  # noqa: PLC0415
+        from mpvd.subs.service import register as register_subs  # noqa: PLC0415
         from mpvd.iptv.service import register as register_iptv  # noqa: PLC0415
         from mpvd.watch import WatchService  # noqa: PLC0415
         from mpvd.watch import register as register_watch  # noqa: PLC0415
@@ -80,6 +82,8 @@ class MpvdServer:
         register_watch(self, self.watch)
         self.asr = AsrService(self)
         register_asr(self, self.asr)
+        self.subs = SubsService(self)
+        register_subs(self, self.subs)
 
     # -- lifecycle -------------------------------------------------------------
 

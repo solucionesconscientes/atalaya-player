@@ -66,3 +66,5 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 |---|---|
 | `alt+i` | Menú **Subtítulos IA**: iniciar/detener, idioma, modelo (descarga bajo demanda), activar automáticamente, pre-subtitular el siguiente de la lista, estado del motor |
 | `alt+c` | Iniciar / detener los subtítulos IA del archivo actual (la transcripción parcial queda en caché y se reanuda) |
+| `alt+x` | Resincronizar la pista de subtítulos externa seleccionada con la transcripción IA (desfase + deriva por tramos) |
+| (menú `alt+i`) | Traducir la pista seleccionada a otro idioma (offline, Argos/CTranslate2) · Duales: original arriba + traducción abajo |

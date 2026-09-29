@@ -1,0 +1,100 @@
+"""subs.* through a real mpvd: info/shift on an SRT, and resync of a deliberately delayed SRT against the Whisper
+transcription of the Spanish test voice (pending → done, offset recovered)."""
+
+from __future__ import annotations
+
+import time
+
+import pytest
+
+from mpvd.asr.srt import Segment, parse_srt, render_srt
+from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
+from tests.asr_helpers import asr_model, whisper_available
+
+pytestmark = pytest.mark.skipif(not whisper_available(), reason="whisper.cpp not vendored (tools/vendor_whisper.sh)")
+
+
+def test_subs_info_shift_and_resync(daemon_env, media_dir, tmp_path):
+    d = daemon_env
+    d.cli("ensure")
+    d.wait(d.alive, timeout=30)
+    assert d.call("capabilities")["services"]["subs"] is True
+    src = str(media_dir / "voz_es.flac")
+
+    # 1. resync before any transcription exists → pending with a precompute task
+    srt = tmp_path / "pelicula.srt"
+    srt.write_text(render_srt([Segment(3.0, 5.0, "Bienvenido a MPV-UOS, el reproductor del futuro."),
+                               Segment(5.5, 8.0, "El rápido zorro marrón salta sobre el perro perezoso."),
+                               Segment(8.5, 11.0, "Hoy es un buen día para ver una película con subtítulos.")]), encoding="utf-8")
+    info = d.call("subs.info", {"srt": str(srt)})
+    assert info["cues"] == 3 and info["start"] == 3.0
+    r = d.call("subs.resync", {"path": src, "srt": str(srt), "language": "es", "model": asr_model()})
+    assert r["status"] == "pending" and r["task"]["purpose"] == "precompute"
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline and d.call("asr.status", {"id": r["task"]["id"]})["status"] not in ("done", "failed"):
+        time.sleep(0.5)
+    assert d.call("asr.status", {"id": r["task"]["id"]})["status"] == "done"
+
+    # 2. now it aligns: the SRT was written ~2.5 s late with respect to the speech (which starts near 0.0–0.5 s)
+    r = d.call("subs.resync", {"path": src, "srt": str(srt), "language": "es", "model": asr_model()})
+    assert r["status"] == "done" and r["stats"]["ok"], r["stats"]
+    assert r["stats"]["matched"] >= 2 and -4.0 < r["stats"]["offset_median"] < -1.0, r["stats"]
+    out = parse_srt(open(r["srt"], encoding="utf-8").read())
+    assert len(out) == 3 and out[0].start < 1.5 and out[0].text.startswith("Bienvenido")
+    assert all(out[i].end <= out[i + 1].start + 1e-6 for i in range(2))
+    assert r["srt"].startswith(str(d.cache_dir)) and r["srt"].endswith("pelicula.resync.srt")
+
+    # 3. constant shift helper
+    s = d.call("subs.shift", {"srt": str(srt), "offset": -1.0})
+    sh = parse_srt(open(s["srt"], encoding="utf-8").read())
+    assert s["cues"] == 3 and abs(sh[0].start - 2.0) < 1e-6 and "shift-1.00" in s["srt"]
+
+
+@pytest.mark.skipif(not __import__("mpvd.subs.translate", fromlist=["runtime_available"]).runtime_available(),
+                    reason="translation runtime not installed (uv sync --extra translate)")
+def test_subs_translate_job_cache_and_errors(daemon_env, media_dir, tmp_path):
+    from mpvd.subs.translate import ArgosStore
+    from tests.asr_helpers import ROOT, fold
+
+    if ArgosStore([ROOT / "vendor" / "models" / "argos"], ROOT / "vendor" / "dl").find("es", "en") is None:
+        pytest.skip("Argos es→en package not vendored")
+    d = daemon_env
+    d.cli("ensure")
+    d.wait(d.alive, timeout=30)
+    assert d.call("capabilities")["services"]["translate"] is True
+    st = d.call("subs.translate.models")
+    assert st["engine"]["available"] and any(p["source"] == "es" and p["target"] == "en" and p["present"] for p in st["packages"])
+
+    srt = tmp_path / "pelicula.srt"
+    srt.write_text(render_srt([Segment(0.0, 2.0, "Bienvenido a MPV-UOS,"), Segment(2.0, 4.0, "el reproductor del futuro."),
+                               Segment(5.0, 8.0, "El rápido zorro marrón salta sobre el perro perezoso."),
+                               Segment(9.0, 11.0, "Hoy es un buen día para ver una película con subtítulos.")]), encoding="utf-8")
+    # errors: unknown source, same language, missing package
+    with pytest.raises(RpcError) as exc:
+        d.call("subs.translate", {"srt": str(srt), "target": "en"})
+    assert exc.value.code == INVALID_PARAMS
+    with pytest.raises(RpcError) as exc:
+        d.call("subs.translate", {"srt": str(srt), "target": "de", "source": "fr"})
+    assert exc.value.code == UNAVAILABLE and exc.value.data and exc.value.data["missing"]
+
+    # 1. job → done → English SRT with the same timing
+    r = d.call("subs.translate", {"srt": str(srt), "target": "en", "source": "es", "path": str(media_dir / "voz_es.flac")})
+    assert r["status"] == "queued" and r["route"] == "es_en" and r["cues"] == 4
+    job_id = r["job"]["id"]
+    deadline = time.monotonic() + 120
+    job = None
+    while time.monotonic() < deadline:
+        job = next((j for j in d.call("jobs.list") if j["id"] == job_id), None)
+        if job and job["status"] in ("done", "failed", "cancelled"):
+            break
+        time.sleep(0.3)
+    assert job and job["status"] == "done", job
+    out = parse_srt(open(r["srt"], encoding="utf-8").read())
+    assert [(c.start, c.end) for c in out] == [(0.0, 2.0), (2.0, 4.0), (5.0, 8.0), (9.0, 11.0)]
+    text = fold(" ".join(c.text for c in out))
+    assert sum(k in text for k in ("welcome", "player", "future", "fox", "dog", "movie", "subtitles")) >= 5, text
+    assert r["srt"].endswith("pelicula.en.srt")
+
+    # 2. same request → served from the artifact cache without a job
+    r2 = d.call("subs.translate", {"srt": str(srt), "target": "en", "source": "es", "path": str(media_dir / "voz_es.flac")})
+    assert r2["status"] == "done" and r2["cached"] is True and r2["srt"] == r["srt"]

@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from mpvd.asr.srt import parse_srt
+from mpvd.asr.srt import Segment, parse_srt, render_srt
 from tests.asr_helpers import keywords_hit, min_keywords, asr_model, whisper_available
 from tests.conftest import start_mpv
 
@@ -45,7 +45,7 @@ def external_sub(h, srt: str):
     return None
 
 
-def test_live_subtitles_track_seek_precompute_and_menu(subs_mpv, media_dir):
+def test_live_subtitles_track_seek_precompute_and_menu(subs_mpv, media_dir, tmp_path):
     h, d = subs_mpv
     h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
     st = h.get("user-data/mu/subs")
@@ -80,6 +80,54 @@ def test_live_subtitles_track_seek_precompute_and_menu(subs_mpv, media_dir):
     h.wait_property("sub-text", lambda v: isinstance(v, str) and len(v) > 0, timeout=15)
     assert h.get("sub-text").split()[0].lower() in text.lower()
 
+    # 2b. an external SRT written 2.5 s late is resynchronised against the transcription (cached → instant)
+    late = tmp_path / "externo.srt"
+    late.write_text(render_srt([Segment(s.start + 2.5, s.end + 2.5, s.text) for s in segs]), encoding="utf-8")
+    h.command("sub-add", str(late), "select", "Externo")
+    h.wait_property("track-list", lambda tl: any(t.get("external-filename") == str(late) and t.get("selected") for t in tl or []),
+                    timeout=10)
+    h.command("script-binding", "mu_subs/subs-resync")
+    st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("resync_status") == "done", timeout=60)
+    assert st["resync_out"].endswith("externo.resync.srt") and -3.5 < st["resync_offset"] < -1.5, st
+    fixed = external_sub(h, st["resync_out"])
+    assert fixed is not None and fixed["selected"] is True and fixed["title"].startswith("Resincronizado")
+    fixed_segs = parse_srt(open(st["resync_out"], encoding="utf-8").read())
+    assert abs(fixed_segs[0].start - segs[0].start) < 0.6
+    h.command("set_property", "sid", track["id"])   # back to the AI track for the rest of the test
+
+    # 2c. translate the AI track to English (Argos es→en via CTranslate2) and show both as dual subtitles
+    from mpvd.subs.translate import ArgosStore, runtime_available
+    from tests.asr_helpers import ROOT, fold
+    if runtime_available() and ArgosStore([ROOT / "vendor" / "models" / "argos"], ROOT / "vendor" / "dl").find("es", "en"):
+        h.command("script-binding", "mu_subs/subs-menu")
+        h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-subs", timeout=15)
+        st = wait_view(h, "root")
+        idx = [i["title"] for i in st["items"]].index("Traducir la pista seleccionada a…")
+        send_event(h, {"type": "activate", "index": idx, "value": {"view": "translate"}})
+        st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("view") == "translate"
+                             and any(i["title"] == "Inglés" for i in v.get("items", [])), timeout=30)
+        ingles = next(i for i in st["items"] if i["title"] == "Inglés")
+        assert ingles["hint"] in ("paquete listo", "idioma de origen según la pista"), ingles
+        send_event(h, {"type": "activate", "index": 1, "value": {"translate": "en"}})
+        st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("translate_status") == "done", timeout=120)
+        assert st["translate_target"] == "en" and st["translate_out"].endswith(".en.srt")
+        tr_track = external_sub(h, st["translate_out"])
+        assert tr_track is not None and tr_track["selected"] is True and tr_track["title"] == "Traducción (en)"
+        en_text = fold(" ".join(s.text for s in parse_srt(open(st["translate_out"], encoding="utf-8").read())))
+        assert sum(k in en_text for k in ("welcome", "player", "future", "fox", "dog", "movie", "subtitles")) >= 3, en_text
+        # dual: original (AI track) on top as secondary, translation below
+        h.command("script-message-to", "mu_subs", "mu-subs-dual", "yes")
+        st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("dual") is True, timeout=10)
+        assert h.get("secondary-sid") == external_sub(h, srt)["id"] and h.get("sid") == tr_track["id"]
+        h.command("seek", segs[0].start + 0.3, "absolute")
+        h.wait_property("secondary-sub-text", lambda v: isinstance(v, str) and len(v) > 0, timeout=15)
+        assert fold(h.get("secondary-sub-text")).split()[0] in fold(text)
+        h.wait_property("sub-text", lambda v: isinstance(v, str) and len(v) > 0, timeout=15)
+        assert fold(h.get("sub-text")).split()[0] in en_text
+        h.command("script-message-to", "mu_subs", "mu-subs-dual", "no")
+        h.wait_property("secondary-sid", lambda v: v in (False, "no", None), timeout=10)
+        h.command("set_property", "sid", track["id"])
+
     # 3. the next item was pre-subtitled at low priority (same model/language)
     st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("precompute_id"), timeout=30)
     pre = d.call("asr.status", {"id": st["precompute_id"]})
@@ -101,6 +149,7 @@ def test_live_subtitles_track_seek_precompute_and_menu(subs_mpv, media_dir):
     titles = [i["title"] for i in st["items"]]
     assert titles[0] == "Subtítulos IA listos" and "Idioma" in titles and "Modelo" in titles
     assert any(t.startswith("Pre-subtitular") for t in titles) and "Estado del motor" in titles
+    assert any(t.startswith("Resincronizar") for t in titles)
     idioma = next(i for i in st["items"] if i["title"] == "Idioma")
     assert idioma["hint"] == "Español"
     send_event(h, {"type": "activate", "index": 2, "value": {"view": "language"}})
@@ -118,7 +167,7 @@ def test_live_subtitles_track_seek_precompute_and_menu(subs_mpv, media_dir):
     assert any("descargar" in i["hint"] for i in st["items"]), "absent models offer a download"
     send_event(h, {"type": "back"})
     wait_view(h, "root")
-    send_event(h, {"type": "activate", "index": 6, "value": {"view": "status"}})
+    send_event(h, {"type": "activate", "index": 7, "value": {"view": "status"}})
     st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("view") == "status"
                          and any(i["title"] == "whisper-cli" for i in v.get("items", [])), timeout=30)
     assert any(i["title"] == "Modelos presentes" and asr_model() in i["hint"] for i in st["items"])

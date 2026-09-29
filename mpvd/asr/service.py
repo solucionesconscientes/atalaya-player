@@ -429,9 +429,14 @@ class AsrService:
                                {"event": "asr-model", "model": name, "job": data}, min_interval=0.5, final=final)
 
         async def body(job: Job) -> dict[str, Any]:
-            def progress(frac: float, message: str) -> None:
+            loop = asyncio.get_running_loop()
+
+            def report(frac: float, message: str) -> None:
                 job.report(frac, message)
                 push(job)
+
+            def progress(frac: float, message: str) -> None:   # called from the download thread
+                loop.call_soon_threadsafe(report, frac, message)
 
             push(job)
             try:

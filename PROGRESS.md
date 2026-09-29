@@ -1,16 +1,52 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 ## SIGUIENTE PASO
-H6 · Sincronía, traducción y duales: (1) `mpvd/subs/` (nuevo): parser/serializador SRT/ASS→cues (reusar asr/srt.py) y `subs.resync`:
-alinear un SRT externo contra las palabras/segmentos de Whisper de la tarea `asr` del archivo (DTW sobre tiempos de inicio de cue
-vs. segmentos con texto similar, deriva por tramos = offset + factor por ventana) → escribe `<nombre>.resync.srt` en caché y
-mu-subs lo carga con `sub-add`. (2) Traducción offline: probar en el .venv `argostranslate` (paquetes es↔en descargables) y si pesa
-demasiado `ctranslate2` + opus-mt; caché por (hash, par de idiomas, modelo); servicio `subs.translate` que traduce la pista
-seleccionada (SRT externo o la de la IA) → SRT traducido. (3) Duales: `secondary-sid` con el original arriba (`secondary-sub-pos`,
-verificar en `mpv --list-options`) y la traducción abajo desde el menú Subtítulos IA. Verificar antes: opciones
-`--sub-delay/--sub-speed`, `secondary-sid`, `sub-pos`/`secondary-sub-pos` en el mpv 0.41 instalado; `pip index versions argostranslate`.
+H7 · Sonido e imagen: menú "Sonido e imagen" en un script nuevo `mu-av` (o dentro de mu-menu) con filtros validados contra el mpv 0.41
+instalado (`mpv --af=help`, `mpv --vf=help`, `ffmpeg -filters`): diálogo claro (`af=lavfi=[...]` con `dynaudnorm`/`compand` o
+`loudnorm` en un solo paso), modo noche (compresión + limitador `alimiter`), reducción de ruido (`arnndn` con modelo `.rnnn`
+descargado bajo demanda a vendor/models/rnnoise; verificar `ffmpeg -filters | grep arnndn`), binaural (`sofalizer` solo si hay un
+SOFA libre descargable; si no, `haas`/`stereotools` como aproximación documentada), protección fotosensible (`vf=lavfi=[photosensitivity]`
+verificar existencia), diagnóstico de tirones (lee `frame-drop-count`, `vo-delayed-frame-count`, `estimated-vf-fps`, `hwdec-current` y
+propone hwdec/vo). Cada filtro con toggle en el menú y estado publicado en `user-data/mu/av`; tests headless que activan cada filtro
+(`af`/`vf` property) y comprueban que mpv no registra errores y sigue reproduciendo.
 ## Registro por iteración
 ### Iteración 3 · 2026-09-29
+#### H6 · Sincronía, traducción y duales — hecho (commit "H6: sincronía, traducción y duales")
+- `mpvd/subs/formats.py` (SRT/VTT/ASS, BOM/utf-8/utf-16/cp1252, etiquetas fuera), `resync.py` (ADR-026: emparejamiento por palabras en
+  banda ±120 s, cadena monótona de máximo peso, recta robusta Theil–Sen por ventana con cortes y extrapolación), `translate.py`
+  (ADR-025: paquetes Argos sobre CTranslate2 + sentencepiece, pivote por inglés, agrupación de cues sin tocar tiempos, descarga con
+  SHA-256 e índice oficial cacheado), `service.py` (`subs.info/shift/resync/translate/translate.models/translate.download/translate.remove`,
+  eventos push, caché de traducciones por hash del SRT).
+- mu-subs: "Resincronizar la pista externa con la IA" (alt+x; si no hay transcripción la lanza y reintenta al terminar),
+  "Traducir la pista seleccionada a…" (paquete que falte → se descarga y se traduce solo), "Duales: original arriba + traducción abajo"
+  (`secondary-sid`), pista "Traducción (xx)"; `sub-reload` solo mientras la pista IA está seleccionada (no roba la selección).
+- pyproject: extra opcional `translate` (ctranslate2 4.8, sentencepiece 0.2; .venv ≈206 MB); check.sh lo instala si falta;
+  vendor.lock: URLs + SHA-256 de los paquetes es→en / en→es 1.0. Modelos en vendor/models/argos/{es_en,en_es} (ignorado por git).
+- Tests: test_subs_resync (retraso, deriva 4 % con ruido, corte de 12 s, sin coincidencias, formatos/codificaciones),
+  test_subs_translate (segmentación, agrupación/reparto, store/zip sintético, traducción real es→en ≥5 palabras clave),
+  test_subs_service (resync pending→done con desfase −2,5 s recuperado; traducción job→SRT inglés, caché, errores),
+  test_mu_subs ampliado (resync desde el menú → pista "Resincronizado", traducción → pista "Traducción (en)", duales con
+  `secondary-sub-text` y `sub-text`).
+- Probar a mano:
+  ```bash
+  uv sync --extra translate
+  bin/mpv-uos pelicula.mkv                 # alt+c (subtítulos IA) · alt+s carga un .srt externo → alt+x lo resincroniza
+                                           # alt+i → Traducir la pista seleccionada a… → Inglés; luego Duales
+  .venv/bin/python -m mpvd call subs.translate.models
+  .venv/bin/python -m mpvd call subs.resync '{"path":"pelicula.mkv","srt":"pelicula.srt","language":"es"}'
+  ```
+#### H6 · Sincronía, traducción y duales — plan
+- Verificado (mpv 0.41 `--list-options/--list-properties`): `secondary-sid` (no|auto|0-8190), `secondary-sub-pos` (0-150, 0 = arriba),
+  `secondary-sub-delay`, `secondary-sub-visibility`, `secondary-sub-text`, `sub-delay`, `sub-speed`, `sub-pos`.
+- Resync (`mpvd/subs/`): `formats.py` carga SRT/VTT/ASS (codificación con BOM/utf-8/cp1252) → cues; `resync.py` alinea las cues del
+  externo con los segmentos Whisper de la tarea `asr` del archivo: similitud por Jaccard de palabras sin acentos dentro de una banda
+  de ±120 s, cadena monótona de máximo peso (LIS ponderada), desfase por tramos = mediana de los pares por ventana + interpolación
+  lineal entre ventanas (deriva). Servicio `subs.resync {path, srt, model?, language?}` → SRT corregido en caché + estadísticas
+  (pares, desfase mediano, deriva); si no hay transcripción, lanza `asr` (precompute) y devuelve `pending` con el id de la tarea.
+- Traducción: según docs/TRADUCCION.md (subagente): paquetes Argos (CTranslate2 + sentencepiece) sin argostranslate/stanza; servicio
+  `subs.translate {path, srt|task, source, target}` con caché por (hash, artefacto, par, versión) → SRT traducido.
+- Duales: mu-subs "Duales: original arriba + traducción abajo" = `secondary-sid` original (arriba, `secondary-sub-pos=0`... por
+  defecto ya es 0) y `sid` traducción; menú Subtítulos IA → entradas "Resincronizar…", "Traducir…", "Duales".
 #### H5 · Subtítulos IA en vivo — hecho (commit "H5: subtítulos IA en vivo")
 - `tools/vendor_whisper.sh` copia whisper-cli/whisper-server + libs ggml/whisper + modelos desde el build de live-captions-linux
   (ADR-023); `vendor/whisper/VERSION`. `tools/bench_asr.sh` → docs/BENCHMARKS.md (i5-6200U, 3 hilos: base RTF 0,26–0,38, tiny 0,20,

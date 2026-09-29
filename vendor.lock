@@ -24,3 +24,10 @@ DENO_SHA256_aarch64_linux=c832298b1ad4422481334855f6003e0f54145762c5a134f20a4895
 DENO_SHA256_x86_64_darwin=95daaff11c116a52ad54785e7914c8e9c9cdcaba793c5ed929c74ca2d8e6259a
 DENO_SHA256_aarch64_darwin=5cd46d6268f6f78f5d88bdc7159d20bd44cdaa4b3303474839f87ec6fe7ae25c
 DENO_SHA256_x86_64_windows=a0c3101b4158d1dfb7d6a78a7bf0f3de80c96bb423c152beec8beb22786f2238
+
+# Argos Translate packages (docs/TRADUCCION.md): CTranslate2 model + sentencepiece, CC-BY 4.0 (OPUS-MT). Downloaded on demand by
+# mpvd (mpvd/subs/translate.py::PINNED) into vendor/dl and unpacked into vendor/models/argos/<from>_<to>/.
+ARGOS_ES_EN_URL=https://argos-net.com/v1/translate-es_en-1_0.argosmodel
+ARGOS_ES_EN_SHA256=1b963aa0e0cb6e5ce874f0aa1a1949a19bc4d762e833532239a8834340f6b378
+ARGOS_EN_ES_URL=https://argos-net.com/v1/translate-en_es-1_0.argosmodel
+ARGOS_EN_ES_SHA256=d698d0ef87ad70d5d184b7fa6965905bf4368f09a2bb9ffb165a79bac96af0c4

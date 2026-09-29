@@ -44,3 +44,8 @@ time_pos audio_track translate chunk_seconds purpose notify]` · `asr.precompute
 `asr.segments id [start end]`. Eventos push a `notify` (`script-message-to <script> mu-event <json>`): `{"event":"asr","task":{…}}`
 y `{"event":"asr-model","model":…,"job":{…}}`. El SRT vive en `<cache>/asr/<hash>/<modelo>.<idioma>.srt` (escritura atómica) y el
 estado (cues + trozos hechos) en la caché de artefactos, por lo que una tarea se reanuda al instante tras cerrar mpv o mpvd.
+
+## Servicio `subs.*` (H6)
+`subs.info {srt}` · `subs.shift {srt, offset, speed}` · `subs.resync {path, srt, language?, model?}` (alinea un subtítulo externo con los
+segmentos Whisper del archivo; `pending` + tarea `asr` si aún no hay transcripción) · `subs.translate*` (docs/TRADUCCION.md).
+Algoritmo de resync en ADR-026 y `mpvd/subs/resync.py`.
