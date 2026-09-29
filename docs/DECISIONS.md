@@ -172,3 +172,10 @@
   Pre-subtitulado con small-q8_0 en el tier small, trozos de 28,5 s (una ventana de 30 s de whisper) y --prompt con el final del
   trozo anterior. subs.save escribe <vídeo>.<idioma>.srt atómico (.ia/.resync/(2); si no se puede, ~/Vídeos/MPV-UOS/Subtítulos);
   los subtítulos de imagen (PGS/VobSub/DVB) se rechazan: el OCR queda fuera de alcance.
+- ADR-039 · Directos: sin watch_later (mu-iptv borra la entrada antes de cada loadfile y mpvd añade save-position-on-quit=no por
+  archivo); en HLS `demuxer-lavf-o=http_persistent=0,seg_max_retry=3` fusionado sin pisar el de la lista (un servidor se
+  congelaba a los 12 s reutilizando la conexión); User-Agent de navegador cuando la lista no da uno (Canal Sur daba 403 a
+  `libmpv`). La calidad sale de la lista maestra en la comprobación de salud (ffprobe completa); canales repetidos (nombre
+  normalizado + grupo) en una entrada con el oficial primero, las copias FAST con anuncios al final y cambio automático de fuente
+  si no abre (mu-core calla su aviso mientras quedan fuentes). Etiquetas en español (iso-codes del sistema o JSON incluido); los
+  valores crudos no cambian (filtros, favoritos, MCP). La resolución, los 25 fps y el bitrate son de la fuente.

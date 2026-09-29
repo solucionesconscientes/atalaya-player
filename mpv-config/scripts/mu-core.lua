@@ -346,18 +346,29 @@ if opts.load_errors then
     load.path = mp.get_property('path') or ''
     load.errors = {}
   end)
+  local function tv_fallbacks()
+    local tv = mp.get_property_native('user-data/mu/iptv') or {}
+    return tonumber(tv.fallbacks) or 0, tonumber(tv.alternatives_left) or 0
+  end
   mp.register_event('end-file', function(ev)
     if ev.reason ~= 'error' then return end
     local path = load.path ~= '' and load.path or ''
     local name, is_tv = display_name(path)
     local reason = explain(load.errors, ev.file_error)
-    local text = '⚠ No se pudo abrir ' .. (name ~= '' and name or 'el archivo') .. ':\n' .. reason
-    if is_tv then text = text .. '\nalt+↑ / alt+↓ para probar otro canal' end
     local raw = table.concat(load.errors, ' | '):sub(1, 400)
     state.last_load_error = { path = path, reason = reason, raw = raw, at = os.time() }
     publish()
-    mp.osd_message(text, 8)
     msg.warn('load failed: ' .. path .. ' · ' .. reason .. ' · ' .. raw)
+    local before, left = tv_fallbacks()
+    -- A TV channel with more sources: mu-iptv tries the next one ("Probando otra fuente…"); only speak if it did not.
+    -- Both scripts handle this end-file in no particular order, hence the short wait.
+    mp.add_timeout(0.25, function()
+      local after = tv_fallbacks()
+      if is_tv and (after > before or left > 0) then return end
+      local text = '⚠ No se pudo abrir ' .. (name ~= '' and name or 'el archivo') .. ':\n' .. reason
+      if is_tv then text = text .. '\nalt+↑ / alt+↓ para probar otro canal' end
+      mp.osd_message(text, 8)
+    end)
   end)
 end
 
