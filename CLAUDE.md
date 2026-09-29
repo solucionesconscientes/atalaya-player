@@ -22,6 +22,10 @@ Visión: docs/VISION.md · Plan: BACKLOG.md · Estado: PROGRESS.md · Bloqueos: 
 - NO tocar ~/.config/mpv. mpv se ejecuta SIEMPRE vía bin/mpv-uos con --config-dir=<proyecto>/mpv-config.
 - Git: trabaja en la rama actual nocturno/<fecha>; commits pequeños en español; nunca push, force, rebase de historia publicada ni merge a main.
 - Solo se puede borrar dentro de vendor/, .cache/, tmp/ del proyecto.
+- Procesos: mata SOLO los PID que hayas lanzado tú en esta sesión (guárdalos al arrancarlos). Prohibido matar por patrón
+  (`pkill -f`, `killall`, `ps | grep | xargs kill`): coincide con el propio runner, con Claude y con programas de Ser
+  (navegadores, reproductores). Nunca toques procesos ajenos al proyecto. Para navegadores de prueba usa perfiles en tmp/
+  y ciérralos por PID.
 - Tests sin ventanas: mpv con --vo=null --ao=null (o --no-video) --idle=yes --input-ipc-server=<socket en tmp/>.
 - Sin secretos en el repo. Servicios de nube opcionales y DESACTIVADOS por defecto (local-first).
 - Hardware objetivo mínimo: portátil de 4 núcleos sin GPU dedicada. Detecta hardware (nproc, RAM, vulkaninfo/vainfo si existen) y elige modelos acordes.

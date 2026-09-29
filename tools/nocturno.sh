@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Runner nocturno: encadena iteraciones de `claude -p` hasta completar el backlog o llegar a la hora límite.
-# Variables: EFFORT (de .runner.env), MAX_ITER (iteraciones productivas), DEADLINE (HH:MM), ITER_TIMEOUT (p. ej. 3h),
+# Variables: MODEL y EFFORT (de .runner.env), FALLBACK_MODEL (opcional), MAX_ITER (iteraciones productivas), DEADLINE (HH:MM), ITER_TIMEOUT (p. ej. 3h),
 # LIMIT_WAIT (segundos de espera si el aviso de límite no trae hora de reset).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.local/bin:$PATH"
 # shellcheck disable=SC1091
 source .runner.env 2>/dev/null || true
-EFFORT="${EFFORT:-high}"
+EFFORT="${EFFORT:-high}"; MODEL="${MODEL:-claude-opus-5-5}"; FALLBACK_MODEL="${FALLBACK_MODEL:-}"
 MAX_ITER="${MAX_ITER:-20}"; DEADLINE="${DEADLINE:-07:30}"; ITER_TIMEOUT="${ITER_TIMEOUT:-3h}"; LIMIT_WAIT="${LIMIT_WAIT:-1800}"
 d=$(date -d "today $DEADLINE" +%s); [ "$d" -le "$(date +%s)" ] && d=$(date -d "tomorrow $DEADLINE" +%s)
 mkdir -p logs
@@ -35,17 +35,20 @@ reset_epoch() {
   echo $(( t + 120 ))
 }
 
-log "runner: effort=$EFFORT max_iter=$MAX_ITER deadline=$(date -d "@$d" '+%F %H:%M') iter_timeout=$ITER_TIMEOUT"
+log "runner: model=$MODEL effort=$EFFORT max_iter=$MAX_ITER deadline=$(date -d "@$d" '+%F %H:%M') iter_timeout=$ITER_TIMEOUT"
 fails=0; done_iter=0; n_file=0
 while [ "$done_iter" -lt "$MAX_ITER" ]; do
   grep -q "ESTADO_GLOBAL: COMPLETADO" PROGRESS.md && { log "Backlog completado"; break; }
   [ "$(date +%s)" -ge "$d" ] && { log "Hora límite alcanzada"; break; }
   n_file=$((n_file+1)); n=$(printf %02d "$n_file"); iter=$((done_iter+1))
-  log "▶ iteración $iter (archivo $n, fable, effort=$EFFORT)"
-  timeout -k 60 "$ITER_TIMEOUT" claude -p "$(sed "s/{N}/$iter/g" prompts/iteracion.md)" \
-    --model fable --fallback-model opus --effort "$EFFORT" \
+  log "▶ iteración $iter (archivo $n, $MODEL, effort=$EFFORT)"
+  fallback=(); [ -n "$FALLBACK_MODEL" ] && fallback=(--fallback-model "$FALLBACK_MODEL")
+  # The prompt goes through stdin and the session name avoids "mpv": a `pkill -f mpv…` run by the agent must never
+  # match the runner or the agent itself (it happened on 2026-09-29).
+  sed "s/{N}/$iter/g" prompts/iteracion.md | timeout -k 60 "$ITER_TIMEOUT" claude -p \
+    --model "$MODEL" "${fallback[@]}" --effort "$EFFORT" \
     --permission-mode auto --permission-prompts none \
-    --name "mpv-uos-noche-$n" --output-format stream-json --verbose \
+    --name "runner-iter-$n" --output-format stream-json --verbose \
     > "logs/iter-$n.jsonl" 2> "logs/iter-$n.err"
   rc=$?
   last=$(tail -n 1 "logs/iter-$n.jsonl" 2>/dev/null || true)
