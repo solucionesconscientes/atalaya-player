@@ -78,10 +78,10 @@ Aceptación: con el audio de prueba ES/EN el SRT contiene las frases esperadas (
       transcripción; acciones destructivas con confirmación en OSD; .mcp.json.example + instrucciones en README; tests con cliente MCP.
 
 ## H9 · Salto de intro/créditos local (B10)
-- [ ] Chromaprint (fpcalc) entre episodios de la carpeta + blackdetect/silencedetect → segmentos; botón "Saltar"; exportar media segments JSON.
+- [x] Chromaprint (fpcalc) entre episodios de la carpeta + blackdetect/silencedetect → segmentos; botón "Saltar"; exportar media segments JSON.
 
 ## H10 · Búsqueda semántica y capítulos automáticos (B7, B9)
-- [ ] Embeddings multilingües ligeros (ONNX) + sqlite-vec sobre la transcripción; integrado en la paleta; capítulos por cambio de tema.
+- [x] Embeddings multilingües ligeros (ONNX) + sqlite-vec sobre la transcripción; integrado en la paleta; capítulos por cambio de tema.
 
 ## H11 · Estudio (C4, C6, C8, C10)
 - [ ] Repetir línea, velocidad inteligente (silencios), notas → Markdown con enlaces de tiempo, clips/GIF desde el bucle A-B.

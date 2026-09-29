@@ -113,6 +113,36 @@ desde el propio menú.
 .venv/bin/python -m mpvd call av.models.download '{"name":"rnnoise-sh"}'
 ```
 
+## Saltar intro y créditos (local, sin servicios)
+Al abrir un episodio, mpvd compara su audio (huellas Chromaprint, `fpcalc`) con el de los otros vídeos de la misma carpeta:
+el tramo común al principio es la intro y el común al final son los créditos; los bordes se ajustan a silencios y fotogramas
+negros (`silencedetect`/`blackdetect`). Al entrar en un tramo aparece el botón ⏭ en la barra y un aviso; `alt+k` salta
+(créditos → siguiente episodio de la lista), `alt+j` abre el menú (segmentos, salto automático, volver a analizar). Los segmentos
+se exportan a `<carpeta>/.mpv-uos/segments.json` (`{"type":"intro","start":…,"end":…}`). Requiere `fpcalc`
+(paquete `libchromaprint-tools` en Debian/Ubuntu); sin él la función se desactiva sola.
+```bash
+bin/mpv-uos ~/Series/MiSerie/S01E02.mkv                                        # alt+k salta · alt+j menú
+.venv/bin/python -m mpvd call intro.analyze '{"path":"/ruta/S01E02.mkv","wait":true}'
+.venv/bin/python -m mpvd call intro.segments '{"path":"/ruta/S01E02.mkv"}'
+.venv/bin/python -m mpvd call intro.export '{"path":"/ruta/S01E02.mkv"}'
+```
+
+## Búsqueda semántica en el diálogo y capítulos por tema
+Con una transcripción de subtítulos IA (`alt+c`), mpvd indexa las frases con embeddings multilingües (ONNX int8, sin torch;
+docs/SEMANTICA.md) y la paleta (`alt+p`) gana la sección **Diálogo**: escribe una idea en cualquier idioma ("cuando hablan del
+presupuesto") y Enter salta a ese momento. En el menú de subtítulos IA, **Capítulos por tema (IA)** detecta cambios de tema
+(ventanas de 45 s, mínimo 3 min por capítulo) y los aplica a `chapter-list` con una cita como título; se quitan desde el mismo menú.
+Requiere `uv sync --extra semantic` (onnxruntime ≈24 MB) y el modelo (118 MB) en `vendor/models/embed`, que se descarga desde mpvd.
+```bash
+uv sync --extra translate --extra semantic
+.venv/bin/python -m mpvd call semantic.status
+.venv/bin/python -m mpvd call semantic.models.download
+.venv/bin/python -m mpvd call asr.precompute '{"path":"/ruta/charla.mkv"}'      # transcripción previa
+.venv/bin/python -m mpvd call semantic.index '{"path":"/ruta/charla.mkv","wait":true}'
+.venv/bin/python -m mpvd call semantic.search '{"q":"when they talk about the budget","path":"/ruta/charla.mkv","k":5}'
+.venv/bin/python -m mpvd call semantic.chapters '{"path":"/ruta/charla.mkv"}'  # incluye ffmetadata para ffmpeg
+```
+
 ## MCP: controla el reproductor desde Claude Code u otro asistente
 `python -m mpvd mcp` es un servidor MCP por stdio (docs/MCP.md): tools `status`, `play`, `pause`, `resume`, `seek`, `search_dialogue`
 (busca en la transcripción IA), `list_channels`, `play_channel`, `download`, `add_note`, `subtitles_ai`; resources con la transcripción

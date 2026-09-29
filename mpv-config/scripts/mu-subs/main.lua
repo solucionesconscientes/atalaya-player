@@ -27,6 +27,8 @@ local opts = {
   notify_done = true,       -- OSD when a transcription finishes or fails
   osd_seconds = 3,
   chunk_seconds = 0,        -- 0 = mpvd default (20 s, ADR-024)
+  chapter_min_seconds = 180, -- minimum length of an AI chapter (semantic.chapters)
+  chapter_window = 45,      -- seconds per topic window (semantic.chapters)
 }
 options.read_options(opts, 'mu-subs')
 
@@ -100,6 +102,7 @@ local function publish()
     translate_out = state.translate and state.translate.out or '',
     translate_target = state.translate and state.translate.target or '',
     translate_progress = state.translate and state.translate.progress or 0, dual = state.dual,
+    ai_chapters = state.ai_chapters or 0, chapters_status = state.chapters_status or '',
   })
 end
 
@@ -635,6 +638,9 @@ mp.register_event('file-loaded', function()
     state.resync = nil
     state.translate = nil
     state.dual = false
+    state.ai_chapters = 0
+    state.chapters_status = ''
+    state.orig_chapters = nil
     update_timers()
     publish()
     set_button_state()
@@ -667,6 +673,9 @@ mp.register_event('end-file', function()
   state.srt = ''
   state.sid = nil
   state.path = ''
+  state.ai_chapters = 0
+  state.chapters_status = ''
+  state.orig_chapters = nil
   update_timers()
   publish()
   set_button_state()
@@ -726,6 +735,52 @@ end
 
 local function yesno(b) return b and 'sí' or 'no' end
 
+-- topic-change chapters from mpvd (semantic.chapters over the transcript) → chapter-list; originals restored on removal
+local function apply_chapters(on)
+  if not on then
+    if state.ai_chapters and state.ai_chapters > 0 then
+      mp.set_property_native('chapter-list', state.orig_chapters or {})
+      osd('Capítulos IA quitados')
+    end
+    state.ai_chapters = 0
+    state.chapters_status = ''
+    state.orig_chapters = nil
+    publish()
+    return
+  end
+  local path = current_path()
+  if path == '' or not is_local(path) then osd('Capítulos IA: solo archivos locales') return end
+  if not rpc.connected() then osd('mpvd no está conectado') return end
+  state.chapters_status = 'calculando'
+  publish()
+  rpc.call('semantic.chapters', { path = path, min_seconds = opts.chapter_min_seconds, window = opts.chapter_window },
+    function(err, res)
+    if err then
+      state.chapters_status = 'error'
+      local m = fail(err, 'semantic.chapters')
+      if m:find('transcripci') then m = 'primero genera los subtítulos IA (alt+c)' end
+      osd('Capítulos IA: ' .. m)
+      publish()
+      return
+    end
+    local chaps = (type(res) == 'table' and res.chapters) or {}
+    if #chaps == 0 then
+      state.chapters_status = 'sin cambios de tema'
+      osd('Capítulos IA: no se detectan cambios de tema')
+      publish()
+      return
+    end
+    if not state.orig_chapters then state.orig_chapters = mp.get_property_native('chapter-list') or {} end
+    local list = {}
+    for _, c in ipairs(chaps) do table.insert(list, { title = c.title, time = c.start }) end
+    mp.set_property_native('chapter-list', list)
+    state.ai_chapters = #list
+    state.chapters_status = 'listo'
+    osd(string.format('Capítulos IA: %d capítulos por tema', #list))
+    publish()
+  end, 120)
+end
+
 views.root = function()
   local items = {}
   local t = state.task
@@ -775,6 +830,10 @@ views.root = function()
     hint = ext and ((rs and rs.srt == ext['external-filename'] and rs.status ~= 'done') and rs.status
       or (ext['external-filename']:match('[^/\\]+$'))) or 'selecciona un .srt/.ass externo',
     value = { resync = true }, muted = ext == nil })
+  local nch = state.ai_chapters or 0
+  table.insert(items, { title = 'Capítulos por tema (IA)', icon = 'bookmarks', active = nch > 0,
+    hint = nch > 0 and (nch .. ' capítulos · quitar') or (state.chapters_status ~= '' and state.chapters_status
+      or 'según la transcripción'), value = { chapters = true } })
   table.insert(items, { title = 'Estado del motor', icon = 'monitor_heart', value = { view = 'status' } })
   show('Subtítulos IA', items)
 end
@@ -924,6 +983,9 @@ mp.register_script_message(EVENT, function(json)
     elseif v.dual then
       apply_dual(not state.dual)
       reopen_current()
+    elseif v.chapters then
+      apply_chapters((state.ai_chapters or 0) == 0)
+      reopen_current()
     elseif v.language then
       state.language = v.language
       publish()
@@ -1008,6 +1070,7 @@ mp.register_script_message('mu-subs-stop', stop)
 mp.register_script_message('mu-subs-resync', resync_selected)
 mp.register_script_message('mu-subs-translate', function(target) translate_selected(target or 'en') end)
 mp.register_script_message('mu-subs-dual', function(v) apply_dual(v ~= 'no' and v ~= 'false') end)
+mp.register_script_message('mu-subs-chapters', function(on) apply_chapters(on ~= 'no' and on ~= 'false') end)
 mp.register_script_message('mu-subs-set', function(key, value)
   if key == 'language' or key == 'model' then state[key] = value
   elseif key == 'auto_start' or key == 'precompute_next' then state[key] = (value == 'yes' or value == 'true')

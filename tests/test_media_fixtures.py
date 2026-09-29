@@ -15,11 +15,12 @@ def _probe(path: Path) -> dict:
     return json.loads(out)
 
 
-@pytest.mark.parametrize("name", ["video30.mkv", "chapters.mkv", "voz_es.flac", "voz_en.flac", "voz_es_en.mkv"])
+@pytest.mark.parametrize("name", ["video30.mkv", "chapters.mkv", "voz_es.flac", "voz_en.flac", "voz_es_en.mkv", "serie/ep01.mkv",
+                                  "serie/ep02.mkv", "serie/ep03.mkv"])
 def test_media_matches_manifest(media_dir: Path, media_manifest, name: str):
     spec = media_manifest[name]
     info = _probe(media_dir / name)
-    assert abs(float(info["format"]["duration"]) - spec["duration"]) < 0.5
+    assert abs(float(info["format"]["duration"]) - spec["duration"]) < spec.get("tolerance", 0.5)
     audio = [s for s in info["streams"] if s["codec_type"] == "audio"]
     video = [s for s in info["streams"] if s["codec_type"] == "video"]
     assert bool(video) == spec["video"]

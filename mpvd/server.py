@@ -67,7 +67,11 @@ class MpvdServer:
         from mpvd import control  # noqa: PLC0415
         from mpvd.av import AvService  # noqa: PLC0415
         from mpvd.av import register as register_av  # noqa: PLC0415
+        from mpvd.intro.service import IntroService  # noqa: PLC0415
+        from mpvd.intro.service import register as register_intro  # noqa: PLC0415
         from mpvd.iptv.service import IptvService  # noqa: PLC0415
+        from mpvd.semantic.service import SemanticService  # noqa: PLC0415
+        from mpvd.semantic.service import register as register_semantic  # noqa: PLC0415
         from mpvd.subs.service import SubsService  # noqa: PLC0415
         from mpvd.subs.service import register as register_subs  # noqa: PLC0415
         from mpvd.iptv.service import register as register_iptv  # noqa: PLC0415
@@ -89,6 +93,10 @@ class MpvdServer:
         register_subs(self, self.subs)
         self.av = AvService(self)
         register_av(self, self.av)
+        self.intro = IntroService(self)
+        register_intro(self, self.intro)
+        self.semantic = SemanticService(self, embedder_factory=_semantic_factory())
+        register_semantic(self, self.semantic)
         control.register(self)
 
     # -- lifecycle -------------------------------------------------------------
@@ -221,3 +229,14 @@ class MpvdServer:
             "workers": self.settings.workers,
             "uptime": round(time.time() - self.started_at, 1),
         }
+
+
+def _semantic_factory():  # type: ignore[no-untyped-def]
+    """Test hook: MPVD_SEMANTIC_FAKE=1 swaps the ONNX embedder for the deterministic bag-of-words one from the tests."""
+    import os  # noqa: PLC0415
+
+    if os.environ.get("MPVD_SEMANTIC_FAKE") == "1":
+        from mpvd.semantic.fake import FakeEmbedder  # noqa: PLC0415
+
+        return FakeEmbedder
+    return None

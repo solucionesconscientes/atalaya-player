@@ -40,3 +40,9 @@ RNNOISE_BD_URL=https://github.com/GregorR/rnnoise-models/raw/master/beguiling-dr
 RNNOISE_BD_SHA256=ae3f7411e1e6a884f839a4a145c394408398f09854dbc1216ee02faafc98a17b
 SOFA_KEMAR_URL=https://sofacoustics.org/data/database/mit/mit_kemar_normal_pinna.sofa
 SOFA_KEMAR_SHA256=e7035994f5fd754058424c061380ee92b1d5ed58fccef2887a4266916616acdf
+
+# H10 · embeddings multilingües (ONNX int8) para búsqueda semántica y capítulos (docs/SEMANTICA.md); vendor/models/embed
+EMBED_MODEL_URL=https://huggingface.co/Xenova/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/onnx/model_quantized.onnx
+EMBED_MODEL_SHA256=66fc00f5f29afcaff34092e1bdd20008ca3918265a82fb9695a551e510cc4ebc
+EMBED_SPM_URL=https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/sentencepiece.bpe.model
+EMBED_SPM_SHA256=cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865

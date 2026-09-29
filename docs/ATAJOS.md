@@ -7,7 +7,7 @@ menú completo de uosc. Los atajos por defecto de mpv siguen activos salvo que s
 | Tecla | Acción |
 |---|---|
 | `MBTN_RIGHT`, `MENU`, `alt+m` | Menú principal **MPV-UOS** (buscar, abrir, continuar viendo, TV y radio, yt-dlp, lista, subtítulos, audio, capítulos, captura, salir) |
-| `alt+p` | Paleta global: comandos (todas las teclas con título), canales de TV/radio, vídeos recientes y acciones de mpvd; escribe para filtrar (sin acentos) |
+| `alt+p` | Paleta global: comandos (todas las teclas con título), canales de TV/radio, vídeos recientes y acciones de mpvd; escribe para filtrar (sin acentos); con transcripción IA, sección **Diálogo** (búsqueda semántica multilingüe, Enter salta al momento) |
 | `alt+h` | Recientes / continuar viendo (Tab sobre un elemento: olvidar) |
 | `ctrl+m` | Menú completo generado por uosc a partir de input.conf |
 
@@ -74,3 +74,9 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 |---|---|
 | `alt+v` | Menú **Sonido e imagen**: diálogo claro, modo noche, reducción de ruido (RNNoise/afftdn), binaural para auriculares (HRTF/crossfeed), protección fotosensible, perfil ligero, diagnóstico de tirones, modelos |
 | `alt+n` | Modo noche (compresor + limitador) activar/desactivar |
+
+## Saltar intro y créditos (mu-intro)
+| Tecla | Acción |
+|---|---|
+| `alt+k` | Saltar la intro o los créditos detectados (huellas de audio entre episodios de la misma carpeta); fuera de un segmento salta al final del siguiente |
+| `alt+j` | Menú **Saltar intro y créditos**: segmentos detectados, saltar ahora, salto automático de intro/créditos, volver a analizar |

@@ -10,3 +10,7 @@
 ## 2026-09-28 · Opcional (no bloquea)
 - "Copiar URL" del menú de TV usa `wl-copy`/`xclip`/`xsel`; no hay ninguno instalado, así que muestra la URL en pantalla.
   Para copiar de verdad: `sudo apt install wl-clipboard`
+
+## 2026-09-29 · Opcional (no bloquea)
+- "Saltar intro/créditos" necesita `fpcalc` (Chromaprint). En este portátil ya está (`/usr/bin/fpcalc` 1.6.0); en otra máquina:
+  `sudo apt install libchromaprint-tools`. Sin él la función se desactiva sola (capabilities.services.intro=false).

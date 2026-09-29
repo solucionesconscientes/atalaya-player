@@ -519,6 +519,20 @@ def register(server: MpvdServer, service: AsrService) -> None:  # noqa: C901 - f
         """Cancel a task's job (partial results stay cached)."""
         return service.stop(id).to_dict()
 
+    @d.method("asr.inject")
+    async def inject(ctx: RpcContext, path: str, segments: list[dict[str, Any]], duration: float | None = None,
+                     language: str = "es") -> dict[str, Any]:
+        """Test/tooling hook: register a finished transcription for ``path`` from given cues (no whisper involved)."""
+        key, dur = await service._resolve(path)
+        task = AsrTask(id=uuid.uuid4().hex[:12], key=key, path=str(Path(path.removeprefix("file://"))),
+                       duration=float(duration or dur or 0.0), model="injected", language=language, purpose="precompute")
+        task.segments = [Segment.from_dict(s) for s in segments]
+        task.status = "done"
+        task.detected = language
+        task.updated_at = time.time()
+        service.tasks[task.id] = task
+        return task.to_dict()
+
     @d.method("asr.search")
     async def search(ctx: RpcContext, q: str, path: str | None = None, id: str | None = None,  # noqa: A002
                      limit: int = 20) -> dict[str, Any]:

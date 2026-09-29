@@ -1,15 +1,73 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 ## SIGUIENTE PASO
-H9 · Salto de intro/créditos local: `mpvd/intro/` con (1) huellas Chromaprint por tramos: `fpcalc -raw -length N -json` sobre audio
-extraído con ffmpeg (verificar `fpcalc -version` y opciones reales; comparar huellas de los primeros 5 min de los episodios de la
-misma carpeta: ventana deslizante de 32-bit hashes con distancia Hamming → tramo común = intro; ídem últimos 5 min → créditos);
-(2) `ffmpeg -af silencedetect=n=-45dB:d=1.5` y `-vf blackdetect=d=0.5:pix_th=0.10` para afinar los bordes; (3) servicio
-`intro.analyze {path}` (job PRECOMPUTE, caché por hash + carpeta) → segmentos {intro:[a,b], credits:[a,b], recap?}; `intro.segments {path}`;
-exportar "media segments" JSON (formato Jellyfin/Plex-like: `{"type":"intro","start":…,"end":…}`) a `<carpeta>/.mpv-uos/segments.json`.
-(4) mu-intro.lua: botón "Saltar intro" en uosc (set-button + OSD) cuando time-pos entra en el tramo, salto automático opcional,
-tecla `alt+k`. Tests con medios generados: tools/make_test_media.sh añade 3 "episodios" con la misma intro (tono/voz) y cuerpo distinto.
+H11 · Estudio: (1) mu-study.lua (o ampliar mu-subs) con "repetir línea" (bucle sobre el cue actual de la pista de subtítulos
+seleccionada: `sub-start`/`sub-end` de mpv 0.41 → ab-loop-a/b; tecla), (2) velocidad inteligente = acelerar silencios
+(`asr` ya tiene VAD/segmentos: mpvd calcula tramos sin voz y mu-study ajusta `speed` en caliente al entrar/salir; alternativa sin
+transcripción: `silencedetect` de mpvd/intro/detect.py), (3) notas → Markdown con enlaces de tiempo (ya existe `notes.add/list`
+del H8: añadir tecla y menú con la cita del subtítulo actual, exportar `<data_dir>/notas/<clave>.md`), (4) clips/GIF desde el bucle
+A-B (`ytdl`/ffmpeg en mpvd: `clip.export {path, a, b, format: mp4|gif|mp3}` a la carpeta de vídeos; progreso por eventos).
+Verificar antes: propiedades `sub-start`, `sub-end`, `ab-loop-a/b`, `ab-loop-count` en el manual de mpv 0.41; `ffmpeg -filter_complex`
+para GIF (palettegen/paletteuse).
 ## Registro por iteración
+### Iteración 4 · 2026-09-29
+#### H10 · Búsqueda semántica y capítulos automáticos — hecho (commit "H9+H10")
+- `mpvd/semantic/`: `embed.py` (Embedder ONNX + sentencepiece, 2 hilos, descarga verificada del modelo a vendor/models/embed),
+  `index.py` (frases desde cues, blob float32, búsqueda coseno + bonus literal, capítulos por cambio de tema, ffmetadata),
+  `service.py` (`semantic.status/models.download/index/search/chapters`; caché por hash; fallback literal; indexado en segundo
+  plano), `fake.py` (embedder de test). `asr.inject` (gancho de test). Extra `semantic` en pyproject; check.sh lo instala.
+- mu-menu: sección "Diálogo (semántico)" en la paleta (Enter → seek). mu-subs: "Capítulos por tema (IA)" (aplica/quita
+  `chapter-list`; opciones `mu-subs-chapter_min_seconds`, `mu-subs-chapter_window`; mensaje `mu-subs-chapters yes|no`).
+- docs/SEMANTICA.md (verificación real: paquetes, modelos HF con SHA, benchmark), ADR-030, README, ATAJOS.
+- Tests (tests/test_semantic.py): unión de frases, búsqueda y blob, capítulos (3 temas → 3 capítulos, homogéneo → 0),
+  modelo real ES↔EN (se omite sin extra/modelo), métodos vía daemon con embedder falso, paleta + capítulos en mpv headless.
+- Probar a mano:
+  ```bash
+  bin/mpv-uos charla.mkv        # alt+c subtítulos IA hasta el final; alt+p y escribe "cuando hablan de X" → sección Diálogo
+                                # alt+i → "Capítulos por tema (IA)" → capítulos en la barra de uosc
+  .venv/bin/python -m mpvd call semantic.chapters '{"path":"'$PWD'/charla.mkv"}'
+  ```
+#### H10 · Búsqueda semántica y capítulos automáticos — plan
+- Verificado (subagente → docs/SEMANTICA.md): `onnxruntime` 1.30 (wheel cp312 23,6 MB; numpy, flatbuffers, protobuf, packaging) +
+  `sentencepiece` (ya en `translate`) bastan; `tokenizers` arrastra huggingface-hub y 270 MB de RSS, se descarta. Modelo
+  `Xenova/paraphrase-multilingual-MiniLM-L12-v2` `onnx/model_quantized.onnx` (118 MB, u8u8: 2× más rápido que el quint8_avx2 en
+  esta CPU sin VNNI) + `sentencepiece.bpe.model` (5 MB) del repo sentence-transformers; dim 384, mean pooling + L2, max 128 tokens,
+  sin prefijos; medido: carga 1,4 s, ~6 ms por segmento Whisper con 2 hilos, RSS 270 MB; coseno ES↔EN 0,98/0,86 vs <0,09 no
+  relacionadas. sqlite-vec funciona pero no hace falta (<2 000 vectores por archivo → NumPy). `chapter-list` de mpv 0.41 es
+  escribible por IPC (probado: set_property chapter-list [{title,time}]).
+- mpvd `semantic/`: `embed.py` (Embedder ONNX+spm portado del benchmark, hilos = min(2, nproc-1), descarga de modelo con SHA-256 como
+  av.py, `available()`), `index.py` (frases = segmentos Whisper agrupados hasta ~25 palabras; vectores float32 en blob de la caché por
+  (hash, "embed", modelo, versión, params); búsqueda coseno + fusión con coincidencia textual; capítulos: ventanas 45 s solape 50 %,
+  d=1−cos, media móvil 3, máximos > percentil 85, mínimo 180 s, título = frase más cercana al centroide), `service.py`
+  (`semantic.status`, `semantic.models.download`, `semantic.index {path}` job PRECOMPUTE, `semantic.search {q, path?, k}`,
+  `semantic.chapters {path, min_seconds?, percentile?}` con caché y exportación ffmetadata).
+- mu-menu paleta: sección "Diálogo" (`semantic.search` del archivo actual; si no hay índice cae a `asr.search`); Enter → seek.
+  mu-subs: entrada "Capítulos por tema (IA)" → `semantic.chapters` → `chapter-list`; "Quitar capítulos IA" restaura los originales.
+- Tests: embedder falso determinista (bolsa de palabras → vector) para índice/búsqueda/capítulos; test con modelo real si está en
+  vendor/models/embed y onnxruntime importable (búsqueda cruzada ES/EN sobre voz_es/voz_en); integración headless (paleta "Diálogo",
+  capítulos aplicados en `chapter-list`).
+#### H9 · Salto de intro/créditos — hecho (commit "H9+H10")
+- `mpvd/intro/`: `fingerprint.py` (huella `fpcalc -raw -json` por ventana sobre WAV extraído con ffmpeg; `match()` = votos por
+  diagonal + rachas Hamming ≤6 con recorte de bordes planos), `detect.py` (`silencedetect`/`blackdetect` de ffmpeg → cortes y `snap`),
+  `service.py` (`intro.segments` cache→análisis en segundo plano con evento push, `intro.analyze` (`wait`), `intro.export`;
+  vecinos por número de episodio (S01E02, 1x02, ep02, 02), consenso por mediana, exportación a `<carpeta>/.mpv-uos/segments.json`).
+  `capabilities.services.intro` = hay `fpcalc`. ADR-029.
+- `mu-intro/main.lua`: pide segmentos en file-loaded, sondeo de time-pos (0,5 s) → botón `mu-skip` en la barra de uosc con badge
+  intro/fin + aviso OSD; `alt+k` salta (intro → fin del tramo; créditos → siguiente elemento de la lista o final; fuera de tramo →
+  fin del siguiente); `alt+j` menú (segmentos con tiempos, saltar ahora, salto automático de intro/créditos, activar/desactivar,
+  volver a analizar); mensajes `mu-intro-skip <tipo>`, `mu-intro-set <clave> yes|no`, `mu-intro-refresh`; estado en
+  `user-data/mu/intro`. Entrada "Saltar intro y créditos" en el menú raíz; opciones `mu-intro-*` (auto_skip_intro/credits, enabled).
+- tools/make_test_media.sh genera `serie/ep01..03.mkv` (38 s: 1,5 s negro, intro común de 8 s, cuerpo distinto de 22 s,
+  0,5 s de silencio, créditos comunes de 6 s) con segmentos esperados en manifest.json.
+- Tests (tests/test_intro.py, se omiten sin fpcalc): vecinos/snap, huellas ep01↔ep02 (intro y créditos encontrados, cuerpos no
+  coinciden), servicio (análisis → caché → segments.json → intro.export, segundo episodio rápido por caché), mu-intro headless
+  (segmentos, menú, salto en la intro, créditos → siguiente episodio, salto automático).
+- Probar a mano:
+  ```bash
+  bin/mpv-uos tests/fixtures/media/serie/ep01.mkv tests/fixtures/media/serie/ep02.mkv   # a los ~2 s: "Intro · alt+k"; alt+j menú
+  .venv/bin/python -m mpvd call intro.analyze '{"path":"'$PWD'/tests/fixtures/media/serie/ep02.mkv","wait":true}'
+  cat tests/fixtures/media/serie/.mpv-uos/segments.json
+  ```
 ### Iteración 3 · 2026-09-29
 #### H8 · MCP rico — hecho (commit "H8: MCP")
 - `mpvd/mcp.py`: servidor MCP stdio sin dependencias (ADR-028): initialize/ping/tools/resources/prompts; 11 tools (status, play,

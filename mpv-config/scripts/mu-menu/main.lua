@@ -236,6 +236,8 @@ local function static_root_items()
       value = { cmd = { 'script-binding', 'mu_subs/subs-menu' } } },
     { title = 'Sonido e imagen (filtros, diagnóstico)', hint = 'alt+v', icon = 'tune',
       value = { cmd = { 'script-binding', 'mu_av/av-menu' } } },
+    { title = 'Saltar intro y créditos', hint = 'alt+j', icon = 'skip_next',
+      value = { cmd = { 'script-binding', 'mu_intro/intro-menu' } } },
     { title = 'Lista de reproducción', hint = 'p', icon = 'list_alt', value = { cmd = { 'script-binding', 'uosc/playlist' } },
       separator = true },
   }
@@ -395,7 +397,8 @@ end
 
 local function palette_menu(items, query)
   return {
-    type = PALETTE, title = 'Escribe un comando, canal o vídeo reciente', items = items, callback = { SCRIPT, EVENT },
+    type = PALETTE, title = 'Escribe un comando, canal, vídeo reciente o algo del diálogo', items = items,
+    callback = { SCRIPT, EVENT },
     search_style = 'palette', search_debounce = 150, on_search = 'callback', on_close = 'callback',
     search_suggestion = query, footnote = 'Enter ejecuta / reproduce · ⌫ cierra',
   }
@@ -439,16 +442,22 @@ local function action_items(query, limit)
 end
 
 local palette_seq = 0
+local dialogue_mode = 'text'
 local function run_palette(query)
   palette_seq = palette_seq + 1
   local seq = palette_seq
   state.palette_query = query
   local limit = opts.palette_limit
   local pending
-  local channels, recents = {}, {}
+  local channels, recents, dialogue = {}, {}, {}
   local function finish()
     if seq ~= palette_seq or state.view ~= 'palette' then return end
     local out = {}
+    local dl = {}
+    for _, hit in ipairs(dialogue) do
+      table.insert(dl, { title = hit.text, hint = fmt_time(hit.start), icon = 'forum', value = { seek = hit.start } })
+    end
+    section(dialogue_mode == 'semantic' and 'Diálogo (semántico)' or 'Diálogo', dl, out)
     section('Comandos', command_items(query, query == '' and 6 or limit), out)
     local ch = {}
     for _, c in ipairs(channels) do
@@ -468,6 +477,19 @@ local function run_palette(query)
   end
   if rpc.connected() then
     pending = 2
+    local path = mp.get_property('path') or ''
+    local is_local = path ~= '' and (path:match('^file://') ~= nil or path:match('^%a[%w+.-]*://') == nil)
+    if query ~= '' and is_local then
+      pending = pending + 1
+      rpc.call('semantic.search', { q = query, path = path:gsub('^file://', ''), k = limit }, function(err, res)
+        if not err and type(res) == 'table' then
+          dialogue = res.hits or {}
+          dialogue_mode = res.mode or 'text'
+        end
+        pending = pending - 1
+        if pending == 0 then finish() end
+      end, 20)
+    end
     if query ~= '' then
       rpc.call('iptv.search', { q = query, limit = limit, compact = true }, function(err, rows)
         if not err then channels = rows or {} end
@@ -543,6 +565,10 @@ mp.register_script_message(EVENT, function(json)
       uosc.close(MENU)
       uosc.close(PALETTE)
       run_action(v.action)
+    elseif v.seek then
+      uosc.close(PALETTE)
+      mp.commandv('seek', tostring(v.seek), 'absolute')
+      osd('⏱ ' .. fmt_time(v.seek))
     elseif v.channel then
       uosc.close(PALETTE)
       mp.commandv('script-message-to', 'mu_iptv', 'mu-iptv-play', v.channel)
