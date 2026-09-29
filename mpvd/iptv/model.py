@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import parse_qsl, unquote
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 from mpvd.iptv.m3u import M3UEntry
 
@@ -20,6 +21,75 @@ HEADER_CANON = {
     "authorization": "Authorization",
     "x-forwarded-for": "X-Forwarded-For",
 }
+
+# Sent when the list gives no User-Agent: some CDNs answer 403 to mpv's default "libmpv" (Canal Sur, verified
+# 2026-09-30). A current desktop Chrome (reduced UA string, as Chrome itself sends it); MPV_UOS_USER_AGENT overrides.
+BROWSER_USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/152.0.0.0 Safari/537.36")
+
+# FFmpeg hls demuxer options for every HLS channel: a fresh connection per request (servers that drop kept-alive
+# connections made the playlist reload fail and the picture froze: 101TV Málaga after ~12 s) and a few retries per
+# segment. Both listed by `ffmpeg -h demuxer=hls` (FFmpeg 8.0).
+HLS_LAVF_DEFAULTS = {"http_persistent": "0", "seg_max_retry": "3"}
+
+# mpv options a list may carry itself (#EXTVLCOPT:demuxer-lavf-o=...): passed through, never replaced.
+MPV_PASSTHROUGH = ("demuxer-lavf-o", "stream-lavf-o")
+
+_HLS_PATH_RE = re.compile(r"\.m3u8s?(?:;|$)")
+
+
+def default_user_agent() -> str:
+    return os.environ.get("MPV_UOS_USER_AGENT") or BROWSER_USER_AGENT
+
+
+def is_http(url: str) -> bool:
+    return url.lower().startswith(("http://", "https://"))
+
+
+def is_hls(url: str, extra: dict[str, str] | None = None) -> bool:
+    """HLS by URL (".m3u8", "format=m3u8") or by what the source says (Radio Browser ``hls``, KODIPROP)."""
+    if not is_http(url):
+        return False
+    extra = extra or {}
+    if extra.get("hls") == "1" or extra.get("inputstream.adaptive.manifest_type", "").lower() == "hls":
+        return True
+    parts = urlsplit(url)
+    return bool(_HLS_PATH_RE.search(parts.path.lower())) or "format=m3u8" in parts.query.lower()
+
+
+def split_kv_list(value: str) -> list[tuple[str, str]]:
+    """mpv key-value list ('a=1,b=[x,y],c="z,w"') -> [(key, value)], values kept as written."""
+    items: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    quoted = False
+    for ch in value:
+        if ch == '"' and depth == 0:
+            quoted = not quoted
+        elif ch == "[" and not quoted:
+            depth += 1
+        elif ch == "]" and not quoted and depth:
+            depth -= 1
+        if ch == "," and depth == 0 and not quoted:
+            items.append("".join(buf))
+            buf = []
+            continue
+        buf.append(ch)
+    items.append("".join(buf))
+    out = []
+    for item in items:
+        if item.strip():
+            key, _, val = item.partition("=")
+            out.append((key.strip(), val))
+    return out
+
+
+def merge_kv_list(existing: str | None, defaults: dict[str, str]) -> str:
+    """Add ``defaults`` to an mpv key-value list without overriding the keys it already sets."""
+    pairs = split_kv_list(existing or "")
+    have = {k for k, _ in pairs}
+    pairs += [(k, v) for k, v in defaults.items() if k not in have]
+    return ",".join(f"{k}={v}" for k, v in pairs)
 
 
 @dataclass
@@ -52,11 +122,22 @@ class Channel:
     def from_dict(cls, d: dict[str, Any]) -> Channel:
         return cls(**{k: d.get(k) for k in cls.__dataclass_fields__ if k in d})  # type: ignore[arg-type]
 
+    def request_headers(self) -> dict[str, str]:
+        """HTTP headers as the player sends them (the list's, plus a browser User-Agent when it gives none)."""
+        headers = dict(self.headers)
+        if "User-Agent" not in headers and is_http(self.url):
+            headers["User-Agent"] = default_user_agent()
+        return headers
+
+    def is_hls(self) -> bool:
+        return is_hls(self.url, self.extra)
+
     def mpv_options(self) -> dict[str, str]:
         """Per-file options for ``loadfile <url> replace -1 <options>`` (values must be strings)."""
-        opts: dict[str, str] = {"force-media-title": self.name}
+        # A live channel has no position to resume: never write watch_later for it (zapping or quitting).
+        opts: dict[str, str] = {"force-media-title": self.name, "save-position-on-quit": "no"}
         others: list[str] = []
-        for key, value in self.headers.items():
+        for key, value in self.request_headers().items():
             if key == "User-Agent":
                 opts["user-agent"] = value
             elif key == "Referer":
@@ -66,6 +147,11 @@ class Channel:
         if others:
             # http-header-fields is a string list; escape commas inside values with the %n% length syntax.
             opts["http-header-fields"] = ",".join(_escape_list_item(x) for x in others)
+        for key in MPV_PASSTHROUGH:
+            if self.extra.get("mpv:" + key):
+                opts[key] = self.extra["mpv:" + key]
+        if self.is_hls():
+            opts["demuxer-lavf-o"] = merge_kv_list(opts.get("demuxer-lavf-o"), HLS_LAVF_DEFAULTS)
         return opts
 
 
@@ -142,7 +228,7 @@ def entry_to_channel(
             if canon:
                 headers[canon] = v
     drm = False
-    extra: dict[str, str] = {}
+    extra: dict[str, str] = {f"mpv:{k}": v for k, v in entry.vlcopts.items() if k in MPV_PASSTHROUGH and v}
     for k, v in entry.kodiprops.items():
         if k in ("inputstream.adaptive.stream_headers", "inputstream.adaptive.manifest_headers"):
             headers.update(_parse_header_blob(v))
@@ -200,3 +286,42 @@ def dedupe(channels: list[Channel]) -> list[Channel]:
         seen.add(ch.id)
         out.append(ch)
     return out
+
+
+# -- HLS master playlists (quality shown in the menus) ---------------------------------------------------
+
+_HLS_ATTR_RE = re.compile(r'([A-Z0-9-]+)=("[^"]*"|[^,]*)')
+
+
+def parse_hls_attrs(text: str) -> dict[str, str]:
+    return {k: v.strip('"') for k, v in _HLS_ATTR_RE.findall(text)}
+
+
+def hls_variants(text: str) -> list[dict[str, Any]]:
+    """#EXT-X-STREAM-INF entries of a master playlist -> [{width, height, fps, bandwidth, codecs}]."""
+    out: list[dict[str, Any]] = []
+    for line in text.splitlines():
+        if not line.upper().startswith("#EXT-X-STREAM-INF:"):
+            continue
+        a = parse_hls_attrs(line.split(":", 1)[1])
+        v: dict[str, Any] = {"bandwidth": None, "width": None, "height": None, "fps": None, "codecs": a.get("CODECS")}
+        try:
+            v["bandwidth"] = int(a.get("BANDWIDTH") or a.get("AVERAGE-BANDWIDTH") or 0) or None
+        except ValueError:
+            pass
+        m = re.match(r"^(\d+)x(\d+)$", a.get("RESOLUTION", "").strip())
+        if m:
+            v["width"], v["height"] = int(m.group(1)), int(m.group(2))
+        try:
+            v["fps"] = float(a["FRAME-RATE"]) if a.get("FRAME-RATE") else None
+        except ValueError:
+            pass
+        out.append(v)
+    return out
+
+
+def best_variant(variants: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The variant mpv plays by default (hls-bitrate=max): highest resolution, then frame rate, then bitrate."""
+    if not variants:
+        return None
+    return max(variants, key=lambda v: (v.get("height") or 0, v.get("fps") or 0, v.get("bandwidth") or 0))

@@ -81,8 +81,9 @@ def test_entry_to_channel_headers_and_kinds():
     la1 = chans[0]
     assert la1.kind == "tv" and la1.country == "es" and la1.tvg_id == "La1.es" and la1.logo.endswith("la1.png")
     assert la1.headers == {"User-Agent": "Mozilla/5.0 (X11)", "Referer": "https://www.rtve.es/"}
-    assert la1.mpv_options() == {"force-media-title": "La 1", "user-agent": "Mozilla/5.0 (X11)",
-                                 "referrer": "https://www.rtve.es/"}
+    assert la1.mpv_options() == {"force-media-title": "La 1", "save-position-on-quit": "no",
+                                 "user-agent": "Mozilla/5.0 (X11)", "referrer": "https://www.rtve.es/",
+                                 "demuxer-lavf-o": "http_persistent=0,seg_max_retry=3"}
     news = chans[1]
     assert news.url == "http://example.org/news.m3u8"  # pipe headers stripped from the URL
     assert news.headers == {"User-Agent": "VLC/3", "Referer": "https://r.example/", "Origin": "https://o.example"}

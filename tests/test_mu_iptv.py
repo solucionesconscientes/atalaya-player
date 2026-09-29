@@ -72,8 +72,6 @@ def tv(daemon_env, media_dir):
             f'#EXTINF:-1 tvg-id="Info.fr@SD" group-title="News",France Test (720p)\nfile://{m}/video30.mkv\n'
             f'#EXTINF:-1 tvg-id="Erste.de@SD" group-title="General",Erste Test\nfile://{m}/chapters.mkv\n'
         ).encode(),
-        "/countries.json": json.dumps([{"name": "France", "code": "FR", "flag": "🇫🇷"},
-                                       {"name": "Germany", "code": "DE", "flag": "🇩🇪"}]).encode(),
         "/json/stations/search": b"[]",
         "/json/countries": b'[{"name":"Spain","iso_3166_1":"ES","stationcount":3}]',
         "/json/stations/bycountrycodeexact/ES": (
@@ -90,7 +88,7 @@ def tv(daemon_env, media_dir):
     src_path = daemon_env.base / "sources.json"
     src_path.write_text(json.dumps(sources), encoding="utf-8")
     record_dir = daemon_env.base / "rec"
-    env = {**daemon_env.env, "MPV_UOS_IPTV_SOURCES": str(src_path), "MPV_UOS_COUNTRIES_URL": f"{base}/countries.json",
+    env = {**daemon_env.env, "MPV_UOS_IPTV_SOURCES": str(src_path), "MPV_UOS_COUNTRY": "es",
            "MPV_UOS_RADIO_BROWSER_URL": base}
     h = start_mpv(daemon_env.runtime_dir,
                   [f"--script-opts=mu-core-watchdog_seconds=5,mu-iptv-record_dir={record_dir},mu-iptv-osd_seconds=1"], env=env)
@@ -176,14 +174,14 @@ def test_menus_play_zap_favorites_record_and_search(tv):
     # uosc destroys a menu only after its fade-out; opening another one meanwhile would die with it
     h.wait_property("user-data/uosc/menu/type", lambda v: v is None, timeout=10)
 
-    # world view: countries with names from the (mocked) API, then a country grouped by category
+    # world view: countries named in Spanish (system iso-codes), then a country grouped by category
     h.command("script-binding", "mu_iptv/tv-menu")
     wait_view(h, "root")
     send_event(h, {"type": "activate", "index": 4, "value": {"view": "world"}})
     wait_view(h, "world")
     countries = d.call("iptv.countries", {"source": "iptv_org"})
-    assert [c["name"] for c in countries] == ["France", "Germany"] and countries[0]["flag"] == "🇫🇷"
-    send_event(h, {"type": "activate", "index": 1, "value": {"view": "country", "id": "fr", "name": "France"}})
+    assert [c["name"] for c in countries] == ["Alemania", "Francia"] and countries[1]["flag"] == "🇫🇷"
+    send_event(h, {"type": "activate", "index": 2, "value": {"view": "country", "id": "fr", "name": "Francia"}})
     wait_view(h, "country:fr")
     send_event(h, {"type": "back"})
     wait_view(h, "world")
