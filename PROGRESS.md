@@ -1,5 +1,5 @@
 # PROGRESS
-ESTADO_GLOBAL: COMPLETADO
+ESTADO_GLOBAL: EN_CURSO
 
 ## Resumen para Ser (2026-09-29)
 Todos los hitos H0–H13 de BACKLOG.md están [x]; ninguno quedó [~]. `tools/check.sh` pasa 202 tests sin red + 4 con red; lo único
@@ -49,6 +49,7 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
+H15 · Interfaz y navegación (plan aprobado por Ser el 2026-09-30: H15–H28 en BACKLOG.md; H26 torrents pendiente de decisión).
 H14 cerrado (2026-09-30). Pendiente de Ser: abrir el puerto del mando en ufw y probar el desentrelazado con 7TV (NEEDS_HUMAN.md).
 Siguiente tanda posible: B11 «¿qué me he perdido?», B6 OCR de subtítulos, C2–C3 diccionario/Anki, E4 MPRIS, I1/I5.
 Backlog completo. Si se reanuda: (1) Ser abre el puerto del mando y autoriza Notion (NEEDS_HUMAN.md) y ejecuta `/registrar`;

@@ -109,3 +109,86 @@ no funciona, recordar opciones, reproducir YouTube y otras webs, el QR del móvi
       trozos de 28,5 s y contexto.
 - [x] Preferencias persistentes (mu-prefs + módulo mu/prefs) y "Restablecer preferencias".
 - [x] TV: calidad de canales (según diagnóstico), nombres de países y categorías en español, duplicados.
+
+## Plan aprobado por Ser el 2026-09-30 (H15–H28)
+Decisiones de Ser: ok.ru queda solo como reproducir/descargar por enlace (sin búsqueda); el mando QR se queda como está (solo LAN);
+el túnel de internet se acepta SOLO mientras haya una sala de "Compartir" abierta. Todo lo que dependa de la nube o de cuentas,
+desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implementa hasta que Ser decida (sáltalo).
+
+## H15 · Interfaz y navegación más simples
+- [ ] Un único menú con migas en el título («MPV-UOS › TV y radio › España»), «‹ Atrás» como primera fila de cada submenú (ratón),
+      Retroceso/← vuelve un nivel y Esc cierra; «atrás» en la raíz de un módulo vuelve al menú principal (pila de navegación
+      compartida entre scripts: módulo `mu/nav`). Menú principal en 7–8 categorías con icono: Abrir, TV y radio, Descargas y
+      conversión, Subtítulos, Imagen y sonido, Grabar, Herramientas, Preferencias.
+- [ ] Barra de uosc reducida (reproducción, subtítulos, audio, velocidad, menú, grabar, pantalla completa); el resto en el menú.
+      Letra de menú algo mayor, textos cortos sin tecnicismos, `?` muestra una ayuda en pantalla, clic en el vídeo para pausar como
+      preferencia (desactivada por defecto). Tests headless de navegación (entrar, atrás, cerrar) en todos los módulos.
+
+## H16 · Sincronía de los subtítulos IA
+- [ ] Tiempos por palabra de whisper.cpp (verifica las opciones reales de la versión vendorizada: --dtw / -ml / -sow / tokens),
+      cortes de líneas largas en tiempos reales de palabra, inicio y fin ajustados a los tramos de voz del VAD, reglas de lectura
+      (mín./máx. duración, caracteres por segundo, sin solaparse). Test con audio de tiempos conocidos (desfase medio < 150 ms).
+
+## H17 · «Mis notas»
+- [ ] Menú Mis notas (por vídeo, saltar al minuto, editar, borrar), ficheros con el título legible en `<datos>/notas`, exportar junto
+      al vídeo o a una carpeta elegida (Obsidian), y enlaces `mpv-uos://` registrados en la entrada de escritorio que abren el vídeo en
+      ese minuto (x-scheme-handler; sin sudo).
+
+## H18 · Botón «Grabar» unificado
+- [ ] Botón ● en la barra con menú: captura (con/sin subtítulos), grabar vídeo desde ahora, grabar solo audio, recortar tramo; punto
+      rojo y contador mientras graba. Directos/TV/radio: stream-record; vídeos de internet: yt-dlp --download-sections del tramo
+      (verifica la opción); archivos locales: corte sin recodificar. Carpeta configurable. Tests.
+
+## H19 · Gestor de descargas avanzado
+- [ ] Varias URLs a la vez (pegar lista / fichero), listas y canales con casillas (flat playlist), carpeta y numeración por lista,
+      archivo de descargas (sin duplicados), simultáneas y límite de velocidad configurables, la cola sobrevive a reinicios.
+- [ ] Subtítulos en SRT: «solo subtítulos» o junto al vídeo, eligiendo idiomas (por defecto originales + es + en; «todos» explícito).
+- [ ] yt-dlp: reintento automático con la versión nightly cuando la estable falle (ok.ru hoy), `curl_cffi` en el .venv para la
+      suplantación de navegador (TikTok), opción desactivada «usar mi sesión del navegador» (cookies, nunca DRM). TikTok por enlace y
+      perfil completo con casillas; Instagram por enlace.
+
+## H20 · Convertir vídeo y audio
+- [ ] «Convertir» en el menú: MP4 compatible (H.264/AAC), más pequeño (H.265), web, solo audio (MP3/M4A/Opus/FLAC/WAV), GIF; límite
+      de resolución y calidad, tramo, conservar subtítulos, carpeta entera; codificación por hardware VA-API si `vainfo` la ofrece;
+      cola unificada con descargas (panel «Tareas»). Tests.
+
+## H21 · Guía de TV y grabación programada
+- [ ] EPG de TDTChannels (url-tvg de la lista, XMLTV .gz) en caché: «ahora / después» en cada canal y parrilla por canal.
+- [ ] Grabación programada desde la guía o a mano (canal, inicio, fin), aunque se esté viendo otra cosa (ffmpeg en mpvd), con aviso
+      al terminar; lista de grabaciones programadas y realizadas.
+
+## H22 · Biblioteca y subtítulos automáticos
+- [ ] Biblioteca sin servidor: carpetas elegidas, películas y series por temporada, carátulas locales (y metadatos opcionales con clave
+      propia, desactivado), «seguir viendo» y «siguiente episodio» automático en la pantalla de inicio.
+- [ ] Subtítulos de internet por hash (OpenSubtitles, cuenta propia, desactivado por defecto) con resincronización automática.
+
+## H23 · Suscripciones, panel web y automatismos
+- [ ] Suscripciones a canales, listas y podcasts (RSS) con reglas (calidad, solo audio, conservar N, borrar lo visto), horarios de
+      descarga, límite por franja y pausa con red medida.
+- [ ] Cadena tras descargar (SponsorBlock, volumen igualado, subtítulos IA + traducción, renombrar y mover a la biblioteca).
+- [ ] Panel web de descargas servido por mpvd (misma base que la PWA del mando): tabla, selección múltiple, arrastrar enlaces,
+      historial, espacio en disco; «Enviar a MPV-UOS» desde el navegador (marcador + `mpv-uos://`); aviso al móvil al terminar.
+
+## H24 · Escritorio y sonido
+- [ ] MPRIS (controles de KDE, teclas multimedia, auriculares, pantalla de bloqueo), volumen igualado entre vídeos, ecualizador sencillo.
+
+## H25 · Compartir: salas, ver juntos y emitir
+- [ ] Sala privada con enlace: «ver juntos» sincronizado (cada invitado reproduce la fuente en su navegador), permisos por invitado
+      (solo ver / puede controlar, con aprobación en pantalla, revocable), quién está conectado, avisos «Ana ha pausado».
+- [ ] Retransmisión de archivos locales a los invitados (HLS con subtítulos WebVTT, conversión al vuelo por VA-API si hace falta).
+- [ ] Túnel de Cloudflare (cloudflared en vendor/, sin cuenta) activo SOLO mientras la sala está abierta, con caducidad y límite de
+      intentos. Sala pública «solo ver» (cualquiera con el enlace, número máximo de espectadores, sin control ni chat).
+- [ ] «Emitir en directo» a una plataforma (YouTube Live, Twitch, PeerTube, Owncast) por RTMP con clave de emisión, para audiencias
+      grandes. Chat y reacciones en salas privadas. Aviso legal: solo contenido que se puede compartir.
+
+## H26 · Torrents · DECISIÓN PENDIENTE
+- [ ] Propuesta: integrarse con qBittorrent (ya instalado; Ser activa su interfaz web en localhost) para añadir magnets, descargar en
+      orden y «ver mientras descarga» en MPV-UOS, con libtorrent en el .venv solo como alternativa si no hay qBittorrent.
+
+## H27 · Diferenciales
+- [ ] Enviar a la tele (Chromecast/DLNA), mini reproductor flotante, modo salón (letra grande, mando HDMI-CEC o gamepad), modo sencillo,
+      «¿qué me he perdido?» con modelo local (si el rendimiento lo permite).
+
+## H28 · Plataformas
+- [ ] Paquete Linux (AppImage y/o Flatpak), prueba en ARM64 (Raspberry Pi 5 / modo salón), Windows (named pipes en mpvd, lanzador,
+      yt-dlp.exe, whisper, instalador) y macOS (.app). Lo que no se pueda probar sin el hardware, a docs/PLATAFORMAS.md y NEEDS_HUMAN.md.
