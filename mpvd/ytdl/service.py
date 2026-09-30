@@ -20,6 +20,7 @@ from mpvd.hashing import url_key
 from mpvd.jobs import Priority
 from mpvd.net import HttpCache
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
+from mpvd import hwdecode
 from mpvd.ytdl import info as info_mod
 from mpvd.ytdl.binary import (
     NIGHTLY_RELEASES_URL,
@@ -76,7 +77,7 @@ class YtdlService:
                                             or NIGHTLY_RELEASES_URL)
         self._nightly_lock = asyncio.Lock()
         self.downloads = DownloadManager(server.jobs, self.binary, settings.data_dir, on_change=self._download_changed,
-                                         fallback=self.ensure_nightly)
+                                         fallback=self.ensure_nightly, vcodec=lambda: hwdecode.detect()["sort"])
         self._info_tasks: dict[str, asyncio.Task[dict[str, Any]]] = {}
         self._search_tasks: dict[tuple[str, int], asyncio.Task[dict[str, Any]]] = {}
         self._search_cache: dict[tuple[str, int], tuple[float, list[dict[str, Any]]]] = {}
@@ -276,7 +277,8 @@ class YtdlService:
             entries = info_mod.flat_entries(data)
             return {**info_mod.summary(data), "entries": entries, "formats": {}, "counts": {},
                     "has_combined": False}
-        return {**info_mod.analyze(data), "url": url}
+        hw = (await asyncio.to_thread(hwdecode.detect))["hw"]
+        return {**info_mod.analyze(data, set(hw) if hw is not None else None), "url": url}
 
     # -- search -------------------------------------------------------------------------------
 
@@ -406,6 +408,14 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
         if raw:
             return await service.raw_info(url, force=force, seed=seed)
         return await service.analyze(url, force=force, seed=seed)
+
+    @d.method("ytdl.hw")
+    async def hw(ctx: RpcContext) -> dict[str, Any]:
+        """Video codecs this machine decodes in hardware (vainfo on Linux), the ``-S vcodec`` limit used for
+        downloads and the ``ytdl-format`` mu-ytdl uses for playback (H31)."""
+        det = await asyncio.to_thread(hwdecode.detect)
+        hw_set = set(det["hw"]) if det["hw"] is not None else None
+        return {**det, "playback_format": hwdecode.playback_format(hw_set)}
 
     @d.method("ytdl.playlist")
     async def playlist(ctx: RpcContext, url: str, force: bool = False) -> dict[str, Any]:

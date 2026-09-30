@@ -16,6 +16,7 @@ Desarrollado y probado en Linux (Ubuntu, Wayland/KDE, mpv 0.41). Lo siguiente NO
 | Intro/créditos (`fpcalc`) | ✅ | `brew install chromaprint` | binario de acoustid.org en PATH |
 | Mando QR/PWA | ✅ (abrir puerto en `ufw`) | aviso de conexiones entrantes | diálogo del Firewall de Windows |
 | MCP (stdio) | ✅ | debería ir | depende de mpvd en Windows |
+| Decodificación por hardware (etiquetas y preferencia de códec) | ✅ `vainfo` | ❌ sin comprobar (VideoToolbox: H.264/HEVC siempre; AV1 desde M3) | ❌ sin comprobar (D3D11VA/DXVA2; `dxdiag`) |
 | Controles del escritorio | ✅ MPRIS (D-Bus de sesión, `jeepney`) | ❌ falta `MPNowPlayingInfoCenter` | ❌ falta SMTC (`SystemMediaTransportControls`) |
 
 ## Instalar en macOS (no probado)

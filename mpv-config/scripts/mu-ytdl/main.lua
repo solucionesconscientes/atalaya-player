@@ -95,8 +95,12 @@ local function count_active()
   return n
 end
 
+-- codecs decoded in hardware and the playback format that suits them (mpvd ytdl.hw, H31)
+local hw = { format = '', names = {} }
+
 local function publish()
   mp.set_property_native('user-data/mu/ytdl', {
+    hw_format = hw.format,
     active = state.active, url = state.url, mode = state.mode, format = state.format, title = state.title,
     current_ids = state.current_ids, view = state.view, depth = #state.stack, downloads_active = count_active(),
     last_event = state.last_event or '', last_error = state.last_error, hook_path = state.hook_path,
@@ -218,6 +222,12 @@ local hook_synced = false
 local function sync_hook_with_mpvd()
   if hook_synced or not rpc.connected() then return end
   hook_synced = true
+  rpc.call('ytdl.hw', nil, function(err, res)
+    if err or type(res) ~= 'table' then return end
+    hw.format = res.playback_format or ''
+    hw.names = res.names or {}
+    publish()
+  end, 30)
   rpc.call('ytdl.hook', nil, function(err, cfg)
     if err then hook_synced = false; return end
     apply_raw_options(cfg.raw_options)
@@ -386,17 +396,24 @@ local function toggle_audio()
   end
 end
 
+-- mpv.conf's ytdl-format: while it is still this one (the user did not pick another, which mu-prefs would remember),
+-- internet videos use the format that suits this machine's hardware decoding (H31, mpvd ytdl.hw)
+local FACTORY_FORMAT = 'bestvideo[height<=?1080][vcodec^=avc1]+bestaudio/bestvideo[height<=?1080]+bestaudio/best'
+
 -- "Solo audio" remembered: internet videos open without video. Runs before ytdl_hook's on_load (priority 10) so the
 -- audio format is the one yt-dlp resolves; a format chosen for this file (loadfile options) is left alone.
 mp.add_hook('on_load', 9, function()
-  if not P:get('prefer_audio') then return end
   local path = mp.get_property('path') or ''
   if not (path:match('^https?://') or path:match('^ytdl://')) then return end
   local tv = mp.get_property_native('user-data/mu/iptv') or {}
   if type(tv.current) == 'table' and tv.current.url == path then return end  -- TV channels keep their video
   if mp.get_property_native('option-info/ytdl-format/set-locally') then return end
-  mp.set_property('file-local-options/ytdl-format', opts.audio_format)
-  mp.set_property('file-local-options/vid', 'no')
+  if P:get('prefer_audio') then
+    mp.set_property('file-local-options/ytdl-format', opts.audio_format)
+    mp.set_property('file-local-options/vid', 'no')
+  elseif hw.format ~= '' and mp.get_property('ytdl-format') == FACTORY_FORMAT then
+    mp.set_property('file-local-options/ytdl-format', hw.format)
+  end
 end)
 
 -- ---------------------------------------------------------------------------------------------
@@ -812,6 +829,8 @@ views.status = function()
       { title = 'Runtime JS', icon = 'javascript', selectable = false,
         hint = b.js_runtime and (b.js_runtime.name .. ' ' .. (b.js_runtime.version or ''))
           or 'ninguno (YouTube puede omitir formatos)' },
+      { title = 'Decodifica por hardware', icon = 'memory', selectable = false,
+        hint = #hw.names > 0 and table.concat(hw.names, ', ') or 'desconocido (se usa H.264)' },
       { title = 'Versión nightly (reintentos)', icon = 'nightlight', selectable = false,
         hint = (st.nightly and st.nightly.version ~= '') and st.nightly.version or 'se descarga si hace falta' },
       { title = 'Suplantación de navegador (TikTok…)', icon = 'masks', selectable = false,

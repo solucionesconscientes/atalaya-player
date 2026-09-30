@@ -3,6 +3,7 @@ yt-dlp (tests/fixtures/ytdlp/fake_ytdlp.py) through an in-process mpvd server.""
 
 import asyncio
 import json
+import re
 import os
 import time
 from pathlib import Path
@@ -165,7 +166,8 @@ def test_download_done_cancel_fail_retry_and_history(ytdl_env):
         assert done["total"] > 0 and done["downloaded"] == done["total"] and done["attempts"] == 1
         argv = [a for a in argv_lines(arglog) if a[-1] == url][-1]
         assert argv[argv.index("-f") + 1].startswith("bv*[height<=?360]+ba")
-        assert argv[argv.index("-S") + 1] == "vcodec:h264,res,acodec:aac"  # mp4 (settings default): H.264 + AAC
+        sort = argv[argv.index("-S") + 1]   # mp4 (settings default): best hardware codec + original Opus (H31)
+        assert re.fullmatch(r"vcodec:(av01|vp9|h265|h264),res,acodec:opus", sort), sort
         assert "--embed-chapters" in argv and "--embed-metadata" in argv  # settings defaults
         assert "--embed-thumbnail" not in argv
         jobs = await c.call("jobs.list")
@@ -363,5 +365,20 @@ def test_failed_download_is_retried_once_with_the_nightly_build(ytdl_env, monkey
         r = await c.call("ytdl.download", {"url": "https://fake.test/fail-extract2", "preset": "video_360"})
         d = await wait_status(c, r["id"], ("done", "failed"))
         assert d["status"] == "failed" and len(calls(d["url"])) == 1
+
+    with_server(tmp_path, fn)
+
+
+def test_mp4_merge_that_ffmpeg_refuses_is_saved_as_mkv(ytdl_env):
+    """H31: mp4 is forced for merges; when ffmpeg cannot put the codecs in mp4 the download is repeated once as mkv."""
+    tmp_path, arglog = ytdl_env
+
+    async def fn(server, c):
+        r = await c.call("ytdl.download", {"url": "https://fake.test/badmerge", "preset": "video_1080"})
+        d = await wait_status(c, r["id"], ("done", "failed"))
+        runs = [a for a in argv_lines(arglog) if a and a[-1] == "https://fake.test/badmerge" and "--no-simulate" in a]
+        assert d["status"] == "done" and len(runs) == 2, (d, runs)
+        assert [a[a.index("--merge-output-format") + 1] for a in runs] == ["mp4", "mkv"]
+        assert d["outputs"] and d["outputs"][0].endswith(".mkv")
 
     with_server(tmp_path, fn)

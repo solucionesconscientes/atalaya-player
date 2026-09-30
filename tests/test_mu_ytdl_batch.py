@@ -178,3 +178,47 @@ def test_playback_retries_once_with_the_nightly_build(daemon_env, media_dir, tmp
     finally:
         h.stop()
         httpd.shutdown()
+
+
+def test_playback_format_follows_hardware_decoding(daemon_env, media_dir, tmp_path):
+    """H31: while ytdl-format is mpv.conf's, internet videos open with the codecs this machine decodes in hardware
+    first (here «AV1 + H.264»); a format chosen by the user is respected."""
+    from tests.conftest import start_mpv
+    from tests.test_mu_iptv import serve
+    from tests.test_mu_ytdl import FAKE
+
+    arglog = tmp_path / "argv.log"
+    httpd = serve({"/" + p.name: p.read_bytes() for p in media_dir.iterdir() if p.suffix in (".mkv", ".flac")})
+    daemon_env.extra_env["MPV_UOS_HWDECODE"] = "av1,h264"
+    env = {**daemon_env.env, "MPV_UOS_YTDLP": str(FAKE), "FAKE_YTDLP_ARGLOG": str(arglog),
+           "FAKE_YTDLP_MEDIA": str(media_dir), "FAKE_YTDLP_MEDIA_URL": f"http://127.0.0.1:{httpd.server_address[1]}",
+           "MPV_UOS_YTDLP_AUTO_UPDATE": "0"}
+    h = start_mpv(daemon_env.runtime_dir, [
+        "--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5,"
+        f"mu-ytdl-ytdl_path={FAKE}", "--keep-open=yes", "--pause=yes"], env=env)
+    try:
+        ytdl_state(h, lambda v: v.get("hw_format", "").startswith("bestvideo[height<=?1080][vcodec^=av01]"), timeout=40)
+
+        def hook_format(url):
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                rows = [a for a in argv_lines(arglog) if a and a[-1] == url and "-J" in a]
+                if rows:
+                    return rows[-1][rows[-1].index("--format") + 1]
+                time.sleep(0.1)
+            raise AssertionError(f"ytdl_hook did not run for {url}")
+
+        h.command("loadfile", "https://fake.test/uno")
+        assert hook_format("https://fake.test/uno").startswith("bestvideo[height<=?1080][vcodec^=av01]+bestaudio/")
+        h.wait_property("path", lambda v: v == "https://fake.test/uno", timeout=20)
+        h.command("stop")
+        h.wait_property("idle-active", lambda v: v is True, timeout=20)
+        # a file-local option: the global value (what mu-prefs would remember) is still mpv.conf's
+        h.wait_property("ytdl-format", lambda v: str(v).startswith("bestvideo[height<=?1080][vcodec^=avc1]"), timeout=10)
+        h.command("set", "ytdl-format", "worst")
+        h.command("loadfile", "https://fake.test/dos")
+        assert hook_format("https://fake.test/dos") == "worst"
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+        httpd.shutdown()

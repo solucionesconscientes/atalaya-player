@@ -93,6 +93,13 @@ def worth_nightly(stderr_tail: list[str]) -> bool:
     return bool(errors) and not any(PERMANENT_ERRORS.search(ln) for ln in errors)
 
 
+def merge_failed(stderr_tail: list[str]) -> bool:
+    """yt-dlp's merger (ffmpeg) refused the streams: codecs that the forced mp4 container does not take."""
+    text = "\n".join(stderr_tail)
+    return "Conversion failed" in text or "not currently supported in container" in text \
+        or "Could not find tag for codec" in text
+
+
 def valid_browser(value: str) -> bool:
     return bool(value) and _BROWSER_RE.match(value) is not None
 
@@ -351,8 +358,10 @@ class DownloadItem:
 class DownloadManager:
     def __init__(self, jobs: JobQueue, binary_provider: Callable[[], YtdlpBinary | None], data_dir: Path,
                  on_change: Callable[[DownloadItem], None] | None = None,
-                 fallback: Callable[[], Awaitable[YtdlpBinary | None]] | None = None):
+                 fallback: Callable[[], Awaitable[YtdlpBinary | None]] | None = None,
+                 vcodec: Callable[[], str] | None = None):
         self.jobs = jobs
+        self.vcodec = vcodec or (lambda: "h264")   # H31: -S vcodec limit = best codec decoded in hardware
         self.fallback = fallback
         self._binary = binary_provider
         self.data_dir = data_dir
@@ -516,7 +525,7 @@ class DownloadManager:
     async def _exec(self, item: DownloadItem, job: Job, binary: YtdlpBinary) -> tuple[int, ProgressState, list[str]]:
         """Run one yt-dlp process for ``item`` (progress pushed as it goes); returns (rc, progress, stderr tail)."""
         args = build_args(item.spec, item.out_dir, self.settings.template, self.settings.rate_limit,
-                          str(self.archive_path))
+                          str(self.archive_path), vcodec=self.vcodec())
         item.argv = binary.command(*self.settings.session_args(), *args)
         ps = ProgressState()
         stderr_tail: deque[str] = deque(maxlen=STDERR_TAIL)
@@ -574,6 +583,12 @@ class DownloadManager:
         job.report(0.0, item.message)
         try:
             rc, ps, tail = await self._exec(item, job, binary)
+            if rc != 0 and merge_failed(tail) and item.spec.container == "mp4" and item.spec.kind in ("video", "exact"):
+                # mp4 is forced for merges (H31): codecs ffmpeg cannot put in mp4 → the same download as .mkv, once
+                item.message = "no cabe en MP4: se guarda en MKV…"
+                self._changed(item)
+                item.spec.container = "mkv"
+                rc, ps, tail = await self._exec(item, job, binary)
             used_nightly = False
             if not (rc == 0 and (ps.outputs or ps.stage == "done")) and self.settings.nightly_fallback \
                     and binary.source not in ("nightly", "env-nightly") and self.fallback is not None \

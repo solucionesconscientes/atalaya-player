@@ -198,9 +198,9 @@ traducción en directo. Fuera también: imagen (mejoras de imagen, visor de foto
       Recientes, «Buscar en esta lista» filtra solo sus canales (sin acentos, mismo motor que la búsqueda global).
 
 ## H31 · Formatos de descarga y decodificación del equipo
-- [ ] Detectar qué códecs decodifica la gráfica (vainfo en Linux; D3D11/DXVA en Windows y VideoToolbox en macOS documentados) y
+- [x] Detectar qué códecs decodifica la gráfica (vainfo en Linux; D3D11/DXVA en Windows y VideoToolbox en macOS documentados) y
       etiquetar en Calidad y Descargar «fluido en tu equipo» / «exigente (por procesador)».
-- [ ] Valores por defecto: vídeo original sin recodificar hasta 1080p con sus fps, códec preferido el que el equipo decodifica por
+- [x] Valores por defecto: vídeo original sin recodificar hasta 1080p con sus fps, códec preferido el que el equipo decodifica por
       hardware, audio Opus original, contenedor MP4 (MKV como opción); solo audio en Opus original (MP3 320 kb/s y M4A como opciones);
       HEVC solo como perfil «Más pequeño» en Convertir. Tamaños orientativos por hora en la ayuda.
 

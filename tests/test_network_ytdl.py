@@ -116,3 +116,31 @@ def test_real_tiktok_profile_is_a_list_with_checkboxes(tmp_path, monkeypatch):
             await server.stop()
 
     asyncio.run(go())
+
+
+def test_real_default_download_is_mp4_with_original_opus(tmp_path, monkeypatch):
+    """H31: «Vídeo · hasta 1080p» keeps the original streams: the hardware-preferred video + YouTube's Opus in .mp4."""
+    monkeypatch.delenv("MPV_UOS_YTDLP", raising=False)
+    monkeypatch.setenv("MPV_UOS_DOWNLOAD_DIR", str(tmp_path / "dl"))
+    monkeypatch.setenv("MPV_UOS_YTDLP_AUTO_UPDATE", "0")
+    settings = Settings(runtime_dir=tmp_path / "rt", cache_dir=tmp_path / "cache", data_dir=tmp_path / "data",
+                        idle_timeout=0, workers=2)
+
+    async def go():
+        server = MpvdServer(settings)
+        await server.start()
+        try:
+            async with MpvdClient(str(settings.socket_path)) as c:
+                r = await c.call("ytdl.download", {"url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+                                                   "preset": "video_1080"})
+                d = await wait_done(c, r["id"])
+                assert d["status"] == "done", d
+                out = Path(d["outputs"][0])
+                assert out.suffix == ".mp4", out
+                streams = {s["codec_type"]: s for s in ffprobe(out)["streams"]}
+                assert streams["audio"]["codec_name"] == "opus", streams["audio"]["codec_name"]
+                assert streams["video"]["codec_name"] in ("h264", "hevc", "vp9", "av1")
+        finally:
+            await server.stop()
+
+    asyncio.run(go())

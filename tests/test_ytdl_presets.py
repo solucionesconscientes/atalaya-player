@@ -22,7 +22,7 @@ def test_video_best_argv_exact():
     a = args_of(kind="video")
     assert a[:6] == ["--no-overwrites", "--continue", "--ignore-errors", "--retries", "5", "--socket-timeout"]
     assert a[a.index("-f") + 1] == "bv*+ba/b"
-    assert a[a.index("--merge-output-format") + 1] == "mp4/mkv"  # mkv fallback when codecs do not fit mp4
+    assert a[a.index("--merge-output-format") + 1] == "mp4"  # H31: forced (Opus fits; a failed merge → mkv retry)
     assert a[a.index("--remux-video") + 1] == "mov>mp4/m4v>mp4/flv>mp4/3gp>mp4"  # only safe remuxes
     assert "--no-playlist" in a and "--yes-playlist" not in a
     assert a[a.index("-P") + 1] == "/tmp/out" and a[a.index("-o") + 1] == "%(id)s.%(ext)s"
@@ -121,24 +121,31 @@ def test_presets_build_and_describe():
 def test_video_presets_sort_codecs_for_the_container():
     """Bug: «Vídeo · 360p» in mp4 produced an .mkv with AV1+Opus (yt-dlp's default order ranks them first)."""
     mp4 = args_of(kind="video", height=360)
-    assert mp4[mp4.index("-S") + 1] == "vcodec:h264,res,acodec:aac"
+    assert mp4[mp4.index("-S") + 1] == "vcodec:h264,res,acodec:opus"   # machine unknown: H.264 + original Opus
+    hevc = build_args(DownloadSpec(url=URL, kind="video", height=1080), "/tmp/out", "%(id)s.%(ext)s", vcodec="h265")
+    assert hevc[hevc.index("-S") + 1] == "vcodec:h265,res,acodec:opus"   # H31: best codec decoded in hardware
+    odd = build_args(DownloadSpec(url=URL, kind="video"), "/tmp/out", "%(id)s.%(ext)s", vcodec="rm -rf")
+    assert odd[odd.index("-S") + 1] == "vcodec:h264,res,acodec:opus"
     assert mp4.index("-f") < mp4.index("-S") < mp4.index("--merge-output-format") and mp4[-2:] == ["--", URL]
     webm = args_of(kind="video", container="webm")
     assert webm[webm.index("-S") + 1] == "vcodec:vp9,res,acodec:opus"
-    assert "-S" not in args_of(kind="video", container="mkv")  # mkv takes any codec
+    mkv = args_of(kind="video", container="mkv")
+    assert mkv[mkv.index("-S") + 1] == "vcodec:h264,res,acodec:opus"   # mkv takes any codec, same preference
     assert "-S" not in args_of(kind="exact", format="137+140")  # an explicit format is the user's choice
-    assert "-S" not in args_of(kind="audio_convert") and "-S" not in args_of(kind="audio_original")
+    assert "-S" not in args_of(kind="audio_convert")
+    orig = args_of(kind="audio_original")
+    assert orig[orig.index("-S") + 1] == "acodec:opus"   # H31: the original Opus when the site has it
     for p in PRESETS:
         argv = build_args(spec_from_preset(p["id"], URL, {"container": "mp4"}), "/tmp/out")
-        assert ("-S" in argv) == (p["group"] == "video"), p["id"]
+        assert ("-S" in argv) == (p["group"] == "video" or p["id"] == "audio_original"), p["id"]
 
 
 @pytest.mark.skipif(not VENDORED.is_file(), reason="vendored yt-dlp missing (tools/vendor.sh)")
 @pytest.mark.parametrize("container,height,expected", [
-    ("mp4", 360, ("avc1", "mp4a", "mp4", 360)),
-    ("mp4", None, ("avc1", "mp4a", "mp4", 1080)),   # H.264 tops out at 1080p on YouTube
+    ("mp4", 360, ("avc1", "opus", "mp4", 360)),      # H31: original Opus audio, forced mp4
+    ("mp4", None, ("avc1", "opus", "mp4", 1080)),   # H.264 tops out at 1080p on YouTube
     ("webm", 360, ("vp9", "opus", "webm", 360)),
-    ("mkv", 360, ("av01", "opus", "mkv", 360)),     # unchanged: best codecs, any container
+    ("mkv", 360, ("avc1", "opus", "mkv", 360)),     # H31: same hardware-first preference (unknown machine: H.264)
 ])
 def test_real_ytdlp_selection_on_recorded_youtube_info(container, height, expected):
     """The vendored yt-dlp picks formats from the recorded -J (offline: --load-info-json + simulate)."""

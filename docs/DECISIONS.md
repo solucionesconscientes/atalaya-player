@@ -278,4 +278,17 @@
   en progreso y selección, tinta de fondo). El ámbar marca «en directo / grabando»: el ● REC de mu-record y `--live`
   de la PWA; los botones de uosc no admiten color por estado (su API `set-button` solo tiene icon/active/badge), así
   que ahí el estado se ve con `active` y el contador. Sin bandeja todavía: `mpv-uos-symbolic` queda instalado para ella.
+- ADR-053 · Formatos por hardware (H31): `mpvd/hwdecode.py` lee los perfiles con `VAEntrypointVLD` de `vainfo`
+  (este portátil: H.264, HEVC Main, VP8, MPEG-2; sin VP9 ni AV1) y clasifica cada formato de `-J` en «fluido en tu
+  equipo» / «exigente (por procesador)»; Windows/macOS quedan «desconocido» (sin etiqueta) hasta probarlos
+  (`MPV_UOS_HWDECODE` lo fija a mano). Descargas: `-S vcodec:X,res,acodec:opus` con X = el mejor códec decodificado
+  por hardware en el orden de yt-dlp (av01 > vp9 > h265 > h264; h264 si no se sabe); «hasta 1080p» es el recomendado
+  y el audio original prefiere Opus (`-S acodec:opus`). MP4 forzado en las uniones (`--merge-output-format mp4`, no
+  `mp4/mkv`): la tabla de compatibilidad de yt-dlp deja fuera a Opus y caía en .mkv, pero ffmpeg lo mete en mp4 sin
+  problema (verificado con 299+251 y con una descarga real); si ffmpeg rechaza los códecs («Conversion failed»), la
+  misma descarga se repite una vez en .mkv. Sustituye la parte «mp4 = H.264 + AAC» de ADR-019: la compatibilidad
+  total queda para «MP4 compatible» de Convertir y HEVC para «Más pequeño». Reproducción: mientras `ytdl-format` sea
+  el de mpv.conf, mu-ytdl pone en su hook `on_load` (prioridad 9) un `ytdl-format` local del archivo con los códecs
+  por hardware primero (`[vcodec^=av01]`, `[vcodec~='^(vp0?9)']`…), así mu-prefs no lo aprende como elección del usuario
+  y un formato elegido por el usuario se respeta.
 

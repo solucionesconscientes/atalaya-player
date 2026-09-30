@@ -192,6 +192,11 @@ def download(url: str, opts: dict[str, list[str]], flags: set[str]) -> int:
     if "fail" in url and not (nightly and "fail-extract" in url):
         sys.stderr.write("WARNING: [fake] something\nERROR: [fake] Unable to download webpage: " + url + "\n")
         return 1
+    if "badmerge" in url and first(opts, "--merge-output-format", default="") == "mp4":
+        # ffmpeg cannot put these codecs in mp4 (H31: the manager retries as mkv)
+        sys.stderr.write("[fake] Could not find tag for codec vorbis in stream #1, codec not currently supported in "
+                         "container\nERROR: Postprocessing: Conversion failed!\n")
+        return 1
     delay = float(os.environ.get("FAKE_YTDLP_DELAY", "0.05"))
     steps = int(os.environ.get("FAKE_YTDLP_STEPS", "6"))
     media = Path(os.environ.get("FAKE_YTDLP_MEDIA", str(HERE.parents[0] / "media")))

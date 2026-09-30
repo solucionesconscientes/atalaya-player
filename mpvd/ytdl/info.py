@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from mpvd import hwdecode
+
 KIND_COMBINED = "combined"
 KIND_VIDEO = "video"
 KIND_AUDIO = "audio"
@@ -187,8 +189,17 @@ def summary(info: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def analyze(info: dict[str, Any]) -> dict[str, Any]:
+def analyze(info: dict[str, Any], hw: set[str] | None = None) -> dict[str, Any]:
+    """Summary + grouped formats; with ``hw`` (codecs decoded in hardware, mpvd.hwdecode) each video row says whether
+    it plays «fluido en tu equipo» or is «exigente (por procesador)» (H31)."""
     groups = group_formats(info)
+    if hw is not None:
+        for rows in groups.values():
+            for row in rows:
+                kind = hwdecode.classify(hw, row.get("vcodec")) if row.get("kind") != KIND_AUDIO else None
+                row["hw"] = kind
+                if kind:
+                    row["hint"] = " · ".join(x for x in (row.get("hint"), hwdecode.LABELS[kind]) if x)
     return {
         **summary(info),
         "formats": groups,

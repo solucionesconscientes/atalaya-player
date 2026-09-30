@@ -71,8 +71,16 @@ abre. Si un canal entrelazado se ve con "peines" (7TV), pulsa `d`. Detalles en d
 - `alt+a` alterna vídeo / solo audio sin perder la posición; `alt+q` elige cualquier formato; `alt+d` descarga (vídeo por resolución,
   audio original o convertido a MP3/Opus/M4A/FLAC/WAV con el bitrate que quieras, subtítulos, capítulos, SponsorBlock…);
   `alt+l` muestra la cola con progreso. Destino: `~/Vídeos/MPV-UOS` y `~/Música/MPV-UOS`. Más en docs/YTDLP.md.
-- Contenedor de las descargas de vídeo: **mp4** prioriza H.264 + AAC (se abre en cualquier sitio; en YouTube el máximo es 1080p),
-  **webm** VP9 + Opus y **mkv** la mejor calidad sin restricciones (AV1, 4K…). Se cambia en *Descargar → Opciones → Contenedor*.
+- **Según tu equipo**: MPV-UOS mira qué códecs decodifica tu gráfica (`vainfo`) y en *Calidad* y en los formatos de
+  *Descargar* marca cada vídeo como **fluido en tu equipo** (lo decodifica la gráfica) o **exigente (por procesador)**.
+  Al reproducir y al descargar se prefiere el mejor códec que tu gráfica decodifica (en este portátil, H.264; con una
+  gráfica moderna, AV1 o VP9), con el vídeo y el audio originales, sin recodificar. *Estado de yt-dlp* dice cuáles son.
+- Por defecto: *Vídeo · hasta 1080p (recomendado)* = vídeo original hasta 1080p con sus fps + audio **Opus** original
+  en **MP4** (si algo no cabe en MP4, se guarda en MKV solo); **mkv** como opción y **webm** VP9 + Opus. Solo audio:
+  *Audio · original (recomendado)* = el Opus de la web tal cual; MP3 320 kb/s y M4A como opciones. Para un MP4 que
+  abra cualquier aparato viejo (H.264 + AAC) o un archivo más pequeño (HEVC), usa *Convertir*.
+- Tamaños orientativos por hora: 1080p60 H.264 ≈ 2,5–3 GB; 1080p H.264 ≈ 1,5–2 GB; 1080p AV1/VP9 ≈ 1–1,5 GB;
+  720p ≈ 0,7–1 GB; 480p ≈ 0,3–0,5 GB; audio Opus 130–160 kb/s ≈ 60–70 MB; MP3 320 kb/s ≈ 145 MB.
 - **Varias a la vez** (*Descargas y conversión → Descargar varias URL…*): pega uno o muchos enlaces (`ctrl+v`; da igual el
   separador) o escribe la ruta de un `.txt` con un enlace por línea; los repetidos se descartan. **Listas y canales**
   (*Descargar de una lista o canal…*): pega su URL, *Ver la lista y elegir* muestra todos los vídeos marcados; desmarca los

@@ -20,7 +20,10 @@ KINDS = ("video", "exact", "audio_original", "audio_convert")
 # codecs (get_compatible_ext) and falls back to mkv. Remuxing a single-file format fails when the codecs do not fit the
 # target ("If the target container does not support the video/audio codec, remuxing will fail"), so only safe pairs
 # are remuxed; mkv accepts anything.
-MERGE_PREFERENCES = {"mp4": "mp4/mkv", "mkv": "mkv", "webm": "webm/mkv"}
+# H31 (ADR-053): mp4 is forced (not "mp4/mkv"): yt-dlp's compatibility table leaves Opus out of mp4 and would fall back
+# to .mkv, while ffmpeg muxes AV1/VP9/HEVC/H.264 + Opus/AAC into mp4 fine (verified 2026-09-30: 299+251 → .mp4). A merge
+# that still fails (exotic codecs) is retried once as .mkv by the download manager.
+MERGE_PREFERENCES = {"mp4": "mp4", "mkv": "mkv", "webm": "webm/mkv"}
 REMUX_RULES = {"mp4": "mov>mp4/m4v>mp4/flv>mp4/3gp>mp4", "mkv": "mkv", "webm": ""}
 # Format sort (-S) for the resolution presets. yt-dlp's default order ranks AV1/VP9 + Opus first; that pair does not
 # fit mp4, so the merge silently fell back to .mkv. "vcodec:h264" = best codec no better than H.264 (H.264 wins over
@@ -28,7 +31,11 @@ REMUX_RULES = {"mp4": "mov>mp4/m4v>mp4/flv>mp4/3gp>mp4", "mkv": "mkv", "webm": "
 # resolution among those (otherwise a combined 360p H.264+AAC format beats a 1080p video-only one on "acodec").
 # mkv takes any codec: no -S. Checked with the vendored yt-dlp on the recorded YouTube -J: 360p mp4 → 18 (.mp4),
 # best mp4 → 299+140 (1080p .mp4), 360p webm → 243+251 (.webm); archive.org keeps its best ≤360p file.
-FORMAT_SORT = {"mp4": "vcodec:h264,res,acodec:aac", "mkv": "", "webm": "vcodec:vp9,res,acodec:opus"}
+# H31: mp4 and mkv prefer the best codec this machine decodes in hardware ("vcodec:X", X from mpvd.hwdecode:
+# h265 on an Intel iHD with HEVC but no VP9/AV1, h264 when unknown) and the original Opus audio; {vcodec} is filled in.
+FORMAT_SORT = {"mp4": "vcodec:{vcodec},res,acodec:opus", "mkv": "vcodec:{vcodec},res,acodec:opus",
+               "webm": "vcodec:vp9,res,acodec:opus"}
+VCODEC_SORTS = ("av01", "vp9", "h265", "h264")
 
 PROGRESS_PREFIX = "MU_PROGRESS"
 POSTPROCESS_PREFIX = "MU_PP"
@@ -186,10 +193,13 @@ RATE_RE = re.compile(r"^\d+(\.\d+)?[KMG]?$")
 
 
 def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLATE, rate_limit: str = "",
-               archive_file: str | None = None) -> list[str]:
+               archive_file: str | None = None, vcodec: str = "h264") -> list[str]:
     """Arguments after the binary (+ its base args); the URL is last. ``rate_limit``: yt-dlp ``-r`` (``2M``, ``500K``);
-    ``archive_file``: the download archive used when ``spec.archive``."""
+    ``archive_file``: the download archive used when ``spec.archive``; ``vcodec``: preferred codec limit for ``-S``
+    (the best one decoded in hardware, see mpvd.hwdecode.sort_codec)."""
     spec.validate()
+    if vcodec not in VCODEC_SORTS:
+        vcodec = "h264"
     args: list[str] = ["--no-overwrites", "--continue", "--ignore-errors", "--retries", "5", "--socket-timeout", "30"]
     if rate_limit and RATE_RE.match(rate_limit):
         args += ["-r", rate_limit]
@@ -199,7 +209,7 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
     if not only_subs:
         args += ["-f", spec.format_expression()]
     if spec.kind == "video" and FORMAT_SORT[spec.container] and not only_subs:
-        args += ["-S", FORMAT_SORT[spec.container]]
+        args += ["-S", FORMAT_SORT[spec.container].format(vcodec=vcodec)]
     if only_subs:
         pass
     elif spec.is_audio:
@@ -211,7 +221,10 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
                     args += ["--audio-quality", f"{int(spec.audio_bitrate)}K"]
                 else:
                     args += ["--audio-quality", str(int(spec.audio_vbr))]
-        # audio_original: -x without --audio-format keeps the original codec (FFmpegExtractAudio "best" = stream copy)
+        # audio_original: -x without --audio-format keeps the original codec (FFmpegExtractAudio "best" = stream copy);
+        # H31: the original Opus when there is one (YouTube: 251 over the AAC 140)
+        if spec.kind == "audio_original":
+            args += ["-S", "acodec:opus"]
     else:
         args += ["--merge-output-format", MERGE_PREFERENCES[spec.container]]
         if REMUX_RULES[spec.container]:
@@ -261,11 +274,12 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
 
 PRESETS: list[dict[str, Any]] = [
     {"id": "video_best", "title": "Vídeo · mejor calidad", "group": "video", "spec": {"kind": "video", "height": None}},
-    {"id": "video_1080", "title": "Vídeo · 1080p", "group": "video", "spec": {"kind": "video", "height": 1080}},
+    {"id": "video_1080", "title": "Vídeo · hasta 1080p (recomendado)", "group": "video",
+     "spec": {"kind": "video", "height": 1080}},
     {"id": "video_720", "title": "Vídeo · 720p", "group": "video", "spec": {"kind": "video", "height": 720}},
     {"id": "video_480", "title": "Vídeo · 480p", "group": "video", "spec": {"kind": "video", "height": 480}},
     {"id": "video_360", "title": "Vídeo · 360p", "group": "video", "spec": {"kind": "video", "height": 360}},
-    {"id": "audio_original", "title": "Audio · original (sin recodificar)", "group": "audio",
+    {"id": "audio_original", "title": "Audio · original (sin recodificar, recomendado)", "group": "audio",
      "spec": {"kind": "audio_original"}},
     {"id": "audio_mp3_128", "title": "Audio · MP3 128 kbps", "group": "audio",
      "spec": {"kind": "audio_convert", "audio_format": "mp3", "audio_bitrate": 128}},

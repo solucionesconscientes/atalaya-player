@@ -60,6 +60,23 @@ transcripción entre dos tiempos con los embeddings de H10) y E4 MPRIS (script m
 named pipe en mpvd (`server.py`, `client.py`, `mpvipc.py`) + `bin/mpv-uos.ps1`.
 
 ## Registro por iteración
+### Iteración nocturna 2026-09-30 · H31 · Formatos de descarga y decodificación del equipo — hecho
+- mpvd `hwdecode.py` (vainfo → códecs por hardware, `MPV_UOS_HWDECODE` para fijarlos), `ytdl.hw`, filas de `ytdl.info`
+  con `hw` y «fluido en tu equipo» / «exigente (por procesador)»; descargas con `-S vcodec:<mejor por hardware>,res,
+  acodec:opus`, MP4 forzado (Opus dentro) con reintento en MKV si ffmpeg no puede; audio original prefiere Opus;
+  presets «hasta 1080p (recomendado)» y «original (recomendado)» (ADR-053).
+- mu-ytdl: `ytdl-format` local del archivo con los códecs por hardware primero mientras el global sea el de mpv.conf;
+  «Decodifica por hardware» en Estado de yt-dlp. USO: tamaños orientativos por hora.
+- Tests: test_hwdecode.py (vainfo real de este portátil y uno moderno, claves de códec, etiquetas, -S, formato de
+  reproducción, mpv.conf = FACTORY_FORMAT), presets/descargas actualizados (+ reintento MKV), test_mu_ytdl_batch
+  (formato por hardware y respeto al del usuario), @network descarga real → .mp4 con Opus.
+- Probar a mano:
+  ```bash
+  .venv/bin/python -m mpvd call ytdl.hw
+  bin/mpv-uos 'https://www.youtube.com/watch?v=aqz-KE-bpKQ'   # alt+q: cada vídeo con «fluido en tu equipo» o «exigente»
+  bin/mpv-uos 'https://www.youtube.com/watch?v=jNQXAC9IVRw'   # alt+d → Vídeo · hasta 1080p → ffprobe: mp4 con opus
+  ```
+
 ### Iteración nocturna 2026-09-30 · H33 · Identidad (logo; nombre centralizado) — hecho
 - `brand.json` (nombre, id, carpeta, paleta) leído por `mpvd/brand.py`, `mu/brand.lua`, install.sh y la PWA (ADR-052).
   Usos migrados: títulos del menú y migas, MPRIS, MCP, User-Agent, carpetas `<Vídeos>/MPV-UOS`, `Name=` del escritorio.
