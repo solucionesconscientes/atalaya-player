@@ -54,3 +54,5 @@
   Si falla algo, guarda `tmp/check.log` y el `.cache/mpvd.log`.
 - **AppImage en otra distribución**: `tools/build_appimage.sh` y abre `dist/MPV-UOS-x86_64.AppImage` en un equipo con
   otra distro (Fedora, Arch) que tenga mpv ≥ 0.41: debería abrir la pantalla de inicio y `alt+t` la TV.
+- **macOS**: en un Mac con `brew install mpv uv`: clona, `uv sync --extra desktop && tools/vendor.sh &&
+  tools/build_macos_app.sh` y abre `dist/MPV-UOS.app` (la primera vez: clic derecho → Abrir, no está firmado).
