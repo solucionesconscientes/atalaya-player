@@ -49,6 +49,8 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
+H14 cerrado (2026-09-30). Pendiente de Ser: abrir el puerto del mando en ufw y probar el desentrelazado con 7TV (NEEDS_HUMAN.md).
+Siguiente tanda posible: B11 «¿qué me he perdido?», B6 OCR de subtítulos, C2–C3 diccionario/Anki, E4 MPRIS, I1/I5.
 Backlog completo. Si se reanuda: (1) Ser abre el puerto del mando y autoriza Notion (NEEDS_HUMAN.md) y ejecuta `/registrar`;
 (2) nuevos hitos a partir del TOP 10 de docs/VISION.md, empezando por B11 "¿qué me he perdido?" (resumen extractivo de la
 transcripción entre dos tiempos con los embeddings de H10) y E4 MPRIS (script mpv-mpris o DBus desde mpvd); (3) Windows: transporte
@@ -516,3 +518,30 @@ named pipe en mpvd (`server.py`, `client.py`, `mpvipc.py`) + `bin/mpv-uos.ps1`.
 - Tests: unit (presets → argv exacto, parseo de `-J` desde fixtures, parser de progreso, comprobación de actualización con servidor
   local), integración headless (mu-ytdl con un yt-dlp falso que devuelve el JSON de fixture y "descarga" un archivo local con
   progreso), @network (descarga real corta en 2 presets verificada con ffprobe).
+
+### Sesión interactiva · 2026-09-30 · H14 (pruebas de Ser)
+Ser probó la app y reportó 9 problemas; se diagnosticaron en 6 frentes (tmp/diag-*) y se arreglaron (núcleo en la sesión; yt-dlp,
+intro, subtítulos, preferencias y TV en agentes con worktree, fusionados). `tools/check.sh`: lint 0 avisos, 292 tests sin red y 8 con
+red en verde (un test real de YouTube falló una vez por la red y pasó al repetir).
+- **Núcleo**: el reproductor nunca se cierra al fallar una carga y explica la causa en español; vuelve a la pantalla de inicio;
+  socket por instancia y sesiones de mpvd por PID; datos de usuario en `~/.local/share/mpv-uos` (migrados); watch_later solo por
+  archivo (arregla audio perdido al cambiar de archivo y La 1 fijada a 360p); hwdec=vaapi primero; desentrelazado con copia.
+- **Interfaz**: botón play/pausa; teclas de mpv restauradas (`v`, `ctrl+alt+v`) y agrupadas en «Más opciones»; `ctrl+v` abre el
+  portapapeles; paleta más certera; «Abrir URL» (`ctrl+u`) y «Buscar en YouTube» (`ctrl+f`).
+- **yt-dlp**: runtime JS desde el primer vídeo, H.264 primero, preset mp4 real, búsqueda en YouTube; recuerda «solo audio».
+- **Subtítulos**: `alt+S` guarda en SRT (IA, traducción, resync, pista interna); motor de traducción «Calidad» (OPUS-MT, ya en
+  vendor/models/opus-mt para es/ca↔en); pre-subtitulado con small-q8_0 y trozos de 28,5 s con contexto.
+- **Saltar intro**: episodios en carpetas hermanas, avisos visibles, versiones del mismo vídeo descartadas, marcado manual,
+  salto automático con cuenta atrás, temporada completa; nada se escribe junto a los vídeos salvo «Exportar».
+- **Preferencias**: se recuerdan volumen, velocidad, subtítulos, imagen, idiomas, filtros, opciones de cada módulo…;
+  Preferencias › Restablecer.
+- **TV**: directos sin watch_later, HLS estable, User-Agent de navegador, calidad visible, copias con anuncios detrás del oficial y
+  cambio automático de fuente, países y categorías en español. Lo que queda (720p de RTVE, 25 fps, bitrate bajo) es de la fuente.
+- **Mando**: el QR avisa del cortafuegos con la orden exacta. **Instalador**: carpeta movida, MIME completos, restaura reproductores.
+- Probar a mano:
+  ```bash
+  mpv-uos                                   # inicio · ctrl+u abrir URL · ctrl+f buscar en YouTube · alt+t TV
+  mpv-uos 'https://www.youtube.com/watch?v=aqz-KE-bpKQ'   # alt+a solo audio (se recuerda) · alt+q calidad · alt+d descargar
+  mpv-uos ~/Descargas/…/Don\ Matteo\ 1x06…mp4   # «Analizando…», luego alt+k salta intro · alt+j menú
+  mpv-uos pelicula.mkv                      # alt+i subtítulos IA · Traducir (Calidad) · alt+S guardar SRT
+  ```

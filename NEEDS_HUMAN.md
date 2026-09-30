@@ -8,8 +8,7 @@
 - (hecho 2026-09-28 13:16) marca `~/.cache/notion-reg/mpv-uos` puesta desde la sesión interactiva; Notion al día hasta H2.
 
 ## 2026-09-28 · Opcional (no bloquea)
-- "Copiar URL" del menú de TV usa `wl-copy`/`xclip`/`xsel`; no hay ninguno instalado, así que muestra la URL en pantalla.
-  Para copiar de verdad: `sudo apt install wl-clipboard`
+- (resuelto 2026-09-30) "Copiar URL" usa ahora el portapapeles nativo de mpv 0.41: ya no hace falta wl-clipboard.
 
 ## 2026-09-29 · Opcional (no bloquea)
 - "Saltar intro/créditos" necesita `fpcalc` (Chromaprint). En este portátil ya está (`/usr/bin/fpcalc` 1.6.0); en otra máquina:
@@ -20,7 +19,7 @@
   `sudo ufw allow from 192.168.1.0/24 to any port 8790 proto tcp comment 'mpv-uos remote'` (ajusta la subred a la de tu wifi).
   Prueba a mano: `bin/mpv-uos tests/fixtures/media/chapters.mkv`, `alt+z`, escanear el QR con el móvil (misma wifi).
 
-## 2026-09-29 · Notion sin autorizar en la sesión nocturna (no bloquea)
+## 2026-09-29 · Notion sin autorizar en la sesión nocturna (resuelto 2026-09-29: registrado desde la sesión interactiva)
 - El conector "claude.ai Notion" pedía autenticación y la sesión no interactiva no puede hacer OAuth: la Bitácora no recoge H12–H13
   ni el cierre del proyecto. Autorízalo en claude.ai → Ajustes → Conectores y ejecuta `/registrar` en una sesión interactiva.
 - Entradas pendientes para `/registrar` (Bitácora, Fuente "Code CLI", Referencia `pc-latitude5480` + commit, Vigente):
@@ -29,3 +28,13 @@
   - `mpv-uos|2026-09-29|avance|h13-cierre` — commit 59b6c2c: tools/install.sh, docs/USO.md, README y PLATAFORMAS; backlog H0–H13 completo.
   - `mpv-uos|2026-09-29|problema|puerto-mando-ufw` — ufw bloquea el 8790; comando arriba.
   Ficha: Estado → backlog completado; Próximo paso → el "SIGUIENTE PASO" de PROGRESS.md. Después: `touch ~/.cache/notion-reg/mpv-uos`.
+
+## 2026-09-30 · Tras las pruebas de Ser (H14)
+- **Mando por QR**: sigue haciendo falta abrir el puerto una vez (el QR y el menú del mando ya muestran esta orden con tu subred):
+  `sudo ufw allow from 192.168.1.0/24 to any port 8790 proto tcp comment 'mpv-uos mando'`
+- **Carpeta oculta de la versión anterior**: la detección de intro escribía `.mpv-uos/segments.json` junto a los vídeos; ya no lo hace.
+  Queda una en `~/Descargas/Los tres días del cóndor (1975)/.mpv-uos`. Para quitarla:
+  `rm -r "$HOME/Descargas/Los tres días del cóndor (1975)/.mpv-uos"`
+- **Desentrelazado con ventana real** (no se puede comprobar sin pantalla): abre 7TV Andalucía (emite entrelazado sin marcarlo),
+  pulsa `d` y comprueba que desaparecen las rayas horizontales en movimiento. Si no, dímelo con el log:
+  `mpv-uos --deinterlace=yes --msg-level=autofilters=v,vf=v --log-file=/tmp/deint.log <URL del canal>`
