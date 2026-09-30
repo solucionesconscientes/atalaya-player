@@ -140,10 +140,25 @@ local function enqueue(paths)
   for _, p in ipairs(paths) do mp.commandv('loadfile', p, 'append') end
 end
 
+-- Paths of the tracks that can actually be played, plus, for every row, its position in THAT list. Missing files
+-- (a disconnected disk) are skipped, so the row number and the playlist position are not the same thing: using the row
+-- number made Enter start on another track.
+local function playable(tracks)
+  local paths, at = {}, {}
+  for i, t in ipairs(tracks or {}) do
+    if t.path and t.exists ~= false then
+      paths[#paths + 1] = t.path
+      at[i] = #paths
+    else
+      at[i] = #paths + 1     -- a missing file: start on the next one that is there
+    end
+  end
+  return paths, at
+end
+
 local function paths_of(tracks)
-  local out = {}
-  for _, t in ipairs(tracks or {}) do if t.path and t.exists ~= false then out[#out + 1] = t.path end end
-  return out
+  local paths = playable(tracks)
+  return paths
 end
 
 -- value of a row → its track paths (asynchronously, from mpvd)
@@ -379,9 +394,9 @@ views.album = function(args)
     local items = group_rows({ album = args.key }, 'el álbum')
     local a = res.album or {}
     items[1].hint = table.concat({ a.artist or '', a.year and tostring(a.year) or '', hms(a.duration) }, ' · ')
-    local paths = paths_of(res.tracks)
+    local paths, at = playable(res.tracks)
     for i, t in ipairs(res.tracks or {}) do
-      table.insert(items, track_row(t, { track = t.path, paths = paths, start = i }))
+      table.insert(items, track_row(t, { track = t.path, paths = paths, start = at[i] }))
     end
     show(title, items, { footnote = 'Enter reproduce desde esa pista · Tab: a continuación, a la cola, a una lista' })
   end, 15)
@@ -411,11 +426,11 @@ local function track_list_view(name, title, method, params, pick, extra_rows, va
     if err then show(title, uosc.message_items(fail(err, method), 'error')) return end
     local tracks = pick(res)
     local items = extra_rows and extra_rows(res) or {}
-    local paths = paths_of(tracks)
+    local paths, at = playable(tracks)
     local first = #items + 2          -- menu row of the first track (the «Atrás» row is 1)
     for i, t in ipairs(tracks) do
-      local row = track_row(t, value_of and value_of(t, i, paths) or { track = t.path, paths = paths, start = i },
-                            t.title)
+      local row = track_row(t, value_of and value_of(t, i, paths, at) or
+                               { track = t.path, paths = paths, start = at[i] }, t.title)
       if name == 'list' then row.actions = { MOVE_ACTIONS[1], MOVE_ACTIONS[2], MOVE_ACTIONS[3], TRACK_ACTIONS[1],
                                              TRACK_ACTIONS[2] } end
       table.insert(items, row)
@@ -476,7 +491,7 @@ views.list = function(args)
                            separator = true })
       return rows
     end,
-    function(t, i, paths) return { track = t.path, paths = paths, start = i, index = t.index } end)
+    function(t, i, paths, at) return { track = t.path, paths = paths, start = at[i], index = t.index } end)
 end
 
 views.sort = function(args)
@@ -1245,9 +1260,20 @@ mp.register_event('end-file', function()
   if fade.mode == 'in' then fade_restore() end
 end)
 
-mp.observe_property('playlist-count', 'number', function()
-  if still('queue') and uosc.open_type() == MENU then reopen_current() end
-end)
+-- Redrawing «Cola» costs one music.describe with the whole queue, so «Vaciar la cola» (one playlist-remove per track)
+-- used to fire hundreds of them in a row. Coalesce the bursts, and follow the playing track too (its position moves
+-- without the count changing, and the row numbers of «mover» are read from it).
+local queue_timer = nil
+local function queue_changed()
+  if queue_timer then queue_timer:kill() end
+  queue_timer = mp.add_timeout(0.2, function()
+    queue_timer = nil
+    if still('queue') and uosc.open_type() == MENU then reopen_current() end
+  end)
+end
+
+mp.observe_property('playlist-count', 'number', queue_changed)
+mp.observe_property('playlist-pos', 'number', queue_changed)
 
 -- ---------------------------------------------------------------------------------------------
 -- events from mpvd: scan / ReplayGain jobs

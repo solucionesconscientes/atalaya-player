@@ -297,6 +297,11 @@ local function sleep_tick()
       s.vol0 = mp.get_property_number('volume') or 100
     end
     mp.set_property_number('volume', s.vol0 * math.max(0, s.remaining) / math.max(0.1, opts.fade_seconds))
+  elseif s.fading then
+    -- in chapter mode «remaining» can grow again (alt+J back 30 s, a bookmark): give the volume back instead of
+    -- leaving the book playing at 10 % for the rest of the night
+    s.fading = false
+    if s.vol0 then mp.set_property_number('volume', s.vol0) end
   end
   -- chapter mode stops a few frames early (the tick is 0.25 s): play goes on at the start of the next chapter
   if playing and s.remaining <= (s.mode == 'chapter' and 0.3 or 0) then

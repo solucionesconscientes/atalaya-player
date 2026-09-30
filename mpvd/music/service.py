@@ -312,7 +312,7 @@ class MusicService:
             rows, title = self.store.tracks(year=int(value))[:limit], str(int(value))
         elif kind == "decade":
             d = int(value) // 10 * 10
-            rows = [t for t in self.store.tracks() if t["year"] and d <= t["year"] <= d + 9][:limit]
+            rows = self.store.tracks(decade=d)[:limit]
             title = f"Años {d % 100:02d}" if d >= 1950 else f"Década de {d}"
         else:
             raise RpcError(INVALID_PARAMS, "kind: recent | top | unplayed | genre | year | decade")

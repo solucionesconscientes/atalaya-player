@@ -449,7 +449,8 @@ class MusicStore:
         return self._one("SELECT * FROM albums WHERE album_key=?", (album_key,))
 
     def tracks(self, album: str | None = None, artist: str | None = None, genre: str | None = None,
-               year: int | None = None, paths: list[str] | None = None) -> list[dict[str, Any]]:
+               year: int | None = None, paths: list[str] | None = None,
+               decade: int | None = None) -> list[dict[str, Any]]:
         sql, args, where = "SELECT t.* FROM tracks t", [], []
         if album is not None:
             where.append("t.album_key=?")
@@ -463,6 +464,10 @@ class MusicStore:
         if year is not None:
             where.append("t.year=?")
             args.append(int(year))
+        if decade is not None:       # filtered in SQL: «Años 90» used to bring the whole table into Python
+            d = int(decade) // 10 * 10
+            where.append("t.year BETWEEN ? AND ?")
+            args += [d, d + 9]
         if paths is not None:
             out: dict[str, dict[str, Any]] = {}
             for i in range(0, len(paths), 500):

@@ -196,3 +196,35 @@ def test_music_menu_browse_play_next_queue_lists_gain_fade_history(music_mpv):
     st(h, lambda v: v["listened"] is True, timeout=15)
     d.wait(lambda: any(x["path"] == str(p["t1"]) for x in d.call("music.history")), timeout=10)
     assert h.script_errors() == [], h.script_errors()
+
+
+def test_a_missing_file_in_the_album_does_not_shift_what_enter_plays(music_mpv):
+    """H34 · `start` era el número de fila, y las pistas que faltan no están en la lista de rutas: Enter sonaba otra."""
+    h, d, root, p = music_mpv
+
+    h.command("script-binding", "mu_music/music-menu")
+    wait_nav(h, "mu-music", "MPV-UOS › Música")
+    d.wait(lambda: d.call("music.status", {"default_folder": False})["tracks"] == 5
+           and not d.call("music.status", {"default_folder": False})["scanning"], timeout=60)
+
+    # the first track of the album is gone (a disconnected disk, a file moved outside the player): it is still in the
+    # index until the next scan, listed with exists=false
+    p["t1"].unlink()
+    key = next(a["key"] for a in d.call("music.albums") if a["title"] == "Palabra de mujer")
+    album = d.call("music.album", {"key": key})
+    assert [t.get("exists") for t in album["tracks"]] == [False, True]
+
+    ev(h, {"type": "back"})
+    h.wait_property("user-data/uosc/menu/type", lambda t: t != "mu-music", timeout=10)
+    h.command("script-binding", "mu_music/music-menu")
+    s = st(h, lambda v: v["view"] == "root" and "Álbumes" in titles(v))
+    activate(h, s, "Álbumes")
+    s = st(h, lambda v: v["view"] == "albums" and "Palabra de mujer" in titles(v))
+    activate(h, s, "Palabra de mujer")
+    s = st(h, lambda v: v["view"] == "album" and any("Desátame" in t for t in titles(v)))
+    activate(h, s, next(t for t in titles(s) if "Desátame" in t))
+
+    # Desátame is row 2 but the only playable track: it must play, not «the second of one path» clamped to the first
+    h.wait_property("path", lambda v: v == str(p["t2"]), timeout=15)
+    assert playlist(h) == [str(p["t2"])] and h.get("playlist-pos") == 0
+    assert h.script_errors() == [], h.script_errors()

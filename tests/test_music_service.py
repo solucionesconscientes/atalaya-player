@@ -306,3 +306,20 @@ def test_playlists_smart_lists_and_history(settings, music, tmp_path, monkeypatc
         return True
 
     assert run(settings, go)
+
+
+def test_the_decade_list_is_filtered_by_sql_not_in_python(tmp_path, monkeypatch):
+    """H34 · «Años 90» traía toda la tabla tracks a Python y la ordenaba en cada apertura del menú."""
+    from mpvd.music.store import MusicStore
+
+    store = MusicStore(tmp_path / "music.sqlite3")
+    try:
+        rows = store.tracks(decade=1990)
+        assert rows == []
+        calls = []
+        real_all = store._all
+        monkeypatch.setattr(store, "_all", lambda sql, args=(): calls.append(sql) or real_all(sql, args))
+        store.tracks(decade=1995)
+        assert any("BETWEEN" in sql for sql in calls), calls
+    finally:
+        store.close()
