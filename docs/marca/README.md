@@ -1,9 +1,9 @@
-# Marca: Sintonía
+# Marca de MPV-UOS
 
-- **Nombre**: Sintonía (comando `sintonia`). El repositorio y el slug interno siguen siendo `mpv-uos`.
+- **Nombre**: pendiente; lo decide Ser más adelante (se barajó «Sintonía»). Mientras, MPV-UOS.
 - **Logo**: `logo-anillo.svg` (propuesta «C · Anillo», aprobada por Ser el 2026-09-30). Propuestas comparadas:
   https://claude.ai/artifact/Pt3zkbMfrB8auucVCW19s9 (privada de Ser).
-- **Marca escrita**: «sintonía» en minúsculas, Bricolage Grotesque 700, con el punto de la «í» o un punto medio en ámbar.
+- **Marca escrita**: el nombre en minúsculas, Bricolage Grotesque 700, con un punto medio en ámbar (p. ej. «mpv·uos»).
 
 | Color | Hex | Uso |
 |---|---|---|

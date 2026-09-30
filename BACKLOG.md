@@ -213,12 +213,12 @@ traducción en directo. Fuera también: imagen (mejoras de imagen, visor de foto
 - [ ] «Solo audio» para cualquier fuente (instantáneo en archivos locales; en internet recarga solo el audio) y opción de pasar a
       solo audio al minimizar la ventana. Medido: ~3× menos CPU que decodificar por gráfica y ~10× menos que por procesador.
 
-## H33 · Nombre e identidad: Sintonía
-- [ ] Nombre público «Sintonía» (comando `sintonia`, entrada de escritorio, título de ventana, pantalla de inicio, PWA, textos y docs;
-      el repositorio y el slug interno siguen siendo mpv-uos). Logo aprobado «C · Anillo» (anillo de progreso azul señal #3D7BFF sobre
-      tinta #0D1320, punto ámbar #FFB020 de «en antena», play blanco; marca «sintonía» en minúsculas con el punto ámbar) como icono de
-      la app, de la PWA y de la bandeja; versión monocroma y variante sin fondo. El ámbar es el color de estado «en directo /
-      grabando / descargando» en toda la interfaz.
+## H33 · Identidad: logo (el nombre lo decide Ser más adelante)
+- [ ] Logo aprobado «C · Anillo» (docs/marca/logo-anillo.svg: anillo de progreso azul señal #3D7BFF sobre tinta #0D1320, punto
+      ámbar #FFB020 de «en antena», play blanco) como icono de la app, de la entrada de escritorio, de la PWA y de la bandeja; versión
+      monocroma y variante sin fondo. El ámbar es el color de estado «en directo / grabando / descargando» en toda la interfaz.
+- NOMBRE PENDIENTE: no renombrar nada. La app sigue llamándose MPV-UOS hasta que Ser decida (candidato descartado de momento:
+  «Sintonía»). Deja el nombre centralizado en un solo sitio (constante/Config) para que el cambio posterior sea trivial.
 
 ## H26 · Torrents · FUERA POR AHORA (decisión de Ser, 2026-09-30: no implementar)
 - [~] Propuesta aparcada: integrarse con qBittorrent (ya instalado; Ser activa su interfaz web en localhost) para añadir magnets, descargar en
