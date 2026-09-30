@@ -127,6 +127,12 @@ abre. Si un canal entrelazado se ve con "peines" (7TV), pulsa `d`. Detalles en d
 - Destino por defecto: `~/Vídeos/MPV-UOS/Convertidos` (se cambia en *Carpeta de salida*).
 
 ## 4. Subtítulos con IA, traducción, duales y guardar SRT
+0. **Vídeos de internet: subtítulos que da la web.** Con un vídeo de YouTube (u otra web con subtítulos) abierto, `alt+i`
+   → *Subtítulos de la web* lista los manuales y los automáticos del idioma del vídeo. Enter añade el elegido como pista
+   (limpio: los automáticos de YouTube llegan «rodando» línea a línea y aquí salen en frases de dos líneas). Si no hay en
+   tu idioma, la primera fila es *Traducir al español (…)*: baja el original y lo traduce entero, sin conexión, antes de
+   mostrarlo (nunca frase a frase). Las traducciones automáticas de YouTube no se ofrecen: la web las bloquea (error
+   429). `alt+S` guarda la pista en SRT como cualquier otra.
 1. `alt+c` inicia los subtítulos IA del archivo local abierto (whisper.cpp; el modelo se elige según tu CPU, docs/BENCHMARKS.md).
    Aparecen unos segundos por delante de lo que ves; tras un salto, se transcribe primero lo nuevo. Quedan guardados para la próxima vez.
    En un portátil de 4 núcleos, en vivo se usa `base` (rápido, pero se equivoca y apenas puntúa) y para **pre-subtitular** (el

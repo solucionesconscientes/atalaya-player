@@ -144,3 +144,30 @@ def test_real_default_download_is_mp4_with_original_opus(tmp_path, monkeypatch):
             await server.stop()
 
     asyncio.run(go())
+
+
+def test_real_youtube_automatic_captions(tmp_path, monkeypatch):
+    """H29: a real YouTube video (> 1 min) with automatic captions only: listed, fetched and de-rolled."""
+    monkeypatch.delenv("MPV_UOS_YTDLP", raising=False)
+    monkeypatch.setenv("MPV_UOS_YTDLP_AUTO_UPDATE", "0")
+    settings = Settings(runtime_dir=tmp_path / "rt", cache_dir=tmp_path / "cache", data_dir=tmp_path / "data",
+                        idle_timeout=0, workers=2)
+    url = "https://www.youtube.com/watch?v=UNP03fDSj1U"   # Matt Cutts, TED, 3:27, automatic captions only
+
+    async def go():
+        server = MpvdServer(settings)
+        await server.start()
+        try:
+            async with MpvdClient(str(settings.socket_path)) as c:
+                lst = await c.call("subs.web.list", {"url": url}, timeout=180)
+                auto = [t for t in lst["tracks"] if t["kind"] == "auto"]
+                assert auto and auto[0]["lang"] == "en", lst["tracks"]
+                r = await c.call("subs.web.fetch", {"url": url, "lang": "en", "kind": "auto"}, timeout=120)
+                from mpvd.asr.srt import parse_srt
+                cues = parse_srt(Path(r["srt"]).read_text(encoding="utf-8"), keep_lines=True)
+                assert len(cues) > 20 and cues[-1].end > 150
+                assert all(b.start >= a.end - 1e-3 for a, b in zip(cues, cues[1:]))   # no rolling overlap
+        finally:
+            await server.stop()
+
+    asyncio.run(go())

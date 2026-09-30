@@ -62,6 +62,22 @@ la web» en mu-subs (sub-add; traducir con subs.translate sobre el SRT; guardar 
 H28, H25 punto 3–4 (túnel cloudflared solo con sala abierta, RTMP).
 
 ## Registro por iteración
+### Iteración nocturna 2026-09-30 · H29 · Subtítulos de vídeos de internet — hecho
+- Investigación real (tmp/research-websubs): estructura de `subtitles`/`automatic_captions`, `-orig`, traducciones
+  automáticas de YouTube con 429, entradas HLS, formato «rodante» del VTT/SRT automático, argumentos de ytdl_hook.
+- mpvd `subs/web.py` + `subs.web.list/fetch` (manuales y automáticos del idioma original, sin traducciones de la web;
+  limpieza en cues de dos líneas; caché; reintento con `-J` nuevo si la URL caducó; 429 explicado) (ADR-056).
+- mu-subs: *Subtítulos de la web* (con un vídeo de internet abierto): añadir pista, o *Traducir al español (…)*
+  (offline, archivo entero); guardar con `alt+S` como cualquier pista.
+- Tests: test_subs_web.py (fixtures reales de YouTube: lista, SRT y VTT automáticos, manual; mpvd con servidor local,
+  caché, 429; mu-subs headless con el yt-dlp falso), @network vídeo real de 3:27 con automáticos.
+- Probar a mano:
+  ```bash
+  bin/mpv-uos 'https://www.youtube.com/watch?v=UNP03fDSj1U'   # alt+i → Subtítulos de la web → Traducir al español (Inglés (automáticos))
+  bin/mpv-uos 'https://www.youtube.com/watch?v=8S0FDjFBj8o'   # alt+i → Subtítulos de la web → Español (manual) · alt+S guarda
+  .venv/bin/python -m mpvd call subs.web.list '{"url":"https://www.youtube.com/watch?v=UNP03fDSj1U"}'
+  ```
+
 ### Iteración nocturna 2026-09-30 · H22 · Biblioteca y subtítulos automáticos — hecho (subagente, fusionado)
 - mpvd `library.*`: carpetas elegidas, escaneo incremental en segundo plano (INDEX), películas y series › temporadas ›
   episodios con el progreso de «continuar viendo», búsqueda, `library.continue` (seguir viendo + siguiente episodio),

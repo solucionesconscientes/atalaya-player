@@ -186,7 +186,7 @@ Decisión de Ser: NADA que traiga o pueda traer retraso. Fuera: subtítulos IA e
 traducción en directo. Fuera también: imagen (mejoras de imagen, visor de fotos), registro de escuchas (scrobbling) y torrents.
 
 ## H29 · Subtítulos de vídeos de internet (sin retraso)
-- [ ] Subtítulos que da la web (manuales y automáticos de YouTube; los de otras webs que yt-dlp exponga) activables desde el panel
+- [x] Subtítulos que da la web (manuales y automáticos de YouTube; los de otras webs que yt-dlp exponga) activables desde el panel
       de subtítulos con elección de idioma (write-auto-subs / sub-langs verificados en `yt-dlp --help`); traducción offline del archivo
       completo antes de mostrarla (nunca frase a frase en directo); «Guardar SRT» también para estas pistas. Test @network con un
       vídeo de YouTube de más de 1 min con subtítulos automáticos.

@@ -306,6 +306,17 @@
   `osub_resync=always`); por nombre se resincroniza con `subs.resync` si hay Whisper y el subtítulo está en el idioma del
   audio; se muestra el original mientras tanto y un evento `library-subs` lo cambia; si el alineado es pobre, se queda
   el original.
+- ADR-056 · Subtítulos de la web (H29): mpvd baja directamente de las URLs del `-J` en caché (`subs.web.list/fetch`)
+  los subtítulos manuales y los automáticos del idioma original (`<lang>-orig`, `kind=asr` sin `tlang`), en SRT nativo
+  si la web lo da (YouTube sí) o VTT. No se usa `--write-auto-subs` en ytdl_hook ni en yt-dlp: con `--sub-langs all`
+  YouTube expone miles de traducciones (4372 pistas, `-J` de 14 MB, minutos de carga) y sus traducciones automáticas
+  (`tlang=`) responden HTTP 429 sin PO token (verificado el 2026-09-30 con estable, nightly y curl_cffi): no se ofrecen;
+  la traducción es la nuestra, offline y del archivo entero (`subs.translate`). Las entradas `m3u8_native` de
+  `automatic_captions` son la pista manual por HLS: se ignoran. Los automáticos llegan «rodando» (cada cue repite la
+  línea anterior; SRT nativo con cues solapados ~2,5 s; VTT con cues de 10 ms y marcas por palabra): se rehacen en
+  cues de hasta dos líneas sin solaparse (dos líneas cortas, ≤ 48 caracteres, van en una). SRT en caché
+  (`<caché>/subs/web/<url>/<lang>.<tipo>.srt`); las URLs caducan (~6 h): con 403/404/410 se pide el `-J` otra vez.
+  mu-subs lo ofrece solo cuando ytdl_hook reprodujo la URL (mu-ytdl `active`).
 - ADR-051 · Escritorio y sonido (H24): MPRIS en mpvd (`mpvd/mpris.py`), no el plugin C `mpv-mpris` (habría que
   compilarlo con cabeceras de GLib; sin sudo) ni Lua (no habla D-Bus). Un nombre `org.mpris.MediaPlayer2.mpv_uos.
   instance<pid>` por cada mpv conectado, con su propia conexión IPC y observadores (el bucle de sesiones no cambia);

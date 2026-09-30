@@ -148,6 +148,9 @@ local function publish()
     save_coverage = state.save and state.save.coverage or 0, save_fallback = state.save and state.save.fallback or false,
     extract_status = state.extract and state.extract.status or '', extract_srt = state.extract and state.extract.srt or '',
     adopted = state.adopted,
+    web_status = state.web and state.web.status or '', web_srt = state.web and state.web.srt or '',
+    web_lang = state.web and state.web.lang or '', web_kind = state.web and state.web.kind or '',
+    web_cues = state.web and state.web.cues or 0,
   })
 end
 
@@ -653,6 +656,44 @@ translate_request = function(track, target)
   end, 60)
 end
 
+-- ---------------------------------------------------------------------------------------------
+-- subtitles the website offers for an internet video (H29): manual tracks and the automatic captions in the video's
+-- own language, fetched by mpvd as clean SRT files (subs.web.*); translated offline like any other track
+
+local function web_video()
+  local path = mp.get_property('path') or ''
+  if path == '' or is_local(path) then return nil end
+  local y = mp.get_property_native('user-data/mu/ytdl') or {}
+  if y.active and y.url == path then return path end
+  return nil
+end
+
+local function web_add(url, lang, kind, target)
+  if not rpc.connected() then osd('mpvd no está disponible') return end
+  state.web = { status = 'fetching', lang = lang, kind = kind }
+  publish()
+  osd('Bajando los subtítulos de la web…')
+  rpc.call('subs.web.fetch', { url = url, lang = lang, kind = kind }, function(err, res)
+    if err then
+      state.web.status = 'failed'
+      publish()
+      osd('Subtítulos de la web: ' .. fail(err, 'subs.web.fetch'))
+      return
+    end
+    local t = find_track(res.srt)
+    if t then mp.set_property_number('sid', t.id)
+    else mp.command_native({ 'sub-add', res.srt, 'select', res.title, lang }) end
+    state.web = { status = 'done', lang = lang, kind = kind, srt = res.srt, cues = res.cues or 0 }
+    publish()
+    if target then
+      local sid = mp.get_property_number('sid')
+      translate_request({ ['external-filename'] = res.srt, lang = lang, id = sid, orig_id = sid }, target)
+    else
+      osd('✓ ' .. res.title .. ' (' .. tostring(res.cues or 0) .. ' líneas)')
+    end
+  end, 90)
+end
+
 local function translate_selected(target)
   if not rpc.connected() then osd('mpvd no está disponible') return end
   local track, embedded = selected_sub_file()
@@ -1077,7 +1118,14 @@ views.root = function()
   elseif path == '' then
     table.insert(items, { title = 'Abre un archivo local para subtitularlo', icon = 'info', selectable = false, muted = true })
   elseif not is_local(path) then
-    table.insert(items, { title = 'Solo archivos locales por ahora (ADR-023)', icon = 'info', selectable = false, muted = true })
+    if web_video() then
+      local w = state.web
+      table.insert(items, { title = 'Subtítulos de la web', icon = 'language',
+        hint = (w and w.status == 'done') and (language_name_for(w.lang) .. (w.kind == 'auto' and ' · automáticos' or ''))
+          or 'los que da la web, y traducidos sin conexión', value = { view = 'web' } })
+    end
+    table.insert(items, { title = 'Subtítulos IA: solo archivos locales (ADR-023)', icon = 'info', selectable = false,
+      muted = true })
   elseif t and t.status == 'done' then
     table.insert(items, { title = 'Subtítulos IA listos', icon = 'check_circle',
       hint = string.format('%d cues · %s', t.cues or 0, task_label(t)), value = { toggle = true } })
@@ -1129,6 +1177,51 @@ views.root = function()
       or 'según la transcripción'), value = { chapters = true } })
   table.insert(items, { title = 'Estado del motor', icon = 'monitor_heart', value = { view = 'status' } })
   show('Subtítulos IA', items)
+end
+
+views.web = function()
+  local url = web_video()
+  if not url then
+    show('Subtítulos de la web', { { title = 'Abre un vídeo de internet (YouTube y otras webs)', icon = 'info',
+      selectable = false, muted = true } })
+    return
+  end
+  if not require_mpvd('Subtítulos de la web') then return end
+  show('Subtítulos de la web', { { title = 'Preguntando a la web…', icon = 'hourglass_empty', selectable = false,
+    muted = true } })
+  local target = P:get('translate_target') or 'es'
+  if target == '' then target = 'es' end
+  rpc.call('subs.web.list', { url = url, prefer = target }, function(err, res)
+    if state.view ~= 'web' then return end
+    if err then
+      show('Subtítulos de la web', { { title = 'No se pudo consultar: ' .. fail(err, 'subs.web.list'), icon = 'error',
+        selectable = false, muted = true } })
+      return
+    end
+    local items, have_target, orig = {}, false, nil
+    local original = norm_lang(res.language or '')
+    for _, t in ipairs(res.tracks or {}) do
+      local base = norm_lang(t.lang)
+      if base == target then have_target = true end
+      if base == original and (not orig or (orig.kind == 'auto' and t.kind == 'manual')) then orig = t end
+      table.insert(items, { title = t.label, icon = t.kind == 'auto' and 'auto_awesome' or 'subtitles',
+        hint = t.kind == 'auto' and 'automáticos de la web' or 'de la web',
+        active = state.web and state.web.srt ~= nil and state.web.lang == t.lang and state.web.kind == t.kind,
+        value = { web = { lang = t.lang, kind = t.kind } } })
+    end
+    if #items == 0 then
+      table.insert(items, { title = 'Esta web no ofrece subtítulos para este vídeo', icon = 'info', selectable = false,
+        muted = true })
+    end
+    orig = orig or (res.tracks or {})[1]
+    if orig and not have_target then
+      table.insert(items, 1, { title = 'Traducir al ' .. language_name_for(target):lower() .. ' (' .. orig.label .. ')',
+        icon = 'translate', hint = 'sin conexión, el archivo entero antes de mostrarlo',
+        value = { web = { lang = orig.lang, kind = orig.kind }, web_translate = target } })
+      items[2].separator = true
+    end
+    show('Subtítulos de la web', items, { footnote = 'Enter añade la pista · luego alt+S la guarda en SRT · ⌫ atrás' })
+  end, 90)
 end
 
 views.language = function()
@@ -1350,6 +1443,10 @@ mp.register_script_message(EVENT, function(json)
       uosc.close(MENU)
     elseif v.resync then
       resync_selected()
+      uosc.close(MENU)
+    elseif v.web then
+      local url = web_video()
+      if url then web_add(url, v.web.lang, v.web.kind, v.web_translate) end
       uosc.close(MENU)
     elseif v.library_subs then
       uosc.close(MENU)

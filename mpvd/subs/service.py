@@ -18,7 +18,9 @@ from mpvd.asr.srt import Segment, render_srt
 from mpvd.hashing import file_hash
 from mpvd.jobs import Job, Priority, Status
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
+from mpvd.hashing import url_key
 from mpvd.subs import opus as opus_mod
+from mpvd.subs import web as web_mod
 from mpvd.subs.formats import SubtitleError, load_cues
 from mpvd.subs.resync import resync
 from mpvd.subs.save import (IMAGE_CODECS, IMAGE_ERROR, KINDS, SaveError, choose_name, extract_srt, is_url, local_path,
@@ -76,6 +78,56 @@ class SubsService:
         if not p.is_file():
             raise RpcError(NOT_FOUND, f"no existe: {p}")
         return (await asyncio.to_thread(file_hash, p)).key
+
+    # -- subtitles of internet videos (H29) ------------------------------------------------------------------------
+
+    async def web_list(self, url: str, prefer: str = "es") -> dict[str, Any]:
+        """Manual tracks and the original-language automatic captions the site offers for ``url`` (from the cached
+        ``yt-dlp -J``)."""
+        info = await self.server.ytdl.raw_info(url)
+        tracks = web_mod.list_tracks(info, prefer)
+        return {"url": url, "title": info.get("title") or "", "language": info.get("language") or "",
+                "tracks": tracks}
+
+    async def web_fetch(self, url: str, lang: str, kind: str = "manual") -> dict[str, Any]:
+        """One of those tracks as a clean SRT in the cache (``srt``); automatic captions are de-rolled. An expired link
+        (the site's URLs last ~6 h) fetches the ``-J`` again once; HTTP 429 → UNAVAILABLE (the site refuses now)."""
+        if kind not in ("manual", "auto"):
+            raise RpcError(INVALID_PARAMS, "kind: manual o auto")
+        dest = self.out_dir / "web" / safe_name(url_key(url)) / f"{safe_name(lang)}.{kind}.srt"
+        if dest.is_file() and dest.stat().st_size > 0:
+            cues = await self._cues(str(dest))
+            return self._web_result(url, lang, kind, dest, cues, cached=True)
+        text = ""
+        ext = ""
+        for attempt in (0, 1):
+            info = await self.server.ytdl.raw_info(url, force=attempt == 1)
+            entry = web_mod.entry_for(info, lang, kind)
+            if entry is None:
+                raise RpcError(NOT_FOUND, f"la web no ofrece subtítulos {kind} en «{lang}»")
+            try:
+                text = await asyncio.to_thread(web_mod.fetch_text, str(entry["url"]))
+                ext = str(entry.get("ext") or "")
+                break
+            except web_mod.urllib.error.HTTPError as exc:
+                if exc.code == 429:
+                    raise RpcError(UNAVAILABLE, "la web no deja bajar los subtítulos ahora (429); prueba más tarde")\
+                        from exc
+                if exc.code not in web_mod.EXPIRED or attempt == 1:
+                    raise RpcError(UNAVAILABLE, f"no se pudieron bajar los subtítulos: HTTP {exc.code}") from exc
+            except OSError as exc:
+                raise RpcError(UNAVAILABLE, f"no se pudieron bajar los subtítulos: {exc}") from exc
+        cues = web_mod.to_cues(text, ext, kind)
+        if not cues:
+            raise RpcError(NOT_FOUND, "los subtítulos de la web están vacíos")
+        await asyncio.to_thread(web_mod.write_srt, dest, cues)
+        return self._web_result(url, lang, kind, dest, cues, cached=False)
+
+    @staticmethod
+    def _web_result(url: str, lang: str, kind: str, dest: Path, cues: list[Segment], cached: bool) -> dict[str, Any]:
+        label = web_mod.lang_label(lang) + (" (automáticos)" if kind == "auto" else "")
+        return {"url": url, "lang": lang, "kind": kind, "srt": str(dest), "cues": len(cues), "cached": cached,
+                "title": f"{label} · web"}
 
     def info(self, cues: list[Segment], srt: str) -> dict[str, Any]:
         return {"srt": srt, "cues": len(cues), "start": round(cues[0].start, 3), "end": round(cues[-1].end, 3),
@@ -551,6 +603,18 @@ def register(server: MpvdServer, service: SubsService) -> None:  # noqa: C901 - 
         argos | opus-big. Cached → ``done`` at once; else a job that pushes ``subs-translate`` events to ``notify``.
         Missing models → error with ``data.missing = [[source, target, engine], …]``."""
         return await service.translate(srt, source, target, path, notify, _sid(ctx), engine)
+
+    @d.method("subs.web.list")
+    async def web_list(ctx: RpcContext, url: str, prefer: str = "es") -> dict[str, Any]:
+        """Subtitles an internet video offers (manual + automatic in its own language; never the site's machine
+        translations): ``{tracks: [{lang, kind, label, ext}]}`` (H29)."""
+        return await service.web_list(url, prefer)
+
+    @d.method("subs.web.fetch")
+    async def web_fetch(ctx: RpcContext, url: str, lang: str, kind: str = "manual") -> dict[str, Any]:
+        """One web subtitle track → clean SRT in the cache (``srt``, ``title`` for sub-add); translate it offline with
+        subs.translate and save it with subs.save like any external track."""
+        return await service.web_fetch(url, lang, kind)
 
     @d.method("subs.translate.models")
     async def translate_models(ctx: RpcContext, index: bool = False) -> dict[str, Any]:

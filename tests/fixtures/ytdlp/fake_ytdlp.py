@@ -153,7 +153,18 @@ def dump_json(url: str, opts: dict[str, list[str]], flags: set[str]) -> int:
         sys.stderr.write("ERROR: [fake] Unsupported URL: " + url + "\n")
         return 1
     if url.startswith("https://fake.test/"):
-        print(json.dumps(fake_info(url, fmt)))
+        info = fake_info(url, fmt)
+        subs_base = os.environ.get("FAKE_YTDLP_SUBS_URL")
+        if subs_base and "websubs" in url:
+            # H29: what YouTube offers — a manual track, the original-language automatic captions and a machine
+            # translation (tlang=, which the real site answers with HTTP 429)
+            info["language"] = "en"
+            info["subtitles"] = {"es": [{"ext": "vtt", "url": subs_base + "/manual_es.vtt", "name": "Spanish"}]}
+            info["automatic_captions"] = {
+                "en-orig": [{"ext": "srt", "url": subs_base + "/auto_en.srt?kind=asr&lang=en", "name": "English (Original)"}],
+                "fr": [{"ext": "srt", "url": subs_base + "/auto_fr.srt?kind=asr&lang=en&tlang=fr", "name": "French"}],
+            }
+        print(json.dumps(info))
         return 0
     if url.startswith("ytsearch"):
         m = re.match(r"ytsearch(\d*):(.*)$", url, re.S)
