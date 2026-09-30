@@ -20,9 +20,10 @@ log = logging.getLogger("mpvd.remote.http")
 
 MAX_HEAD = 16 * 1024
 MAX_BODY = 1024 * 1024
-STATUS_TEXT = {200: "OK", 204: "No Content", 302: "Found", 304: "Not Modified", 400: "Bad Request", 401: "Unauthorized",
-               403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed", 410: "Gone", 413: "Payload Too Large",
-               415: "Unsupported Media Type", 500: "Internal Server Error", 503: "Service Unavailable"}
+STATUS_TEXT = {200: "OK", 204: "No Content", 206: "Partial Content", 302: "Found", 304: "Not Modified",
+               400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed",
+               410: "Gone", 413: "Payload Too Large", 415: "Unsupported Media Type", 416: "Range Not Satisfiable",
+               429: "Too Many Requests", 500: "Internal Server Error", 503: "Service Unavailable"}
 
 
 class HttpError(Exception):
