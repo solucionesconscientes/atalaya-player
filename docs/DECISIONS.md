@@ -394,3 +394,14 @@
   se repiten (sin tildes, con palabras vacías es/en); en ambos casos MMR (λ 0,7) para no repetir; ~1 frase cada
   2 min (3–7). mu-recap sigue `focused` y `window-minimized`: ausencia = sin foco o minimizada mientras reproduce; una
   pausa cierra el tramo; al volver tras ≥ 60 s de vídeo muestra el aviso con la tecla.
+- ADR-063 · Enviar a la tele (H27): DLNA/UPnP AV con la biblioteca estándar (`mpvd/cast`): SSDP `M-SEARCH`
+  MediaRenderer:1, descripción del dispositivo (AVTransport:1 y RenderingControl:1), SOAP SetAVTransportURI con
+  DIDL-Lite (muchas teles rechazan metadatos vacíos; `DLNA.ORG_OP=01` en archivos para permitir saltos por bytes, `00`
+  en directos), Play/Pause/Stop/Seek `REL_TIME`/GetPositionInfo/SetVolume. mpvd sirve el medio en la LAN (puerto 8792,
+  solo mientras se envía, token aleatorio por elemento, rangos de bytes en streaming). La tele recibe el archivo tal
+  cual si su códec es H.264/HEVC/MPEG-2 + AAC/MP3/AC-3; si no, un relé MPEG-TS de ffmpeg (vídeo copiado si es H.264,
+  si no libx264 veryfast; audio AAC; solo audio → MP3); un vídeo web con MP4 progresivo va por su URL directa. Un relé
+  no se puede saltar: se reinicia con `-ss` y un token nuevo. El proceso del relé se mata con SIGKILL y se cierra su
+  transporte (en Python 3.12 `wait()` no vuelve hasta EOF de la tubería). Chromecast queda fuera por ahora: su
+  protocolo (CASTV2: TLS + protobuf + mDNS) pide `pychromecast` y un receptor real para probarlo; se añadiría como extra
+  opcional con la misma interfaz `cast.*`.

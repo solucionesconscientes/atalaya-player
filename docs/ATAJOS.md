@@ -134,6 +134,11 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 |---|---|
 | `alt+W` | Menú **Compartir**: crear una sala con enlace y QR (solo en tu red), invitados (dar o quitar el control, sacar), enlace nuevo, cerrar la sala. Si un invitado pide el control, aparece un sí/no en pantalla |
 
+## Enviar a la tele (mu-cast)
+| Tecla | Acción |
+|---|---|
+| `alt+E` | **Enviar a la tele**: busca las teles y altavoces de tu red (DLNA) y les manda lo que suena, desde el mismo momento; aquí se pausa. Luego: pausar, ±30 s, volumen de la tele, **Seguir viendo aquí** (vuelve al reproductor donde iba la tele) y parar |
+
 ## Modos (mu-modes)
 | Tecla | Acción |
 |---|---|

@@ -138,6 +138,9 @@ class MpvdServer:
         from mpvd import recap  # noqa: PLC0415
         self.recap = recap.RecapService(self)
         recap.register(self, self.recap)
+        from mpvd.cast.service import CastService, register as register_cast  # noqa: PLC0415
+        self.cast = CastService(self)
+        register_cast(self, self.cast)
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -184,6 +187,7 @@ class MpvdServer:
         await self.remote.close()
         await self.feeds.close()
         self.gamepad.stop()
+        await self.cast.close()
         await self.ytdl.close()
         await self.convert.close()
         await self.schedule.close()

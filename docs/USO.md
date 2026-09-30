@@ -256,6 +256,16 @@ abra en tu misma red (wifi de casa) pone su nombre y ve lo mismo que tú, a la v
 - El enlace caduca (24 h como mucho), se puede cambiar por uno nuevo y deja de valer al cerrar la sala.
 - Abrir la sala a internet (túnel) está pendiente de una decisión de Ser (ver NEEDS_HUMAN.md).
 
+## 9b-2. Enviar a la tele
+`alt+E` (o *Herramientas → Enviar a la tele*) busca en tu wifi las teles y altavoces que aceptan DLNA (casi todas las
+Samsung, LG, Sony, Philips, Kodi…; en algunas hay que activar «compartir contenido» o «DLNA» en sus ajustes). Elige una:
+lo que estás viendo sigue en la tele desde el mismo minuto y aquí se pausa. Desde el menú: pausar, ±30 s, volumen de la
+tele, *Seguir viendo aquí* (vuelve al reproductor donde iba la tele) y *Parar en la tele*.
+- Archivos que la tele entiende (H.264/H.265 con AAC/MP3/AC-3) van tal cual y la tele puede saltar; los demás y los
+  vídeos de YouTube se convierten al vuelo (MPEG-TS; saltar reinicia la conversión en ese punto).
+- Como el mando y Compartir, necesita el puerto 8792 abierto en el cortafuegos (el menú muestra la orden exacta).
+- Chromecast (Google TV) aún no: ver docs/PLATAFORMAS.md.
+
 ## 9c. Mini reproductor, modo salón y modo sencillo
 - **Mini reproductor** (`alt+F`): ventana pequeña, sin bordes y siempre encima; la misma tecla la devuelve. En Wayland
   la coloca el escritorio; si KDE no la deja encima: `Alt+F3 → Más acciones → Mantener por encima`.

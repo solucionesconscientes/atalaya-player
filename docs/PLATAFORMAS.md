@@ -22,6 +22,8 @@ Desarrollado y probado en Linux (Ubuntu, Wayland/KDE, mpv 0.41). Lo siguiente NO
 | Mini reproductor / modo salón / sencillo | ✅ (Wayland: posición la decide KDE) | debería ir (sin probar) | debería ir (sin probar) |
 | Mando de consola (modo salón) | ✅ `/dev/input/js*` (joydev, xpad) | ❌ falta (IOKit/GameController) | ❌ falta (XInput) |
 | Compartir: ver juntos (LAN) | ✅ puerto 8791 (abrir en `ufw` como el mando) | sin probar | sin probar; cortafuegos de Windows |
+| Enviar a la tele (DLNA) | ✅ con renderizador falso en tests; sin tele real probada; puerto 8792 en `ufw` | debería ir | debería ir; cortafuegos de Windows |
+| Chromecast | ❌ falta (necesita `pychromecast` y un receptor para probar) | ❌ | ❌ |
 
 ## Instalar en macOS (no probado)
 ```bash
