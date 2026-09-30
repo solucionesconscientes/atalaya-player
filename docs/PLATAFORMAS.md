@@ -75,3 +75,9 @@ Hoy no funciona sin trabajo: falta el lanzador PowerShell y el transporte por na
   (no probado). En Windows el primer arranque puede mostrar el diálogo del Firewall de Windows ("Permitir acceso" en redes privadas);
   en macOS, el aviso de "aceptar conexiones entrantes" para Python. En Linux con `ufw` hay que abrir el puerto (docs/REMOTE.md).
 - La PWA usa solo HTML/JS/CSS estándar y SSE; la API está probada con tests HTTP (urllib); la interfaz no se ha probado en un móvil real (Android/iOS).
+
+## Biblioteca y subtítulos de internet (H22)
+- Escaneo con `os.walk` y rutas `pathlib`: igual en las tres plataformas (solo probado en Linux). Los fotogramas de carátula usan
+  `ffmpeg`/`ffprobe` del PATH y `nice -n 10` si existe (en Windows no hay `nice`: se lanzan con prioridad normal).
+- `library-secrets.json` se crea con permisos 0600; en Windows esos bits no significan nada y la protección es la de la carpeta
+  del perfil del usuario (`%APPDATA%\mpv-uos`), sin ACL propias (no probado).
