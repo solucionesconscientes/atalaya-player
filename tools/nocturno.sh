@@ -38,7 +38,7 @@ reset_epoch() {
 log "runner: model=$MODEL effort=$EFFORT max_iter=$MAX_ITER deadline=$(date -d "@$d" '+%F %H:%M') iter_timeout=$ITER_TIMEOUT"
 fails=0; done_iter=0; n_file=0
 while [ "$done_iter" -lt "$MAX_ITER" ]; do
-  grep -q "ESTADO_GLOBAL: COMPLETADO" PROGRESS.md && { log "Backlog completado"; break; }
+  grep -q "^ESTADO_GLOBAL: COMPLETADO$" PROGRESS.md && { log "Backlog completado"; break; }
   [ "$(date +%s)" -ge "$d" ] && { log "Hora límite alcanzada"; break; }
   n_file=$((n_file+1)); n=$(printf %02d "$n_file"); iter=$((done_iter+1))
   log "▶ iteración $iter (archivo $n, $MODEL, effort=$EFFORT)"
