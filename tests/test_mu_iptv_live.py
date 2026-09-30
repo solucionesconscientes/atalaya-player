@@ -316,7 +316,8 @@ def test_duplicates_fallback_quality_and_spanish_labels(live):
     wait_view(h, "root")
     send_event(h, {"type": "activate", "index": 3, "value": {"view": "source", "id": "tdt_radio"}})
     menu = wait_menu(h, "España · Radio")
-    assert [i["title"] for i in menu["items"]] == ["Emisora Voz", "Comprobar canales en segundo plano"]
+    assert [i["title"] for i in menu["items"]] == ["Buscar en esta lista…", "Emisora Voz",
+                                                   "Comprobar canales en segundo plano"]
     radio = channels(d, "tdt_radio")["Emisora Voz"]
     assert radio["group_label"] == "Radio C. Valenciana" and radio["group"] == "Radio_C. Valenciana"
 
@@ -329,7 +330,7 @@ def test_duplicates_fallback_quality_and_spanish_labels(live):
         ("🇪🇸 España", True), ("🇩🇪 Alemania", False), ("🇫🇷 Francia", False), ("🇬🇧 Reino Unido", False)]
     send_event(h, {"type": "activate", "index": 1, "value": {"view": "country", "id": "es", "name": "España"}})
     menu = wait_menu(h, "España")
-    assert [g["title"] for g in menu["items"]] == ["General", "Sin categoría"]
+    assert [g["title"] for g in menu["items"]] == ["Buscar en esta lista…", "General", "Sin categoría"]
     world = channels(d, "iptv_org")
     assert world["Uno ES"]["group_label"] == "General · Público" and world["Dos ES"]["category_label"] == "Sin categoría"
 
@@ -339,5 +340,6 @@ def test_duplicates_fallback_quality_and_spanish_labels(live):
     wait_view(h, "root")
     send_event(h, {"type": "activate", "index": 5, "value": {"view": "radio"}})
     menu = wait_menu(h, "Radio mundial")
-    assert [i["title"] for i in menu["items"]] == ["Más votadas del mundo", "🇪🇸 España", "🇩🇪 Alemania", "🇦🇫 Afganistán"]
+    assert [i["title"] for i in menu["items"]] == ["Buscar en esta lista…", "Más votadas del mundo", "🇪🇸 España",
+                                                   "🇩🇪 Alemania", "🇦🇫 Afganistán"]
     assert h.script_errors() == []

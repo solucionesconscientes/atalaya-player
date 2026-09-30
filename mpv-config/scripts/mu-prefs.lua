@@ -83,13 +83,19 @@ local ISO = {
 }
 local ISO3 = {}
 for two, threes in pairs(ISO) do for _, t in ipairs(threes) do ISO3[t] = two end end
-local NOT_A_LANGUAGE = { und = true, mis = true, mul = true, zxx = true, qaa = true }
+-- Codes that are not a language: picking them must not become the preferred language of every file. "ads" (RTVE)
+-- and the reserved range qaa-qtz ("qaa" original version, "qad" audio description on DVB, RTVE and 3Cat) mark a
+-- version of the soundtrack, not a language (H30).
+local NOT_A_LANGUAGE = { und = true, mis = true, mul = true, zxx = true, qaa = true, ads = true }
+local function not_a_language(base)
+  return NOT_A_LANGUAGE[base] or (#base == 3 and base >= 'qaa' and base <= 'qtz')
+end
 
 -- 'pt-BR' -> { 'pt-br', 'pt', 'por' }; 'spa' -> { 'es', 'spa' }; unknown codes are kept as they are.
 local function lang_variants(lang)
   lang = tostring(lang or ''):lower():gsub('_', '-')
   local base = lang:match('^([a-z]+)') or ''
-  if base == '' or NOT_A_LANGUAGE[base] then return nil end
+  if base == '' or not_a_language(base) then return nil end
   local out = {}
   local function add(x) for _, y in ipairs(out) do if y == x then return end end table.insert(out, x) end
   if lang ~= base then add(lang) end
