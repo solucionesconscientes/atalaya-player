@@ -128,11 +128,12 @@ desde el propio menú.
 ```
 
 ## Saltar intro y créditos (local, sin servicios)
-Al abrir un episodio, mpvd compara su audio (huellas Chromaprint, `fpcalc`) con el de los otros vídeos de la misma carpeta:
+Al abrir un episodio, mpvd compara su audio (huellas Chromaprint, `fpcalc`) con el de los otros episodios de la temporada (misma carpeta o carpetas hermanas):
 el tramo común al principio es la intro y el común al final son los créditos; los bordes se ajustan a silencios y fotogramas
 negros (`silencedetect`/`blackdetect`). Al entrar en un tramo aparece el botón ⏭ en la barra y un aviso; `alt+k` salta
 (créditos → siguiente episodio de la lista), `alt+j` abre el menú (segmentos, salto automático, volver a analizar). Los segmentos
-se exportan a `<carpeta>/.mpv-uos/segments.json` (`{"type":"intro","start":…,"end":…}`). Requiere `fpcalc`
+no se escriben junto a los vídeos salvo que lo pidas (menú → Exportar segmentos (Jellyfin) → `segments.json`). Si no hay
+otros episodios (una película suelta), se puede marcar a mano desde el menú. Requiere `fpcalc`
 (paquete `libchromaprint-tools` en Debian/Ubuntu); sin él la función se desactiva sola.
 ```bash
 bin/mpv-uos ~/Series/MiSerie/S01E02.mkv                                        # alt+k salta · alt+j menú

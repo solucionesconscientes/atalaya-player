@@ -62,7 +62,7 @@ def test_intro_service_analysis_cache_and_export(daemon_env, media_dir, tmp_path
     d = daemon_env
     # work on a copy: the on-demand export writes segments.json next to the videos
     serie = tmp_path / "serie"
-    shutil.copytree(media_dir / "serie", serie)
+    shutil.copytree(media_dir / "serie", serie, ignore=shutil.ignore_patterns(".mpv-uos", "segments.json"))
     d.cli("ensure")
     d.wait(d.alive, timeout=30)
     assert d.call("capabilities")["services"]["intro"] is True
@@ -100,7 +100,7 @@ def test_intro_service_analysis_cache_and_export(daemon_env, media_dir, tmp_path
 def test_mu_intro_skip_and_next_episode(daemon_env, media_dir, tmp_path):
     d = daemon_env
     serie = tmp_path / "serie"
-    shutil.copytree(media_dir / "serie", serie)
+    shutil.copytree(media_dir / "serie", serie, ignore=shutil.ignore_patterns(".mpv-uos", "segments.json"))
     h = start_mpv(d.runtime_dir, ["--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-intro-poll_seconds=0.2,"
                                   "mu-intro-countdown_seconds=0",
                                   "--keep-open=yes", "--pause=yes"], env=d.env)

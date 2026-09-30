@@ -179,3 +179,10 @@
   normalizado + grupo) en una entrada con el oficial primero, las copias FAST con anuncios al final y cambio automático de fuente
   si no abre (mu-core calla su aviso mientras quedan fuentes). Etiquetas en español (iso-codes del sistema o JSON incluido); los
   valores crudos no cambian (filtros, favoritos, MCP). La resolución, los 25 fps y el bitrate son de la fuente.
+- ADR-040 · Intro/créditos más allá de «una carpeta por temporada» (sustituye la exportación automática de ADR-029): vecinos en la
+  misma carpeta y, si no hay de la serie, en carpetas hermanas por título normalizado + temporada; principio (600 s) y final (300 s)
+  independientes y vecinos rotos o sin audio saltados; se descarta lo que no tiene sentido (intro tras el 40 %, créditos antes del
+  60 %, solapes → gana el de más vecinos) y las versiones del mismo vídeo (>50 % de audio común o ≥5 fragmentos sin nombres de
+  episodio); bordes afinados solo ±6 s (coste casi fijo). Marcas manuales = datos de usuario (`<datos>/intro-marks.json`)
+  trasladadas a la temporada localizando su huella. Nada se escribe junto a los vídeos salvo `intro.export` (segments.json con
+  Type/StartTicks de Jellyfin). Detección y salto automático se recuerdan (mu-prefs).

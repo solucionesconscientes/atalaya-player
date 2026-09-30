@@ -85,8 +85,10 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 ## Saltar intro y créditos (mu-intro)
 | Tecla | Acción |
 |---|---|
-| `alt+k` | Saltar la intro o los créditos detectados (huellas de audio entre episodios de la misma carpeta); fuera de un segmento salta al final del siguiente |
-| `alt+j` | Menú **Saltar intro y créditos**: segmentos detectados, saltar ahora, salto automático de intro/créditos, volver a analizar |
+| `alt+k` | Saltar la intro o los créditos (huellas de audio con los episodios de la temporada, en la misma carpeta o en carpetas hermanas); en los créditos, siguiente de la lista o siguiente episodio detectado; durante el análisis dice «Analizando… NN %» |
+| `alt+j` | Menú **Saltar intro y créditos**: segmentos, saltar ahora, marcar inicio/final de intro y créditos, salto automático, analizar temporada, volver a analizar, exportar segmentos (Jellyfin) |
+| `Esc` | Solo durante la cuenta atrás del salto automático («Saltando intro en 3 s · Esc cancela»): lo cancela |
+| (menú `alt+j`) | Marcar a mano (`mu_intro/intro-mark-start`, `intro-mark-end`, `credits-mark-start`, `credits-mark-end`): se aplica al resto de la temporada |
 
 ## Estudio (mu-study)
 | Tecla | Acción |

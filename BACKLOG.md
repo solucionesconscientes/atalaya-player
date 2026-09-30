@@ -103,7 +103,7 @@ no funciona, recordar opciones, reproducir YouTube y otras webs, el QR del móvi
       resultados locales al instante), mando: aviso del cortafuegos con la orden exacta, instalador (carpeta movida, MIME del mpv
       del sistema, restaurar reproductores por defecto).
 - [x] yt-dlp: runtime JS desde el primer vídeo, preset mp4 en H.264/AAC, "Abrir URL…" y "Buscar en YouTube".
-- [ ] Saltar intro: episodios en carpetas hermanas, avisos visibles, comprobaciones de sentido, bordes baratos, marcado manual,
+- [x] Saltar intro: episodios en carpetas hermanas, avisos visibles, comprobaciones de sentido, bordes baratos, marcado manual,
       salto automático con cuenta atrás, temporada completa.
 - [x] Subtítulos: guardar en SRT (IA, traducción, resync, pista embebida), traducción OPUS-MT big, transcripción small-q8_0 con
       trozos de 28,5 s y contexto.

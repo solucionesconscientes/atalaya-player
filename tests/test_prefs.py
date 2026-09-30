@@ -355,3 +355,25 @@ def test_subtitle_ai_choices_survive_restart(pdir):
         assert st["translate_engine"] == "opus-big"
     finally:
         h.stop()
+
+
+def test_intro_choices_survive_restart(pdir):
+    """mu-intro (menu alt+j): automatic skipping is remembered."""
+    import time
+
+    h = launch(pdir)
+    try:
+        h.wait_property("user-data/mu/intro", bool, timeout=10)
+        h.command("script-message-to", "mu_intro", "mu-intro-set", "auto_skip_intro", "yes")
+        deadline = time.time() + 10
+        while time.time() < deadline and prefs_file(pdir).get("mu-intro", {}).get("auto_skip_intro") is not True:
+            time.sleep(0.2)
+    finally:
+        h.stop()
+    assert prefs_file(pdir)["mu-intro"]["auto_skip_intro"] is True
+    h = launch(pdir)
+    try:
+        st = h.wait_property("user-data/mu/intro", lambda v: bool(v) and "auto_skip_intro" in v, timeout=10)
+        assert st["auto_skip_intro"] is True and st["auto_skip_credits"] is False
+    finally:
+        h.stop()

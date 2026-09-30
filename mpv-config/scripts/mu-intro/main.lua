@@ -12,6 +12,7 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local prefs = require('mu.prefs')
 
 local SCRIPT = mp.get_script_name()
 
@@ -30,6 +31,11 @@ local opts = {
 }
 local on_options -- forward: script-opts changed at runtime (e.g. by a preferences system)
 options.read_options(opts, 'mu-intro', function() if on_options then on_options() end end)
+-- remembered choices (menu alt+j): detection on/off and automatic skipping
+local PREF_KEYS = { 'enabled', 'auto_skip_intro', 'auto_skip_credits' }
+local P = prefs.ns('mu-intro', { enabled = opts.enabled, auto_skip_intro = opts.auto_skip_intro,
+  auto_skip_credits = opts.auto_skip_credits })
+P:apply_opts(opts, 'mu-intro', PREF_KEYS)
 
 local state = {
   path = '',
@@ -706,6 +712,7 @@ mp.register_script_message(EVENT, function(json)
   local v = type(ev.value) == 'table' and ev.value or {}
   if v.toggle then
     set_opt(v.toggle, not opts[v.toggle])
+    for _, k in ipairs(PREF_KEYS) do if k == v.toggle then P:set(k, opts[k]) end end
   elseif v.skip then
     uosc.close(MENU)
     skip(nil)
@@ -746,7 +753,14 @@ mp.add_key_binding(nil, 'intro-season', analyze_season)
 mp.add_key_binding(nil, 'intro-export', export)
 mp.register_script_message('mu-intro-skip', function(kind) skip(kind ~= '' and kind or nil) end)
 mp.register_script_message('mu-intro-refresh', function() request(false) end)
-mp.register_script_message('mu-intro-set', set_opt)
+mp.register_script_message('mu-intro-set', function(key, value)
+  set_opt(key, value)
+  for _, k in ipairs(PREF_KEYS) do if k == key then P:set(k, opts[k]) end end
+end)
+P:on_change(function(reason)
+  if reason ~= 'reset' then return end
+  for _, k in ipairs(PREF_KEYS) do set_opt(k, P:get(k)) end
+end)
 mp.register_script_message('mu-intro-mark', function(kind, which) mark(kind, which) end)
 mp.register_script_message('uosc-version', function() state.button_sig = '' set_button() end)
 
