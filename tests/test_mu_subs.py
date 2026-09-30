@@ -219,7 +219,10 @@ def test_save_srt_menu_binding_engines_and_no_duplicate_ai_track(subs_mpv, media
     item = next(i for i in st["items"] if i["title"] == "Guardar subtítulos (SRT)")
     assert item["hint"] == "peli.es.srt"
     send_event(h, {"type": "activate", "index": 1, "value": {"view": "save"}})
-    st = wait_view(h, "save")
+    # the view name is published before its items (they need an answer from mpvd): wait for the save entries
+    st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("view") == "save"
+                         and any(str(i.get("title", "")).startswith("Pista IA") for i in v.get("items") or []),
+                         timeout=30)
     titles = [i["title"] for i in st["items"]]
     assert "Pista IA: no iniciada" in titles and "Pista seleccionada (subrip)" in titles, titles
 
