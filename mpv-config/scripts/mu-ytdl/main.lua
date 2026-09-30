@@ -484,7 +484,12 @@ views.root = function()
                         value = { view = 'batch', list = true } })
   local n = count_active()
   table.insert(items, { title = 'Descargas', hint = n > 0 and (tostring(n) .. ' activas') or nil, icon = 'downloading',
-                        value = { view = 'downloads' }, separator = true })
+                        value = { view = 'downloads' } })
+  -- H20: conversions and the unified tasks panel live in mu-convert (opened as a child: ⌫ comes back here)
+  table.insert(items, { title = 'Convertir…', hint = 'MP4, más pequeño, solo audio, GIF', icon = 'transform',
+                        value = { child = 'convert-menu' } })
+  table.insert(items, { title = 'Tareas', hint = 'descargas y conversiones', icon = 'pending_actions',
+                        value = { child = 'tasks-menu' }, separator = true })
   table.insert(items, { title = 'Ajustes de descarga', icon = 'tune', value = { view = 'dl_settings' } })
   table.insert(items, { title = 'Estado de yt-dlp', icon = 'settings', value = { view = 'status' } })
   show(ROOT_TITLE, items)
@@ -1311,6 +1316,11 @@ local function on_event(source, json)
       playlist_download(v.pl_download)
     elseif v.dlset then
       dl_setting(v.dlset)
+    elseif v.child then
+      local crumbs = {}
+      for _, c in ipairs(N.parent.crumbs or {}) do crumbs[#crumbs + 1] = c end
+      for _, spec in ipairs(state.stack) do crumbs[#crumbs + 1] = spec.title end
+      nav.open_child('mu_convert', v.child, crumbs, state.view)
     elseif v.view then
       if v.ensure then mp.commandv('script-message-to', 'mu_core', 'mu-ensure') end
       if v.view == 'root' then state.stack = {} end
@@ -1333,6 +1343,12 @@ local function on_event(source, json)
 end
 
 mp.register_script_message(EVENT, function(json) on_event(MENU, json) end)
+-- mu-convert (opened from «Convertir…» / «Tareas») went back past its root: show this menu again
+mp.register_script_message('mu-nav-return', function()
+  if not uosc.available() then return end
+  state.stack = {}
+  open_view({ name = 'root' })
+end)
 mp.register_script_message(URL_EVENT, function(json) on_event(URL_MENU, json) end)
 mp.register_script_message(SEARCH_EVENT, function(json) on_event(SEARCH_MENU, json) end)
 mp.register_script_message(BATCH_EVENT, function(json) on_event(BATCH_MENU, json) end)
