@@ -138,6 +138,13 @@ class MpvdServer:
         from mpvd import recap  # noqa: PLC0415
         self.recap = recap.RecapService(self)
         recap.register(self, self.recap)
+        from mpvd import books, lyrics, songid  # noqa: PLC0415 - H32: audiobooks, lyrics, song identification
+        self.books = books.BooksService(self)
+        books.register(self, self.books)
+        self.lyrics = lyrics.LyricsService(self)
+        lyrics.register(self, self.lyrics)
+        self.songid = songid.SongIdService(self, self.lyrics.settings)
+        songid.register(self, self.songid)
 
     # -- lifecycle -------------------------------------------------------------
 
