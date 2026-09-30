@@ -139,6 +139,7 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 |---|---|
 | `alt+F` | **Mini reproductor**: ventana pequeña sin bordes y siempre encima; la misma tecla la devuelve a su tamaño |
 | — (Preferencias) | **Modo salón**: pantalla completa, menús, subtítulos y mensajes grandes; un mando de consola (gamepad) controla el reproductor: A pausa, B/Back cierra el menú, X subtítulos, Start/Guide menú, cruceta ←/→ 10 s, ↑/↓ volumen, LB/RB anterior/siguiente |
+| `alt+R` | **¿Qué me he perdido?**: las frases que resumen lo que se dijo mientras la ventana estaba minimizada o en segundo plano (o en los últimos 5 min); Enter salta a ese momento. Usa los subtítulos de texto del vídeo o su transcripción IA |
 | — (Preferencias) | **Modo sencillo**: menú principal corto (Abrir, TV y radio, Subtítulos, Preferencias) y barra mínima; «Menú completo» lo quita |
 
 ## Teclas de mpv que cambian

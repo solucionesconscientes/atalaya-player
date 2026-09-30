@@ -385,3 +385,12 @@
   `--input-gamepad` (SDL), así que mpvd lee la API de joystick de Linux (`/dev/input/js*`, `struct js_event` de 8
   bytes, disposición del controlador xpad) en un hilo, solo mientras el modo salón está activo, y empuja acciones a
   mu-modes (`mu-event`). Windows/macOS: sin mando (docs/PLATAFORMAS.md).
+- ADR-062 · «¿Qué me he perdido?» (H27): resumen extractivo en mpvd (`recap.summarize`), no un LLM local: en el
+  hardware objetivo (4 núcleos, sin GPU) un modelo generativo tarda decenas de segundos por párrafo y puede inventar;
+  elegir frases del propio diálogo tarda < 1 s y cada frase lleva su minuto (Enter salta ahí). Palabras, por orden:
+  subtítulo externo (SRT/VTT/ASS), pista de texto incrustada (extraída una vez con el argv de `subs.extract` a la
+  caché), transcripción IA que mpvd ya tenga; nunca se lanza una transcripción nueva. Selección: centralidad respecto
+  al centroide con el modelo de embeddings de `semantic` si está instalado, o puntuación por palabras de contenido que
+  se repiten (sin tildes, con palabras vacías es/en); en ambos casos MMR (λ 0,7) para no repetir; ~1 frase cada
+  2 min (3–7). mu-recap sigue `focused` y `window-minimized`: ausencia = sin foco o minimizada mientras reproduce; una
+  pausa cierra el tramo; al volver tras ≥ 60 s de vídeo muestra el aviso con la tecla.

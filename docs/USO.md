@@ -265,6 +265,14 @@ abra en tu misma red (wifi de casa) pone su nombre y ve lo mismo que tú, a la v
 - **Modo sencillo** (*Preferencias*): menú principal corto y barra mínima, para quien solo quiere ver cosas;
   *Menú completo* lo quita.
 
+## 9d. ¿Qué me he perdido?
+Si minimizas la ventana o te vas a otra mientras sigue el vídeo, al volver aparece «¿Te has perdido algo? alt+R».
+`alt+R` (o *Herramientas → ¿Qué me he perdido?*) muestra 3–7 frases del propio diálogo que resumen ese tramo (si no te
+fuiste, los últimos 5 minutos), cada una con su minuto: Enter salta ahí. Todo en tu equipo, en menos de un segundo.
+Necesita palabras: subtítulos de texto del vídeo (incluidos los de la web o de OpenSubtitles) o su transcripción con
+subtítulos IA (`alt+c`). Con el modelo de búsqueda semántica instalado elige mejor; sin él cuenta las palabras que más
+se repiten. No inventa nada: son frases que se dijeron.
+
 ## 10. Asistentes (MCP)
 Copia `.mcp.json.example` a `.mcp.json` para que Claude Code u otro cliente MCP controle el reproductor (reproducir, buscar en el
 diálogo, canales, descargas, notas). Lo que interrumpe lo que ves pide confirmación en pantalla. Más en docs/MCP.md.

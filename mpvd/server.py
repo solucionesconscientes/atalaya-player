@@ -135,6 +135,9 @@ class MpvdServer:
         from mpvd import gamepad  # noqa: PLC0415
         self.gamepad = gamepad.GamepadService(self)
         gamepad.register(self, self.gamepad)
+        from mpvd import recap  # noqa: PLC0415
+        self.recap = recap.RecapService(self)
+        recap.register(self, self.recap)
 
     # -- lifecycle -------------------------------------------------------------
 
