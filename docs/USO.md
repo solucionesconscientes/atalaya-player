@@ -14,6 +14,10 @@ mpv-uos                          # sin archivo: pantalla de inicio con los recie
 Opciones del instalador: `--xdg` (caché y datos en `~/.cache/mpv-uos` y `~/.local/share/mpv-uos` en vez de `<proyecto>/.cache`),
 `--default` (reproductor por defecto para vídeo y audio), `--dry-run`, `--uninstall` (solo borra lo que creó).
 
+**AppImage** (sin instalar nada más que mpv): `tools/build_appimage.sh` crea `dist/MPV-UOS-x86_64.AppImage` (≈ 41 MB).
+Cópialo donde quieras, `chmod +x MPV-UOS-x86_64.AppImage` y ábrelo. Necesita el mpv del sistema (0.41 o posterior); si
+falta, avisa con la orden para instalarlo. Los subtítulos IA y los modelos se descargan la primera vez que se usan.
+
 ## 1. Moverse por la interfaz
 - **Menú MPV-UOS**: botón derecho, tecla `MENU`, `alt+m` o el botón ▦ de la barra. Reúne todo lo de esta guía en ocho
   categorías: Abrir, TV y radio, Descargas y conversión, Subtítulos, Imagen y sonido, Grabar, Herramientas y Preferencias

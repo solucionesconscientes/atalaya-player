@@ -171,10 +171,15 @@ local function apply_hook_path()
   if opts.ytdl_path ~= '' then
     table.insert(paths, opts.ytdl_path)
   else
+    local exe = is_windows and 'yt-dlp.exe' or 'yt-dlp'
+    -- a read-only install (the AppImage) keeps its updatable yt-dlp in MPV_UOS_VENDOR_BIN, like mpvd does
+    local vendor_bin = os.getenv('MPV_UOS_VENDOR_BIN') or ''
+    if vendor_bin ~= '' and file_exists(utils.join_path(vendor_bin, exe)) then
+      table.insert(paths, utils.join_path(vendor_bin, exe))
+    end
     local root = detect_root()
     if root ~= '' then
-      local vendored = utils.join_path(utils.join_path(utils.join_path(root, 'vendor'), 'bin'),
-        is_windows and 'yt-dlp.exe' or 'yt-dlp')
+      local vendored = utils.join_path(utils.join_path(utils.join_path(root, 'vendor'), 'bin'), exe)
       if file_exists(vendored) then table.insert(paths, vendored) end
     end
     table.insert(paths, 'yt-dlp')

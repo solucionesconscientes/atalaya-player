@@ -135,10 +135,15 @@ class YtdlpBinary:
 
 
 def vendor_path(root: Path | None) -> Path | None:
+    """``<root>/vendor/bin/yt-dlp``, or ``$MPV_UOS_VENDOR_BIN/yt-dlp`` when the checkout is read-only (the AppImage
+    points it at a folder of the user's data so the daily update has somewhere to write)."""
+    name = "yt-dlp.exe" if sys.platform == "win32" else "yt-dlp"
+    env = os.environ.get("MPV_UOS_VENDOR_BIN")
+    if env:
+        return Path(env) / name
     if root is None:
         return None
-    exe = root / "vendor" / "bin" / ("yt-dlp.exe" if sys.platform == "win32" else "yt-dlp")
-    return exe
+    return root / "vendor" / "bin" / name
 
 
 def nightly_path(root: Path | None, data_dir: Path) -> Path:

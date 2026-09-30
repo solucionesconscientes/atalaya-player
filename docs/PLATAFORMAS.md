@@ -7,6 +7,8 @@ Desarrollado y probado en Linux (Ubuntu, Wayland/KDE, mpv 0.41). Lo siguiente NO
 |---|---|---|---|
 | Lanzador `bin/mpv-uos` + config portable | ✅ probado | debería ir (Bash; `readlink -f` ≥ 12.3) | ❌ falta `bin/mpv-uos.ps1` |
 | Instalación de usuario `tools/install.sh` | ✅ probado (XDG, `.desktop`) | ❌ usar `bin/mpv-uos` o un alias | ❌ pendiente (acceso directo) |
+| AppImage (`tools/build_appimage.sh`) | ✅ x86_64 probado sin ventana (mpv del sistema) | — | — |
+| ARM64 (Raspberry Pi 5) | ❌ sin probar: checkout + `uv sync` deberían ir; AppImage aún solo x86_64 | — | — |
 | uosc, thumbfast, scripts `mu-*` (Lua) | ✅ | debería ir (Lua puro; rutas con `utils.join_path`) | debería ir (mu-core ya distingue `.venv\Scripts\python.exe`) |
 | mpvd: JSON-RPC y IPC con mpv | ✅ socket Unix | socket Unix (no probado) | ❌ necesita named pipes (`\\.\pipe\…`) en `server.py`, `client.py`, `mpvipc.py` |
 | mpvd: arranque desacoplado | ✅ `start_new_session` | igual (no probado) | ❌ usar `creationflags=DETACHED_PROCESS` |

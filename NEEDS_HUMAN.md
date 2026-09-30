@@ -46,3 +46,11 @@
   `vendor/bin/cloudflared tunnel --url http://127.0.0.1:8791`). Hasta entonces las salas son solo de tu red local.
 - **Puerto de las salas**: como el mando, `ufw` bloquea la entrada; para que otros equipos de tu wifi entren en una sala:
   `sudo ufw allow from 192.168.1.0/24 to any port 8791 proto tcp comment 'mpv-uos compartir'`
+
+## 2026-09-30 · Plataformas (H28, no bloquea)
+- **ARM64 / Raspberry Pi 5** (no hay hardware aquí). En la Pi (Raspberry Pi OS 64 bits, mpv ≥ 0.41):
+  `git clone … && cd MPV-UOS && curl -LsSf https://astral.sh/uv/install.sh | sh && uv sync --extra desktop &&
+  tools/vendor.sh && tools/check.sh` y prueba el modo salón: `bin/mpv-uos` → `alt+m` → Preferencias → Modo salón.
+  Si falla algo, guarda `tmp/check.log` y el `.cache/mpvd.log`.
+- **AppImage en otra distribución**: `tools/build_appimage.sh` y abre `dist/MPV-UOS-x86_64.AppImage` en un equipo con
+  otra distro (Fedora, Arch) que tenga mpv ≥ 0.41: debería abrir la pantalla de inicio y `alt+t` la TV.

@@ -126,18 +126,20 @@ class MpvHeadless:
 
 
 def start_mpv(run_dir: Path, extra_args: list[str] | None = None, env: dict[str, str] | None = None,
-              start_screen: bool = False, wait_socket: Path | None = None) -> MpvHeadless:
+              start_screen: bool = False, wait_socket: Path | None = None,
+              launcher: Path | None = None) -> MpvHeadless:
     """Launch bin/mpv-uos headless: --vo=null --ao=null --idle=yes, socket and log under run_dir.
 
     The mu-menu start screen is off unless ``start_screen`` (it would open a menu in every test). User data (prefs.json
     of mu-prefs, favourites...) goes to a fresh ``run_dir/data-<tag>`` unless ``env`` sets MPV_UOS_DATA_DIR: tests never
-    read or write the user's real data, and one test's remembered volume/filters never leak into the next one."""
+    read or write the user's real data, and one test's remembered volume/filters never leak into the next one.
+    ``launcher``: another front end with bin/mpv-uos's arguments (the AppImage)."""
     run_dir.mkdir(parents=True, exist_ok=True)
     tag = uuid.uuid4().hex[:8]
     socket = run_dir / f"mpv-{tag}.sock"
     log = run_dir / f"mpv-{tag}.log"
     args = [
-        str(ROOT / "bin" / "mpv-uos"),
+        str(launcher or ROOT / "bin" / "mpv-uos"),
         "--vo=null", "--ao=null", "--hwdec=no", "--idle=yes", "--no-terminal",
         # never resume/persist positions or track choices between test runs (mpv.conf enables them for users)
         "--save-position-on-quit=no", "--resume-playback=no", f"--watch-later-dir={run_dir / 'watch_later'}",

@@ -46,3 +46,7 @@ EMBED_MODEL_URL=https://huggingface.co/Xenova/paraphrase-multilingual-MiniLM-L12
 EMBED_MODEL_SHA256=66fc00f5f29afcaff34092e1bdd20008ca3918265a82fb9695a551e510cc4ebc
 EMBED_SPM_URL=https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/resolve/main/sentencepiece.bpe.model
 EMBED_SPM_SHA256=cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865
+# appimagetool (tools/build_appimage.sh, H28): la release no publica sumas; SHA-256 calculado al fijar la versión.
+APPIMAGETOOL_VERSION=1.9.1
+APPIMAGETOOL_URL=https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+APPIMAGETOOL_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0

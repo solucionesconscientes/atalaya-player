@@ -440,3 +440,14 @@
   la clave está en su línea de órdenes (`/proc/<pid>/cmdline`); ffmpeg 8 no carga de archivo opciones de protocolo como
   `-rtmp_playpath` (comprobado). Parar mata solo su PID; también se para al cerrar el reproductor que la empezó o mpvd.
   Sin reconexión automática si se corta.
+- ADR-067 · AppImage (H28): `tools/build_appimage.sh` empaqueta lo que git versiona (bin, mpv-config con uosc y sus
+  binarios, mpvd, brand.json), el CPython 3.12 independiente que gestiona uv (python-build-standalone, reubicable) con
+  los extras ligeros (`desktop` por defecto) y el yt-dlp vendorizado; `.venv/bin/python` es un enlace relativo a ese
+  Python, así que mu-core y bin/mpv-uos no cambian. mpv NO va dentro: se usa el del sistema (≥ 0.41), igual que en el
+  checkout; meter mpv con ffmpeg, libplacebo y sus drivers multiplicaría el tamaño y rompería la aceleración por
+  hardware del sistema (AppRun avisa con la orden para instalarlo). Whisper y los modelos se quedan fuera (cientos de
+  MB, se bajan bajo demanda). La imagen es de solo lectura: AppRun manda la caché a XDG y `MPV_UOS_VENDOR_BIN` a
+  `<datos>/bin` (la copia de yt-dlp que la actualización diaria reemplaza; mpvd y mu-ytdl la leen). appimagetool 1.9.1
+  fijado por SHA-256 en vendor.lock (la release no publica sumas). Flatpak descartado por ahora: habría que compilar
+  mpv y ffmpeg dentro del SDK (horas en 4 núcleos) o depender de extensiones; el AppImage (41 MB) cubre el caso
+  «descargar y abrir». ARM64 sin probar (hace falta la máquina; NEEDS_HUMAN).
