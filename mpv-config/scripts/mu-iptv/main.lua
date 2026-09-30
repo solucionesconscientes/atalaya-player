@@ -1,7 +1,10 @@
 -- mu-iptv: "TV y radio" menus in uosc backed by mpvd (iptv.* / radio.* services), zapping, channel OSD,
 -- ICY titles for radio and live recording (stream-record); TV guide («ahora» in the lists, a guide per channel) and
--- scheduled recordings made by mpvd (iptv.epg.*, iptv.schedule.*; H21, ADR-049).
--- Script name: mu_iptv. Bindings: tv-menu, tv-search, tv-guide, tv-schedule, zap-next, zap-prev, record-toggle.
+-- scheduled recordings made by mpvd (iptv.epg.*, iptv.schedule.*; H21, ADR-049). The channel's own audio and subtitle
+-- tracks with readable names («Audio y subtítulos del canal», CC / VO / AD in the lists) and «Buscar en esta lista» in
+-- every list (iptv.tracks, iptv.search with a scope; H30).
+-- Script name: mu_iptv. Bindings: tv-menu, tv-search, tv-guide, tv-schedule, tv-tracks, zap-next, zap-prev,
+-- record-toggle.
 local mp = require('mp')
 local msg = require('mp.msg')
 local utils = require('mp.utils')
@@ -48,6 +51,10 @@ local state = {
   epg_hints = 0,      -- channels with a known «ahora» (cache below)
   guide = nil,        -- guide shown: {id, programmes, epg_id}
   schedule_event = nil, -- last scheduled-recording event from mpvd {id, status, text}
+  playing_id = nil,   -- id of the copy of the current channel really playing (an alternative after a fallback)
+  tracks = nil,       -- the channel's audio/subtitle tracks named by mpvd: {type, id, label, role, selected, …}
+  badges = {},        -- CC / VO / AD of the channel playing
+  search_scope = '',  -- «Buscar en esta lista»: which list the palette searches (tests/diagnostics)
 }
 
 -- «What is on now» per channel id: {title, expires} (a programme is valid until it ends, at most 10 min) or
@@ -60,6 +67,7 @@ local function publish()
     view = state.view, search_results = state.search_results, last_error = state.last_error,
     depth = #state.stack, fallbacks = state.fallbacks, alternatives_left = #state.alternatives,
     epg_hints = state.epg_hints, guide = state.guide or '', schedule_event = state.schedule_event or '',
+    tracks = state.tracks or {}, badges = state.badges, search_scope = state.search_scope,
   })
 end
 
@@ -96,6 +104,8 @@ end
 
 local function apply_play_info(info)
   state.current = info.channel
+  state.playing_id = info.channel and info.channel.id or nil
+  state.tracks, state.badges = nil, {}
   state.alternatives = info.alternatives or {}
   state.fallbacks = 0
   load_url(info.url, info.options)
@@ -111,6 +121,7 @@ mp.register_event('end-file', function(ev)
   state.fallbacks = state.fallbacks + 1
   local text = 'Probando otra fuente de «' .. (state.current.name or alt.name or '') .. '»…'
   msg.info(text .. ' (' .. alt.url .. ')')
+  state.playing_id = alt.id
   load_url(alt.url, alt.options)
   osd(text)
   -- mu-core explains the failed load on the OSD at the same moment; keep ours on top
@@ -136,6 +147,57 @@ local function zap(delta)
   end)
 end
 
+-- ---------------------------------------------------------------------------------------------
+-- the channel's own audio and subtitle tracks (H30): mpvd names them (mpvd/iptv/tracks.py) and stores what the
+-- channel carries for the CC / VO / AD hints of the lists. mpv track titles are read-only, so the names live here.
+
+-- Is the file playing the channel mu-iptv loaded (and not something opened afterwards)?
+local function channel_playing()
+  return type(state.current) == 'table' and state.current_url ~= '' and mp.get_property('path') == state.current_url
+end
+
+local TRACK_FIELDS = { 'id', 'type', 'lang', 'title', 'codec', 'default', 'forced', 'selected', 'external', 'image',
+                       'visual-impaired', 'hearing-impaired', 'program-id' }
+
+local function track_list()
+  local out = {}
+  for _, t in ipairs(mp.get_property_native('track-list') or {}) do
+    if t.type == 'audio' or t.type == 'sub' or (t.type == 'video' and t.selected) then
+      local row = {}
+      for _, k in ipairs(TRACK_FIELDS) do row[k] = t[k] end
+      table.insert(out, row)
+    end
+  end
+  return out
+end
+
+-- Without mpvd: the language code or title mpv shows (the menu still switches tracks).
+local function raw_tracks()
+  local out = {}
+  for _, t in ipairs(mp.get_property_native('track-list') or {}) do
+    if (t.type == 'audio' or t.type == 'sub') and not t.image then
+      table.insert(out, { type = t.type, id = t.id, selected = t.selected,
+                          label = t.title or t.lang or ((t.type == 'audio' and 'Audio ' or 'Subtítulos ') .. t.id) })
+    end
+  end
+  return out
+end
+
+-- Ask mpvd for the names (and let it store the channel's badges); `cb(tracks)` gets the named list.
+local function named_tracks(cb)
+  local list = track_list()
+  if not rpc.connected() then cb(raw_tracks()) return end
+  local id = channel_playing() and state.playing_id or nil
+  rpc.call('iptv.tracks', { tracks = list, id = id }, function(err, res)
+    if err then fail(err, 'iptv.tracks') cb(raw_tracks()) return end
+    if id and id == state.playing_id then
+      state.tracks, state.badges = res.tracks or {}, res.badges or {}
+      publish()
+    end
+    cb(res.tracks or {})
+  end, 20)
+end
+
 mp.register_event('file-loaded', function()
   if state.current and state.current ~= '' then
     local title = state.current.name
@@ -143,6 +205,7 @@ mp.register_event('file-loaded', function()
     if group then title = title .. '  ·  ' .. group end
     osd((state.current.kind == 'radio' and '📻 ' or '📺 ') .. title)
   end
+  if channel_playing() and state.current.kind ~= 'radio' then named_tracks(function() end) end
 end)
 
 -- A channel that fails to open is explained by mu-core (reason in Spanish + zapping hint).
@@ -256,7 +319,8 @@ local function now_title(id)
   return nil
 end
 
--- Hint of a channel: what we know about it, most useful first ("ahora: Telediario · ★ · 720p50 · con anuncios").
+-- Hint of a channel: what we know about it, most useful first
+-- ("ahora: Telediario · ★ · 720p50 · CC VO AD · con anuncios").
 local function channel_hint(ch)
   local hints = {}
   local on_now = now_title(ch.id)
@@ -265,6 +329,8 @@ local function channel_hint(ch)
   local quality = ch.quality_label or ch.quality
   if quality then table.insert(hints, quality) end
   if ch.low_bitrate then table.insert(hints, 'bitrate bajo') end
+  -- the channel's own subtitles / original version / audio description (learnt by mpvd)
+  if type(ch.badges) == 'table' and #ch.badges > 0 then table.insert(hints, table.concat(ch.badges, ' ')) end
   if ch.ads then table.insert(hints, 'con anuncios') end
   if ch.geo_blocked then table.insert(hints, 'geobloqueado') end
   local alts = tonumber(ch.alternatives) or 0
@@ -282,6 +348,13 @@ local function channel_item(ch)
     muted = ch.health == false or nil,
     bold = ch.favorite or nil,
   }
+end
+
+-- «Buscar en esta lista»: first row of every list of channels. `scope` says which list ({kind, id, name}); the
+-- palette asks mpvd's search (every word, accents ignored) limited to it.
+local function search_row(scope)
+  return { title = 'Buscar en esta lista…', icon = 'search', hint = 'sin acentos vale', actions = {},
+           value = { view = 'scoped_search', scope = scope } }
 end
 
 local FOLD = {
@@ -445,6 +518,11 @@ views.root = function()
                           hint = now_title(state.current.id) and ('ahora: ' .. cut(now_title(state.current.id), 30)) or nil,
                           value = { view = 'guide', id = state.current.id, name = state.current.name } })
   end
+  if channel_playing() and state.current.kind ~= 'radio' then
+    table.insert(items, { title = 'Audio y subtítulos del canal', icon = 'subtitles',
+                          hint = #state.badges > 0 and table.concat(state.badges, ' ') or nil,
+                          value = { view = 'tracks' } })
+  end
   table.insert(items, { title = 'Grabaciones programadas', icon = 'schedule', value = { view = 'schedule' } })
   table.insert(items, { title = 'Actualizar listas', icon = 'refresh', value = { view = 'refresh' } })
   show('TV y radio', items)
@@ -464,6 +542,7 @@ views.source = function(args)
     end
     show_channels(title, res.items, function()
       local items = grouped_items(res.items, 'group')
+      table.insert(items, 1, search_row({ kind = 'source', id = args.id, name = title }))
       table.insert(items, {
         title = 'Comprobar canales en segundo plano', hint = tostring(#res.items), icon = 'network_check',
         value = { health = args.id }, keep_open = true, actions = {}, separator = true,
@@ -592,7 +671,13 @@ views.country = function(args)
                               limit = opts.world_limit },
     function(err, res)
       if err then show(args.name or args.id, uosc.message_items(fail(err, 'iptv.channels'), 'error')) return end
-      show_channels(args.name or args.id, res.items, function() return grouped_items(res.items, 'category') end)
+      show_channels(args.name or args.id, res.items, function()
+        local items = grouped_items(res.items, 'category')
+        if #res.items > 0 then
+          table.insert(items, 1, search_row({ kind = 'country', id = args.id, name = args.name or args.id }))
+        end
+        return items
+      end)
     end, 60)
 end
 
@@ -601,7 +686,8 @@ views.radio = function()
   show_loading('Radio mundial')
   rpc.call('radio.countries', nil, function(err, rows)
     if err then show('Radio mundial', uosc.message_items(fail(err, 'radio.countries'), 'error')) return end
-    local items = { { title = 'Más votadas del mundo', icon = 'trending_up', value = { view = 'radio_top' } } }
+    local items = { search_row({ kind = 'radio', name = 'Radio mundial' }),
+                    { title = 'Más votadas del mundo', icon = 'trending_up', value = { view = 'radio_top' } } }
     for i, c in ipairs(rows) do
       if i > opts.radio_countries then break end
       table.insert(items, { title = ((c.flag or '') ~= '' and (c.flag .. ' ') or '') .. c.name, hint = tostring(c.count),
@@ -611,11 +697,12 @@ views.radio = function()
   end, 60)
 end
 
-local function radio_list(title, params)
+local function radio_list(title, params, scope)
   show_loading(title)
   rpc.call('radio.stations', params, function(err, rows)
     if err then show(title, uosc.message_items(fail(err, 'radio.stations'), 'error')) return end
     local items = {}
+    if #rows > 0 then table.insert(items, search_row(scope)) end
     for _, st in ipairs(rows) do
       local it = channel_item(st)
       it.hint = st.category or it.hint
@@ -627,20 +714,23 @@ local function radio_list(title, params)
 end
 
 views.radio_country = function(args)
-  radio_list(args.name or args.id, { country = args.id, limit = opts.radio_limit, compact = true })
+  local title = args.name or args.id
+  radio_list(title, { country = args.id, limit = opts.radio_limit, compact = true },
+             { kind = 'radio_country', id = args.id, name = title })
 end
 
 views.radio_top = function()
-  radio_list('Radio · más votadas', { top = 100, compact = true })
+  radio_list('Radio · más votadas', { top = 100, compact = true }, { kind = 'radio_top', name = 'Más votadas' })
 end
 
-local function simple_list(title, method, params, empty_text)
+local function simple_list(title, method, params, empty_text, scope)
   if not require_mpvd(title) then return end
   show_loading(title)
   rpc.call(method, params, function(err, rows)
     if err then show(title, uosc.message_items(fail(err, method), 'error')) return end
     show_channels(title, rows, function()
       local items = {}
+      if #rows > 0 then table.insert(items, search_row(scope)) end
       for _, ch in ipairs(rows) do table.insert(items, channel_item(ch)) end
       if #items == 0 then items = uosc.message_items(empty_text, 'info') end
       return items
@@ -649,11 +739,13 @@ local function simple_list(title, method, params, empty_text)
 end
 
 views.favorites = function()
-  simple_list('Favoritos', 'iptv.favorites.list', { compact = true }, 'Sin favoritos: pulsa Tab sobre un canal y elige ★')
+  simple_list('Favoritos', 'iptv.favorites.list', { compact = true }, 'Sin favoritos: pulsa Tab sobre un canal y elige ★',
+              { kind = 'favorites', name = 'Favoritos' })
 end
 
 views.recents = function()
-  simple_list('Recientes', 'iptv.recents.list', { limit = 30, compact = true }, 'Todavía no has visto nada')
+  simple_list('Recientes', 'iptv.recents.list', { limit = 30, compact = true }, 'Todavía no has visto nada',
+              { kind = 'recents', name = 'Recientes' })
 end
 
 views.refresh = function()
@@ -675,6 +767,64 @@ views.record = function()
   record_toggle()
   table.remove(state.stack)  -- not a real view
   uosc.close(MENU)
+end
+
+-- «Audio y subtítulos del canal»: the channel's tracks with readable names; Enter switches aid/sid.
+local ROLE_HINTS = { vo = 'VO', ad = 'AD', sdh = 'para sordos' }
+
+local function track_row(t)
+  return {
+    title = t.label, icon = t.selected and 'radio_button_checked' or 'radio_button_unchecked', active = t.selected or nil,
+    hint = ROLE_HINTS[t.role], keep_open = true, actions = {},
+    value = { track = { type = t.type, id = t.id, label = t.label } },
+  }
+end
+
+views.tracks = function()
+  local name = type(state.current) == 'table' and state.current.name or ''
+  local title = 'Audio y subtítulos' .. (name ~= '' and (' · ' .. name) or '')
+  if not channel_playing() then
+    show('Audio y subtítulos', uosc.message_items('Pon un canal de TV para elegir su audio y sus subtítulos', 'info'))
+    return
+  end
+  local view = state.view
+  if not state.tracks then show_loading(title) end
+  named_tracks(function(list)
+    if state.view ~= view then return end
+    local audio, subs = {}, {}
+    local sub_on = false
+    for _, t in ipairs(list) do
+      if t.type == 'audio' then table.insert(audio, track_row(t)) end
+      if t.type == 'sub' then
+        table.insert(subs, track_row(t))
+        if t.selected then sub_on = true end
+      end
+    end
+    local items = {}
+    table.insert(items, { title = 'Audio', icon = 'graphic_eq', selectable = false, muted = true })
+    if #audio == 0 then
+      table.insert(items, { title = 'Sin audio', selectable = false, muted = true })
+    end
+    for _, it in ipairs(audio) do table.insert(items, it) end
+    items[#items].separator = true
+    table.insert(items, { title = 'Subtítulos', icon = 'subtitles', selectable = false, muted = true })
+    table.insert(items, { title = 'Sin subtítulos', icon = sub_on and 'radio_button_unchecked' or 'radio_button_checked',
+                          active = (not sub_on) or nil, keep_open = true, actions = {},
+                          value = { track = { type = 'sub', id = 'no', label = 'Sin subtítulos' } } })
+    for _, it in ipairs(subs) do table.insert(items, it) end
+    if #subs == 0 then
+      table.insert(items, { title = 'Este canal no trae subtítulos', icon = 'info', selectable = false, muted = true })
+    end
+    show(title, items, { footnote = 'Pistas del propio canal (sin traducción en directo) · Enter elige · ⌫ atrás' })
+  end)
+end
+
+local function select_track(t)
+  local prop = t.type == 'audio' and 'aid' or 'sid'
+  if t.id == 'no' then mp.set_property(prop, 'no') else mp.set_property_native(prop, t.id) end
+  osd((t.type == 'audio' and 'Audio: ' or 'Subtítulos: ') .. (t.label or tostring(t.id)))
+  -- the selection flags of track-list change a moment later
+  mp.add_timeout(0.15, function() if state.view == 'tracks' and uosc.open_type() == MENU then reopen_current() end end)
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -939,50 +1089,94 @@ end)
 -- Search palette (its own type so the search event is unambiguous)
 local search_seq = 0
 
-local function search_menu(items, query)
+-- `scope` (optional): «Buscar en esta lista» of one list ({kind, id, name}, see search_row).
+local function search_menu(items, query, scope)
   return {
-    type = SEARCH_MENU, title = 'Buscar canal o emisora', items = items, callback = { SCRIPT, EVENT },
+    type = SEARCH_MENU, title = scope and ('Buscar en «' .. (scope.name or '') .. '»') or 'Buscar canal o emisora',
+    items = items, callback = { SCRIPT, EVENT },
     search_style = 'palette', search_debounce = 300, on_search = 'callback', on_close = 'callback',
     item_actions = ACTIONS, search_suggestion = query,
-    footnote = 'Busca en España, iptv-org y Radio Browser · Tab acciones',
+    footnote = scope and 'Solo los canales de esta lista · Tab acciones · ⌫ vuelve a la lista'
+      or 'Busca en España, iptv-org y Radio Browser · Tab acciones',
   }
 end
 
 views.search = function()
   if not rpc.connected() then require_mpvd('Buscar') return end
+  state.search_scope = ''
+  publish()
   uosc.open(search_menu(uosc.message_items('Escribe para buscar (sin acentos vale)', 'search')))
 end
 
-local function run_search(query)
+views.scoped_search = function(args)
+  local scope = args.scope or {}
+  if not rpc.connected() then require_mpvd('Buscar') return end
+  state.search_scope = (scope.kind or '') .. (scope.id and (':' .. scope.id) or '')
+  state.search_results = 0
+  publish()
+  uosc.open(search_menu(uosc.message_items('Escribe para buscar en esta lista (sin acentos vale)', 'search'), nil,
+                        scope))
+end
+
+-- iptv.search parameters of each kind of list (mpvd/iptv/service.py: filters of the catalogue or a scope).
+local function scope_params(scope)
+  local k = scope.kind
+  if k == 'source' then return { source = scope.id, merge = true } end
+  if k == 'country' then return { source = 'iptv_org', country = scope.id, merge = true } end
+  if k == 'favorites' or k == 'recents' then return { scope = k } end
+  if k == 'radio_country' then return { scope = 'radio', country = scope.id, pool = opts.radio_limit } end
+  if k == 'radio_top' then return { scope = 'radio_top', pool = 100 } end
+  return { scope = 'radio' }
+end
+
+local function render_results(seq, query, results, scope)
+  state.search_results = #results
+  publish()
+  local function render(first)
+    if not first and (seq ~= search_seq or uosc.open_type() ~= SEARCH_MENU) then return end
+    local items = {}
+    for _, ch in ipairs(results) do
+      local it = channel_item(ch)
+      local where = (ch.source == 'radio_browser' and (scope and (ch.category or '') or 'radio mundial'))
+        or (ch.source == 'iptv_org' and (scope and (ch.category_label or ch.category or '')
+                                         or ('iptv-org · ' .. (ch.country or ''):upper())))
+        or (ch.group_label or ch.group or ch.source)
+      if where ~= '' then it.hint = it.hint and (where .. ' · ' .. it.hint) or where end
+      table.insert(items, it)
+    end
+    if #items == 0 then items = uosc.message_items('Sin resultados para «' .. query .. '»', 'search_off') end
+    publish_menu('Buscar: ' .. query, items)
+    uosc.update(search_menu(items, query, scope))
+  end
+  render(true)
+  want_now(results, function() render(false) end)
+end
+
+local function run_search(query, scope)
   search_seq = search_seq + 1
   local seq = search_seq
   if query == '' then
-    uosc.update(search_menu(uosc.message_items('Escribe para buscar', 'search'), query))
+    uosc.update(search_menu(uosc.message_items('Escribe para buscar', 'search'), query, scope))
+    return
+  end
+  if scope then
+    local params = scope_params(scope)
+    params.q, params.limit, params.compact = query, opts.search_limit, true
+    rpc.call('iptv.search', params, function(err, rows)
+      if seq ~= search_seq then return end
+      if err then
+        uosc.update(search_menu(uosc.message_items(fail(err, 'iptv.search'), 'error'), query, scope))
+        return
+      end
+      render_results(seq, query, rows, scope)
+    end, 30)
     return
   end
   local results, done = {}, 0
   local function finish()
     done = done + 1
     if done < 2 or seq ~= search_seq then return end
-    state.search_results = #results
-    publish()
-    local function render(first)
-      if not first and (seq ~= search_seq or uosc.open_type() ~= SEARCH_MENU) then return end
-      local items = {}
-      for _, ch in ipairs(results) do
-        local it = channel_item(ch)
-        local where = (ch.source == 'radio_browser' and 'radio mundial')
-          or (ch.source == 'iptv_org' and ('iptv-org · ' .. (ch.country or ''):upper()))
-          or (ch.group_label or ch.group or ch.source)
-        it.hint = it.hint and (where .. ' · ' .. it.hint) or where
-        table.insert(items, it)
-      end
-      if #items == 0 then items = uosc.message_items('Sin resultados para «' .. query .. '»', 'search_off') end
-      publish_menu('Buscar: ' .. query, items)
-      uosc.update(search_menu(items, query))
-    end
-    render(true)
-    want_now(results, function() render(false) end)
+    render_results(seq, query, results)
   end
   rpc.call('iptv.search', { q = query, limit = opts.search_limit, compact = true, merge = true }, function(err, rows)
     if not err then for _, r in ipairs(rows) do table.insert(results, r) end end
@@ -1044,6 +1238,8 @@ mp.register_script_message(EVENT, function(json)
     elseif v.open_file then
       mp.commandv('loadfile', v.open_file, 'replace')
       uosc.close(MENU)
+    elseif v.track then
+      select_track(v.track)
     elseif v.play then
       if ev.action == 'fav' then toggle_favorite(v.play)
       elseif ev.action == 'copy' then copy_channel(v.play)
@@ -1067,6 +1263,7 @@ mp.register_script_message(EVENT, function(json)
     local top = state.stack[#state.stack]
     if state.view == 'add_list' then add_list_prompt(ev.query or '')
     elseif top and top.name == 'sched_time' then sched_time_prompt(top.args or {}, ev.query or '')
+    elseif top and top.name == 'scoped_search' then run_search(ev.query or '', (top.args or {}).scope or {})
     else run_search(ev.query or '') end
   elseif ev.type == 'paste' then
     if state.view == 'add_list' then add_list(ev.value or '') end
@@ -1133,6 +1330,12 @@ N:binding('tv-guide', function()
     osd('Elige un canal: Tab › Guía de programación')
     open_view({ name = 'root' })
   end
+end)
+-- Audio and subtitles of the channel being watched (its own tracks with readable names).
+N:binding('tv-tracks', function()
+  if not uosc.available() then osd('uosc no está cargado') return end
+  state.stack = {}
+  open_view({ name = 'tracks' })
 end)
 N:binding('tv-schedule', function()
   if not uosc.available() then osd('uosc no está cargado') return end
