@@ -378,8 +378,9 @@ class LiveRun:
             return
 
     async def stop(self) -> None:
-        if self.active:
-            self._set("stopped")
+        stopping = self.active
+        if stopping:
+            self.status = "stopped"      # announced once ffmpeg is really gone (below)
         proc = self.proc
         if proc is not None and proc.returncode is None:
             with contextlib.suppress(ProcessLookupError):
@@ -395,6 +396,9 @@ class LiveRun:
                 await asyncio.wait_for(asyncio.shield(self.task), 3)
             except (asyncio.TimeoutError, Exception):  # noqa: BLE001
                 self.task.cancel()
+        if stopping and self.on_change is not None:
+            with contextlib.suppress(Exception):
+                self.on_change(self)
 
     def info(self) -> dict[str, Any]:
         p = self.progress
@@ -404,7 +408,7 @@ class LiveRun:
                 "seconds": round(_int(p.get("out_time_us")) / 1e6, 1), "fps": _float(p.get("fps")),
                 "kbps": _float((p.get("bitrate") or "").replace("kbits/s", "")),
                 "speed": _float((p.get("speed") or "").rstrip("x")), "bytes": _int(p.get("total_size")),
-                "running": self.active}
+                "running": self.active, "pid": self.pid if self.active else None}
 
 
 def _int(v: Any) -> int:
