@@ -38,3 +38,11 @@
 - **Desentrelazado con ventana real** (no se puede comprobar sin pantalla): abre 7TV Andalucía (emite entrelazado sin marcarlo),
   pulsa `d` y comprueba que desaparecen las rayas horizontales en movimiento. Si no, dímelo con el log:
   `mpv-uos --deinterlace=yes --msg-level=autofilters=v,vf=v --log-file=/tmp/deint.log <URL del canal>`
+
+## 2026-09-30 · Compartir (H25)
+- **Túnel a internet (H25 punto 3) — [~] bloqueado**: el modo de permisos de la sesión nocturna denegó arrancar un túnel
+  de entrada (Cloudflare quick tunnel), aunque sea solo con la sala abierta. Necesita tu permiso explícito. Si lo quieres:
+  en una sesión interactiva di «implementa el túnel de H25 con cloudflared» (o añade una regla de permiso para
+  `vendor/bin/cloudflared tunnel --url http://127.0.0.1:8791`). Hasta entonces las salas son solo de tu red local.
+- **Puerto de las salas**: como el mando, `ufw` bloquea la entrada; para que otros equipos de tu wifi entren en una sala:
+  `sudo ufw allow from 192.168.1.0/24 to any port 8791 proto tcp comment 'mpv-uos compartir'`
