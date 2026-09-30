@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>Ver juntos · MPV-UOS</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/room.css">
+</head>
+<body>
+  <header>
+    <div class="brand"><img src="/static/icon.svg" alt="" width="28" height="28"> <span>Ver juntos · MPV-UOS</span></div>
+    <div id="who" class="muted"></div>
+  </header>
+
+  <section id="join" class="card hidden">
+    <h1>Te han invitado a ver algo juntos</h1>
+    <form id="join-form" autocomplete="on">
+      <label for="name">¿Cómo te llamas?</label>
+      <input id="name" name="name" maxlength="24" autocomplete="nickname" required placeholder="Tu nombre">
+      <button class="primary" type="submit">Entrar</button>
+    </form>
+    <p id="join-error" class="error"></p>
+    <p class="muted">Verás lo mismo que el anfitrión, a la vez. Al principio solo puedes mirar; puedes pedirle el control.</p>
+  </section>
+
+  <section id="message" class="card hidden"><p id="message-text"></p></section>
+
+  <main id="room" class="hidden">
+    <div id="stage">
+      <video id="video" playsinline preload="auto"></video>
+      <div id="overlay" class="hidden">
+        <p id="overlay-text"></p>
+        <button id="start" class="primary hidden" type="button">Empezar a ver</button>
+      </div>
+    </div>
+    <div id="info">
+      <div id="title" class="title"></div>
+      <div class="seek">
+        <span id="pos" class="time">0:00</span>
+        <input id="seek" type="range" min="0" max="1000" value="0" step="1" disabled aria-label="Posición">
+        <span id="dur" class="time">0:00</span>
+      </div>
+      <div class="row">
+        <button id="back10" type="button" disabled>−10 s</button>
+        <button id="play" class="primary" type="button" disabled>Pausa</button>
+        <button id="fwd10" type="button" disabled>+10 s</button>
+        <button id="ask" type="button">Pedir el control</button>
+      </div>
+      <div class="row">
+        <button id="mute" type="button">Silenciar</button>
+        <input id="volume" type="range" min="0" max="100" value="100" aria-label="Volumen">
+        <button id="subs" type="button" class="hidden">Subtítulos</button>
+        <button id="full" type="button">Pantalla completa</button>
+      </div>
+      <p id="status" class="muted"></p>
+    </div>
+    <aside>
+      <h3>En la sala</h3>
+      <ul id="guests"></ul>
+      <button id="leave" type="button" class="danger">Salir de la sala</button>
+    </aside>
+  </main>
+  <div id="toasts" aria-live="polite"></div>
+
+  <script src="/static/sync.js"></script>
+  <script src="/static/room.js"></script>
+</body>
+</html>

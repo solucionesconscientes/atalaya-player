@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="MPV-UOS">
+  <!-- Logo aprobado por Ser (2026-09-30): «C · Anillo». Anillo de progreso (reproducir y descargar), punto ámbar «en antena». -->
+  <rect width="128" height="128" rx="30" fill="#0d1320"/>
+  <circle cx="64" cy="64" r="38" fill="none" stroke="#24324d" stroke-width="11"/>
+  <path d="M64 26 A38 38 0 1 1 27.9 75.7" fill="none" stroke="#3d7bff" stroke-width="11" stroke-linecap="round"/>
+  <circle cx="27.9" cy="75.7" r="9" fill="#ffb020"/>
+  <path d="M55 48 L55 80 L81 64 Z" fill="#ffffff"/>
+</svg>

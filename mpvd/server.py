@@ -126,6 +126,9 @@ class MpvdServer:
         register_convert(self, self.convert)
         self.library = LibraryService(self)
         register_library(self, self.library)
+        from mpvd.share.service import ShareService, register as register_share  # noqa: PLC0415
+        self.share = ShareService(self)
+        register_share(self, self.share)
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -166,6 +169,7 @@ class MpvdServer:
             self._idle_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._idle_task
+        await self.share.close("host")
         await self.sessions.close_all()
         await self.remote.close()
         await self.ytdl.close()

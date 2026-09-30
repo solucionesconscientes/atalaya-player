@@ -60,20 +60,21 @@ def lan_ip() -> str:
         s.close()
 
 
-_FIREWALL_CACHE: dict[str, Any] = {"at": 0.0, "value": None}
+_FIREWALL_CACHE: dict[str, Any] = {"at": 0.0, "value": None, "key": None}
 
 
-def firewall_hint(port: int, ip: str) -> dict[str, Any] | None:
+def firewall_hint(port: int, ip: str, label: str = "mando") -> dict[str, Any] | None:
     """A host firewall that may drop the phone's connection (checked without root: unit state only), with the
-    exact command to open the port for the local network. None when no known firewall is active."""
+    exact command to open the port for the local network. None when no known firewall is active. ``label`` names
+    the rule (the remote and the share rooms use different ports)."""
     now = time.monotonic()
-    if now - _FIREWALL_CACHE["at"] < 60:
+    if now - _FIREWALL_CACHE["at"] < 60 and _FIREWALL_CACHE.get("key") == (port, ip, label):
         return _FIREWALL_CACHE["value"]
     value = None
     subnet = ".".join(ip.split(".")[:3]) + ".0/24" if ip.count(".") == 3 and not ip.startswith("127.") else "192.168.1.0/24"
     if shutil.which("systemctl"):
         for unit, command in (
-            ("ufw", f"sudo ufw allow from {subnet} to any port {port} proto tcp comment 'mpv-uos mando'"),
+            ("ufw", f"sudo ufw allow from {subnet} to any port {port} proto tcp comment 'mpv-uos {label}'"),
             ("firewalld", f"sudo firewall-cmd --permanent --add-port={port}/tcp && sudo firewall-cmd --reload"),
         ):
             try:
@@ -83,7 +84,7 @@ def firewall_hint(port: int, ip: str) -> dict[str, Any] | None:
             if out.strip() == "active":
                 value = {"tool": unit, "port": port, "subnet": subnet, "command": command}
                 break
-    _FIREWALL_CACHE.update(at=now, value=value)
+    _FIREWALL_CACHE.update(at=now, value=value, key=(port, ip, label))
     return value
 
 
