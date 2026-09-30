@@ -222,7 +222,6 @@ class ShareService:
                     t.cancel()
             for st in list(rt.streams.values()):
                 await st.stop()
-            await asyncio.to_thread(self._remove_dir, rt.dir)
             self.rt = None
             await asyncio.sleep(0.3)  # let the event streams deliver «closed»
             if self.tunnel is not None and self.public_url:
@@ -230,6 +229,11 @@ class ShareService:
                     await self.tunnel.stop()
             self.public_url = None
             await self.http.stop()
+            # a guest asking for a relay right now is inside a handler of that server: only once it is down can no new
+            # ffmpeg appear. Whatever started meanwhile is stopped here, and only then does the folder go.
+            for st in list(rt.streams.values()):
+                await st.stop()
+            await asyncio.to_thread(self._remove_dir, rt.dir)
             # the host's mu-share learns it too (closed from its menu, from another client or by expiry), once the
             # server is down
             self._host_push(rt, "closed", text if reason != "host" else "Sala cerrada")
@@ -609,9 +613,16 @@ class ShareService:
     def _stream_url(self, rt: RoomRuntime, st: hls.HlsStream) -> str:
         return f"/s/{rt.room.id}/media/{st.id}/{hls.PLAYLIST}"
 
+    def _must_be_open(self, rt: RoomRuntime) -> None:
+        """Probing a URL takes seconds. If the room closed meanwhile, starting ffmpeg now would transcode the whole
+        film at full CPU with nobody watching, and recreate the folder close() had just deleted."""
+        if rt.room.closed or self.rt is not rt:
+            raise RuntimeError("la sala se ha cerrado")
+
     async def _start_stream(self, rt: RoomRuntime, inputs: list[hls.Input], audio_index: int | None) -> hls.HlsStream:
         if not hls.ffmpeg_bin():
             raise RuntimeError("ffmpeg no está instalado")
+        self._must_be_open(rt)
         probes = [await asyncio.to_thread(hls.probe, i) for i in inputs]
         needs_video = any(hls.video_stream(p) is not None and not hls.video_copyable(hls.video_stream(p))
                           for p in probes)
@@ -622,6 +633,9 @@ class ShareService:
         sid = secrets.token_hex(4)
         out = rt.dir / sid
         plans = hls.plans_for(inputs, probes, out, audio_index=audio_index, hw=hw_plan)
+        # probing a URL takes seconds: the room may have been closed meanwhile, and starting now would transcode the
+        # whole film at full CPU for ever AND recreate the folder that close() had just deleted
+        self._must_be_open(rt)
         st = hls.HlsStream(sid, out, plans, duration=hls.duration_of(probes[0]))
         st.start()
         rt.streams[sid] = st
@@ -701,6 +715,12 @@ class ShareService:
                     proc.kill()
                     await proc.wait()
                     err = b"timeout"
+                except asyncio.CancelledError:
+                    # closing the room cancels this task: without killing it, ffmpeg kept going on its own
+                    proc.kill()
+                    with contextlib.suppress(Exception):
+                        await proc.wait()
+                    raise
                 if proc.returncode == 0 and tmp.is_file():
                     os.replace(tmp, out)
                     subs = {"url": f"/s/{rt.room.id}/subs/{name}", "lang": track.get("lang") or "",

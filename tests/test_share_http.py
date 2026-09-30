@@ -6,6 +6,7 @@ and the direct URL of a web video with the relay a guest asks for when its brows
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import http.client
 import http.server
@@ -456,3 +457,24 @@ def test_chat_and_reactions(share_env, clip):
     ana.close()
     luis.close()
     assert not h.script_errors(), h.script_errors()
+
+
+def test_no_relay_is_started_for_a_room_that_is_already_closed(tmp_path):
+    """H34 · el sondeo de una URL tarda segundos; si la sala se cerró en ese hueco, arrancar ffmpeg transcodificaría la
+    película entera sin nadie mirando y recrearía la carpeta que el cierre acababa de borrar."""
+    import asyncio
+
+    from mpvd.config import Settings
+    from mpvd.server import MpvdServer
+    from mpvd.share import hls as hls_mod
+    from mpvd.share.rooms import Room
+    from mpvd.share.service import RoomRuntime
+
+    server = MpvdServer(Settings(runtime_dir=tmp_path / "rt", cache_dir=tmp_path / "cache", idle_timeout=0, workers=1))
+    room = Room.new(ttl=3600.0)
+    room.closed = True
+    rt = RoomRuntime(room=room, session_id="s1", dir=tmp_path / "sala")
+
+    with pytest.raises(RuntimeError, match="cerrado"):
+        asyncio.run(server.share._start_stream(rt, [hls_mod.Input(str(tmp_path / "x.mkv"))], None))
+    assert not (tmp_path / "sala").exists()
