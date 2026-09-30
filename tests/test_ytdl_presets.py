@@ -30,7 +30,7 @@ def test_video_best_argv_exact():
     i = a.index("--progress-template")
     assert a[i + 1] == "download:MU_PROGRESS %(progress)j"
     assert a[i + 3] == "postprocess:MU_PP %(progress)j"
-    assert a[a.index("--print") + 1].startswith("after_move:MU_DONE %(.{id,title,ext,filepath,format_id,duration})j")
+    assert a[a.index("--print") + 1].startswith("after_move:MU_DONE %(.{id,title,ext,filepath,format_id,duration,upload_date,uploader,channel})j")
     assert a[-2:] == ["--", URL]
     assert "-x" not in a
 

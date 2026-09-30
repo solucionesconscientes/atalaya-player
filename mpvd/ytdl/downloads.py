@@ -328,6 +328,8 @@ class DownloadItem:
     resume: bool = False
     argv: list[str] = field(default_factory=list)
     stderr_tail: list[str] = field(default_factory=list)
+    info: dict[str, Any] = field(default_factory=dict)   # MU_DONE fields (id, title, upload_date, uploader…)
+    post: dict[str, Any] = field(default_factory=dict)   # H23: steps after the download (mpvd.subscriptions.chain)
     _proc: asyncio.subprocess.Process | None = field(default=None, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
@@ -338,7 +340,7 @@ class DownloadItem:
             "speed": self.speed, "eta": self.eta, "downloaded": self.downloaded, "total": self.total,
             "outputs": list(self.outputs), "out_dir": self.out_dir, "error": self.error, "attempts": self.attempts,
             "created_at": self.created_at, "started_at": self.started_at, "finished_at": self.finished_at,
-            "job_id": self.job_id, "spec": self.spec.to_dict(),
+            "job_id": self.job_id, "spec": self.spec.to_dict(), "info": dict(self.info), "post": dict(self.post),
         }
 
     @classmethod
@@ -346,7 +348,7 @@ class DownloadItem:
         spec = DownloadSpec.from_dict(d.get("spec") or {"url": d.get("url", "")})
         item = cls(spec=spec, out_dir=str(d.get("out_dir") or ""), id=str(d.get("id") or uuid.uuid4().hex[:10]))
         for k in ("title", "status", "progress", "message", "stage", "downloaded", "total", "outputs", "error",
-                  "attempts", "created_at", "started_at", "finished_at"):
+                  "attempts", "created_at", "started_at", "finished_at", "info", "post"):
             if k in d and d[k] is not None:
                 setattr(item, k, d[k])
         if item.status not in FINAL:  # interrupted by a daemon restart: the manager resumes it (yt-dlp --continue)
@@ -370,6 +372,9 @@ class DownloadManager:
         self.archive_path = data_dir / "ytdl-archive.txt"   # yt-dlp --download-archive (ids already downloaded)
         self.settings = DownloadSettings.load(self.settings_path)
         self.on_change = on_change
+        # H23: called once per download that reaches a final state (done / failed / cancelled): subscriptions and the
+        # post-download chain hang from here
+        self.final_hooks: list[Callable[[DownloadItem], None]] = []
         self.items: dict[str, DownloadItem] = {}
         self._order: deque[str] = deque(maxlen=MAX_HISTORY)
         self._load_history()
@@ -413,6 +418,10 @@ class DownloadManager:
         if persist:
             self._save_history()
 
+    def changed(self, item: DownloadItem, persist: bool = True) -> None:
+        """Push (and save) an item changed from outside the manager (the post-download chain updates its message)."""
+        self._changed(item, persist)
+
     def list(self, include_finished: bool = True) -> list[dict[str, Any]]:
         rows = [self.items[i] for i in reversed(self._order) if i in self.items]
         if not include_finished:
@@ -447,10 +456,12 @@ class DownloadManager:
     def _start(self, item: DownloadItem) -> None:
         item.status, item.stage, item.message, item.error = "queued", "queued", "en cola", ""
         item.progress, item.speed, item.eta, item.downloaded, item.total = 0.0, None, None, 0.0, 0.0
-        item.outputs, item.stderr_tail = [], []
+        item.outputs, item.stderr_tail, item.info, item.post = [], [], {}, {}
         item.started_at = item.finished_at = None
         item.attempts += 1
-        job = self.jobs.submit(f"download:{item.id}", lambda job: self._run(item, job), priority=Priority.INTERACTIVE,
+        # subscriptions queue in the background: whatever the user asks for goes first
+        priority = Priority.INDEX if item.spec.extra.get("priority") == "low" else Priority.INTERACTIVE
+        job = self.jobs.submit(f"download:{item.id}", lambda job: self._run(item, job), priority=priority,
                                heavy=False, meta={"download": item.id})
         item.job_id = job.id
         self._changed(item, persist=True)
@@ -513,18 +524,27 @@ class DownloadManager:
         if status == "done":
             item.progress, item.stage = 1.0, "done"
         self._changed(item, persist=True)
+        for hook in list(self.final_hooks):
+            try:
+                hook(item)
+            except Exception:  # noqa: BLE001
+                log.exception("download final hook failed")
 
     def _apply(self, item: DownloadItem, ps: ProgressState) -> None:
         item.progress, item.stage, item.message = ps.progress, ps.stage, ps.message()
         item.speed, item.eta, item.downloaded, item.total = ps.speed, ps.eta, ps.downloaded, ps.total
         if ps.outputs:
             item.outputs = list(ps.outputs)
+        if ps.done_info:
+            item.info = dict(ps.done_info)
         if ps.done_info.get("title") and not item.title:
             item.title = str(ps.done_info["title"])
 
     async def _exec(self, item: DownloadItem, job: Job, binary: YtdlpBinary) -> tuple[int, ProgressState, list[str]]:
         """Run one yt-dlp process for ``item`` (progress pushed as it goes); returns (rc, progress, stderr tail)."""
-        args = build_args(item.spec, item.out_dir, self.settings.template, self.settings.rate_limit,
+        # a subscription may name its files itself (podcasts: «2026-09-30 - Episode.%(ext)s», see mpvd.subscriptions)
+        template = str(item.spec.extra.get("template") or self.settings.template)
+        args = build_args(item.spec, item.out_dir, template, self.settings.rate_limit,
                           str(self.archive_path), vcodec=self.vcodec())
         item.argv = binary.command(*self.settings.session_args(), *args)
         ps = ProgressState()

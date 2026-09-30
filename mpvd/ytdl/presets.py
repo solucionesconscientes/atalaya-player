@@ -166,7 +166,7 @@ def progress_args() -> list[str]:
         "--newline", "--progress-delta", "0.2",
         "--progress-template", f"download:{PROGRESS_PREFIX} %(progress)j",
         "--progress-template", f"postprocess:{POSTPROCESS_PREFIX} %(progress)j",
-        "--print", f"after_move:{DONE_PREFIX} %(.{{id,title,ext,filepath,format_id,duration}})j",
+        "--print", f"after_move:{DONE_PREFIX} %(.{{id,title,ext,filepath,format_id,duration,upload_date,uploader,channel}})j",
         "--no-simulate",
     ]
 
