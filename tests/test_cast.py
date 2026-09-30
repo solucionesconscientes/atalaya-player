@@ -97,6 +97,7 @@ class FakeTV:
         self.uri = ""
         self.meta = ""
         self.state = "NO_MEDIA_PRESENT"
+        self.volume = 0
         self.fetched: list[tuple[int, str, bytes]] = []      # (status, content-type, first bytes)
         self.range_status = 0
         self.tmp = tmp
@@ -134,6 +135,10 @@ class FakeTV:
                     out = "<RelTime>0:00:04</RelTime><TrackDuration>0:00:30</TrackDuration>"
                 elif action == "GetTransportInfo":
                     out = f"<CurrentTransportState>{tv.state}</CurrentTransportState>"
+                elif action == "SetVolume":
+                    tv.volume = int(args["DesiredVolume"])
+                elif action == "GetVolume":
+                    out = f"<CurrentVolume>{tv.volume}</CurrentVolume>"
                 body = (f'<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>'
                         f'<u:{action}Response xmlns:u="urn:x">{out}</u:{action}Response></s:Body></s:Envelope>').encode()
                 self.send_response(200)
@@ -244,6 +249,13 @@ def test_cast_file_and_relay(tv, tmp_path, media_dir):
         assert tv.last() == ("Seek", {"InstanceID": "0", "Unit": "REL_TIME", "Target": "0:00:12"})
         await c.call("cast.control", {"action": "volume", "value": 30})
         assert tv.last()[0] == "SetVolume" and tv.last()[1]["DesiredVolume"] == "30"
+        # H34 · «Subir volumen» moves the TV from where it really is (SetVolume is absolute): 8 + 5 = 13, not 35
+        await c.call("cast.control", {"action": "volume", "value": 8})
+        got = await c.call("cast.control", {"action": "volume_add", "value": 5})
+        assert got["volume"] == 13 and tv.last()[1]["DesiredVolume"] == "13"
+        got = await c.call("cast.control", {"action": "volume_add", "value": -20})
+        assert got["volume"] == 0            # clamped, never negative
+        assert (await c.call("cast.status"))["volume"] == 0
 
         # a token only serves the current item
         old = tv.uri

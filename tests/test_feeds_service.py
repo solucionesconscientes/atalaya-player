@@ -293,3 +293,40 @@ def test_detect_errors_and_settings_validation(env):
         assert [p["id"] for p in lst["presets"]][:2] == ["video_best", "video_1080"]
 
     run(tmp_path, fn)
+
+
+def test_renaming_a_subscription_does_not_orphan_what_it_already_moved(env):
+    """H34 · `roots()` usaba el título actual: tras renombrar, ni «conservar N» ni «borrar lo visto» borraban nada de lo
+    ya movido a la biblioteca, y el registro se perdía igual, así que quedaba fuera de las reglas para siempre."""
+    tmp_path, _ = env
+    lib = tmp_path / "Biblioteca"
+    moved = lib / "Nombre viejo" / "ep01.mkv"
+    moved.parent.mkdir(parents=True)
+    moved.write_bytes(b"x" * 1000)
+    outside = tmp_path / "ajeno.mkv"
+    outside.write_bytes(b"x")
+
+    async def fn(server, c):
+        sub = await c.call("feeds.add", {"url": CHANNEL, "check": False,
+                                         "rules": {"folder": str(tmp_path / "subs" / "C"), "keep": 1,
+                                                   "chain": {"move_to": str(lib)}}})
+        await c.call("feeds.update", {"id": sub["id"], "title": "Nombre nuevo"})
+        s = server.feeds.store.subs[sub["id"]]
+        assert s.title == "Nombre nuevo"
+
+        # the file moved when the subscription had the old name is still its own
+        assert server.feeds._delete(s, {"path": str(moved), "extra": []}) == 1
+        assert not moved.exists()
+        # and one outside its folders is still refused
+        assert server.feeds._delete(s, {"path": str(outside), "extra": []}) == 0 and outside.is_file()
+
+        # a record whose file could not be deleted keeps its record (it used to be forgotten silently)
+        s.files = [{"id": "e1", "title": "ajeno", "path": str(outside), "extra": [], "at": 1.0, "key": "",
+                    "published": None},
+                   {"id": "e2", "title": "otro", "path": str(outside), "extra": [], "at": 2.0, "key": "",
+                    "published": None}]
+        await c.call("feeds.update", {"id": sub["id"], "keep": 1, "keep_watched_only": False})
+        res = await c.call("feeds.rules.apply", {"id": sub["id"]})
+        assert res["removed"] == 0 and res["files"] == 2 and outside.is_file()
+
+    run(tmp_path, fn)

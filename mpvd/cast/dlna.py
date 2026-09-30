@@ -277,8 +277,31 @@ class Controller:
         return {"position": parse_hms(info.get("RelTime", "")), "duration": parse_hms(info.get("TrackDuration", "")),
                 "state": tr.get("CurrentTransportState", "")}
 
+    async def volume(self) -> int | None:
+        """The TV's own volume (0-100), or None when it does not offer RenderingControl."""
+        if not self.r.rendering:
+            return None
+        try:
+            got = await soap(self.r.rendering, RC, "GetVolume", [("InstanceID", "0"), ("Channel", "Master")])
+        except DlnaError:
+            return None
+        try:
+            return max(0, min(100, int(got.get("CurrentVolume", ""))))
+        except (TypeError, ValueError):
+            return None
+
     async def set_volume(self, volume: int) -> None:
         if not self.r.rendering:
             raise DlnaError("esta tele no deja cambiar el volumen")
         await soap(self.r.rendering, RC, "SetVolume", [("InstanceID", "0"), ("Channel", "Master"),
                                                         ("DesiredVolume", str(max(0, min(100, int(volume)))))])
+
+    async def add_volume(self, delta: int) -> int:
+        """Move the TV's volume by ``delta`` from where it really is (SetVolume is absolute, so «subir» used to jump
+        to a number invented by the menu: a TV at 8 went to 35, one at 70 went down to 35)."""
+        current = await self.volume()
+        if current is None:
+            raise DlnaError("esta tele no dice a qué volumen está")
+        target = max(0, min(100, current + int(delta)))
+        await self.set_volume(target)
+        return target

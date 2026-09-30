@@ -108,6 +108,7 @@ class LibraryService:
         self.tmdb_image_url = os.environ.get("MPV_UOS_TMDB_IMAGE_URL") or tmdb_mod.IMAGE_URL
         self.scan_job: Job | None = None
         self.last_scan: dict[str, Any] = {}
+        self._retry_frames = False   # a forced scan looks again at the groups whose frame could not be extracted
         self._osub: OpenSubtitles | None = None
         self._osub_sig: tuple[str, ...] = ()
         self._osub_lock = asyncio.Lock()
@@ -134,6 +135,8 @@ class LibraryService:
                     session_id: str | None = None) -> Job:
         if self.scanning and not folders and self.scan_job is not None:
             return self.scan_job
+        if force:
+            self._retry_frames = True   # «Actualizar la biblioteca» does try the failed frames again
 
         async def body(job: Job) -> dict[str, Any]:
             loop = asyncio.get_running_loop()
@@ -171,7 +174,9 @@ class LibraryService:
         if self.settings.tmdb_active:
             online = await self._online_metadata()
         frames = 0
-        for g in (await asyncio.to_thread(self.store.groups_without_poster))[:MAX_FRAMES_PER_SCAN]:
+        groups = await asyncio.to_thread(self.store.groups_without_poster, self._retry_frames)
+        self._retry_frames = False
+        for g in groups[:MAX_FRAMES_PER_SCAN]:
             item = await asyncio.to_thread(self.store.first_item, g["kind"], g["group_key"])
             if item is None:
                 continue
@@ -180,6 +185,9 @@ class LibraryService:
             if ok:
                 await asyncio.to_thread(self.store.set_group_poster, g["kind"], g["group_key"], str(dest), "frame")
                 frames += 1
+            else:
+                # remember the failure (as the online metadata already does): otherwise every scan pays for its timeouts
+                await asyncio.to_thread(self.store.set_group_poster, g["kind"], g["group_key"], "", "frame-failed")
             job.report(None, f"carátula: {g['title']}")
         return {"frames": frames, "online": online}
 

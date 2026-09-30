@@ -190,11 +190,16 @@ class FeedsService:
         return ChainConfig.from_dict(sub.chain if sub.chain is not None else self.settings.chain)
 
     def roots(self, sub: Subscription) -> list[Path]:
-        """Where this subscription's files may live (and may be deleted): its folder and its library subfolder."""
+        """Where this subscription's files may live (and may be deleted): its folder and the library folder.
+
+        The library subfolder is named after the title the subscription had when the file was moved, so after a rename
+        the old subfolder no longer matched and neither «conservar N» nor «borrar lo visto» deleted anything. Only paths
+        this subscription recorded itself are ever deleted, and the library folder is one the owner chose.
+        """
         out = [Path(os.path.expanduser(sub.folder))]
         cfg = self.chain_of(sub)
         if cfg.move_to:
-            out.append(Path(os.path.expanduser(cfg.move_to)) / safe_component(sub.title))
+            out.append(Path(os.path.expanduser(cfg.move_to)))
         return out
 
     def public(self, sub: Subscription) -> dict[str, Any]:
@@ -580,8 +585,10 @@ class FeedsService:
             if sub.delete_watched:
                 keep = []
                 for f in alive:
-                    if self._watched(f, grace):
-                        removed += self._delete(sub, f) > 0
+                    # the record only goes away when the file really did: otherwise a file that could not be deleted
+                    # was forgotten and stayed out of the rules for ever, with nothing said
+                    if self._watched(f, grace) and self._delete(sub, f) > 0:
+                        removed += 1
                     else:
                         keep.append(f)
                 alive = keep
@@ -594,9 +601,12 @@ class FeedsService:
                         break
                     if not sub.keep_watched_only or self._watched(f, 0.0):
                         drop.append(f)
+                deleted = []
                 for f in drop:
-                    removed += self._delete(sub, f) > 0
-                alive = [f for f in alive if f not in drop]
+                    if self._delete(sub, f) > 0:
+                        removed += 1
+                        deleted.append(f)
+                alive = [f for f in alive if f not in deleted]
             sub.files = alive
             return {"removed": removed, "gone": gone, "files": len(alive)}
 

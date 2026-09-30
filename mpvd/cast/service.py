@@ -327,6 +327,8 @@ class CastService:
                     await self.ctrl.seek(target)
             elif action == "volume":
                 await self.ctrl.set_volume(int(value or 0))
+            elif action == "volume_add":
+                return {"ok": True, "volume": await self.ctrl.add_volume(int(value or 0))}
             elif action == "stop":
                 return await self.stop()
             else:
@@ -348,6 +350,8 @@ class CastService:
             out.update(pos)
         except dlna.DlnaError as exc:
             out["error"] = str(exc)
+        with contextlib.suppress(dlna.DlnaError):
+            out["volume"] = await self.ctrl.volume()
         if self.http is not None and not self.media.url:
             from mpvd.remote.service import firewall_hint  # noqa: PLC0415
             out["firewall"] = await asyncio.to_thread(firewall_hint, self.port, self.ip, "tele")
@@ -404,7 +408,7 @@ def register(server: MpvdServer, service: CastService) -> None:
 
     @d.method("cast.control")
     async def cast_control(ctx: RpcContext, action: str, value: float | None = None) -> dict[str, Any]:
-        """play | pause | seek (seconds) | volume (0–100) | stop."""
+        """play | pause | seek (seconds) | volume (0–100) | volume_add (±n from the TV's own volume) | stop."""
         return await service.control(action, value)
 
     @d.method("cast.status")

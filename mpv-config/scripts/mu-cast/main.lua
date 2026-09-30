@@ -24,7 +24,7 @@ local opts = {
 }
 options.read_options(opts, 'mu-cast')
 
-local state = { devices = nil, searching = false, status = nil, last_error = '', items = {}, volume = 30 }
+local state = { devices = nil, searching = false, status = nil, last_error = '', items = {}, volume = nil }
 local poll_timer
 
 local function publish()
@@ -81,9 +81,12 @@ local function casting_items(st)
   end
   items[#items + 1] = { title = 'Atrasar 30 s', icon = 'replay_30', value = { action = 'seek', delta = -30 } }
   items[#items + 1] = { title = 'Adelantar 30 s', icon = 'forward_30', value = { action = 'seek', delta = 30 } }
-  items[#items + 1] = { title = 'Subir volumen de la tele', icon = 'volume_up', value = { action = 'volume', delta = 5 } }
-  items[#items + 1] = { title = 'Bajar volumen de la tele', icon = 'volume_down', value = { action = 'volume', delta = -5 },
-                        separator = true }
+  local vol = st.volume or state.volume
+  local vol_hint = vol and (tostring(vol) .. ' %') or nil
+  items[#items + 1] = { title = 'Subir volumen de la tele', hint = vol_hint, icon = 'volume_up',
+                        value = { action = 'volume', delta = 5 } }
+  items[#items + 1] = { title = 'Bajar volumen de la tele', hint = vol_hint, icon = 'volume_down',
+                        value = { action = 'volume', delta = -5 }, separator = true }
   items[#items + 1] = { title = 'Seguir viendo aquí', hint = 'desde ' .. clock(st.position), icon = 'computer',
                         value = { action = 'here' } }
   items[#items + 1] = { title = 'Parar en la tele', icon = 'stop', value = { action = 'stop' } }
@@ -202,9 +205,12 @@ local function action(v)
     rpc.call('cast.control', { action = 'seek', value = math.max(0, (st.position or 0) + v.delta) },
              function(err, res) after(err, res, 'La tele no quiso saltar') end, 30)
   elseif v.action == 'volume' then
-    state.volume = math.max(0, math.min(100, state.volume + v.delta))
-    rpc.call('cast.control', { action = 'volume', value = state.volume },
-             function(err, res) after(err, res, 'Volumen') end, 15)
+    -- SetVolume is absolute: mpvd moves it from the volume the TV really is at (asking it first), because starting
+    -- from a number invented here put a TV at 8 straight to 35
+    rpc.call('cast.control', { action = 'volume_add', value = v.delta }, function(err, res)
+      if not err and type(res) == 'table' and res.volume then state.volume = res.volume end
+      after(err, res, 'Volumen')
+    end, 15)
   elseif v.action == 'here' then
     local pos = st.position
     rpc.call('cast.stop', nil, function(err, res)

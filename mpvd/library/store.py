@@ -285,9 +285,13 @@ class LibraryStore:
 
     # -- groups ----------------------------------------------------------------------------------------------
 
-    def groups_without_poster(self) -> list[dict[str, Any]]:
+    def groups_without_poster(self, retry_failed: bool = False) -> list[dict[str, Any]]:
+        """Groups with no poster yet. The ones whose frame could not be extracted are skipped unless ``retry_failed``:
+        each attempt costs a probe plus up to two ffmpeg runs (95 s of timeouts on an unreachable disk), and they used
+        to be retried on every scan, every half hour, for ever."""
+        sql = "SELECT * FROM groups WHERE poster=''" + ("" if retry_failed else " AND poster_source!='frame-failed'")
         with self._lock:
-            rows = self._conn.execute("SELECT * FROM groups WHERE poster='' ORDER BY title").fetchall()
+            rows = self._conn.execute(sql + " ORDER BY title").fetchall()
         return [dict(r) for r in rows]
 
     def groups_without_online(self) -> list[dict[str, Any]]:
