@@ -637,7 +637,7 @@ def register(server: MpvdServer, service: FeedsService) -> None:  # noqa: C901 -
     @d.method("feeds.update")
     async def update(ctx: RpcContext, id: str, **changes: Any) -> dict[str, Any]:  # noqa: A002
         """Change rules: preset, container, sponsorblock, keep, keep_watched_only, delete_watched, initial, title,
-        folder, paused, chain ({loudnorm, subtitles, translate, rename, move_to} or null = the global one)."""
+        folder, paused, chain ({loudnorm, subtitles, translate, rename, move_to}, or null / "global" = the global one)."""
         return service.public(service.update(id, changes))
 
     @d.method("feeds.pause")

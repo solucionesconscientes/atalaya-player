@@ -77,7 +77,8 @@ local function compact_subs()
     out[#out + 1] = { id = s.id, title = s.title, kind = s.kind, paused = s.paused, status = s.status,
                       pending = s.pending, files = s.files, preset = s.preset, keep = s.keep,
                       keep_watched_only = s.keep_watched_only, delete_watched = s.delete_watched,
-                      sponsorblock = s.sponsorblock, chain = s.chain, last_found = s.last_found,
+                      sponsorblock = s.sponsorblock, chain = s.chain, chain_custom = s.chain_custom,
+                      last_found = s.last_found,
                       last_error = s.last_error }
   end
   return out
@@ -510,6 +511,10 @@ views.rules = {
                             or 'no',
                           value = { rule = 'delete_watched', id = s.id }, separator = true }
     for _, it in ipairs(chain_rows(s.chain, { id = s.id })) do items[#items + 1] = it end
+    if s.chain_custom then
+      items[#items + 1] = { title = 'Usar lo general de «tras descargar»', icon = 'settings_backup_restore',
+                            hint = 'Ajustes de suscripciones', value = { chain_global = s.id } }
+    end
     items[#items].separator = true
     items[#items + 1] = { title = 'Aplicar ya «conservar» y «borrar lo visto»', icon = 'cleaning_services',
                           value = { apply = s.id }, keep_open = true }
@@ -1063,6 +1068,8 @@ local function activate(v, action)
     change_rule(v.id, v.rule)
   elseif v.set_preset then
     update_sub(v.id, { preset = v.set_preset }, function(err) if not err then go_back() end end)
+  elseif v.chain_global then
+    update_sub(v.chain_global, { chain = 'global' })
   elseif v.chain then
     set_chain(v, next_chain(current_chain(v), v.chain))
   elseif v.move ~= nil then

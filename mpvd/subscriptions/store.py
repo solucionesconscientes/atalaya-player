@@ -80,7 +80,7 @@ class Subscription:
                 setattr(self, k, bool(changes[k]))
         if "chain" in changes:
             c = changes["chain"]
-            if c is None:
+            if c is None or c is False or c == "global":   # mpv's Lua cannot send null: "global" says the same
                 self.chain = None
             else:
                 cfg = ChainConfig.from_dict(self.chain) if self.chain is not None else ChainConfig()

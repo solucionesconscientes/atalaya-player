@@ -260,6 +260,12 @@ def test_store_roundtrip(tmp_path):
     t = again.subs[s.id]
     assert t.keep == 5 and t.preset == "audio_mp3_192" and t.is_audio() and t.chain["loudnorm"] is True
     assert again.settings.window == "01:00-07:00" and again.settings.max_items == 3 and again.quota.items == 2
+    # back to the general chain: null from JSON-RPC, or "global" from mpv's Lua (it cannot write null)
+    for back in (None, "global", False):
+        t.update({"chain": {"subtitles": True}})
+        assert t.chain is not None
+        t.update({"chain": back})
+        assert t.chain is None
     assert again.settings.chain["rename"] == "{date} - {title}"
     for bad in ({"preset": "nope"}, {"keep": -1}, {"container": "avi"}, {"chain": {"rename": "{x}"}}):
         with pytest.raises(ValueError):
