@@ -1,6 +1,6 @@
 // Minimal service worker: caches the app shell so the PWA opens instantly; API calls always go to the network.
-const CACHE = 'mpv-uos-remote-v1';
-const SHELL = ['/', '/app.js', '/style.css', '/manifest.webmanifest', '/icon.svg'];
+const CACHE = 'mpv-uos-remote-v2';
+const SHELL = ['/', '/app.js', '/style.css', '/manifest.webmanifest', '/icon.svg', '/icon-192.png'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });

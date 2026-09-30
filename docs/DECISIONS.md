@@ -269,4 +269,13 @@
   (remuestrea a 192 kHz, varias veces la CPU) y ReplayGain queda para la música (H32). Ecualizador: 7 perfiles de
   filtros `equalizer` (biquads baratos) con `alimiter` sin nivelado automático tras los realces; el perfil se guarda
   en mu-prefs (`mu-av.eq`).
+- ADR-052 · Identidad (H33): `brand.json` en la raíz es la única fuente del nombre (`name`, pendiente de Ser: sigue
+  «MPV-UOS»), del identificador de ficheros (`id`), de la carpeta de usuario (`folder`) y de la paleta; lo leen
+  `mpvd/brand.py` (con valores por defecto si el archivo falta o está roto), `mu/brand.lua`, `tools/install.sh` y la
+  PWA (el servidor sustituye el literal al servir `index.html`, `manifest.webmanifest` y `app.js`). Logo «C · Anillo»
+  como icono de escritorio (scalable + simbólico monocromo), de la PWA (SVG + PNG 192/512 generados con rsvg-convert y
+  versionados: el móvil los necesita para instalarla) y fuente de la paleta de uosc (`color=` en uosc.conf: azul señal
+  en progreso y selección, tinta de fondo). El ámbar marca «en directo / grabando»: el ● REC de mu-record y `--live`
+  de la PWA; los botones de uosc no admiten color por estado (su API `set-button` solo tiene icon/active/badge), así
+  que ahí el estado se ve con `active` y el contador. Sin bandeja todavía: `mpv-uos-symbolic` queda instalado para ella.
 

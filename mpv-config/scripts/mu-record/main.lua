@@ -13,6 +13,7 @@ package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local prefs = require('mu.prefs')
+local brand = require('mu.brand')
 local nav = require('mu.nav')
 local N = nav.new()
 
@@ -149,7 +150,9 @@ local function draw()
   end
   state.indicator = string.format('%s %s', state.rec.audio and 'AUDIO' or 'REC', hms(elapsed()))
   overlay.res_x, overlay.res_y = 1280, 720
-  overlay.data = '{\\an7\\pos(24,20)\\fs30\\bord2\\3c&H000000&\\1c&H3030FF&}●{\\1c&HFFFFFF&} ' .. state.indicator
+  -- amber = the brand's «live / recording» colour (H33)
+  overlay.data = '{\\an7\\pos(24,20)\\fs30\\bord2\\3c&H000000&\\1c&H' .. brand.ass('amber') .. '&}●{\\1c&HFFFFFF&} '
+    .. state.indicator
   overlay:update()
   set_button()
   publish()

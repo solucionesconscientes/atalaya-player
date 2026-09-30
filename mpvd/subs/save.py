@@ -8,6 +8,7 @@ same folder). When the video folder is not writable or the video is a URL, files
 
 from __future__ import annotations
 
+from mpvd.brand import folder_name
 import asyncio
 import json
 import os
@@ -85,7 +86,7 @@ def fallback_dir() -> Path:
     if env:
         return Path(env)
     videos = xdg_videos_dir() or Path.home() / "Vídeos"
-    return videos / "MPV-UOS" / "Subtítulos"
+    return videos / folder_name() / "Subtítulos"
 
 
 def dir_writable(d: Path) -> bool:

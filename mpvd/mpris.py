@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
+from mpvd import brand
 from mpvd.mpvipc import DISCONNECTED_EVENT, MpvIpcClient, MpvIpcError
 
 if TYPE_CHECKING:
@@ -33,8 +34,8 @@ INTROSPECT_IFACE = "org.freedesktop.DBus.Introspectable"
 PEER_IFACE = "org.freedesktop.DBus.Peer"
 BUS_PREFIX = "org.mpris.MediaPlayer2.mpv_uos"
 NO_TRACK = "/org/mpris/MediaPlayer2/TrackList/NoTrack"
-APP_NAME = "MPV-UOS"
-DESKTOP_ENTRY = "mpv-uos"
+APP_NAME = brand.app_name()
+DESKTOP_ENTRY = brand.app_id()
 
 OBSERVE = ("pause", "idle-active", "media-title", "metadata", "duration", "path", "volume", "speed", "loop-file",
            "loop-playlist", "shuffle", "playlist-pos", "playlist-count", "seekable", "fullscreen", "eof-reached")

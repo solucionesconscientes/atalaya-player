@@ -230,6 +230,11 @@ los valores de `mpv.conf`. Desde la consola de mpv: `script-message-to mu_prefs 
 `--script-opts=mu-prefs-enabled=no`. Si `prefs.json` se estropea, se aparta como `prefs.json.corrupt-<fecha>` y se sigue con los valores
 por defecto.
 
+## Nombre y logo
+El logo «C · Anillo» es el icono del menú de aplicaciones, de la PWA del mando y de los controles del escritorio.
+El nombre de la app sigue siendo provisional: cambiarlo es editar `name` en `brand.json` y volver a ejecutar
+`tools/install.sh` (detalles en docs/marca/README.md).
+
 ## Dónde se guardan las cosas
 | Qué | Dónde (instalación por defecto) | Con `--xdg` |
 |---|---|---|

@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mpvd import __version__
+from mpvd.brand import app_name
 from mpvd.control import pick_session
 from mpvd.mpvipc import MpvIpcError
 from mpvd.remote import qr
@@ -41,7 +42,9 @@ STATE_PROPS = ("time-pos", "duration", "pause", "media-title", "path", "filename
                "idle-active", "chapter", "playlist-pos", "playlist-count", "sid", "aid", "sub-visibility",
                "fullscreen", "ab-loop-a", "ab-loop-b", "eof-reached")
 STATIC = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/style.css": "style.css",
-          "/sw.js": "sw.js", "/manifest.webmanifest": "manifest.webmanifest", "/icon.svg": "icon.svg"}
+          "/sw.js": "sw.js", "/manifest.webmanifest": "manifest.webmanifest", "/icon.svg": "icon.svg",
+          "/icon-192.png": "icon-192.png", "/icon-512.png": "icon-512.png"}
+BRANDED = {"index.html", "manifest.webmanifest", "app.js"}  # the literal app name in them follows brand.json
 MAX_PAIRED = 20
 
 
@@ -258,7 +261,10 @@ class RemoteService:
     async def handle(self, req: Request) -> Response:
         path = req.path
         if req.method in ("GET", "HEAD") and path in STATIC:
-            return Response.file(self.www / STATIC[path], cache="no-cache")
+            resp = Response.file(self.www / STATIC[path], cache="no-cache")
+            if STATIC[path] in BRANDED and app_name() != "MPV-UOS":
+                resp.body = resp.body.replace(b"MPV-UOS", app_name().encode("utf-8"))
+            return resp
         if not path.startswith("/api/") and path != "/events":
             raise HttpError(404)
         if req.method == "POST":

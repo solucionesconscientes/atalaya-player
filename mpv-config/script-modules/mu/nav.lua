@@ -12,7 +12,7 @@ local utils = require('mp.utils')
 local M = {}
 
 M.SEP = ' › '
-M.HOME = 'MPV-UOS'
+M.HOME = require('mu.brand').name
 M.MAIN_SCRIPT = 'mu_menu'
 M.MAX_CRUMBS = 4
 

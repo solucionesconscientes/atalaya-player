@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -42,8 +43,13 @@ def test_install_and_uninstall(prefix):
     desktop = base / "share" / "applications" / "mpv-uos.desktop"
     icon = base / "share" / "icons" / "hicolor" / "scalable" / "apps" / "mpv-uos.svg"
     assert launcher.is_file() and os.access(launcher, os.X_OK), out
-    assert desktop.is_file() and icon.is_file()
+    symbolic = base / "share" / "icons" / "hicolor" / "symbolic" / "apps" / "mpv-uos-symbolic.svg"
+    assert desktop.is_file() and icon.is_file() and symbolic.is_file()
+    # H33: the approved logo «C · Anillo» and its monochrome variant; the name comes from brand.json
+    assert "#ffb020" in icon.read_text(encoding="utf-8") and "currentColor" in symbolic.read_text(encoding="utf-8")
     text = desktop.read_text(encoding="utf-8")
+    brand_name = json.loads((ROOT / "brand.json").read_text(encoding="utf-8"))["name"]
+    assert f"\nName={brand_name}\n" in text
     assert f"Exec={launcher} --player-operation-mode=pseudo-gui" in text and "%U" in text
     assert "MimeType=" in text and "video/x-matroska;" in text and "Icon=mpv-uos" in text
     if shutil.which("desktop-file-validate"):
@@ -59,6 +65,7 @@ def test_install_and_uninstall(prefix):
     other.write_text("[Desktop Entry]\nType=Application\nName=Otra\nExec=true\n", encoding="utf-8")
     run(env, "--uninstall")
     assert not launcher.exists() and not desktop.exists() and not icon.exists() and other.exists()
+    assert not symbolic.exists()
 
 
 def test_install_xdg_env_and_refuses_foreign_launcher(prefix):

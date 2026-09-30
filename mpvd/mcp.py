@@ -18,6 +18,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from mpvd import __version__
+from mpvd.brand import app_name
 from mpvd.client import MpvdClient
 from mpvd.rpc import RpcError
 
@@ -68,7 +69,7 @@ TOOLS: list[dict[str, Any]] = [
          "language": {"type": "string", "description": "ISO 639-1 o auto"}}}},
 ]
 
-INSTRUCTIONS = ("MPV-UOS: controla el reproductor mpv del usuario. Empieza por `status`. Las acciones que interrumpen lo que "
+INSTRUCTIONS = (f"{app_name()}: controla el reproductor mpv del usuario. Empieza por `status`. Las acciones que interrumpen lo que "
                 "se está viendo (play, seek, play_channel, download) muestran una confirmación en pantalla que el usuario "
                 "debe aceptar; si la rechaza o no contesta, la herramienta devuelve confirmed=false. Los tiempos son segundos.")
 

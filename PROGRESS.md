@@ -60,6 +60,20 @@ transcripción entre dos tiempos con los embeddings de H10) y E4 MPRIS (script m
 named pipe en mpvd (`server.py`, `client.py`, `mpvipc.py`) + `bin/mpv-uos.ps1`.
 
 ## Registro por iteración
+### Iteración nocturna 2026-09-30 · H33 · Identidad (logo; nombre centralizado) — hecho
+- `brand.json` (nombre, id, carpeta, paleta) leído por `mpvd/brand.py`, `mu/brand.lua`, install.sh y la PWA (ADR-052).
+  Usos migrados: títulos del menú y migas, MPRIS, MCP, User-Agent, carpetas `<Vídeos>/MPV-UOS`, `Name=` del escritorio.
+- Logo: icono de escritorio (+ `mpv-uos-symbolic` monocromo), PWA (SVG + PNG 192/512, colores de tinta y azul señal),
+  variantes `logo-sin-fondo.svg` y `logo-mono.svg`; paleta en uosc.conf; ● REC en ámbar.
+- Tests: test_brand.py (fuente única, respaldo si el JSON se rompe, Lua lee otro nombre, iconos y manifiesto),
+  test_install.py (icono simbólico y `Name=` de brand.json).
+- Probar a mano:
+  ```bash
+  tools/install.sh --no-sync --no-vendor   # el menú de aplicaciones muestra el logo nuevo
+  bin/mpv-uos tests/fixtures/media/video30.mkv   # barra y menús con la paleta; alt+m → título MPV-UOS
+  bin/mpv-uos   # alt+z → en el móvil, «Añadir a pantalla de inicio» usa el logo
+  ```
+
 ### Iteración nocturna 2026-09-30 · H24 · Escritorio y sonido — hecho
 - mpvd `mpris.py`: MPRIS por cada mpv (Play/Pause/PlayPause/Stop/Next/Previous/Seek/SetPosition/OpenUri; Metadata,
   PlaybackStatus, Volume, Rate, LoopStatus, Shuffle, Fullscreen; PropertiesChanged y Seeked); `mpris.status`;

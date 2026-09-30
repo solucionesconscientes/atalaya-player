@@ -8,6 +8,7 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local brand = require('mu.brand')
 local prefs = require('mu.prefs')
 local nav = require('mu.nav')
 
@@ -302,7 +303,7 @@ end
 
 views.root = function()
   local items = root_items()
-  show('MPV-UOS', items, { footnote = 'Enter abre · ⌫ o ← atrás · Esc cierra · ? ayuda' })
+  show(brand.name, items, { footnote = 'Enter abre · ⌫ o ← atrás · Esc cierra · ? ayuda' })
   with_recents(opts.recents_in_root, true, function(_, rows)
     if state.view ~= 'root' or #rows == 0 then return end
     local list = {}
@@ -310,7 +311,7 @@ views.root = function()
     table.insert(list, { title = 'Todos los recientes…', icon = 'history', value = { view = 'recents' } })
     table.insert(items, 1, { title = 'Continuar viendo', hint = tostring(#rows), icon = 'history', items = list,
                              separator = true })
-    show('MPV-UOS', items, { footnote = 'Enter abre · ⌫ o ← atrás · Esc cierra · ? ayuda' })
+    show(brand.name, items, { footnote = 'Enter abre · ⌫ o ← atrás · Esc cierra · ? ayuda' })
   end)
 end
 
@@ -409,7 +410,7 @@ views.recents = function()
     if err then show('Recientes', uosc.message_items(fail(err, 'watch.recents'), 'error')) return end
     local items = {}
     for _, r in ipairs(rows) do table.insert(items, recent_item(r)) end
-    if #items == 0 then items = uosc.message_items('Todavía no has visto nada con MPV-UOS', 'history')
+    if #items == 0 then items = uosc.message_items('Todavía no has visto nada con ' .. brand.name, 'history')
     else table.insert(items, { title = 'Borrar historial', icon = 'delete_sweep', value = { clear = true }, separator = true,
                                actions = {} }) end
     show('Recientes', items, { footnote = 'Enter continúa · Tab olvida · ⌫ atrás' })
@@ -425,7 +426,7 @@ views.start = function()
     sub('Buscar comandos, canales y recientes…', 'alt+p', 'search', 'palette'),
     sub('Menú principal', 'alt+m', 'apps', 'root', { separator = true }),
   }
-  show('MPV-UOS · Inicio', items)
+  show(brand.name .. ' · Inicio', items)
   with_recents(12, false, function(_, rows)
     if state.view ~= 'start' then return end
     if #rows > 0 then
@@ -439,7 +440,7 @@ views.start = function()
         table.insert(all, it)
       end
       for i = #header, 1, -1 do table.insert(all, 1, header[i]) end
-      show('MPV-UOS · Inicio', all)
+      show(brand.name .. ' · Inicio', all)
     end
   end)
 end

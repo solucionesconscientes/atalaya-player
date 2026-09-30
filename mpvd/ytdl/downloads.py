@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from mpvd.brand import folder_name
 from mpvd.jobs import Job, JobQueue, Priority, Status
 from mpvd.ytdl.binary import YtdlpBinary
 from mpvd.ytdl.presets import (
@@ -70,7 +71,7 @@ def default_media_dir(kind: str) -> Path:
         base = Path.home() / ("Videos" if kind == "video" else "Music")
         if not base.is_dir():
             base = Path.home() / "Downloads"
-    return base / "MPV-UOS"
+    return base / folder_name()
 
 
 # yt-dlp --cookies-from-browser BROWSER[+KEYRING][:PROFILE][::CONTAINER] (browsers from its --help, 2026.08.19)

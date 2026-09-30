@@ -214,7 +214,7 @@ traducción en directo. Fuera también: imagen (mejoras de imagen, visor de foto
       solo audio al minimizar la ventana. Medido: ~3× menos CPU que decodificar por gráfica y ~10× menos que por procesador.
 
 ## H33 · Identidad: logo (el nombre lo decide Ser más adelante)
-- [ ] Logo aprobado «C · Anillo» (docs/marca/logo-anillo.svg: anillo de progreso azul señal #3D7BFF sobre tinta #0D1320, punto
+- [x] Logo aprobado «C · Anillo» (docs/marca/logo-anillo.svg: anillo de progreso azul señal #3D7BFF sobre tinta #0D1320, punto
       ámbar #FFB020 de «en antena», play blanco) como icono de la app, de la entrada de escritorio, de la PWA y de la bandeja; versión
       monocroma y variante sin fondo. El ámbar es el color de estado «en directo / grabando / descargando» en toda la interfaz.
 - NOMBRE PENDIENTE: no renombrar nada. La app sigue llamándose MPV-UOS hasta que Ser decida (candidato descartado de momento:

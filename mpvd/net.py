@@ -19,11 +19,12 @@ from pathlib import Path
 from typing import Any
 
 from mpvd import __version__
+from mpvd.brand import app_id
 from mpvd.hashing import url_key
 
 log = logging.getLogger("mpvd.net")
 
-DEFAULT_USER_AGENT = f"MPV-UOS/{__version__} (+https://github.com/mpv-uos) mpvd"
+DEFAULT_USER_AGENT = f"{app_id().upper()}/{__version__} (+https://github.com/mpv-uos) mpvd"
 DEFAULT_TTL = 12 * 3600.0
 
 
