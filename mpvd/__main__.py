@@ -105,18 +105,51 @@ def _spawn_lock(settings: Settings):  # type: ignore[no-untyped-def]
     settings.ensure_dirs()
     path = settings.runtime_dir / "mpvd.lock"
     fh = open(path, "a+")  # noqa: SIM115
+    locked = False
     try:
-        if sys.platform != "win32":
+        if sys.platform == "win32":
+            # Windows has no flock: lock the first byte with msvcrt. It matters there even more, since a second
+            # server on the same pipe name would not fail like a second bind() on a Unix socket does.
+            locked = _win_lock(fh, timeout=30.0)
+        else:
             import fcntl  # noqa: PLC0415
 
             fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
         yield
     finally:
-        if sys.platform != "win32":
+        if sys.platform == "win32":
+            if locked:
+                _win_unlock(fh)
+        else:
             import fcntl  # noqa: PLC0415
 
             fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
         fh.close()
+
+
+def _win_lock(fh: Any, timeout: float) -> bool:
+    """Exclusive lock on byte 0 of ``fh`` (``msvcrt.locking``; LK_NBLCK polled so the wait is bounded). False when it
+    could not be taken in ``timeout`` seconds: the caller goes on unlocked rather than never starting mpvd."""
+    import msvcrt  # noqa: PLC0415 - Windows only
+
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+            return True
+        except OSError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.1)
+
+
+def _win_unlock(fh: Any) -> None:
+    import msvcrt  # noqa: PLC0415 - Windows only
+
+    with contextlib.suppress(OSError):
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
 
 
 def ensure_daemon(settings: Settings, root: str | None = None, timeout: float = 15.0) -> bool:

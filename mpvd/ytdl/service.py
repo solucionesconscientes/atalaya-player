@@ -23,6 +23,7 @@ from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd import hwdecode
 from mpvd.ytdl import info as info_mod
 from mpvd.ytdl.binary import (
+    platform_asset_name,
     NIGHTLY_RELEASES_URL,
     YtdlpBinary,
     YtdlpUpdater,
@@ -70,7 +71,7 @@ class YtdlService:
         self.http = HttpCache(settings.cache_dir / "http")
         self._binary: YtdlpBinary | None = None
         self._binary_checked = 0.0
-        target = vendor_path(self.root) or (settings.data_dir / "bin" / "yt-dlp")
+        target = vendor_path(self.root) or (settings.data_dir / "bin" / platform_asset_name())
         self.updater = YtdlpUpdater(self.http, target)
         self.nightly_updater = YtdlpUpdater(self.http, nightly_path(self.root, settings.data_dir),
                                             releases_url=os.environ.get("MPV_UOS_YTDLP_NIGHTLY_RELEASES_URL")
