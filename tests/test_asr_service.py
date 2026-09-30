@@ -51,7 +51,8 @@ def test_asr_service_end_to_end(daemon_env, media_dir):
     src = str(media_dir / "voz_es_en.mkv")
     t = d.call("asr.start", {"path": src, "language": "en", "model": model, "audio_track": 1, "time_pos": 0.0,
                              "chunk_seconds": 6.0})
-    assert t["status"] in ("queued", "running") and t["total"] == 2 and t["srt"].endswith(f"{model}.en.srt")
+    # H34: the audio track is part of the identity, so it is in the name too (the dub must not reuse the VO's SRT)
+    assert t["status"] in ("queued", "running") and t["total"] == 2 and t["srt"].endswith(f"{model}.en.a1.srt")
     t = wait_task(d, t["id"])
     assert t["status"] == "done" and t["complete"] and t["done"] == 2 and t["cues"] >= 1, t
     srt = open(t["srt"], encoding="utf-8").read()

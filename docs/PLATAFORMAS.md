@@ -77,7 +77,8 @@ pwsh 7.6 en Linux (`tests/test_windows_scripts.py`, con un servidor HTTP local e
 
 ## Rutas
 - Config: siempre `<proyecto>/mpv-config` vía `--config-dir` (ADR-002). Caché de mpvd: `.cache/` en desarrollo; XDG/platformdirs en producción.
-- Grabaciones de TV/radio: `~~desktop/MPV-UOS` (placeholder de mpv, válido en las tres plataformas). Copiar URL usa wl-copy/xclip/xsel
+- Grabaciones (TV, radio y tramos): `<Vídeos>/<marca>/Grabaciones`, o `MPV_UOS_RECORD_DIR`; la reserva cuando mpvd no está
+  conectado es `~~desktop/<marca>` (placeholder de mpv, válido en las tres plataformas). Copiar URL usa wl-copy/xclip/xsel
   en Linux, `pbcopy` en macOS y `clip` en Windows (no probado fuera de Linux).
 - Grabaciones programadas (H21): ffmpeg lanzado por mpvd y parado enviando `q` por su entrada estándar (vale en las tres
   plataformas; solo probado en Linux). Aviso de escritorio al terminar: `notify-send` en Linux, `osascript` en macOS (sin

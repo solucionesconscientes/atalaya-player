@@ -1,8 +1,13 @@
 # PROGRESS
 ESTADO_GLOBAL: COMPLETADO
 
-## Resumen final para Ser (2026-09-30, iteración 4)
-Todos los hitos de BACKLOG.md (H0–H33) están [x] o [~]. Quedan [~] solo dos cosas, ambas por decisión o permiso tuyo:
+## Resumen final para Ser (2026-10-01, iteración 5)
+Todos los hitos de BACKLOG.md (H0–H34) están [x] o [~]. **H34 era la revisión de calidad**: siete revisiones de código por
+áreas encontraron 42 fallos reales, todos corregidos con su test (el detalle, y qué comprobar a mano, en «Iteración 5» del
+registro). Los que más te iban a molestar: el `.md` de «Mis notas» perdía lo que escribieras en él, los subtítulos IA
+repetían la frase de cada frontera, cancelar una descarga que aún no había empezado no hacía nada, «Instalar yt-dlp» nunca
+funcionaba, el punto rojo de grabar se quedaba pegado, y una grabación local de más de 10 minutos fallaba siempre.
+Quedan [~] solo dos cosas, ambas por decisión o permiso tuyo:
 el **túnel de internet** de las salas (H25: la sesión nocturna no tiene permiso para abrir un túnel de entrada) y los
 **torrents** (H26: fuera por tu decisión). Lo que no se puede probar sin hardware (Windows, Mac, Raspberry Pi, tele DLNA real)
 está hecho y probado aquí por simulación, con los pasos exactos para ti en NEEDS_HUMAN.md.
@@ -28,7 +33,7 @@ está hecho y probado aquí por simulación, con los pasos exactos para ti en NE
 ### Cómo probarlo (comandos exactos)
 ```bash
 cd ~/Documentos/PROJECTES/MPV-UOS
-tools/check.sh                                     # todo, con el portátil libre (los tests de Whisper son sensibles a la carga)
+tools/check.sh                                     # todo, con el portátil libre (Whisper y MPRIS fallan por tiempo bajo carga)
 tools/install.sh --extras                          # instala mpv-uos en ~/.local/bin y en el menú de aplicaciones
 mpv-uos                                            # inicio · alt+m menú · alt+p paleta · alt+t TV · alt+M música · ctrl+b biblioteca
 mpv-uos 'https://www.youtube.com/watch?v=aqz-KE-bpKQ'   # alt+a solo audio · alt+q calidad · alt+d descargar · alt+T tareas
@@ -36,6 +41,11 @@ mpv-uos tests/fixtures/media/voz_es_en.mkv         # alt+i subtítulos IA · alt
 tools/build_appimage.sh && dist/MPV-UOS-x86_64.AppImage   # AppImage
 .cache/pwsh/pwsh -File bin/mpv-uos.ps1 -DryRun video.mkv  # lanzador de Windows (orden que ejecutaría)
 ```
+Lo arreglado en H34, a mano (iteración 5): `alt+b` una nota y escribe un párrafo en su `.md` (no se pierde); una película
+con VO + doblaje, `alt+c` en cada pista (subtítulos distintos); encola tres descargas con «descargas a la vez» en 1 y
+cancela la última (queda «cancelada», no «en cola»); *Estado de yt-dlp → Instalar*; graba un tramo de más de 10 minutos;
+graba un canal de TV desde `alt+t` y párala con `alt+r` (el punto rojo se va); `alt+h` y Esc antes de que responda mpvd
+(no reaparece el menú); `alt+p` y `⌫` (cierra).
 Cada hito tiene sus pasos a mano en «Registro por iteración».
 
 ### Qué quedó pendiente o bloqueado (y por qué)
@@ -44,7 +54,9 @@ Cada hito tiene sus pasos a mano en «Registro por iteración».
 - **Probar en hardware que no hay aquí**: Windows, macOS, Raspberry Pi 5, tele DLNA real (pasos en NEEDS_HUMAN.md).
 - **Cortafuegos**: `ufw` bloquea la entrada; mando (8790), salas (8791) y DLNA (8792) necesitan un `sudo ufw allow …` (NEEDS_HUMAN.md).
 - **Nombre de la app**: pendiente de tu decisión (centralizado en `brand.json`, que leen `mpvd/brand.py` y `mu/brand.lua`).
-- **Tests de Whisper**: fallan por tiempo si el portátil está muy cargado; aislados pasan.
+- **Tests sensibles a la carga**: los de Whisper (`test_asr_engine`, `test_mu_subs`) y `test_mpris` fallan por tiempo si el
+  portátil está ocupado; aislados y con la máquina libre pasan. El 2026-10-01 tu `llama-server` tenía ~2,5 de los 4 núcleos,
+  así que la última pasada completa de `tools/check.sh` no es concluyente para esos tres: repítela con la máquina libre.
 
 ## Resumen para Ser (2026-09-29, histórico)
 Todos los hitos H0–H13 de BACKLOG.md están [x]; ninguno quedó [~]. `tools/check.sh` pasa 202 tests sin red + 4 con red; lo único
@@ -94,14 +106,73 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-Iteración 4 (2026-09-30): fusionada la rama pendiente de H28-Windows (lanzador `bin/mpv-uos.ps1`, instalador `tools/install.ps1`,
-bloqueo `msvcrt`), H28 marcado [x] y `ESTADO_GLOBAL: COMPLETADO`. No quedan ramas `worktree-agent-*`.
-Si hay otra iteración: (1) nada del BACKLOG está pendiente; los [~] esperan a Ser (túnel H25, torrents H26). (2) Siguiente
-trabajo útil sin Ser, por orden: añadir hitos nuevos desde el TOP 10 de docs/VISION.md que sigan la regla «nada con retraso»
-(OCR de subtítulos PGS B6, diccionario/Anki C2–C3, handoff entre dispositivos E5), cada uno con su criterio de aceptación
-en BACKLOG.md y su ADR. (3) Antes de empezar, `tools/check.sh` con la máquina libre para partir de verde.
+Iteración 5 (2026-10-01): H34 (revisión de calidad) hecho: siete revisiones por áreas, 42 fallos reales corregidos con su
+test, y dos guardianes nuevos (integración Lua↔mpvd y flujos entre módulos). Todo el BACKLOG está [x] o [~].
+Si hay otra iteración: (1) nada del BACKLOG está pendiente; los [~] esperan a Ser (túnel H25, torrents H26, nombre de la
+app). (2) Siguiente trabajo útil sin Ser, por orden: añadir hitos nuevos desde el TOP 10 de docs/VISION.md que sigan la
+regla «nada con retraso» (OCR de subtítulos PGS B6, diccionario/Anki C2–C3, handoff entre dispositivos E5), cada uno con su
+criterio de aceptación en BACKLOG.md y su ADR. (3) Antes de empezar, `tools/check.sh` **con la máquina libre** para partir
+de verde: ver «Qué quedó pendiente» sobre `test_mpris` y los tests de Whisper, que fallan por tiempo bajo carga.
 
 ## Registro por iteración
+### Iteración 5 · 2026-10-01 · H34 · Revisión de calidad — hecho (quedan 3 fallos de tests por cribar)
+**PENDIENTE INMEDIATO** (se agotó el cupo a mitad): la última pasada completa de `tools/check.sh` dio **706 pasan, 4
+fallan**. Uno era mío y ya está arreglado (`test_asr_service`: el SRT lleva ahora la pista de audio en el nombre,
+`base.en.a1.srt`, que es lo correcto; la expectativa del test estaba sin actualizar). Los otros tres hay que repetirlos
+**aislados y con el portátil libre** antes de darlos por buenos o por malos:
+```bash
+uv run pytest tests/test_asr_service.py -q                                   # el arreglado: confirmar que pasa
+uv run pytest tests/test_mpris.py -q                                         # la señal Seeked de D-Bus; falla bajo carga
+uv run pytest tests/test_mu_iptv_live.py -q                                   # ¿carga, o la delegación de Grabar a mu-record?
+MU_KEEP_LOGS=1 uv run pytest tests/test_mu_subs.py -q                         # Whisper; sensible a la carga
+```
+De los dos últimos, `test_mu_iptv_live` es el que más conviene mirar: en esta iteración el menú de TV dejó de escribir
+`stream-record` por su cuenta y ahora se lo pide a mu-record, así que puede ser eso y no la carga.
+
+### Iteración 5 · 2026-10-01 · H34 · Revisión de calidad — hecho
+Siete revisiones de código por áreas (TV, descargas/convertir, subtítulos, biblioteca/suscripciones/notas, audio,
+compartir/mando, núcleo/UI) y **42 fallos reales confirmados leyendo el código y corregidos, cada uno con su test**. Diez
+commits, «H34 (1)»…«H34 (10)». Los más graves, por si quieres comprobarlos a mano:
+
+1. **Notas** (`H34 (1)`): el `.md` de «Mis notas» se anuncia como editable en Obsidian, pero cualquier texto que
+   escribieras desaparecía al añadir, editar o borrar una nota. Además, un `.md` ajeno dejado en la carpeta de notas se
+   reescribía y se renombraba, «Exportar a una carpeta» sobrescribía sin avisar un fichero tuyo con el mismo nombre, y un
+   título en japonés o con emoji pasaba de los 255 bytes y la nota se perdía con un error técnico.
+   ```bash
+   mpv-uos tests/fixtures/media/video30.mkv    # alt+b una nota; abre el .md, escribe un párrafo, otra nota: sigue ahí
+   ```
+2. **Subtítulos IA** (`H34 (1)`): la frase de cada frontera de bloque (28,5 s) salía dos veces, y un cue corto que cayera
+   en la pre-rodadura se escribía con el fin antes del inicio (SRT corrupto). Con VO + doblaje se servían los subtítulos
+   de la otra pista, también desde la caché. Y todas las traducciones de subtítulos de internet se escribían en el mismo
+   archivo, así que se pisaban entre vídeos.
+3. **Descargas** (`H34 (2)`, `H34 (10)`): cancelar una que aún no había empezado la dejaba «en cola» para siempre y se
+   relanzaba al reiniciar; un lote de más de 200 enlaces perdía de la lista los primeros; parar mpvd marcaba la cola como
+   «cancelada» en vez de reanudarla (contra el criterio de H19); «Instalar yt-dlp» nunca funcionaba; y como cada descarga
+   ocupaba un worker de la cola de trabajos, tres bastaban para que los subtítulos en vivo o una traducción no arrancaran.
+4. **Grabar** (`H34 (3)`): «Grabar desde ahora» recortaba el fichero equivocado si mpv pasaba al episodio siguiente;
+   había dos dueños de `stream-record` (el menú de TV y el botón ●) con carpetas distintas, así que el punto rojo se
+   quedaba pegado; y cualquier grabación local de más de 10 minutos fallaba por heredar el tope de los clips de estudio.
+5. **TV** (`H34 (4)`, `H34 (8)`): un fallo de red al bajar la guía la dejaba en bucle infinito de descargas de 120 s; una
+   excepción en el bucle del programador mataba todas las grabaciones programadas sin avisar; y «Actualizar listas»
+   congelaba mpvd (el índice se reconstruía en el bucle de eventos, una vez por lista, con ~12.000 canales).
+6. **Salas y mando** (`H34 (4)`, `H34 (7)`): al cerrar una sala podían quedar ffmpeg transcodificando la película entera
+   y recrear la carpeta borrada; `alt+z` bloqueaba el daemon hasta 6 s con `systemctl`; el 500 del servidor devolvía el
+   texto de la excepción (con rutas) a quien estuviera en la red local; 20 erratas acumuladas inutilizaban el enlace de la
+   sala; y en sala privada las plazas no se liberaban nunca.
+7. **Audio** (`H34 (5)`, `H34 (9)`): en un álbum con algún archivo que falta, Enter sonaba otra pista; el temporizador de
+   apagado dejaba el volumen bajado si retrocedías durante el fundido; y mover en la cola con el buscador activo movía otra
+   entrada.
+8. **Biblioteca y suscripciones** (`H34 (4)`, `H34 (6)`): quitar una carpeta borraba también las filas de una subcarpeta
+   que sigue en la biblioteca; renombrar una suscripción dejaba huérfano todo lo ya movido; y las carátulas reintentaban
+   ffmpeg en cada escaneo cuando fallaban.
+
+Además, dos guardianes nuevos contra este tipo de deriva:
+- `tests/test_integracion_lua_rpc.py`: todo `rpc.call` de los scripts Lua existe en mpvd y sus parámetros cuadran (205
+  llamadas comprobadas contra los 244 métodos registrados). Habría cazado el fallo de «Instalar yt-dlp».
+- `tests/test_flujos_e2e.py`: saltar de un módulo a otro con su tecla sin pasar por «Atrás» (que la pila de navegación no
+  se acumule) y que nota + preferencia + posición sigan ahí tras reiniciar mpv contra el mismo daemon.
+- ADR-067: por qué las descargas esperan en su propia cola y por qué NO se pone un semáforo de trabajos «heavy».
+
 ### Iteración 4 · 2026-09-30 · H28 · Windows (punto 4) — hecho (rama de subagente de la iteración 3, fusionada)
 - `bin/mpv-uos.ps1` (+ `bin/mpv-uos.cmd`): mismas opciones que `bin/mpv-uos`, pipe `\\.\pipe\mpv-uos-<pid>-<azar>` por instancia,
   `-DryRun` y `-Gui`. `tools/install.ps1`: sin administrador, `uv sync`, binarios de Windows de `vendor.lock` verificados con

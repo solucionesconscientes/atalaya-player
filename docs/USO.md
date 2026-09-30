@@ -42,7 +42,9 @@ falta, avisa con la orden para instalarlo. Los subtítulos IA y los modelos se d
 1. `alt+t` → *España TV* / *España radio* (TDTChannels), *Mundo* (iptv-org por país y categoría), *Radio mundial* (Radio Browser).
    En *Mundo* y *Radio mundial* tu país sale primero; países y categorías van en español.
 2. `alt+f` busca un canal por nombre sin acentos; `Tab` sobre un canal: favorito o copiar URL.
-3. `alt+↑` / `alt+↓` cambian de canal dentro del grupo; `alt+r` graba el directo en `~/Escritorio/MPV-UOS`.
+3. `alt+↑` / `alt+↓` cambian de canal dentro del grupo; `alt+r` graba el directo en la carpeta de grabaciones
+   (`~/Vídeos/MPV-UOS/Grabaciones` por defecto): es el mismo botón «Grabar» del reproductor, con su punto rojo y su
+   contador, y se detiene con `alt+r` otra vez o desde *Grabar*.
 4. Tus listas: *TV y radio → Mis listas → Añadir* (pega la URL de una M3U). Más en docs/FUENTES_IPTV.md.
 5. *Comprobar canales en segundo plano* (al final de cada lista) marca los caídos con ✕ y apunta la calidad real de cada
    canal. Lo que ves a la derecha de un canal:

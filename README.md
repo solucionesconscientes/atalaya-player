@@ -59,8 +59,9 @@ Socket: `$XDG_RUNTIME_DIR/mpv-uos/mpvd.sock` (JSON-RPC 2.0, una línea por mensa
 Menú **TV y radio** en uosc (botón 📺 en la barra de controles, `alt+t`, o menú contextual): España TV y radio (TDTChannels),
 Mundo por país y categoría (iptv-org), Radio mundial (Radio Browser), Favoritos, Recientes, Mis listas (M3U propias) y búsqueda
 tipo paleta (`alt+f`, sin acentos). Sobre un canal, `Tab` abre las acciones: favorito y copiar URL.
-- Zapping dentro del grupo actual: `alt+UP` / `alt+DOWN`. Grabar el directo (`stream-record`): `alt+r`; se guarda en
-  `~/Escritorio/MPV-UOS` (opción `mu-iptv-record_dir` en `script-opts/mu-iptv.conf`).
+- Zapping dentro del grupo actual: `alt+UP` / `alt+DOWN`. Grabar el directo (`stream-record`): `alt+r`; lo hace el mismo
+  botón «Grabar» del reproductor (H18), así que se guarda en su carpeta: `~/Vídeos/MPV-UOS/Grabaciones` por defecto,
+  cambiable en *Grabar → Carpeta de grabaciones* o con `MPV_UOS_RECORD_DIR`.
 - Las listas se descargan por mpvd con caché (ETag, 12 h, modo offline con la última copia) y las cabeceras `#EXTVLCOPT`/`#KODIPROP`
   se traducen a opciones de mpv por archivo. Añade tus propias M3U desde "Mis listas" (pega la URL con `ctrl+v`) o por CLI:
   ```bash

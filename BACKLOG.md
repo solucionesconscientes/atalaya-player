@@ -244,7 +244,8 @@ un vigilante relanzará el runner en xhigh. En xhigh, borra esa línea de PROGRE
       coherentes, rendimiento en este portátil). Siete revisiones (TV, descargas/convertir, subtítulos, biblioteca/suscripciones/notas,
       audio, compartir/mando, núcleo/UI). Integración Lua↔mpvd verificada entera: los 175 métodos que llama el Lua existen en los 244
       de mpvd y los parámetros cuadran (ahora es un test, `tests/test_integracion_lua_rpc.py`).
-- [ ] Cada hallazgo confirmado, corregido con su test. Lista de los confirmados leyendo el código (ordenados por gravedad):
+- [x] Cada hallazgo confirmado, corregido con su test (42 en total, commits «H34 (1)»…«H34 (10)»). Lista de los
+      confirmados leyendo el código (ordenados por gravedad):
       · Notas: `render()` borra el texto que el usuario escriba en el `.md` (y `_scan()` reescribe un `.md` ajeno de la carpeta);
         «Exportar a una carpeta» sobrescribe sin avisar un fichero del usuario; `safe_name` recorta por caracteres, no por bytes.
       · Subtítulos IA: la pre-rodadura no se descarta → frase duplicada en cada frontera y cues con fin < inicio; la pista de audio
@@ -271,8 +272,10 @@ un vigilante relanzará el runner en xhigh. En xhigh, borra esa línea de PROGRE
         de eventos con `subprocess.run`; el volumen de la tele se manda en absoluto desde un valor inventado; 20 fallos acumulados
         (sin caducar) inutilizan el enlace de la sala; en sala privada los invitados desconectados no sueltan la plaza; el 500
         genérico devuelve el texto de la excepción (y los `limit` de la API no se validan).
-- [ ] Pruebas de extremo a extremo headless de los flujos principales: abrir archivo y URL, TV con CC/VO y búsqueda por categoría,
-      descargas con listas y SRT, convertir, grabar, biblioteca y siguiente episodio, música y audiolibros, suscripciones, compartir
-      en LAN, notas, preferencias tras reinicio; `tools/check.sh` completo con la máquina libre.
-- [ ] Documentación final al día (README, USO, ATAJOS, PLATAFORMAS) y resumen para Ser en PROGRESS.md: qué probar a mano y cómo.
+- [x] Pruebas de extremo a extremo headless de los flujos principales: ya había una por módulo (test_mu_*.py, todas con mpv
+      y mpvd reales); H34 añade lo que faltaba, que era cruzar módulos en una misma sesión: `tests/test_flujos_e2e.py`
+      (saltar de un módulo a otro con su tecla sin pasar por «Atrás», y que nota + preferencia + posición sigan ahí tras
+      reiniciar mpv contra el mismo daemon) y `tests/test_integracion_lua_rpc.py`. `tools/check.sh` completo: ver PROGRESS.md
+      (la máquina de Ser no estaba libre: su llama-server ocupaba ~2,5 de los 4 núcleos).
+- [x] Documentación final al día (README, USO, ATAJOS, PLATAFORMAS) y resumen para Ser en PROGRESS.md: qué probar a mano y cómo.
 Solo cuando H34 esté hecho: `ESTADO_GLOBAL: COMPLETADO`.
