@@ -187,7 +187,7 @@ class SessionManager:
                 "session": session.id,
                 "version": __version__,
                 "protocol": PROTOCOL_VERSION,
-                "socket": str(self.server.settings.socket_path),
+                "socket": self.server.settings.endpoint,
             }
             await session.script_message(DEFAULT_TARGET, HELLO_MESSAGE, encode(hello))
             while client.connected:

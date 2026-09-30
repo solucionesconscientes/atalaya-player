@@ -6,13 +6,13 @@ import asyncio
 import contextlib
 import logging
 import os
-import socket
 import time
 from dataclasses import dataclass
 from collections.abc import Callable
 from typing import Any
 
 from mpvd import __version__
+from mpvd import transport
 from mpvd.cache import ArtifactCache
 from mpvd.config import PROTOCOL_VERSION, Settings, project_root
 from mpvd.guardian import PerformanceGuardian
@@ -31,18 +31,8 @@ class RpcContext:
 
 
 def socket_is_alive(path: os.PathLike[str] | str, timeout: float = 1.0) -> bool:
-    """True if something accepts connections on the Unix socket at ``path``."""
-    if not os.path.exists(path):
-        return False
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout(timeout)
-    try:
-        s.connect(str(path))
-        return True
-    except OSError:
-        return False
-    finally:
-        s.close()
+    """True if something accepts connections on the Unix socket (or Windows named pipe) at ``path``."""
+    return transport.endpoint_alive(path, timeout)
 
 
 class MpvdServer:
@@ -153,13 +143,13 @@ class MpvdServer:
     async def start(self) -> None:
         s = self.settings
         s.ensure_dirs()
-        if s.socket_path.exists():
-            if socket_is_alive(s.socket_path):
-                raise RuntimeError(f"another mpvd is already listening on {s.socket_path}")
-            s.socket_path.unlink()
-        self._server = await asyncio.start_unix_server(self._handle_peer, path=str(s.socket_path), limit=STREAM_LIMIT)
-        with contextlib.suppress(OSError):
-            os.chmod(s.socket_path, 0o600)
+        if socket_is_alive(s.endpoint):
+            raise RuntimeError(f"another mpvd is already listening on {s.endpoint}")
+        transport.remove_stale(s.endpoint)
+        self._server = await transport.start_server(self._handle_peer, s.endpoint, STREAM_LIMIT)
+        if not transport.is_pipe(s.endpoint):
+            with contextlib.suppress(OSError):
+                os.chmod(s.socket_path, 0o600)
         s.pid_path.write_text(str(os.getpid()), encoding="utf-8")
         await self.jobs.start()
         await self.ytdl.start()
@@ -168,7 +158,7 @@ class MpvdServer:
         await self.schedule.start()
         await self.remote.maybe_autostart()
         self._idle_task = asyncio.create_task(self._idle_watch(), name="mpvd-idle")
-        log.info("mpvd %s listening on %s (cache %s, workers %d)", __version__, s.socket_path, s.cache_dir, s.workers)
+        log.info("mpvd %s listening on %s (cache %s, workers %d)", __version__, s.endpoint, s.cache_dir, s.workers)
 
     async def serve_forever(self) -> None:
         await self._stop.wait()
@@ -208,7 +198,7 @@ class MpvdServer:
             if self.settings.pid_path.exists() and self.settings.pid_path.read_text().strip() == str(os.getpid()):
                 self.settings.pid_path.unlink()
         with contextlib.suppress(OSError):
-            self.settings.socket_path.unlink()
+            transport.remove_stale(self.settings.endpoint)
         log.info("mpvd stopped")
 
     async def run(self) -> None:
@@ -282,7 +272,7 @@ class MpvdServer:
             "methods": [{"name": m.name, "params": m.params, "doc": m.doc} for m in self.dispatcher.methods()],
             "services": dict(self.services),
             "hardware": hardware_info(),
-            "paths": {"socket": str(self.settings.socket_path), "cache": str(self.settings.cache_dir)},
+            "paths": {"socket": self.settings.endpoint, "cache": str(self.settings.cache_dir)},
             "sessions": len(self.sessions),
             "workers": self.settings.workers,
             "uptime": round(time.time() - self.started_at, 1),

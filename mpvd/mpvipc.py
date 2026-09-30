@@ -17,6 +17,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from mpvd import transport
 
 DISCONNECTED_EVENT = "mpvd:disconnected"  # synthesized locally when the connection ends
 
@@ -54,7 +55,7 @@ class MpvIpcClient:
         deadline = loop.time() + timeout
         while True:
             try:
-                self._reader, self._writer = await asyncio.open_unix_connection(self.path, limit=LINE_LIMIT)
+                self._reader, self._writer = await transport.open_connection(str(self.path), LINE_LIMIT)
                 break
             except (FileNotFoundError, ConnectionRefusedError, PermissionError):
                 if loop.time() >= deadline:

@@ -85,6 +85,13 @@ class Settings:
         return self.runtime_dir / SOCKET_NAME
 
     @property
+    def endpoint(self) -> str:
+        """Where mpvd listens: ``socket_path`` on Linux/macOS, a named pipe on Windows (mpvd/transport.py)."""
+        from mpvd.transport import default_endpoint  # noqa: PLC0415
+
+        return default_endpoint(self.socket_path)
+
+    @property
     def pid_path(self) -> Path:
         return self.runtime_dir / PID_NAME
 

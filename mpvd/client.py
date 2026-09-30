@@ -7,6 +7,7 @@ import itertools
 import json
 from typing import Any
 
+from mpvd import transport
 from mpvd.rpc import STREAM_LIMIT, RpcError, encode, make_request
 
 
@@ -25,7 +26,7 @@ class MpvdClient:
         await self.close()
 
     async def connect(self, timeout: float = 5.0) -> None:
-        self._reader, self._writer = await asyncio.wait_for(asyncio.open_unix_connection(self.socket_path, limit=STREAM_LIMIT), timeout)
+        self._reader, self._writer = await asyncio.wait_for(transport.open_connection(str(self.socket_path), STREAM_LIMIT), timeout)
 
     async def close(self) -> None:
         if self._writer is not None:

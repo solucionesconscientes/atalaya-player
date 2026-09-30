@@ -70,7 +70,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 def _ping(settings: Settings, timeout: float = 2.0) -> bool:
     try:
-        return bool(rpc_call(str(settings.socket_path), "ping", timeout=timeout).get("pong"))
+        return bool(rpc_call(settings.endpoint, "ping", timeout=timeout).get("pong"))
     except (OSError, RpcError, asyncio.TimeoutError, ValueError):
         return False
 
@@ -132,16 +132,16 @@ def ensure_daemon(settings: Settings, root: str | None = None, timeout: float = 
             if _ping(settings, timeout=1.0):
                 return True
             time.sleep(0.1)
-    raise TimeoutError(f"mpvd did not answer on {settings.socket_path} within {timeout}s (see {settings.log_path})")
+    raise TimeoutError(f"mpvd did not answer on {settings.endpoint} within {timeout}s (see {settings.log_path})")
 
 
 def cmd_ensure(args: argparse.Namespace) -> int:
     settings = _settings(args)
-    out: dict[str, Any] = {"ok": False, "socket": str(settings.socket_path)}
+    out: dict[str, Any] = {"ok": False, "socket": settings.endpoint}
     try:
         out["started"] = ensure_daemon(settings, root=args.root, timeout=args.timeout)
         if args.attach:
-            out["session"] = rpc_call(str(settings.socket_path), "sessions.register",
+            out["session"] = rpc_call(settings.endpoint, "sessions.register",
                                       {"ipc": args.attach, "pid": args.pid}, timeout=args.timeout)
         out["ok"] = True
     except Exception as exc:  # noqa: BLE001 - report everything to mu-core as JSON
@@ -154,7 +154,7 @@ def cmd_call(args: argparse.Namespace) -> int:
     settings = _settings(args)
     params = json.loads(args.params) if args.params else None
     try:
-        result = rpc_call(str(settings.socket_path), args.method, params, timeout=args.timeout)
+        result = rpc_call(settings.endpoint, args.method, params, timeout=args.timeout)
     except RpcError as exc:
         print(json.dumps({"error": exc.to_obj()}, ensure_ascii=False))
         return 2
@@ -175,7 +175,7 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     logging.basicConfig(level=logging.WARNING, stream=sys.stderr, format="%(levelname)s %(name)s: %(message)s")
     ensure_daemon(settings, root=getattr(args, "root", None))
     autoconfirm = bool(args.yes) or os.environ.get("MPVD_MCP_AUTOCONFIRM", "0") == "1"
-    return asyncio.run(serve(str(settings.socket_path), args.session, autoconfirm))
+    return asyncio.run(serve(settings.endpoint, args.session, autoconfirm))
 
 
 def cmd_link(args: argparse.Namespace) -> int:
@@ -190,7 +190,7 @@ def cmd_link(args: argparse.Namespace) -> int:
     else:
         try:
             ensure_daemon(settings, root=args.root or os.environ.get("MPV_UOS_ROOT"), timeout=args.timeout)
-            out = handoff.handle(str(settings.socket_path), args.links, timeout=args.timeout)
+            out = handoff.handle(settings.endpoint, args.links, timeout=args.timeout)
         except RpcError as exc:
             out = {"ok": False, "count": 0, "error": exc.message}
         except Exception as exc:  # noqa: BLE001 - reported to the user as a notification
@@ -204,9 +204,9 @@ def cmd_link(args: argparse.Namespace) -> int:
 def cmd_status(args: argparse.Namespace) -> int:
     settings = _settings(args)
     if not _ping(settings):
-        print(json.dumps({"running": False, "socket": str(settings.socket_path)}))
+        print(json.dumps({"running": False, "socket": settings.endpoint}))
         return 3
-    sock = str(settings.socket_path)
+    sock = settings.endpoint
     print(json.dumps({
         "running": True, "socket": sock,
         "version": rpc_call(sock, "version"),
@@ -222,7 +222,7 @@ def cmd_stop(args: argparse.Namespace) -> int:
     if not _ping(settings):
         print("mpvd no está en marcha")
         return 0
-    rpc_call(str(settings.socket_path), "shutdown")
+    rpc_call(settings.endpoint, "shutdown")
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline and _ping(settings, timeout=0.5):
         time.sleep(0.1)
