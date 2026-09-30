@@ -91,3 +91,12 @@ Hoy no funciona sin trabajo: falta el lanzador PowerShell y el transporte por na
   `ffmpeg`/`ffprobe` del PATH y `nice -n 10` si existe (en Windows no hay `nice`: se lanzan con prioridad normal).
 - `library-secrets.json` se crea con permisos 0600; en Windows esos bits no significan nada y la protección es la de la carpeta
   del perfil del usuario (`%APPDATA%\mpv-uos`), sin ACL propias (no probado).
+
+## Música (H32)
+- Carpeta por defecto: en Linux la de `XDG_MUSIC_DIR` (`~/.config/user-dirs.dirs`); en Windows y macOS `~/Music` (no probado).
+  `MPV_UOS_MUSIC_DIR` la sustituye (vacía = ninguna). Se añade una sola vez, la primera vez que se abre «Música».
+- `ffprobe`/`ffmpeg` del PATH a la prioridad más baja (`os.nice(19)` en el hijo; en Windows prioridad normal, no probado).
+- «Salida exclusiva» (`audio-exclusive`) solo la respetan algunas salidas de mpv: PipeWire, WASAPI (Windows), CoreAudio y
+  AudioUnit (macOS). Con PulseAudio/ALSA mpv la ignora sin avisar. Solo probado con `--ao=null`.
+- Listas M3U8 con rutas absolutas (UTF-8, `\n`); la exportación con rutas relativas usa `os.path.relpath` (en Windows falla
+  entre unidades distintas y deja la ruta absoluta).

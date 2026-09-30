@@ -28,3 +28,21 @@ Fijados por SHA-256 en vendor.lock: `rnnoise-sh` (general), `rnnoise-bd` (voz co
 ## Alternativas disponibles (no expuestas todavía)
 `anlmdn`, `speechnorm`, `loudnorm` (dos pasadas), `deesser`, `stereotools`, `haas`, `extrastereo`; vídeo: `deband`, `deflicker`,
 `hqdn3d`, `nlmeans` (caro), `tmix`, `unsharp`, `eq`.
+
+## Música (mu-music, H32, ADR-064)
+Opciones verificadas en el manual de mpv 0.41 instalado (`man mpv`):
+- **Sin cortes**: `gapless-audio=yes` + `prefetch-playlist=yes`. Apagado vuelve al valor por defecto de mpv (`weak`: sin
+  cortes solo si el formato de audio coincide).
+- **Volumen igualado**: `replaygain=track|album` para los archivos con etiquetas `REPLAYGAIN_*` (mpv las lee y evita el
+  recorte con el pico). Para los que no las tienen, mpvd mide la pista con `ffmpeg -af ebur128=peak=sample` (ReplayGain 2.0:
+  −18 LUFS − sonoridad integrada; el filtro `replaygain` de ffmpeg implementa ReplayGain 1 y da +2,5 dB más) y mu-music
+  aplica el valor con la opción local del archivo `replaygain-fallback`, que mpv solo usa cuando no hay etiquetas. mpv no
+  aplica `replaygain-preamp` ni la protección contra recortes a ese valor: lo hace mu-music (`min(ganancia, −20·log10(pico))`).
+  La ganancia de álbum es la media energética de sus pistas ponderada por duración. Nunca se escriben los archivos.
+  Coste medido: 0,9 s para 5 min de MP3 con pico de muestra (2,6 s con pico real, descartado).
+- **Fundido**: mpv reproduce un único flujo de audio y `acrossfade` necesita dos entradas simultáneas, así que un fundido
+  cruzado real no es posible. mu-music baja `volume-gain` al final de la pista (N s) y lo sube al empezar la siguiente
+  (N/2 s), a 20 Hz solo durante el fundido; `volume-gain` se suma al volumen del usuario y no se guarda en watch_later.
+- **Salida exclusiva**: `audio-exclusive=yes` (solo PipeWire, WASAPI, CoreAudio y AudioUnit).
+- **Ecualizador**: los perfiles de mu-av, más tres para tipos de auriculares (de botón, cerrados y abiertos) con
+  `lowshelf`/`highshelf`/`equalizer` y el limitador sin auto-nivel de los demás perfiles.
