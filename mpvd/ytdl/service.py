@@ -271,6 +271,16 @@ class YtdlService:
                                                   data=data))
         return data
 
+    async def list_entries(self, url: str, limit: int = 15, timeout: float = INFO_TIMEOUT) -> dict[str, Any]:
+        """The first ``limit`` entries of a list or channel, flat and uncached (H23 subscriptions):
+        ``--flat-playlist -J -I 1:N`` (``--playlist-end`` is not in the vendored ``--help`` any more; ``-I`` is), so
+        a channel with thousands of videos costs one page. Returns the summary plus ``entries``."""
+        n = max(1, min(200, int(limit)))
+        data = await self._run_json(["-J", "--flat-playlist", "--yes-playlist", "-I", f"1:{n}", "--", url],
+                                    timeout=timeout)
+        return {**info_mod.summary(data), "raw_type": data.get("_type") or "video",
+                "entries": info_mod.flat_entries(data)[:n]}
+
     async def analyze(self, url: str, force: bool = False, seed: str | None = None) -> dict[str, Any]:
         data = await self.raw_info(url, force=force, seed=seed)
         if (data.get("_type") or "video") == "playlist":

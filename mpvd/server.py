@@ -126,6 +126,9 @@ class MpvdServer:
         register_convert(self, self.convert)
         self.library = LibraryService(self)
         register_library(self, self.library)
+        from mpvd.subscriptions.service import FeedsService, register as register_feeds  # noqa: PLC0415 - H23
+        self.feeds = FeedsService(self)
+        register_feeds(self, self.feeds)
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -148,6 +151,7 @@ class MpvdServer:
         s.pid_path.write_text(str(os.getpid()), encoding="utf-8")
         await self.jobs.start()
         await self.ytdl.start()
+        await self.feeds.start()
         await self.convert.start()
         await self.schedule.start()
         await self.remote.maybe_autostart()
@@ -168,6 +172,7 @@ class MpvdServer:
                 await self._idle_task
         await self.sessions.close_all()
         await self.remote.close()
+        await self.feeds.close()
         await self.ytdl.close()
         await self.convert.close()
         await self.schedule.close()
@@ -205,7 +210,7 @@ class MpvdServer:
             if timeout <= 0:
                 continue
             idle = not self.sessions and not self._peers and self.jobs.pending() == 0 and self.remote.clients == 0 \
-                and not self.schedule.busy()  # scheduled recordings keep mpvd alive after the player closes
+                and not self.schedule.busy() and not self.feeds.busy()  # recordings and subscriptions keep it alive
             if idle and time.time() - self.last_activity > timeout:
                 log.info("idle for %.0fs without sessions: exiting", timeout)
                 self.request_shutdown()

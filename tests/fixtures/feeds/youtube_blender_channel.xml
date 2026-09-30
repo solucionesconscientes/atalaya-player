@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+ <link rel="self" href="http://www.youtube.com/feeds/videos.xml?channel_id=UCSMOQeBJ2RAnuFungnQOxLg"/>
+ <id>yt:channel:SMOQeBJ2RAnuFungnQOxLg</id>
+ <yt:channelId>SMOQeBJ2RAnuFungnQOxLg</yt:channelId>
+ <title>Blender</title>
+ <link rel="alternate" href="https://www.youtube.com/channel/UCSMOQeBJ2RAnuFungnQOxLg"/>
+ <author>
+  <name>Blender</name>
+  <uri>https://www.youtube.com/channel/UCSMOQeBJ2RAnuFungnQOxLg</uri>
+ </author>
+ <published>2008-05-29T10:18:59+00:00</published>
+ <entry>
+  <id>yt:video:SVJiCL3K0j4</id>
+  <yt:videoId>SVJiCL3K0j4</yt:videoId>
+  <yt:channelId>UCSMOQeBJ2RAnuFungnQOxLg</yt:channelId>
+  <title>The Future of Rendering — BCON26</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=SVJiCL3K0j4"/>
+  <author>
+   <name>Blender</name>
+   <uri>https://www.youtube.com/channel/UCSMOQeBJ2RAnuFungnQOxLg</uri>
+  </author>
+  <published>2026-09-28T17:42:08+00:00</published>
+  <updated>2026-09-30T07:33:42+00:00</updated>
+  <media:group>
+   <media:title>The Future of Rendering — BCON26</media:title>
+   <media:content url="https://www.youtube.com/v/SVJiCL3K0j4?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i4.ytimg.com/vi/SVJiCL3K0j4/hqdefault.jpg" width="480" height="360"/>
+   <media:description>&quot;The Future of Rendering&quot; by Jules Urbach at Blender Conference 2026
+Covering emerging trends in GPU rendering for motion graphics, film making, product design, VFX, games, virtual production, immersive media and more – with deep dives on the latest traditional and neural rendering technologies, and their converging workflows.
+–
+Learn more about Blender Conference 2026 at https://conference.blender.org/2026/
+#b3d #BCON26</media:description>
+   <media:community>
+    <media:starRating count="174" average="5.00" min="1" max="5"/>
+    <media:statistics views="11577"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:TqP7Hyy_MFo</id>
+  <yt:videoId>TqP7Hyy_MFo</yt:videoId>
+  <yt:channelId>UCSMOQeBJ2RAnuFungnQOxLg</yt:channelId>
+  <title>Subject Extraction for Scene Reconstruction in VFX — BCON26</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=TqP7Hyy_MFo"/>
+  <author>
+   <name>Blender</name>
+   <uri>https://www.youtube.com/channel/UCSMOQeBJ2RAnuFungnQOxLg</uri>
+  </author>
+  <published>2026-09-28T17:06:44+00:00</published>
+  <updated>2026-09-28T21:41:31+00:00</updated>
+  <media:group>
+   <media:title>Subject Extraction for Scene Reconstruction in VFX — BCON26</media:title>
+   <media:content url="https://www.youtube.com/v/TqP7Hyy_MFo?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i1.ytimg.com/vi/TqP7Hyy_MFo/hqdefault.jpg" width="480" height="360"/>
+   <media:description>&quot;Subject Extraction for Scene Reconstruction in VFX&quot; by Vincent Dorenkamp at Blender Conference 2026
+Most VFX workflows start with the reconstruction of the scene based on the footage, in order to integrate new CG assets with the existing geometry and lighting of the scene. During that process an important step is the separation of the subject(s) from the background.&#13;
+&#13;
+In this talk Vincent will showcase a custom machine learning model for extracting subjects from footage for a better cg integration workflow.&#13;
+We'll look at the current state-of-the-art in image matting, this new model's architecture, color reconstruction for half-transparent subjects and how to work safely with external libraries in extensions asynchronously.
+–
+Learn more about Blender Conference 2026 at https://conference.blender.org/2026/
+#b3d #BCON26</media:description>
+   <media:community>
+    <media:starRating count="57" average="5.00" min="1" max="5"/>
+    <media:statistics views="4482"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:0wpz3oqb0YA</id>
+  <yt:videoId>0wpz3oqb0YA</yt:videoId>
+  <yt:channelId>UCSMOQeBJ2RAnuFungnQOxLg</yt:channelId>
+  <title>Audio Nodes: Live Sound, Living Geometry — BCON26</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=0wpz3oqb0YA"/>
+  <author>
+   <name>Blender</name>
+   <uri>https://www.youtube.com/channel/UCSMOQeBJ2RAnuFungnQOxLg</uri>
+  </author>
+  <published>2026-09-28T17:05:40+00:00</published>
+  <updated>2026-09-28T21:04:37+00:00</updated>
+  <media:group>
+   <media:title>Audio Nodes: Live Sound, Living Geometry — BCON26</media:title>
+   <media:content url="https://www.youtube.com/v/0wpz3oqb0YA?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i1.ytimg.com/vi/0wpz3oqb0YA/hqdefault.jpg" width="480" height="360"/>
+   <media:description>&quot;Audio Nodes: Live Sound, Living Geometry&quot; by Cem Özcan at Blender Conference 2026
+Audio Nodes is a Blender add-on that turns sound into a live creative input for Blender. Instead of treating audio as data baked to the timeline, it lets artists build sound-reactive systems with familiar node workflows using sequencers, samplers, audio filters, MIDI controls, FFT analysis, and real-time links to geometry nodes, shader nodes, or any Blender property that is driver-friendly.This workshop shows how audio can become a first-class driver inside Blender, enabling scenes that pulse, deform, glow, and perform in direct response to live sound.
+–
+Learn more about Blender Conference 2026 at https://conference.blender.org/2026/
+#b3d #BCON26</media:description>
+   <media:community>
+    <media:starRating count="92" average="5.00" min="1" max="5"/>
+    <media:statistics views="3856"/>
+   </media:community>
+  </media:group>
+ </entry>
+</feed>
