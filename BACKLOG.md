@@ -181,6 +181,45 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
 - [ ] «Emitir en directo» a una plataforma (YouTube Live, Twitch, PeerTube, Owncast) por RTMP con clave de emisión, para audiencias
       grandes. Chat y reacciones en salas privadas. Aviso legal: solo contenido que se puede compartir.
 
+## Ampliación aprobada por Ser el 2026-09-30 (H29–H33, se hacen antes de H26–H28)
+Decisión de Ser: NADA que traiga o pueda traer retraso. Fuera: subtítulos IA en directos, TV o radio, «directo en diferido» y
+traducción en directo. Fuera también: imagen (mejoras de imagen, visor de fotos), registro de escuchas (scrobbling) y torrents.
+
+## H29 · Subtítulos de vídeos de internet (sin retraso)
+- [ ] Subtítulos que da la web (manuales y automáticos de YouTube; los de otras webs que yt-dlp exponga) activables desde el panel
+      de subtítulos con elección de idioma (write-auto-subs / sub-langs verificados en `yt-dlp --help`); traducción offline del archivo
+      completo antes de mostrarla (nunca frase a frase en directo); «Guardar SRT» también para estas pistas. Test @network con un
+      vídeo de YouTube de más de 1 min con subtítulos automáticos.
+
+## H30 · TV: subtítulos y audios del canal, búsqueda por categoría
+- [ ] Pistas propias del canal con nombres legibles (RTVE trae WebVTT es/en/gl/ca/eu; audio «qaa» = Versión original, «ads» =
+      Audiodescripción), distintivos CC / VO / AD en la lista de canales y acceso rápido desde el menú. Sin traducción en directo.
+- [ ] Buscador dentro de cada categoría general: en España TV, España radio, cada país de Mundo, Radio mundial, Favoritos y
+      Recientes, «Buscar en esta lista» filtra solo sus canales (sin acentos, mismo motor que la búsqueda global).
+
+## H31 · Formatos de descarga y decodificación del equipo
+- [ ] Detectar qué códecs decodifica la gráfica (vainfo en Linux; D3D11/DXVA en Windows y VideoToolbox en macOS documentados) y
+      etiquetar en Calidad y Descargar «fluido en tu equipo» / «exigente (por procesador)».
+- [ ] Valores por defecto: vídeo original sin recodificar hasta 1080p con sus fps, códec preferido el que el equipo decodifica por
+      hardware, audio Opus original, contenedor MP4 (MKV como opción); solo audio en Opus original (MP3 320 kb/s y M4A como opciones);
+      HEVC solo como perfil «Más pequeño» en Convertir. Tamaños orientativos por hora en la ayuda.
+
+## H32 · Audio de primer nivel
+- [ ] Biblioteca musical (artista, álbum, año, género, carátulas, búsqueda); listas (crear, ordenar, guardar M3U8, cola «reproducir a
+      continuación», listas inteligentes, historial); sin cortes entre pistas y fundido opcional; volumen igualado por pista y álbum
+      (ReplayGain calculado en segundo plano si falta); ecualizador con perfiles de auriculares; salida exclusiva opcional.
+- [ ] Letras sincronizadas y carátulas; audiolibros y podcasts (marcadores, posición y velocidad por libro, capítulos, temporizador de
+      apagado); identificar y etiquetar canciones (opcional, desactivado). Sin registro de escuchas.
+- [ ] «Solo audio» para cualquier fuente (instantáneo en archivos locales; en internet recarga solo el audio) y opción de pasar a
+      solo audio al minimizar la ventana. Medido: ~3× menos CPU que decodificar por gráfica y ~10× menos que por procesador.
+
+## H33 · Nombre e identidad: Sintonía
+- [ ] Nombre público «Sintonía» (comando `sintonia`, entrada de escritorio, título de ventana, pantalla de inicio, PWA, textos y docs;
+      el repositorio y el slug interno siguen siendo mpv-uos). Logo aprobado «C · Anillo» (anillo de progreso azul señal #3D7BFF sobre
+      tinta #0D1320, punto ámbar #FFB020 de «en antena», play blanco; marca «sintonía» en minúsculas con el punto ámbar) como icono de
+      la app, de la PWA y de la bandeja; versión monocroma y variante sin fondo. El ámbar es el color de estado «en directo /
+      grabando / descargando» en toda la interfaz.
+
 ## H26 · Torrents · FUERA POR AHORA (decisión de Ser, 2026-09-30: no implementar)
 - [~] Propuesta aparcada: integrarse con qBittorrent (ya instalado; Ser activa su interfaz web en localhost) para añadir magnets, descargar en
       orden y «ver mientras descarga» en MPV-UOS, con libtorrent en el .venv solo como alternativa si no hay qBittorrent.
