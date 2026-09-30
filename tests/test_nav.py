@@ -25,6 +25,8 @@ MODULES = {
     "mu_notes": ("notes-menu", "mu-notes", "Mis notas"),
     "mu_record": ("record-menu", "mu-record", "Grabar"),
     "mu_library": ("library-menu", "mu-library", "Biblioteca"),
+    "mu_books": ("books-menu", "mu-books", "Audiolibros y podcasts"),
+    "mu_lyrics": ("lyrics-menu", "mu-lyrics", "Letra"),
 }
 CATEGORIES = ["Abrir", "TV y radio", "Descargas y conversión", "Subtítulos", "Imagen y sonido", "Grabar", "Herramientas",
               "Preferencias"]
