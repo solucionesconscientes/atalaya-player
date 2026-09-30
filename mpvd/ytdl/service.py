@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import os
 import time
 from pathlib import Path
@@ -35,6 +36,8 @@ if TYPE_CHECKING:
     from mpvd.server import MpvdServer, RpcContext
 
 log = logging.getLogger("mpvd.ytdl")
+URL_RE = re.compile(r"https?://[^\s\"'<>]+")
+MAX_BATCH = 500
 
 INFO_ARTIFACT = "ytdl-info"
 INFO_TTL = 6 * 3600.0          # googlevideo URLs expire after ~6 h (docs/YTDLP.md §7)
@@ -124,6 +127,9 @@ class YtdlService:
         return {**st.to_dict(), "auto": self.auto_update_enabled()}
 
     async def start(self) -> None:
+        n = self.downloads.resume_pending()
+        if n:
+            log.info("ytdl: %d unfinished download(s) resumed", n)
         if self.auto_update_enabled():
             self._auto_task = asyncio.create_task(self._auto_update(), name="mpvd-ytdl-autoupdate")
 
@@ -284,12 +290,20 @@ class YtdlService:
         options = {**defaults, **(params.get("options") or {})}
         try:
             if params.get("preset"):
-                return spec_from_preset(str(params["preset"]), str(url), options)
-            spec_dict = {**defaults, **{k: v for k, v in params.items() if k not in ("preset", "options", "notify",
-                                                                                     "title", "out_dir")}}
-            spec_dict.update(params.get("options") or {})
-            spec_dict["url"] = url
-            return DownloadSpec.from_dict(spec_dict)
+                spec = spec_from_preset(str(params["preset"]), str(url), options)
+            else:
+                spec_dict = {**defaults, **{k: v for k, v in params.items() if k not in ("preset", "options", "notify",
+                                                                                         "title", "out_dir")}}
+                spec_dict.update(params.get("options") or {})
+                spec_dict["url"] = url
+                spec = DownloadSpec.from_dict(spec_dict)
+            given = {**params, **(params.get("options") or {})}
+            if spec.playlist:   # a list or a channel: own numbered folder and no repeats, unless asked otherwise
+                if "list_folder" not in given:
+                    spec.list_folder = s.list_folders
+                if "archive" not in given:
+                    spec.archive = s.archive
+            return spec
         except KeyError as exc:
             raise RpcError(NOT_FOUND, f"unknown preset: {exc}") from exc
         except (ValueError, TypeError) as exc:
@@ -364,6 +378,36 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
         await service.require_binary()
         item = service.downloads.submit(ds, title=title or "", notify=notify or DEFAULT_NOTIFY, out_dir=out_dir)
         return item.to_dict()
+
+    @d.method("ytdl.download.batch")
+    async def download_batch(ctx: RpcContext, text: str | None = None, urls: list[str] | None = None,
+                             file: str | None = None, preset: str | None = None, options: dict[str, Any] | None = None,
+                             notify: str | None = None, out_dir: str | None = None) -> dict[str, Any]:
+        """Queue several URLs at once: pasted text (any separator), a list, or a text file with one URL per line
+        (``#`` comments). Duplicates are dropped; with the archive on, what was downloaded before is skipped."""
+        found: list[str] = []
+        sources = [text or ""]
+        if file:
+            try:
+                sources.append(Path(file).expanduser().read_text(encoding="utf-8", errors="replace"))
+            except OSError as exc:
+                raise RpcError(INVALID_PARAMS, f"no se puede leer {file}: {exc}") from None
+        for src in sources:
+            for line in src.splitlines():
+                if line.lstrip().startswith(("#", ";", "]")):
+                    continue
+                found += URL_RE.findall(line)
+        found += [u for u in (urls or []) if isinstance(u, str) and URL_RE.fullmatch(u.strip())]
+        unique = list(dict.fromkeys(u.strip().rstrip(".,;)") for u in found))[:MAX_BATCH]
+        if not unique:
+            raise RpcError(INVALID_PARAMS, "no hay ninguna URL")
+        await service.require_binary()
+        items = []
+        for url in unique:
+            ds = service.spec_from_params({"url": url, "preset": preset, "options": options})
+            ds.archive = ds.archive or service.downloads.settings.archive
+            items.append(service.downloads.submit(ds, notify=notify or DEFAULT_NOTIFY, out_dir=out_dir).to_dict())
+        return {"count": len(items), "items": items}
 
     @d.method("ytdl.downloads.list")
     async def downloads_list(ctx: RpcContext, include_finished: bool = True) -> list[dict[str, Any]]:

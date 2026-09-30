@@ -23,7 +23,9 @@ local SEARCH_EVENT = 'mu-ytdl-search-event'
 local MENU = 'mu-ytdl'
 local URL_MENU = 'mu-ytdl-url'              -- palettes get their own type (a palette cannot be update-menu'd in/out)
 local SEARCH_MENU = 'mu-ytdl-search'
-local OUR_MENUS = { [MENU] = true, [URL_MENU] = true, [SEARCH_MENU] = true }
+local BATCH_MENU = 'mu-ytdl-batch'          -- H19: several URLs / a list or channel URL
+local BATCH_EVENT = 'mu-ytdl-batch-event'
+local OUR_MENUS = { [MENU] = true, [URL_MENU] = true, [SEARCH_MENU] = true, [BATCH_MENU] = true }
 
 local opts = {
   ytdl_path = '',                   -- override: path(s) for ytdl_hook (default <root>/vendor/bin/yt-dlp, then PATH)
@@ -392,9 +394,14 @@ views.root = function()
     table.insert(items, { title = 'Con una URL abierta: solo audio, calidad y descargar',
                           icon = 'info', selectable = false, muted = true, align = 'center' })
   end
+  table.insert(items, { title = 'Descargar varias URL…', hint = 'pega enlaces o un archivo .txt', icon = 'playlist_add',
+                        value = { view = 'batch' } })
+  table.insert(items, { title = 'Descargar de una lista o canal…', hint = 'elige cuáles', icon = 'checklist',
+                        value = { view = 'batch', list = true } })
   local n = count_active()
   table.insert(items, { title = 'Descargas', hint = n > 0 and (tostring(n) .. ' activas') or nil, icon = 'downloading',
                         value = { view = 'downloads' }, separator = true })
+  table.insert(items, { title = 'Ajustes de descarga', icon = 'tune', value = { view = 'dl_settings' } })
   table.insert(items, { title = 'Estado de yt-dlp', icon = 'settings', value = { view = 'status' } })
   show(ROOT_TITLE, items)
 end
@@ -566,10 +573,12 @@ local function start_download(params)
     thumbnail = state.dl_options.thumbnail, metadata = state.dl_options.metadata,
     sponsorblock = state.dl_options.sponsorblock, playlist = state.dl_options.playlist,
   } or nil
-  if params.container then
-    params.options = params.options or {}
-    params.options.container = params.container
-    params.container = nil
+  for _, k in ipairs({ 'container', 'playlist', 'playlist_items' }) do  -- with a preset only `options` count
+    if params[k] ~= nil then
+      params.options = params.options or {}
+      params.options[k] = params[k]
+      params[k] = nil
+    end
   end
   rpc.call('ytdl.download', params, function(err, item)
     if err then osd('Descarga: ' .. fail(err, 'ytdl.download')) return end
@@ -841,6 +850,172 @@ local function url_typed(query)
   publish()
 end
 
+-- ---------------------------------------------------------------------------------------------
+-- H19: several URLs at once, a list or channel with check boxes, download settings
+
+local function urls_in(text)
+  local out, seen = {}, {}
+  for u in tostring(text or ''):gmatch('https?://[^%s"\'<>]+') do
+    u = u:gsub('[.,;)]+$', '')
+    if not seen[u] then seen[u] = true; table.insert(out, u) end
+  end
+  return out
+end
+
+local function batch_items(query, list_mode)
+  local typed = trim(query)
+  local urls = urls_in(typed)
+  local items = {}
+  local path = typed ~= '' and not typed:match('^https?://') and (mp.command_native({ 'expand-path', typed }) or typed)
+  local info = path and utils.file_info(path)
+  if info and info.is_file then
+    table.insert(items, { title = 'Leer los enlaces de ' .. typed, icon = 'description',
+                          value = { batch = 'video', file = typed } })
+    table.insert(items, { title = '… y bajar solo el audio (MP3)', icon = 'audiotrack',
+                          value = { batch = 'audio', file = typed } })
+  elseif list_mode or #urls == 1 then
+    if #urls >= 1 then
+      table.insert(items, { title = 'Ver la lista y elegir', hint = ellipsize(urls[1], 60), icon = 'checklist',
+                            value = { pl_url = urls[1] } })
+    end
+  end
+  if #urls >= 1 and not list_mode then
+    local n = #urls == 1 and '1 enlace' or (#urls .. ' enlaces')
+    table.insert(items, { title = 'Descargar ' .. n .. ' · vídeo', icon = 'movie', value = { batch = 'video' } })
+    table.insert(items, { title = 'Descargar ' .. n .. ' · solo audio (MP3)', icon = 'audiotrack', value = { batch = 'audio' } })
+  end
+  if #items == 0 then
+    items = uosc.message_items(list_mode and 'Pega la URL de una lista de reproducción o de un canal'
+      or 'Pega uno o varios enlaces (ctrl+v) o escribe la ruta de un .txt', 'link')
+  end
+  return items
+end
+
+local function batch_menu(items, extra)
+  local menu = {
+    type = BATCH_MENU, title = state.batch_list and 'URL de la lista o del canal' or 'Enlaces a descargar',
+    items = items, callback = { SCRIPT, BATCH_EVENT }, search_style = 'palette', search_debounce = 0,
+    on_search = 'callback', on_close = 'callback',
+    footnote = 'ctrl+v pega · se descartan los repetidos y lo ya descargado · ⌫ atrás',
+  }
+  for k, v in pairs(extra or {}) do menu[k] = v end
+  return menu
+end
+
+views.batch = function(args)
+  state.batch_list = args.list and true or false
+  state.batch_query = ''
+  local clip = clipboard_url()
+  local query = args.query or ''
+  local items = batch_items(query, state.batch_list)
+  remember(items)
+  publish()
+  uosc.open(batch_menu(items, { search_suggestion = query ~= '' and query or (clip and state.batch_list and clip or nil) }))
+end
+
+local function batch_typed(query)
+  state.batch_query = query or ''
+  local items = batch_items(query, state.batch_list)
+  remember(items)
+  uosc.update(batch_menu(items))
+  publish()
+end
+
+local function batch_download(kind, file)
+  local params = { preset = kind == 'audio' and 'audio_mp3_192' or 'video_best', notify = SCRIPT }
+  if file then params.file = mp.command_native({ 'expand-path', file }) or file else params.text = state.batch_query end
+  rpc.call('ytdl.download.batch', params, function(err, res)
+    if err then osd('Descargar: ' .. fail(err, 'ytdl.download.batch')) return end
+    osd(string.format('⬇ %d descargas en cola', res.count or 0))
+    state.stack = { { name = 'root', title = ROOT_TITLE } }
+    state.force_open = true
+    open_view({ name = 'downloads' })
+  end, 30)
+end
+
+-- a list or channel: every entry with a check box (all marked at first)
+views.playlist = function(args)
+  if not require_mpvd('Lista') then return end
+  local pl = state.pl
+  if not pl or pl.url ~= args.url then
+    show('Lista', uosc.loading_items('Leyendo la lista…'))
+    rpc.call('ytdl.playlist', { url = args.url }, function(err, res)
+      if state.view ~= 'playlist' then return end
+      if err then show('Lista', uosc.message_items(fail(err, 'ytdl.playlist'), 'error')) return end
+      local sel = {}
+      for i = 1, #(res.entries or {}) do sel[i] = true end
+      state.pl = { url = args.url, title = res.title or args.url, entries = res.entries or {}, sel = sel }
+      reopen_current()
+    end, 90)
+    return
+  end
+  local n = 0
+  for i = 1, #pl.entries do if pl.sel[i] then n = n + 1 end end
+  local items = {
+    { title = n == #pl.entries and 'Desmarcar todo' or 'Marcar todo', hint = n .. ' de ' .. #pl.entries,
+      icon = n == #pl.entries and 'check_box' or 'check_box_outline_blank', value = { pl_all = true }, keep_open = true },
+    { title = 'Descargar ' .. n .. ' · vídeo', icon = 'movie', value = { pl_download = 'video' }, muted = n == 0 },
+    { title = 'Descargar ' .. n .. ' · solo audio (MP3)', icon = 'audiotrack', value = { pl_download = 'audio' },
+      muted = n == 0, separator = true },
+  }
+  for i, e in ipairs(pl.entries) do
+    table.insert(items, { title = e.title or e.url or ('#' .. i), hint = fmt_duration(e.duration),
+      icon = pl.sel[i] and 'check_box' or 'check_box_outline_blank', value = { pl_toggle = i }, keep_open = true })
+  end
+  show('Lista · ' .. ellipsize(pl.title or '', 50), items,
+       { footnote = 'Enter marca / desmarca · carpeta propia y numeración · ⌫ atrás' })
+end
+
+local function playlist_download(kind)
+  local pl = state.pl
+  if not pl then return end
+  local idx = {}
+  for i = 1, #pl.entries do if pl.sel[i] then table.insert(idx, tostring(i)) end end
+  if #idx == 0 then osd('Marca al menos uno') return end
+  local all = #idx == #pl.entries
+  start_download({ url = pl.url, title = pl.title, preset = kind == 'audio' and 'audio_mp3_192' or 'video_best',
+                   playlist = true, playlist_items = not all and table.concat(idx, ',') or nil })
+end
+
+local RATE_STEPS = { '', '500K', '1M', '2M', '5M', '10M' }
+
+views.dl_settings = function()
+  if not require_mpvd('Ajustes de descarga') then return end
+  rpc.call('ytdl.settings.get', nil, function(err, st)
+    if state.view ~= 'dl_settings' then return end
+    if err then show('Ajustes de descarga', uosc.message_items(fail(err, 'ytdl.settings.get'), 'error')) return end
+    state.dl_settings = st
+    show('Ajustes de descarga', {
+      { title = 'Descargas a la vez', hint = tostring(st.concurrent or 2), icon = 'stacks', value = { dlset = 'concurrent' } },
+      { title = 'Límite de velocidad', hint = (st.rate_limit or '') ~= '' and (st.rate_limit .. 'B/s') or 'sin límite',
+        icon = 'speed', value = { dlset = 'rate_limit' } },
+      { title = 'No repetir lo ya descargado', hint = st.archive and 'sí' or 'no', active = st.archive, icon = 'history',
+        value = { dlset = 'archive' } },
+      { title = 'Listas y canales en su carpeta, numerados', hint = st.list_folders and 'sí' or 'no',
+        active = st.list_folders, icon = 'folder_special', value = { dlset = 'list_folders' } },
+    }, { footnote = 'Enter cambia · se aplica a las descargas nuevas · ⌫ atrás' })
+  end, 15)
+end
+
+local function dl_setting(key)
+  local st = state.dl_settings or {}
+  local value
+  if key == 'concurrent' then
+    value = ((tonumber(st.concurrent) or 2) % 4) + 1
+  elseif key == 'rate_limit' then
+    local cur = st.rate_limit or ''
+    local nxt = 1
+    for i, r in ipairs(RATE_STEPS) do if r == cur then nxt = i % #RATE_STEPS + 1 end end
+    value = RATE_STEPS[nxt]
+  else
+    value = not st[key]
+  end
+  rpc.call('ytdl.settings.set', { [key] = value }, function(err)
+    if err then osd('Ajustes: ' .. fail(err, 'ytdl.settings.set')) end
+    reopen_current()
+  end, 15)
+end
+
 -- yt_search: submit palette (Enter with nothing selected searches; typing deselects), results from ytdl.search.
 local SEARCH_HELP = 'Escribe y pulsa Enter para buscar en YouTube'
 local search_seq = 0
@@ -998,13 +1173,32 @@ local function on_event(source, json)
         if err then return end
         rpc.call('ytdl.settings.set', { auto_update = not s.auto_update }, function() open_view({ name = 'status' }, false) end)
       end)
+    elseif v.batch then
+      batch_download(v.batch, v.file)
+    elseif v.pl_url then
+      state.pl = nil
+      open_view({ name = 'playlist', args = { url = v.pl_url } })
+    elseif v.pl_toggle then
+      state.pl.sel[v.pl_toggle] = not state.pl.sel[v.pl_toggle]
+      reopen_current()
+    elseif v.pl_all then
+      local all = true
+      for i = 1, #state.pl.entries do if not state.pl.sel[i] then all = false end end
+      for i = 1, #state.pl.entries do state.pl.sel[i] = not all end
+      reopen_current()
+    elseif v.pl_download then
+      playlist_download(v.pl_download)
+    elseif v.dlset then
+      dl_setting(v.dlset)
     elseif v.view then
       if v.ensure then mp.commandv('script-message-to', 'mu_core', 'mu-ensure') end
       if v.view == 'root' then state.stack = {} end
       open_view({ name = v.view, args = v })
     end
   elseif ev.type == 'search' then
-    if source == URL_MENU then url_typed(ev.query or '') elseif source == SEARCH_MENU then run_search(ev.query or '') end
+    if source == URL_MENU then url_typed(ev.query or '')
+    elseif source == SEARCH_MENU then run_search(ev.query or '')
+    elseif source == BATCH_MENU then batch_typed(ev.query or '') end
   elseif ev.type == 'back' then
     table.remove(state.stack)
     if #state.stack == 0 then
@@ -1020,6 +1214,7 @@ end
 mp.register_script_message(EVENT, function(json) on_event(MENU, json) end)
 mp.register_script_message(URL_EVENT, function(json) on_event(URL_MENU, json) end)
 mp.register_script_message(SEARCH_EVENT, function(json) on_event(SEARCH_MENU, json) end)
+mp.register_script_message(BATCH_EVENT, function(json) on_event(BATCH_MENU, json) end)
 
 local reset_timer = nil
 mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)

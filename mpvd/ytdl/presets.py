@@ -56,6 +56,8 @@ class DownloadSpec:
     playlist: bool = False              # whole playlist vs only the referenced item
     playlist_items: str | None = None   # e.g. "1:5"
     sections: str | None = None         # time range only: "*10.5-16" (seconds; H18 «Grabar» of internet videos)
+    archive: bool = False               # skip what the download archive already has (lists, channels, batches)
+    list_folder: bool = False           # a playlist goes to its own folder with numbered files
     title: str | None = None            # display only
     extra: dict[str, Any] = field(default_factory=dict)  # display-only info (preset id...)
 
@@ -150,10 +152,24 @@ def progress_args() -> list[str]:
     ]
 
 
-def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLATE) -> list[str]:
-    """Arguments after the binary (+ its base args); the URL is last."""
+def list_template(template: str) -> str:
+    """``<list title>/<NNN> - <name>``: a folder per playlist or channel, files numbered in the list's order."""
+    return "%(playlist_title,playlist_id|Lista)s/%(playlist_index)03d - " + template
+
+
+RATE_RE = re.compile(r"^\d+(\.\d+)?[KMG]?$")
+
+
+def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLATE, rate_limit: str = "",
+               archive_file: str | None = None) -> list[str]:
+    """Arguments after the binary (+ its base args); the URL is last. ``rate_limit``: yt-dlp ``-r`` (``2M``, ``500K``);
+    ``archive_file``: the download archive used when ``spec.archive``."""
     spec.validate()
     args: list[str] = ["--no-overwrites", "--continue", "--ignore-errors", "--retries", "5", "--socket-timeout", "30"]
+    if rate_limit and RATE_RE.match(rate_limit):
+        args += ["-r", rate_limit]
+    if spec.archive and archive_file:
+        args += ["--download-archive", archive_file]
     args += ["-f", spec.format_expression()]
     if spec.kind == "video" and FORMAT_SORT[spec.container]:
         args += ["-S", FORMAT_SORT[spec.container]]
@@ -187,6 +203,8 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
         args += ["--yes-playlist"]
         if spec.playlist_items:
             args += ["--playlist-items", spec.playlist_items]
+        if spec.list_folder:
+            template = list_template(template)
     else:
         args += ["--no-playlist"]
     if spec.sections:

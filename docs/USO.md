@@ -73,6 +73,13 @@ abre. Si un canal entrelazado se ve con "peines" (7TV), pulsa `d`. Detalles en d
   `alt+l` muestra la cola con progreso. Destino: `~/Vídeos/MPV-UOS` y `~/Música/MPV-UOS`. Más en docs/YTDLP.md.
 - Contenedor de las descargas de vídeo: **mp4** prioriza H.264 + AAC (se abre en cualquier sitio; en YouTube el máximo es 1080p),
   **webm** VP9 + Opus y **mkv** la mejor calidad sin restricciones (AV1, 4K…). Se cambia en *Descargar → Opciones → Contenedor*.
+- **Varias a la vez** (*Descargas y conversión → Descargar varias URL…*): pega uno o muchos enlaces (`ctrl+v`; da igual el
+  separador) o escribe la ruta de un `.txt` con un enlace por línea; los repetidos se descartan. **Listas y canales**
+  (*Descargar de una lista o canal…*): pega su URL, *Ver la lista y elegir* muestra todos los vídeos marcados; desmarca los
+  que no quieras y descarga: van a una carpeta con el nombre de la lista, numerados (`001 - …`). Lo ya descargado de una
+  lista, un canal o un lote no se repite (archivo `ytdl-archive.txt` en tus datos).
+- **Ajustes de descarga**: descargas a la vez (1–4), límite de velocidad (sin límite, 500 KB/s … 10 MB/s), no repetir lo ya
+  descargado y carpeta por lista. Si cierras el reproductor con descargas a medias, siguen al volver a abrirlo.
 
 ## 4. Subtítulos con IA, traducción, duales y guardar SRT
 1. `alt+c` inicia los subtítulos IA del archivo local abierto (whisper.cpp; el modelo se elige según tu CPU, docs/BENCHMARKS.md).

@@ -229,7 +229,7 @@ def test_download_done_cancel_fail_retry_and_history(ytdl_env):
     saved = json.loads((tmp_path / "data" / "ytdl.json").read_text())
     assert saved["container"] == "mkv" and saved["subtitles"] is True
 
-    # history + settings survive a restart; an interrupted download is marked failed
+    # history + settings survive a restart; an interrupted download is resumed (H19)
     hist = tmp_path / "data" / "downloads.json"
     rows = json.loads(hist.read_text())
     rows.append({"id": "zz", "url": "https://fake.test/x", "status": "running", "out_dir": str(tmp_path),
@@ -239,7 +239,9 @@ def test_download_done_cancel_fail_retry_and_history(ytdl_env):
     async def fn2(server, c):
         rows = await c.call("ytdl.downloads.list")
         z = next(r for r in rows if r["id"] == "zz")
-        assert z["status"] == "failed" and "reinici" in z["error"]
+        assert z["status"] in ("queued", "running")
+        z = await wait_status(c, "zz", ("done", "failed"))
+        assert z["status"] == "done"
         assert (await c.call("ytdl.settings.get"))["container"] == "mkv"
         argv = [x for x in argv_lines(arglog)]
         d = await c.call("ytdl.download", {"url": "https://fake.test/again", "preset": "video_best"})
@@ -247,5 +249,60 @@ def test_download_done_cancel_fail_retry_and_history(ytdl_env):
         assert d["status"] == "done" and Path(d["outputs"][0]).suffix == ".mkv"  # container setting applied
         new = [x for x in argv_lines(arglog)][len(argv):]
         assert any("--embed-subs" in x for x in new)
+
+    with_server(tmp_path, fn2)
+
+
+def test_batch_rate_limit_archive_list_folders_and_resume_after_restart(ytdl_env):
+    """H19: several URLs at once (text or file, duplicates dropped), speed limit, download archive for lists/batches,
+    numbered folder per list, and an unfinished queue that a new mpvd resumes."""
+    tmp_path, arglog = ytdl_env
+    listing = tmp_path / "enlaces.txt"
+    listing.write_text("# mis vídeos\nhttps://fake.test/uno\nhttps://fake.test/dos\n", encoding="utf-8")
+
+    async def fn(server, c):
+        await c.call("ytdl.settings.set", {"rate_limit": "2M", "concurrent": 1})
+        res = await c.call("ytdl.download.batch", {
+            "text": "mira https://fake.test/uno, y https://fake.test/tres.\nhttps://fake.test/uno", "file": str(listing),
+            "preset": "audio_mp3_128"})
+        urls = [i["url"] for i in res["items"]]
+        assert res["count"] == 3 and urls == ["https://fake.test/uno", "https://fake.test/tres", "https://fake.test/dos"]
+        for it in res["items"]:
+            assert (await wait_status(c, it["id"], ("done", "failed")))["status"] == "done"
+        argv = [a for a in argv_lines(arglog) if a[-1] == "https://fake.test/tres"][-1]
+        assert argv[argv.index("-r") + 1] == "2M"
+        assert argv[argv.index("--download-archive") + 1] == str(tmp_path / "data" / "ytdl-archive.txt")
+        with pytest.raises(Exception):
+            await c.call("ytdl.download.batch", {"text": "nada por aquí"})
+        # a list: its own numbered folder and the archive (settings defaults), only the chosen entries
+        pl = await c.call("ytdl.download", {"url": "https://www.youtube.com/playlist?list=PL1", "preset": "video_360",
+                                             "options": {"playlist": True, "playlist_items": "1,3"}})
+        argv = [a for a in argv_lines(arglog) if a[-1] == "https://www.youtube.com/playlist?list=PL1"]
+        deadline = time.monotonic() + 10
+        while not argv and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+            argv = [a for a in argv_lines(arglog) if a[-1] == "https://www.youtube.com/playlist?list=PL1"]
+        a = argv[-1]
+        assert a[a.index("-o") + 1].startswith("%(playlist_title,playlist_id|Lista)s/%(playlist_index)03d - ")
+        assert "--download-archive" in a and a[a.index("--playlist-items") + 1] == "1,3"
+        await wait_status(c, pl["id"], ("done", "failed"))
+        # a single video does not use the archive (a second format of the same video must download)
+        one = await c.call("ytdl.download", {"url": "https://fake.test/cuatro", "preset": "video_360"})
+        await wait_status(c, one["id"], ("done", "failed"))
+        a = [x for x in argv_lines(arglog) if x[-1] == "https://fake.test/cuatro"][-1]
+        assert "--download-archive" not in a
+
+    with_server(tmp_path, fn)
+
+    # an mpvd that stopped with a download under way: the next one resumes it
+    hist = tmp_path / "data" / "downloads.json"
+    rows = json.loads(hist.read_text(encoding="utf-8"))
+    rows[0]["status"], rows[0]["outputs"] = "running", []
+    rows[0]["id"] = "interrupted1"
+    hist.write_text(json.dumps(rows), encoding="utf-8")
+
+    async def fn2(server, c):
+        d = await wait_status(c, "interrupted1", ("done", "failed"))
+        assert d["status"] == "done" and d["outputs"]
 
     with_server(tmp_path, fn2)

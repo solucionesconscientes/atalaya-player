@@ -85,6 +85,9 @@ class DownloadSettings:
     metadata: bool = True
     sponsorblock: str = "none"
     concurrent: int = 2
+    rate_limit: str = ""        # yt-dlp -r for every download ("" = no limit; "2M", "500K")
+    archive: bool = True        # lists, channels and batches skip what was already downloaded
+    list_folders: bool = True   # a list or channel goes to its own folder, numbered
 
     def resolved_dir(self, kind: str) -> Path:
         raw = self.video_dir if kind == "video" else self.audio_dir
@@ -271,6 +274,7 @@ class DownloadItem:
     finished_at: float | None = None
     job_id: str | None = None
     notify: str | None = None
+    resume: bool = False
     argv: list[str] = field(default_factory=list)
     stderr_tail: list[str] = field(default_factory=list)
     _proc: asyncio.subprocess.Process | None = field(default=None, repr=False)
@@ -294,8 +298,9 @@ class DownloadItem:
                   "attempts", "created_at", "started_at", "finished_at"):
             if k in d and d[k] is not None:
                 setattr(item, k, d[k])
-        if item.status not in FINAL:  # interrupted by a daemon restart
-            item.status, item.message, item.error = "failed", "interrumpida", "mpvd se reinició durante la descarga"
+        if item.status not in FINAL:  # interrupted by a daemon restart: the manager resumes it (yt-dlp --continue)
+            item.status, item.message = "queued", "se reanudará"
+            item.resume = True
         return item
 
 
@@ -307,6 +312,7 @@ class DownloadManager:
         self.data_dir = data_dir
         self.settings_path = data_dir / "ytdl.json"
         self.history_path = data_dir / "downloads.json"
+        self.archive_path = data_dir / "ytdl-archive.txt"   # yt-dlp --download-archive (ids already downloaded)
         self.settings = DownloadSettings.load(self.settings_path)
         self.on_change = on_change
         self.items: dict[str, DownloadItem] = {}
@@ -394,6 +400,15 @@ class DownloadManager:
         item.job_id = job.id
         self._changed(item, persist=True)
 
+    def resume_pending(self) -> int:
+        """Queue again what a previous mpvd left unfinished (yt-dlp --continue picks up the .part files)."""
+        pending = [self.items[i] for i in self._order if i in self.items and self.items[i].resume]
+        for item in pending:
+            item.resume = False
+            item.attempts = max(0, item.attempts - 1)   # a restart is not a retry
+            self._start(item)
+        return len(pending)
+
     def cancel(self, item_id: str) -> bool:
         item = self.items.get(item_id)
         if item is None or item.status in FINAL:
@@ -461,7 +476,8 @@ class DownloadManager:
         while sum(1 for i in self.items.values() if i.status == "running") >= max(1, self.settings.concurrent):
             await asyncio.sleep(0.5)
         Path(item.out_dir).mkdir(parents=True, exist_ok=True)
-        args = build_args(item.spec, item.out_dir, self.settings.template)
+        args = build_args(item.spec, item.out_dir, self.settings.template, self.settings.rate_limit,
+                          str(self.archive_path))
         item.argv = binary.command(*args)
         item.status, item.stage, item.message, item.started_at = "running", "download", "iniciando…", time.time()
         self._changed(item)

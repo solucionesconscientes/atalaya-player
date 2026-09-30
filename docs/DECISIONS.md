@@ -231,4 +231,12 @@
   reescrito en FLAC). Descartado `dump-cache` para locales (necesita `--cache=yes` y con fuentes MKV pierde los
   fotogramas B). Indicador: superposición ASS «● REC m:ss» a 1 Hz y contador en el botón; alt+r de mu-iptv queda como
   binding sin tecla. Carpeta recordada en mu-prefs; por defecto `<Vídeos>/MPV-UOS/Grabaciones` (`record.defaults`).
+- ADR-045 · Gestor de descargas (H19): lote de URLs en mpvd (`ytdl.download.batch`: texto con cualquier separador,
+  lista o `.txt` con comentarios `#`; sin repetidos; máx. 500), una descarga por URL (progreso y cancelación
+  individuales). Listas y canales: una sola ejecución de yt-dlp con `--yes-playlist --playlist-items 1,3,…` (índices de
+  la lista plana) y plantilla `%(playlist_title,playlist_id|Lista)s/%(playlist_index)03d - …`. Archivo de descargas
+  (`--download-archive <datos>/ytdl-archive.txt`) solo en listas, canales y lotes: en un vídeo suelto impediría bajarlo
+  otra vez en otro formato. Límite de velocidad global (`-r`, validado `N[KMG]`) y simultáneas (ya existía, 1–4). La cola
+  sobrevive a reinicios: lo que no terminó se reencola al arrancar mpvd (`--continue` aprovecha los `.part`) en vez de
+  marcarse «interrumpida».
 
