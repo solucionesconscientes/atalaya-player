@@ -42,6 +42,13 @@ local EQ_PRESETS = {
     'equalizer=f=3000:t=q:w=1:g=3,' .. LIMIT },
   { id = 'headphones', title = 'Auriculares', graph = 'equalizer=f=50:t=q:w=0.8:g=3,equalizer=f=3500:t=q:w=1.5:g=-2,' ..
     'equalizer=f=8000:t=q:w=1:g=1.5,' .. LIMIT },
+  -- H32: generic corrections by headphone type (towards a neutral target; no per-model measurements are shipped)
+  { id = 'hp_inear', title = 'Auriculares de botón', headphones = true,
+    graph = 'lowshelf=f=90:g=4,equalizer=f=6000:t=q:w=1.5:g=-2.5,' .. LIMIT },
+  { id = 'hp_closed', title = 'Auriculares cerrados', headphones = true,
+    graph = 'equalizer=f=250:t=q:w=1:g=-2,equalizer=f=3000:t=q:w=1.2:g=1.5,highshelf=f=9000:g=1,' .. LIMIT },
+  { id = 'hp_open', title = 'Auriculares abiertos', headphones = true,
+    graph = 'lowshelf=f=60:g=5,equalizer=f=5000:t=q:w=1.5:g=-1.5,' .. LIMIT },
 }
 local EQ_GRAPHS = {}
 local EQ_TITLES = {}
@@ -130,8 +137,12 @@ local function active_filters()
 end
 
 local function publish()
+  local presets = {}
+  for _, e in ipairs(EQ_PRESETS) do
+    presets[#presets + 1] = { id = e.id, title = e.title, headphones = e.headphones or e.id == 'headphones' }
+  end
   mp.set_property_native('user-data/mu/av', {
-    filters = active_filters(), light = state.light, eq = state.eq,
+    filters = active_filters(), light = state.light, eq = state.eq, eq_presets = presets,
     minimized_audio = state.minimized_audio or false, models = state.models, view = state.view, items = state.items,
     last_error = state.last_error, diag = state.diag or {},
   })

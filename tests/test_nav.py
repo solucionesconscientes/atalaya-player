@@ -25,6 +25,7 @@ MODULES = {
     "mu_notes": ("notes-menu", "mu-notes", "Mis notas"),
     "mu_record": ("record-menu", "mu-record", "Grabar"),
     "mu_library": ("library-menu", "mu-library", "Biblioteca"),
+    "mu_music": ("music-menu", "mu-music", "Música"),
 }
 CATEGORIES = ["Abrir", "TV y radio", "Descargas y conversión", "Subtítulos", "Imagen y sonido", "Grabar", "Herramientas",
               "Preferencias"]
@@ -32,6 +33,7 @@ CATEGORIES = ["Abrir", "TV y radio", "Descargas y conversión", "Subtítulos", "
 
 @pytest.fixture
 def nav_mpv(daemon_env, media_dir):
+    daemon_env.extra_env["MPV_UOS_MUSIC_DIR"] = ""     # «Música» must not scan the developer's real Music folder
     h = start_mpv(daemon_env.runtime_dir, [MU_OPTS, "--keep-open=yes", "--pause=yes"], env=daemon_env.env)
     try:
         h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected" and v.get("uosc"),

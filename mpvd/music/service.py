@@ -597,6 +597,23 @@ def register(server: MpvdServer, service: MusicService) -> None:  # noqa: C901 -
             return {"path": path, "indexed": False}
         return {**(await asyncio.to_thread(service.decorate, [t]))[0], "indexed": True}
 
+    @d.method("music.describe")
+    async def describe(ctx: RpcContext, paths: list[str]) -> list[dict[str, Any]]:
+        """Titles for a list of paths (the queue): library tags when indexed, the file name otherwise."""
+        paths = _paths(paths)[:5000]
+        rows = await asyncio.to_thread(service.store.tracks, None, None, None, None, [_local(p) for p in paths])
+        known = {t["path"]: t for t in await asyncio.to_thread(service.decorate, rows)}
+        out = []
+        for p in paths:
+            t = known.get(_local(p))
+            if t is not None:
+                out.append({"path": p, "title": t["title"], "artist": t["artist"], "album": t["album"],
+                            "duration": t["duration"], "indexed": True})
+            else:
+                out.append({"path": p, "title": p if _is_url(p) else Path(_local(p)).stem, "artist": "", "album": "",
+                            "duration": 0.0, "indexed": False})
+        return out
+
     @d.method("music.gain")
     async def gain(ctx: RpcContext, path: str, measure: bool = True) -> dict[str, Any]:
         """ReplayGain for playback: tags present, computed track and album gain (measured now when missing)."""
