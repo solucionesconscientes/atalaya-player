@@ -1,7 +1,9 @@
 """whisper.cpp engine: one ``whisper-cli`` process per audio chunk, JSON output parsed into segments.
 
 Verified against whisper.cpp 1.9.x (``examples/cli/cli.cpp``): ``-oj -of <base>`` writes ``<base>.json`` with
-``result.language`` and ``transcription[] = {timestamps:{from,to}, offsets:{from,to} (ms), text}``.
+``result.language`` and ``transcription[] = {timestamps:{from,to}, offsets:{from,to} (ms), text}``; ``-ojf`` adds
+``tokens[] = {text, offsets:{from,to} (ms), t_dtw (cs, −1 without --dtw), p, id}`` per segment (H16, docs/WHISPER.md).
+Cues are then built from the words (mpvd/asr/timing.py); without tokens the segments are used as before.
 A global lock serialises whisper processes: on a 4-core laptop two concurrent decoders only thrash.
 """
 
@@ -19,6 +21,8 @@ from typing import Any
 
 from mpvd.asr.models import VAD_MODEL, ModelError, ModelStore, find_binary
 from mpvd.asr.srt import Segment, clean_text
+from mpvd.asr.timing import (align_to_stretches, build_cues, parse_vad_segments, remap_words, speech_regions,
+                              split_stretches, words_from_cli_json)
 
 log = logging.getLogger("mpvd.asr")
 
@@ -58,6 +62,38 @@ def parse_cli_json(data: dict[str, Any]) -> tuple[list[Segment], str]:
             segs.append(Segment(start, end, text))
     lang = str((data.get("result") or {}).get("language") or (data.get("params") or {}).get("language") or "")
     return segs, lang
+
+
+def cues_from_cli_json(data: dict[str, Any], wav: Path | None = None, audio_seconds: float | None = None,
+                       log_text: str = "") -> tuple[list[Segment], str, int]:
+    """Cues timed from word timestamps (``-ojf``) snapped to the voice; falls back to the plain segments when the JSON
+    has no tokens. With whisper's VAD the token times are brought back to the original audio with the table in its
+    log and its speech stretches are the voice; without it, an energy VAD on ``wav``. Returns (cues, language, words)."""
+    segs, lang = parse_cli_json(data)
+    words = words_from_cli_json(data)
+    if not words:
+        return segs, lang, 0
+    energy = speech_regions(wav) if wav is not None and wav.exists() else []
+    table = parse_vad_segments(log_text)
+    if table:
+        words = remap_words(words, table)
+        regions = split_stretches([(o0, o1) for o0, o1, _, _ in table], energy)
+    else:
+        regions = [(a, b) for a, b in energy if b - a >= 0.3]
+    # every word inside one stretch of voice (identity time map): token and DTW times drift at the edges of phrases
+    words = align_to_stretches(words, [(a, b, a, b) for a, b in regions])
+    return build_cues(words, regions, limit=audio_seconds), lang, len(words)
+
+
+def dtw_preset(model: str) -> str | None:
+    """whisper.cpp ``--dtw`` alignment-head preset for a catalogue model (quantised files share the preset of their
+    size; verified with ggml-small-q8_0 + ``--dtw small``). None when unknown."""
+    base = model.split("-q")[0]
+    if base.startswith("large-v3-turbo"):
+        return "large.v3.turbo"
+    if base.startswith("large-v"):
+        return "large." + base.removeprefix("large-")
+    return base if base in ("tiny", "tiny.en", "base", "base.en", "small", "small.en", "medium", "medium.en") else None
 
 
 def library_env(cli: Path) -> dict[str, str]:
@@ -118,7 +154,7 @@ class WhisperEngine:
         if self.cli is None:
             raise EngineError("whisper-cli not found (vendor/whisper/bin or PATH)")
         args = [str(self.cli), "-m", str(model_path), "-f", str(wav), "-t", str(self.threads), "-l", language or "auto",
-                "-oj", "-of", str(out_base), "-np"]
+                "-ojf", "-of", str(out_base)]  # no -np: the log carries the VAD time table (timing.py)
         if translate:
             args.append("-tr")
         if prompt:
@@ -134,6 +170,11 @@ class WhisperEngine:
         vad = self.models.find(VAD_MODEL) if self.use_vad else None
         if vad is not None:
             args += ["--vad", "--vad-model", str(vad)]
+        else:
+            # without VAD the token offsets are coarse: DTW word times (needs flash attention off, ~+20 % time)
+            preset = dtw_preset(model_path.name.removeprefix("ggml-").removesuffix(".bin"))
+            if preset:
+                args += ["--dtw", preset, "-nfa"]
         return args
 
     async def transcribe(self, wav: Path, model: str, language: str | None = None, translate: bool = False,
@@ -164,12 +205,14 @@ class WhisperEngine:
             tail = err.decode("utf-8", "replace").strip()[-400:]
             raise EngineError(f"whisper-cli failed ({proc.returncode}): {tail}")
         try:
-            data = json.loads(out_json.read_text(encoding="utf-8"))
+            # whisper.cpp copies token text byte by byte: a multi-byte character split across tokens is invalid UTF-8
+            data = json.loads(out_json.read_bytes().decode("utf-8", "replace"))
         except ValueError as exc:
             raise EngineError(f"bad JSON from whisper-cli: {exc}") from exc
         finally:
             out_json.unlink(missing_ok=True)
-        segments, lang = parse_cli_json(data)
+        segments, lang, _ = await asyncio.to_thread(cues_from_cli_json, data, wav, audio_seconds,
+                                                    err.decode("utf-8", "replace"))
         self.stats["runs"] += 1
         self.stats["elapsed"] += elapsed
         self.stats["audio"] += audio_seconds

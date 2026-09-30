@@ -49,9 +49,10 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-H16 · Sincronía de los subtítulos IA (tiempos por palabra de whisper.cpp: verificar primero las opciones reales del whisper-cli
-vendorizado — `--dtw`, `-ml`, `-sow`, `-ojf`/tokens — con un subagente; luego cortes y reglas de lectura con test de desfase < 150 ms).
-H15 cerrado (2026-09-30, ADR-041). H14 cerrado (2026-09-30). Pendiente de Ser: abrir el puerto del mando en ufw y probar el desentrelazado con 7TV (NEEDS_HUMAN.md).
+H17 · «Mis notas»: menú por vídeo (saltar, editar, borrar) sobre el módulo de notas de mu-study/mpvd `study.*` (mirar
+`mpvd/study/` y `docs/ESTUDIO.md`), ficheros con título legible en `<datos>/notas`, exportar junto al vídeo o a otra
+carpeta y enlaces `mpv-uos://` (x-scheme-handler en la entrada de escritorio de tools/install.sh, sin sudo; verificar con
+`xdg-mime`/`update-desktop-database` en ~/.local). H16 cerrado (ADR-042). H15 cerrado (2026-09-30, ADR-041). H14 cerrado (2026-09-30). Pendiente de Ser: abrir el puerto del mando en ufw y probar el desentrelazado con 7TV (NEEDS_HUMAN.md).
 Siguiente tanda posible: B11 «¿qué me he perdido?», B6 OCR de subtítulos, C2–C3 diccionario/Anki, E4 MPRIS, I1/I5.
 Backlog completo. Si se reanuda: (1) Ser abre el puerto del mando y autoriza Notion (NEEDS_HUMAN.md) y ejecuta `/registrar`;
 (2) nuevos hitos a partir del TOP 10 de docs/VISION.md, empezando por B11 "¿qué me he perdido?" (resumen extractivo de la
@@ -59,6 +60,24 @@ transcripción entre dos tiempos con los embeddings de H10) y E4 MPRIS (script m
 named pipe en mpvd (`server.py`, `client.py`, `mpvipc.py`) + `bin/mpv-uos.ps1`.
 
 ## Registro por iteración
+### Iteración nocturna 2026-09-30 · H16 · Sincronía de los subtítulos IA — hecho
+- Verificado (subagente + pruebas propias, docs/WHISPER.md): `-ojf` da tiempos por token; `--dtw` solo funciona con `-nfa`;
+  con `--vad` los tokens quedan en tiempo «solo voz» y el log (sin `-np`) trae la tabla para devolverlos.
+- `mpvd/asr/timing.py` (ADR-042): palabras desde tokens, tabla VAD → tiempo original, tramos de Silero partidos por pausas
+  de una VAD de energía, huecos asignados al mejor límite entre palabras, agrupación (pausas, comas, líneas de 42, máx. 84
+  caracteres / 7 s, cortes en tiempos reales de palabra), bordes a la voz y reglas de lectura (0,9 s mín., 17 car/s, 80 ms,
+  sin solapes). Sin modelo VAD: `--dtw <tamaño> -nfa` + VAD de energía. Caché de transcripciones → versión 2.
+- Medido (`tests/test_asr_timing_real.py`, frases en posiciones conocidas): inicio medio 27 ms con Silero y 4 ms con DTW
+  (criterio < 150 ms); antes, un solo subtítulo de 0,8 a 10,3 s juntaba tres frases.
+- test_subs_service: el SRT «retrasado» del test pasa a ser un retraso constante de 2,5 s sobre la voz real (antes
+  cuadraba solo con los tiempos imprecisos de whisper). `tools/check.sh`: 312 sin red + 8 con red en verde.
+- Probar a mano:
+  ```bash
+  uv run pytest tests/test_asr_timing.py tests/test_asr_timing_real.py -q
+  bin/mpv-uos tests/fixtures/media/voz_es_en.mkv    # alt+c: los subtítulos IA aparecen y se van con la voz
+  # una película ya subtitulada antes de H16 se vuelve a transcribir al abrirla (caché v2)
+  ```
+
 ### Iteración nocturna 2026-09-30 · H15 · Interfaz y navegación — hecho
 - `script-modules/mu/nav.lua` (ADR-041): migas en el título, fila «Atrás», ⌫/←/botón atrás del ratón y traspaso entre scripts
   (`mu-nav-open` / `mu-nav-return`); integrado en mu-menu, mu-iptv, mu-ytdl, mu-subs, mu-av, mu-intro, mu-study y mu-remote.

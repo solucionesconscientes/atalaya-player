@@ -125,7 +125,7 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
       preferencia (desactivada por defecto). Tests headless de navegación (entrar, atrás, cerrar) en todos los módulos.
 
 ## H16 · Sincronía de los subtítulos IA
-- [ ] Tiempos por palabra de whisper.cpp (verifica las opciones reales de la versión vendorizada: --dtw / -ml / -sow / tokens),
+- [x] Tiempos por palabra de whisper.cpp (verifica las opciones reales de la versión vendorizada: --dtw / -ml / -sow / tokens),
       cortes de líneas largas en tiempos reales de palabra, inicio y fin ajustados a los tramos de voz del VAD, reglas de lectura
       (mín./máx. duración, caracteres por segundo, sin solaparse). Test con audio de tiempos conocidos (desfase medio < 150 ms).
 

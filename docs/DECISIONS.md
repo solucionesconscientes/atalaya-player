@@ -198,3 +198,12 @@
   dentro de un segmento), `menu_item_height` 36→42 (letra ≈ 20 px), `?` ayuda (sustituye a la página de teclas de stats) y
   «Pausar con un clic» como preferencia desactivada: mientras está activa, `MBTN_LEFT` va a mu-menu (uosc sigue recibiendo los
   clics sobre sus elementos porque sus secciones se activan encima) y el clic deja de arrastrar la ventana.
+- ADR-042 · Subtítulos IA sincronizados con la voz (H16): whisper-cli con `-ojf` (tiempos por token) y sin `-np` (su log
+  trae la tabla tiempo-VAD → tiempo original: con `--vad` los tokens no vuelven solos). Se mantiene el VAD de Silero
+  (evita alucinaciones en silencio y da los bordes de voz) y los tramos se parten con una VAD de energía en pausas ≥ 0,25 s;
+  cada hueco entre tramos se asigna al límite entre palabras más plausible y las palabras se encajan en su tramo, porque los
+  tiempos de token se desvían 0,2–0,5 s en los cambios de frase. Sin modelo VAD: `--dtw <tamaño> -nfa` (+~20 % de tiempo)
+  y la VAD de energía. Descartado usar solo DTW sin VAD por defecto: más lento, alucina en silencios y no mejora los bordes
+  frente a Silero. Cortes y reglas de lectura en `mpvd/asr/timing.py` (docs/WHISPER.md). La caché de transcripciones
+  pasa a la versión 2: lo transcrito antes se rehace al volver a abrirlo (los SRT guardados no cambian).
+

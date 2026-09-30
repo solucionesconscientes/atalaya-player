@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("mpvd.asr")
 
 ARTIFACT = "asr"
-STATE_VERSION = "1"
+STATE_VERSION = "2"   # 2: cues timed from word timestamps and the voice (H16, ADR-042)
 DEFAULT_NOTIFY = "mu_subs"
 # ADR-024: whisper always encodes a 30 s window, so a chunk costs the same whether it holds 20 or 28.5 s of audio;
 # 28.5 s + PRE_ROLL + TAIL = 29.7 s still fits in one window (docs/BENCHMARKS.md).

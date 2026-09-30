@@ -64,3 +64,34 @@ terminar (reanudándola en baja prioridad) y guarda al acabar (evento `subs-save
 `dvd_subtitle`, `dvb_subtitle`) → error "subtítulo de imagen: necesita OCR". La tarea IA recuerda lo guardado (`saved`) para que
 mu-subs seleccione ese archivo, cargado por `sub-auto`, en vez de añadir la misma pista otra vez.
 
+## Tiempos por palabra y sincronía (H16, ADR-042)
+Verificado con el whisper-cli vendorizado (1.9.3-dev) — notas completas de la verificación en `tmp/whisper-word-timing.md`
+(no versionado):
+- No hay `--token-timestamps`: `-ojf` (`--output-json-full`) activa los tiempos por token y añade a cada segmento
+  `tokens[] = {text, timestamps, offsets:{from,to} (ms, resolución 10 ms), id, p, t_dtw}`. Los especiales `[_BEG_]` y
+  `[_TT_N]` van dentro de `tokens[]`. Una palabra empieza en el token cuyo texto empieza por espacio.
+- `--dtw <tiny|base|small|medium|large.v3|large.v3.turbo|….en>` rellena `t_dtw` (centisegundos, marca el FINAL del token)
+  solo con `-nfa`: con la atención flash (activada por defecto en esta versión) avisa `dtw_token_timestamps is not
+  supported with flash_attn - disabling` y deja −1. Funciona con los cuantizados (`ggml-small-q8_0.bin` + `--dtw small`).
+  `-nfa` cuesta 2–3 s más por trozo de 11 s en este portátil.
+- Con `--vad`, los segmentos vuelven al tiempo original, pero los tokens (y `t_dtw`) quedan en el tiempo «solo voz»
+  (tramos pegados). Sin `-np`, el log trae la tabla `whisper_vad: vad_segment_info: orig_start: …, orig_end: …,
+  vad_start: …, vad_end: …` y los tramos de Silero, que MPV-UOS usa para devolver cada palabra a su tiempo.
+
+Cómo se construyen los subtítulos (`mpvd/asr/timing.py`):
+1. Palabras desde los tokens (`t_dtw` si existe); con VAD, al tiempo original con la tabla del log.
+2. Tramos de voz: los de Silero, partidos en las pausas ≥ 0,25 s que ve una VAD de energía sobre el WAV (Python puro,
+   ~0,1 s por trozo); sin modelo VAD, la VAD de energía y `--dtw <tamaño> -nfa`.
+3. Cada hueco entre tramos se asigna al límite entre palabras más cercano (un fin de frase o una coma ayudan; tras un
+   artículo o preposición, no) y las palabras se encajan en su tramo: el tramo empieza con su primera palabra.
+4. Agrupación: una pausa ≥ 0,6 s corta siempre; ≥ 0,25 s corta tras fin de frase, tras coma si ya hay 25 caracteres o
+   en cualquier sitio si ya hay una línea (42). Más de 84 caracteres o 7 s: corte en el mejor límite de las últimas 6
+   palabras, en el tiempo real de la palabra.
+5. Bordes al inicio y fin de la voz cercanos (±0,35 s) y reglas de lectura: mínimo 0,9 s, ≤ 17 caracteres/s alargando
+   el final en el silencio siguiente, 80 ms entre subtítulos, sin solaparse.
+
+Medido con `tests/test_asr_timing_real.py` (cuatro frases de espeak-ng en posiciones conocidas; inicio real = primera
+muestra > 300): con Silero, inicio medio 27 ms (máx. 40) y fin medio 78 ms; sin VAD (DTW + energía), 4 ms y 35 ms. Antes
+de H16 whisper devolvía un único segmento de 0,8 a 10,3 s que juntaba tres frases. Tiempo: base 5,9 s (VAD) / 7,6 s
+(DTW) y small-q8_0 16,6 s / 18,2 s para 16,6 s de audio con el portátil ocupado.
+

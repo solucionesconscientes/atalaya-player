@@ -24,11 +24,13 @@ def test_subs_info_shift_and_resync(daemon_env, media_dir, tmp_path):
 
     # 1. resync before any transcription exists → pending with a precompute task
     srt = tmp_path / "pelicula.srt"
-    srt.write_text(render_srt([Segment(3.0, 5.0, "Bienvenido a MPV-UOS, el reproductor del futuro."),
-                               Segment(5.5, 8.0, "El rápido zorro marrón salta sobre el perro perezoso."),
-                               Segment(8.5, 11.0, "Hoy es un buen día para ver una película con subtítulos.")]), encoding="utf-8")
+    # the voice says these phrases at 0.03, 4.09 and 7.76 s (silencedetect): the file is 2.5 s late throughout
+    srt.write_text(render_srt([Segment(2.53, 6.2, "Bienvenido a MPV-UOS, el reproductor del futuro."),
+                               Segment(6.59, 9.9, "El rápido zorro marrón salta sobre el perro perezoso."),
+                               Segment(10.26, 13.8, "Hoy es un buen día para ver una película con subtítulos.")]),
+                   encoding="utf-8")
     info = d.call("subs.info", {"srt": str(srt)})
-    assert info["cues"] == 3 and info["start"] == 3.0
+    assert info["cues"] == 3 and info["start"] == 2.53
     r = d.call("subs.resync", {"path": src, "srt": str(srt), "language": "es", "model": asr_model()})
     assert r["status"] == "pending" and r["task"]["purpose"] == "precompute"
     deadline = time.monotonic() + 180
@@ -39,16 +41,16 @@ def test_subs_info_shift_and_resync(daemon_env, media_dir, tmp_path):
     # 2. now it aligns: the SRT was written ~2.5 s late with respect to the speech (which starts near 0.0–0.5 s)
     r = d.call("subs.resync", {"path": src, "srt": str(srt), "language": "es", "model": asr_model()})
     assert r["status"] == "done" and r["stats"]["ok"], r["stats"]
-    assert r["stats"]["matched"] >= 2 and -4.0 < r["stats"]["offset_median"] < -1.0, r["stats"]
+    assert r["stats"]["matched"] >= 2 and -3.0 < r["stats"]["offset_median"] < -2.0, r["stats"]
     out = parse_srt(open(r["srt"], encoding="utf-8").read())
-    assert len(out) == 3 and out[0].start < 1.5 and out[0].text.startswith("Bienvenido")
+    assert len(out) == 3 and out[0].start < 0.6 and out[0].text.startswith("Bienvenido")
     assert all(out[i].end <= out[i + 1].start + 1e-6 for i in range(2))
     assert r["srt"].startswith(str(d.cache_dir)) and r["srt"].endswith("pelicula.resync.srt")
 
     # 3. constant shift helper
     s = d.call("subs.shift", {"srt": str(srt), "offset": -1.0})
     sh = parse_srt(open(s["srt"], encoding="utf-8").read())
-    assert s["cues"] == 3 and abs(sh[0].start - 2.0) < 1e-6 and "shift-1.00" in s["srt"]
+    assert s["cues"] == 3 and abs(sh[0].start - 1.53) < 1e-6 and "shift-1.00" in s["srt"]
 
 
 @pytest.mark.skipif(not __import__("mpvd.subs.translate", fromlist=["runtime_available"]).runtime_available(),

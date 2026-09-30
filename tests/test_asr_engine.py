@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from mpvd.asr.audio import extract_wav, wav_duration
-from mpvd.asr.engine import WhisperEngine, parse_cli_json
+from mpvd.asr.engine import WhisperEngine, dtw_preset, parse_cli_json
 from mpvd.asr.models import CATALOG, VAD_MODEL, ModelStore, model_filename, model_url
 from tests.asr_helpers import ROOT, keywords_hit, min_keywords, asr_model, whisper_available
 
@@ -55,8 +55,14 @@ def test_engine_argv_uses_verified_cli_options(tmp_path):
     for flag, value in (("-f", "/tmp/a.wav"), ("-t", "3"), ("-l", "es"), ("-of", "/tmp/a"), ("-bs", "2"), ("-bo", "1"),
                         ("--prompt", "Hola"), ("--vad-model", str(tmp_path / model_filename(VAD_MODEL)))):
         assert argv[argv.index(flag) + 1] == value
-    for flag in ("-oj", "-np", "-tr", "-nf", "--vad"):
+    for flag in ("-ojf", "-tr", "-nf", "--vad"):
         assert flag in argv
+    assert "-np" not in argv and "--dtw" not in argv   # the log carries the VAD time table (H16)
+    no_vad = WhisperEngine(store, ROOT, threads=3, cli=Path("/x/whisper-cli"), use_vad=False)
+    argv = no_vad.argv(Path("/tmp/a.wav"), Path("/m/ggml-small-q8_0.bin"), Path("/tmp/a"), "es")
+    assert argv[argv.index("--dtw") + 1] == "small" and "-nfa" in argv and "--vad" not in argv
+    assert [dtw_preset(m) for m in ("tiny-q5_1", "base.en", "medium-q5_0", "large-v3", "large-v3-turbo-q5_0", "x")] == [
+        "tiny", "base.en", "medium", "large.v3", "large.v3.turbo", None]
     assert eng.argv(Path("/tmp/a.wav"), Path("/m/x.bin"), Path("/tmp/a"), None)[argv.index("-l") + 1] == "auto"
 
 
