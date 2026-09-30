@@ -452,7 +452,10 @@ class ArgosEngine:
     def __init__(self, store: ArgosStore, threads: int | None = None, beam_size: int = 2):
         self.store = store
         cpu = os.cpu_count() or 2
-        self.threads = threads or (max(1, min(cpu - 1, 8)) if cpu > 2 else max(1, cpu))
+        # Half the cores, not all but one: translating and transcribing are the two things that happen together (the
+        # subtitle menu invites exactly that, and the post-download chain does both), and with cpu-1 each they asked for
+        # six threads on a four-core laptop while mpv was still decoding. MPV_UOS_TRANSLATE_THREADS overrides it.
+        self.threads = threads or max(1, min(cpu // 2, 8))
         self.beam_size = beam_size
         self._loaded: dict[tuple[str, str], tuple[Any, Any]] = {}
         self.stats = {"sentences": 0, "seconds": 0.0}

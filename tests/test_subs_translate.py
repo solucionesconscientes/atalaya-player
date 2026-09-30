@@ -328,3 +328,19 @@ def test_opus_download_verify_and_convert(tmp_path):
     assert sorted(p.name for p in (tmp_path / "models").iterdir()) == [path.name]   # no zip / npz left behind
     out = opus.OpusEngine(store).translate(["No me tomes el pelo, Luis."], "es", "en")
     assert "hair" not in out[0].lower(), out
+
+
+def test_the_translator_leaves_cores_for_whisper_and_mpv():
+    """H34 · transcribir y traducir es justo lo que el menú invita a hacer a la vez (y lo que hace la cadena tras
+    descargar): con cpu-1 hilos cada uno pedían seis en un portátil de cuatro núcleos."""
+    import os
+
+    from mpvd.subs.opus import OpusEngine
+    from mpvd.subs.translate import ArgosEngine
+
+    cpu = os.cpu_count() or 2
+    for engine in (ArgosEngine(None, threads=None), OpusEngine(None, threads=None)):
+        assert 1 <= engine.threads <= max(1, cpu // 2)
+    # y se respeta lo que se pida a mano, también en máquinas de uno o dos núcleos (antes fallaban los paréntesis)
+    assert ArgosEngine(None, threads=3).threads == 3
+    assert OpusEngine(None, threads=3).threads == 3

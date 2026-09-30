@@ -290,7 +290,8 @@ class OpusEngine:
     def __init__(self, store: OpusStore, threads: int | None = None, beam_size: int = 4):
         self.store = store
         cpu = os.cpu_count() or 2
-        self.threads = threads or (max(1, min(cpu - 1, 8)) if cpu > 2 else cpu)
+        # half the cores: see the note in mpvd/subs/translate.py (transcribing and translating happen together)
+        self.threads = threads or max(1, min(cpu // 2, 8))
         self.beam_size = beam_size
         self._loaded: dict[str, tuple[Any, Any, Any]] = {}
         self.stats = {"sentences": 0, "seconds": 0.0, "load_seconds": 0.0}

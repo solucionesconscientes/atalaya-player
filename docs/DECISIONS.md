@@ -482,3 +482,16 @@
   de arranque con `msvcrt.locking` (acotado a 30 s). Como no hay Windows aquí, se prueba en Linux con un pwsh 7 portátil
   (`.cache/pwsh`, bajado por el test @network): parser real, `-DryRun` idéntico a `bin/mpv-uos`, descargas contra un servidor
   local e instalar/desinstalar en una carpeta temporal. La prueba en un Windows real queda en NEEDS_HUMAN.md.
+- ADR-067 · Reparto de CPU entre descargas, transcripción y traducción (H34). El problema: un trabajo de la cola de mpvd
+  dura todo lo que dure su tarea, y la cola tiene un worker por núcleo menos uno (tres en este portátil). Las descargas,
+  que duran minutos, llenaban la cola y los trabajos urgentes (subtítulos IA en vivo, traducir, clips) no arrancaban: el
+  sistema de prioridades quedaba anulado. Decisión: las descargas esperan en una cola propia del gestor
+  (`DownloadManager._pending`, como ya hacía `ConvertService`) y solo se manda a la cola de trabajos lo que de verdad va a
+  correr, como máximo «descargas a la vez». Lo que espera se ve igual en el panel y cuenta como activo.
+  Lo que NO se ha hecho, y por qué: un semáforo que limite los trabajos `heavy` simultáneos parecía la solución obvia para
+  que whisper (hilos = núcleos-1) y la traducción no pidan a la vez más hilos que núcleos hay. Se ha descartado porque
+  provocaría un bloqueo mutuo: la cadena tras descargar (`chain.*`, H23) es un trabajo `heavy` que espera desde dentro a
+  otros trabajos `heavy` (`asr.*`, `subs.translate`), así que el permiso nunca se liberaría. En su lugar, la traducción
+  (Argos y Opus) usa la mitad de los núcleos en vez de todos menos uno, que era el caso que se junta de verdad con la
+  transcripción (el menú de subtítulos invita a hacer las dos cosas, y la cadena hace las dos). Si algún día se quiere el
+  semáforo, antes hay que sacar la orquestación de la cadena de un trabajo `heavy`.

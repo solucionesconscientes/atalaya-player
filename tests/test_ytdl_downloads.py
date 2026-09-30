@@ -433,3 +433,22 @@ def test_stopping_mpvd_leaves_the_queue_to_be_resumed_not_cancelled(tmp_path, mo
     _server2, dl2 = idle_manager(tmp_path)        # a new mpvd over the same data folder
     assert dl2.resume_pending() == 3
     assert [i["status"] for i in dl2.list()] == ["queued"] * 3
+
+
+def test_the_queue_does_not_occupy_the_workers_of_the_job_pool(tmp_path, monkeypatch):
+    """H34 · cada descarga era un trabajo que duraba toda la descarga, así que tres llenaban la cola de trabajos de este
+    portátil y los urgentes (subtítulos en vivo, traducir, clips) no arrancaban: las prioridades no valían de nada."""
+    monkeypatch.setenv("MPV_UOS_DOWNLOAD_DIR", str(tmp_path / "dl"))
+    server, dl = idle_manager(tmp_path)
+    dl.settings.concurrent = 2
+
+    items = [dl.submit(DownloadSpec(url=f"https://fake.test/{n}")) for n in range(6)]
+    submitted = [j for j in server.jobs.list() if j["name"].startswith("download:")]
+    assert len(submitted) == 2, [j["name"] for j in submitted]
+    assert dl.active() == 6                     # the other four are waiting, and the panel shows them
+    assert len([r for r in dl.list(include_finished=False)]) == 6
+
+    # cancelling one that is only waiting frees nothing of the pool and leaves it cancelled
+    assert dl.cancel(items[-1].id) is True
+    assert items[-1].status == "cancelled"
+    assert len([j for j in server.jobs.list() if j["name"].startswith("download:")]) == 2

@@ -380,6 +380,8 @@ class DownloadManager:
         # downloading while being invisible in the panel and absent from downloads.json (a 250-link batch)
         self._order: deque[str] = deque()
         self._closing = False
+        self._pending: deque[str] = deque()   # ids waiting for a free slot (not inside a worker of the job pool)
+        self._active: set[str] = set()
         self._load_history()
 
     # -- persistence --------------------------------------------------------------------------
@@ -461,13 +463,33 @@ class DownloadManager:
         item.progress, item.speed, item.eta, item.downloaded, item.total = 0.0, None, None, 0.0, 0.0
         item.outputs, item.stderr_tail, item.info, item.post = [], [], {}, {}
         item.started_at = item.finished_at = None
+        item.job_id = None
         item.attempts += 1
-        # subscriptions queue in the background: whatever the user asks for goes first
-        priority = Priority.INDEX if item.spec.extra.get("priority") == "low" else Priority.INTERACTIVE
-        job = self.jobs.submit(f"download:{item.id}", lambda job: self._run(item, job), priority=priority,
-                               heavy=False, meta={"download": item.id})
-        item.job_id = job.id
+        self._pending.append(item.id)
         self._changed(item, persist=True)
+        self._pump()
+
+    def _pump(self) -> None:
+        """Submit at most ``concurrent`` downloads to the job pool.
+
+        A download's job lasts the whole download, so queueing them all inside the pool (which has one worker per core
+        minus one) starved everything else: on this laptop three downloads left no worker for the urgent jobs of live
+        subtitles, translation or clips, and the priorities stopped meaning anything. What waits, waits here.
+        """
+        if self._closing:
+            return
+        limit = max(1, self.settings.concurrent)
+        while len(self._active) < limit and self._pending:
+            item = self.items.get(self._pending.popleft())
+            if item is None or item.status != "queued" or item.job_id is not None:
+                continue
+            # subscriptions queue in the background: whatever the user asks for goes first
+            priority = Priority.INDEX if item.spec.extra.get("priority") == "low" else Priority.INTERACTIVE
+            job = self.jobs.submit(f"download:{item.id}", lambda job, it=item: self._run(it, job), priority=priority,
+                                   heavy=False, meta={"download": item.id})
+            item.job_id = job.id
+            self._active.add(item.id)
+            self._changed(item, persist=False)
 
     def resume_pending(self) -> int:
         """Queue again what a previous mpvd left unfinished (yt-dlp --continue picks up the .part files)."""
@@ -482,6 +504,8 @@ class DownloadManager:
         item = self.items.get(item_id)
         if item is None or item.status in FINAL:
             return False
+        with contextlib.suppress(ValueError):
+            self._pending.remove(item_id)     # still waiting for a slot: it never reached the job pool
         if item.job_id and self.jobs.cancel(item.job_id):
             # a job still in the queue (or waiting for a free slot) never reaches the CancelledError handler in _run
             if item.status != "running":
@@ -530,6 +554,9 @@ class DownloadManager:
 
     def _pause_for_restart(self, item: DownloadItem) -> None:
         """Leave a download ready for the next mpvd (yt-dlp --continue picks its .part file up)."""
+        self._active.discard(item.id)
+        with contextlib.suppress(ValueError):
+            self._pending.remove(item.id)
         if item.job_id:
             self.jobs.cancel(item.job_id)
         item.status, item.stage, item.message = "queued", "queued", "se reanudará"
@@ -539,6 +566,7 @@ class DownloadManager:
     # -- running ------------------------------------------------------------------------------
 
     def _finish(self, item: DownloadItem, status: str, message: str, error: str = "") -> None:
+        self._active.discard(item.id)
         item.status, item.message, item.error = status, message, error
         item.finished_at = time.time()
         item.speed = item.eta = None
@@ -611,13 +639,17 @@ class DownloadManager:
         return rc, ps, list(stderr_tail)
 
     async def _run(self, item: DownloadItem, job: Job) -> dict[str, Any]:
+        try:
+            return await self._download(item, job)
+        finally:
+            self._active.discard(item.id)
+            self._pump()          # the freed slot goes to whatever was waiting
+
+    async def _download(self, item: DownloadItem, job: Job) -> dict[str, Any]:
         binary = self._binary()
         if binary is None:
             self._finish(item, "failed", "yt-dlp no disponible", "yt-dlp not found (vendor/bin, $MPV_UOS_YTDLP or PATH)")
             raise RuntimeError(item.error)
-        # Wait for a slot (the job queue has more workers than we want concurrent downloads).
-        while sum(1 for i in self.items.values() if i.status == "running") >= max(1, self.settings.concurrent):
-            await asyncio.sleep(0.5)
         Path(item.out_dir).mkdir(parents=True, exist_ok=True)
         item.status, item.stage, item.message, item.started_at = "running", "download", "iniciando…", time.time()
         self._changed(item)
