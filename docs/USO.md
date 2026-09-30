@@ -209,6 +209,11 @@ se busca en los primeros 10 minutos y los créditos en los últimos 5. Hace falt
 ## 7. Sonido e imagen
 `alt+v`: diálogo claro, modo noche (`alt+n`), reducción de ruido, sonido binaural para auriculares, protección fotosensible, perfil ligero
 para equipos modestos y diagnóstico de tirones con recomendaciones. Más en docs/AUDIO_VIDEO.md.
+- **Solo audio** (`alt+a`): en un vídeo de internet recarga solo el audio (y se recuerda); en un archivo de tu equipo es
+  instantáneo y solo para ese archivo: el vídeo deja de decodificarse. *Solo audio al minimizar la ventana* (en `alt+v`,
+  desactivado) hace lo mismo mientras la ventana está minimizada y devuelve la imagen al volver. Medido en este portátil
+  con un 1080p60 H.264 (10 s): 6,7 s de CPU decodificando por procesador, 5,8 s con VA-API en modo copia y 0,5 s en solo
+  audio (unas 13 veces menos).
 - **Volumen igualado**: todos los vídeos suenan parecido de fuertes, sin tocar el mando (normalizador lento; tarda unos
   segundos en ajustarse al empezar).
 - **Ecualizador**: *Plano*, *Más graves*, *Menos graves*, *Más agudos*, *Voz*, *Música*, *Altavoces del portátil* y

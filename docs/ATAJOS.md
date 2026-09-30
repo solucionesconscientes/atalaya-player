@@ -54,7 +54,7 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 | Tecla | Acción |
 |---|---|
 | `alt+y` | Menú de vídeos de internet (abrir URL, buscar en YouTube, solo audio, calidad, descargar, descargas, estado) |
-| `alt+a` | Solo audio ⇄ vídeo, manteniendo la posición |
+| `alt+a` | Solo audio ⇄ vídeo, manteniendo la posición (internet: recarga solo el audio; archivos locales: al instante, sin decodificar el vídeo) |
 | `alt+q` | Calidad: todos los formatos; Enter cambia en caliente, Tab descarga ese formato |
 | `alt+d` | Descargar con un preset (vídeo/audio) y opciones |
 | `alt+l` | Descargas: progreso, cancelar, repetir, quitar |

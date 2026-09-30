@@ -380,9 +380,26 @@ local function reload(format, audio_only)
   if ok == nil then osd('No se pudo recargar ' .. url) end
 end
 
+-- H32: a local file (or any stream that is not yt-dlp's) goes audio-only at once: the video track is deselected for
+-- this file only (file-local vid=no), so nothing is decoded and the next file opens normally
+local function toggle_local_audio()
+  local path = mp.get_property('path') or ''
+  if path == '' then osd('No hay nada abierto') return end
+  local vid = mp.get_property('vid')
+  if vid == 'no' then
+    mp.set_property('file-local-options/vid', 'auto')
+    osd('🎬 Vídeo')
+  else
+    local v = mp.get_property_native('current-tracks/video')
+    if type(v) ~= 'table' or v.image then osd('Este archivo no tiene vídeo') return end
+    mp.set_property('file-local-options/vid', 'no')
+    osd('🎧 Solo audio: el vídeo no se decodifica')
+  end
+end
+
 local function toggle_audio()
   if not state.active then
-    osd('No hay ningún vídeo de yt-dlp cargado')
+    toggle_local_audio()
     return
   end
   if state.mode == 'audio' then

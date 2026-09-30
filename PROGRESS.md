@@ -62,6 +62,19 @@ la web» en mu-subs (sub-add; traducir con subs.translate sobre el SRT; guardar 
 H28, H25 punto 3–4 (túnel cloudflared solo con sala abierta, RTMP).
 
 ## Registro por iteración
+### Iteración nocturna 2026-09-30 · H32 · punto 3 (solo audio en cualquier fuente) — hecho
+- mu-ytdl: `alt+a` en archivos locales y directos sin yt-dlp = `vid=no` local del archivo (instantáneo, sin recargar).
+- mu-av: *Solo audio al minimizar la ventana* (mu-prefs, desactivado): observa `window-minimized`, quita la pista de
+  vídeo del archivo actual y la devuelve al volver.
+- Medido (tmp/bench, 1080p60 H.264, 10 s, `mpv --vo=null`): CPU 6,7 s por procesador, 5,8 s VA-API copia, 0,5 s solo
+  audio (~13×). Con VA-API directa a la gráfica (sin copia) no se puede medir sin ventana.
+- Tests: test_mu_av (alt+a local y siguiente archivo con imagen; minimizar con la opción apagada y encendida).
+- Probar a mano:
+  ```bash
+  bin/mpv-uos tests/fixtures/media/video30.mkv   # alt+a → «Solo audio: el vídeo no se decodifica» · alt+a otra vez
+  bin/mpv-uos tests/fixtures/media/video30.mkv   # alt+v → Solo audio al minimizar la ventana → minimiza y vuelve
+  ```
+
 ### Iteración nocturna 2026-09-30 · H29 · Subtítulos de vídeos de internet — hecho
 - Investigación real (tmp/research-websubs): estructura de `subtitles`/`automatic_captions`, `-orig`, traducciones
   automáticas de YouTube con 429, entradas HLS, formato «rodante» del VTT/SRT automático, argumentos de ytdl_hook.

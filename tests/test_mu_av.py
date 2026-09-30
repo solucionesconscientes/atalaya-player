@@ -5,6 +5,7 @@ diagnosis view reports counters and tips, and av.models lists the models."""
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -180,3 +181,38 @@ def test_volume_leveling_and_equalizer_are_applied_and_remembered(daemon_env, me
         assert "equalizer=f=60" in labelled(h, "af")["mu-eq"]["params"]["graph"]
     finally:
         h.stop()
+
+
+def test_audio_only_for_local_files_and_when_minimized(av_mpv, media_dir):
+    """H32: alt+a on a local file deselects the video at once (only for that file); «Solo audio al minimizar la
+    ventana» does the same while the window is minimized and brings the picture back afterwards."""
+    h, d = av_mpv
+    h.wait_property("user-data/mu/av", lambda v: bool(v) and "filters" in v, timeout=20)
+    h.command("loadfile", str(media_dir / "video30.mkv"))
+    h.wait_property("current-tracks/video", lambda v: isinstance(v, dict) and v.get("id") == 1, timeout=20)
+    h.command("script-binding", "mu_ytdl/ytdl-toggle-audio")
+    h.wait_property("vid", lambda v: v is False or v == "no", timeout=10)
+    assert h.get("current-tracks/audio") and h.get("time-pos") is not None
+    h.command("script-binding", "mu_ytdl/ytdl-toggle-audio")
+    h.wait_property("current-tracks/video", lambda v: isinstance(v, dict) and v.get("id") == 1, timeout=10)
+    # file-local: the next file opens with its picture
+    h.command("script-binding", "mu_ytdl/ytdl-toggle-audio")
+    h.wait_property("vid", lambda v: v is False or v == "no", timeout=10)
+    h.command("loadfile", str(media_dir / "chapters.mkv"))
+    h.wait_property("current-tracks/video", lambda v: isinstance(v, dict) and v.get("id") == 1, timeout=20)
+
+    # minimized: off by default → nothing happens
+    h.command("set", "window-minimized", "yes")
+    time.sleep(0.5)
+    assert isinstance(h.get("current-tracks/video"), dict)
+    h.command("set", "window-minimized", "no")
+    h.command("script-message-to", "mu_av", "mu-av-event", json.dumps(
+        {"menu_id": "{root}", "is_pointer": False, "alt": False, "ctrl": False, "shift": False, "type": "activate",
+         "index": 1, "value": {"audio_minimized": True}}))
+    h.command("set", "window-minimized", "yes")
+    h.wait_property("user-data/mu/av", lambda v: bool(v) and v.get("minimized_audio") is True, timeout=10)
+    h.wait_property("vid", lambda v: v is False or v == "no", timeout=10)
+    h.command("set", "window-minimized", "no")
+    h.wait_property("current-tracks/video", lambda v: isinstance(v, dict) and v.get("id") == 1, timeout=10)
+    assert h.get("user-data/mu/av")["minimized_audio"] is False
+    assert h.script_errors() == []
