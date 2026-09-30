@@ -49,17 +49,15 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-Iteración 3 (2026-09-30, modo a tope) en curso. Fusionados: H30, H25 (salas + HLS), H23 (suscripciones: mpvd y
-cadena). Hechos: H27 modos (mini, salón con gamepad, sencillo) y «¿Qué me he perdido?».
+Iteración 3 (2026-09-30, modo a tope). Hechos y fusionados: H23 (completo), H25 (menos túnel [~]), H27 (completo:
+modos, gamepad, «¿Qué me he perdido?», DLNA), H30, H28 transporte Windows.
 (1) Lo PRIMERO si se reanuda: `git worktree list` y `git branch --list 'worktree-agent-*'`: ramas de subagentes
-H23-UI (script mu-feeds, «Suscripciones»), H23 panel web de descargas (+ marcador «Enviar a MPV-UOS») y H25 sin
-túnel (sala pública solo ver, chat y reacciones, emitir por RTMP). Si tienen commits y sus tests pasan: `git merge
---no-ff`, integrar sus textos (ADR-059/060/061, USO, input.conf/ATAJOS si proponen teclas, entrada en «Descargas y
-conversión» y test_nav) y `tools/check.sh` UNA vez.
-(2) Siguientes por orden: H32 puntos 1–2 (biblioteca musical, listas, ReplayGain, gapless/fundido; letras LRC,
-audiolibros con marcadores/velocidad por libro/temporizador), H27 «Enviar a la tele» (DLNA con SSDP+AVTransport;
-Chromecast con extra opcional), H28 (AppImage; Windows named pipe documentado).
-(3) Túnel de Compartir: bloqueado por permisos (NEEDS_HUMAN.md).
+H32-1 (biblioteca musical mu-music, mpvd/music, ReplayGain, listas), H32-2 (letras LRC, audiolibros mu-books,
+temporizador) y H28-Windows (bin/mpv-uos.ps1, tools/install.ps1, tests con pwsh portátil). Si tienen commits y sus
+tests pasan: `git merge --no-ff`, integrar textos (ADR-064/065/066, teclas en input.conf + ATAJOS, entradas en mu-menu,
+USO, PLATAFORMAS, NEEDS_HUMAN) y `tools/check.sh` UNA vez (con la máquina libre).
+(2) H28 resto: AppImage (tools/build_appimage.sh, con mpv del sistema), ARM64 y macOS a PLATAFORMAS/NEEDS_HUMAN.
+(3) Cuando todo esté [x]/[~]: `ESTADO_GLOBAL: COMPLETADO` + resumen para Ser.
 
 ## Registro por iteración
 ### Iteración 3 · 2026-09-30 · H25 · Sala pública, chat y «Emitir en directo» — hecho (subagente, fusionado)
