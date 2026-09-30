@@ -132,6 +132,9 @@ class MpvdServer:
         from mpvd.subscriptions.service import FeedsService, register as register_feeds  # noqa: PLC0415 - H23
         self.feeds = FeedsService(self)
         register_feeds(self, self.feeds)
+        from mpvd import gamepad  # noqa: PLC0415
+        self.gamepad = gamepad.GamepadService(self)
+        gamepad.register(self, self.gamepad)
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -177,6 +180,7 @@ class MpvdServer:
         await self.sessions.close_all()
         await self.remote.close()
         await self.feeds.close()
+        self.gamepad.stop()
         await self.ytdl.close()
         await self.convert.close()
         await self.schedule.close()

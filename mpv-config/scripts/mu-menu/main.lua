@@ -287,8 +287,25 @@ local CATEGORIES = {
   { title = 'Preferencias', icon = 'settings', view = 'prefs' },
 }
 
+-- Modo sencillo (mu-modes, H27): only what a first-time user needs, plus a way back to the full menu.
+local SIMPLE = { ['Abrir'] = true, ['TV y radio'] = true, ['Subtítulos'] = true, ['Preferencias'] = true }
+local modes = {}
+
 local function root_items()
   local items = {}
+  if modes.simple then
+    for _, c in ipairs(CATEGORIES) do
+      if SIMPLE[c.title] then
+        if c.view then table.insert(items, sub(c.title, c.hint, c.icon, c.view))
+        else table.insert(items, child(c.title, c.hint, c.icon, c.child[1], c.child[2])) end
+      end
+    end
+    items[#items].separator = true
+    table.insert(items, cmd('Menú completo', 'quita el modo sencillo', 'unfold_more',
+                            { 'script-message-to', 'mu_modes', 'mu-modes-set', 'simple', 'no' }))
+    table.insert(items, cmd('Salir', 'q', 'logout', { 'quit' }))
+    return items
+  end
   for _, c in ipairs(CATEGORIES) do
     if c.view then table.insert(items, sub(c.title, c.hint, c.icon, c.view))
     else table.insert(items, child(c.title, c.hint, c.icon, c.child[1], c.child[2])) end
@@ -358,7 +375,8 @@ views.tools = function()
     child('Saltar intro y créditos', 'alt+j', 'skip_next', 'mu_intro', 'intro-menu'),
     child('Estudio: repetir, velocidad, notas', 'alt+e', 'school', 'mu_study', 'study-menu'),
     child('Mis notas', 'alt+B', 'sticky_note_2', 'mu_notes', 'notes-menu'),
-    child('Mando desde el móvil', 'alt+Z', 'qr_code_2', 'mu_remote', 'remote-menu', { separator = true }),
+    child('Mando desde el móvil', 'alt+Z', 'qr_code_2', 'mu_remote', 'remote-menu'),
+    child('Compartir: ver juntos', 'alt+W', 'group', 'mu_share', 'share-menu', { separator = true }),
     bind('Capítulos', 'c', 'bookmark', 'uosc/chapters'),
     cmd('Repetir este archivo', 'L', 'repeat_one', { 'cycle-values', 'loop-file', 'inf', 'no' }),
     bind('Mostrar en la carpeta', 'alt+o', 'folder', 'uosc/show-in-directory', { separator = true }),
@@ -372,6 +390,12 @@ views.prefs = function()
   show('Preferencias', {
     toggle('Continuar viendo donde lo dejé', opts.resume, 'history', 'resume'),
     toggle('Pausar con un clic en el vídeo', opts.click_pause, 'touch_app', 'click_pause', { separator = true }),
+    cmd('Mini reproductor', modes.mini and 'sí' or 'alt+F', 'picture_in_picture_alt',
+        { 'script-binding', 'mu_modes/mini-toggle' }, { active = modes.mini }),
+    cmd('Modo salón: letra grande y mando', modes.salon and 'sí' or 'no', 'weekend',
+        { 'script-binding', 'mu_modes/salon-toggle' }, { active = modes.salon }),
+    cmd('Modo sencillo: menú corto', modes.simple and 'sí' or 'no', 'filter_list',
+        { 'script-binding', 'mu_modes/simple-toggle' }, { active = modes.simple, separator = true }),
     { title = 'Restablecer preferencias…', hint = 'se guarda una copia', icon = 'restart_alt',
       value = { cmd = { 'script-message-to', 'mu_prefs', 'reset-ask' } } },
     bind('Abrir la carpeta de configuración', 'ctrl+o', 'folder_open', 'uosc/open-config-directory'),
@@ -461,6 +485,17 @@ views.start = function(args)
     show(brand.name .. ' · Inicio', all)
   end)
 end
+
+-- mu-modes: the main menu and Preferencias follow the modes while they are open
+mp.observe_property('user-data/mu/modes', 'native', function(_, m)
+  m = type(m) == 'table' and m or {}
+  local changed = (m.simple or false) ~= (modes.simple or false) or (m.salon or false) ~= (modes.salon or false)
+    or (m.mini or false) ~= (modes.mini or false)
+  modes = m
+  if changed and (state.view == 'root' or state.view == 'prefs') and uosc.open_type() == MENU then
+    open_view({ name = state.view }, false)
+  end
+end)
 
 -- the start screen follows the library rows (they change when a scan ends or an episode is finished)
 local library_home_json = ''

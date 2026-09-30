@@ -350,4 +350,38 @@
   el de mpv.conf, mu-ytdl pone en su hook `on_load` (prioridad 9) un `ytdl-format` local del archivo con los códecs
   por hardware primero (`[vcodec^=av01]`, `[vcodec~='^(vp0?9)']`…), así mu-prefs no lo aprende como elección del usuario
   y un formato elegido por el usuario se respeta.
-
+- ADR-054 · Compartir: ver juntos (H25): servicio `mpvd/share` con su propio servidor HTTP (puerto 8791, no el del
+  mando: la API del mando debe seguir siendo solo LAN y este es lo único que un túnel futuro publicaría). Enlace
+  `/s/<sala>#k=<token>`: el token va en el fragmento (nunca en una línea de petición ni en un log), se canjea una vez por
+  una cookie firmada con el secreto de la sala; cerrar o caducar (máx. 24 h) invalida todas; límite de intentos por IP
+  y por sala. Sincronía por SSE (posición, pausa, velocidad, archivo) y la página corrige su deriva (~0,1 s medido con
+  Chrome sin ventana). Qué reproduce el invitado: la URL directa del formato de yt-dlp si el navegador la admite; si
+  no, HLS hecho por ffmpeg en la caché (`-c copy` si es H.264/AAC, si no VA-API `h264_vaapi -low_power 1` o libx264
+  veryfast) con el subtítulo de texto activo en WebVTT; hls.js 1.7.3 vendorizado para Chrome/Firefox de escritorio.
+  Permisos: *solo ver* por defecto, control con aprobación del anfitrión en mpv, revocable; expulsar. El túnel de
+  Cloudflare está pendiente (NEEDS_HUMAN): el permiso para exponer el equipo a internet lo tiene que dar Ser.
+- ADR-055 · Pistas de los canales y búsqueda por lista (H30): `mpvd/iptv/tracks.py` nombra las pistas con dos fuentes,
+  las líneas `#EXT-X-MEDIA` del master HLS (LANGUAGE, NAME, CHARACTERISTICS, FORCED) y el `track-list` de mpv (FFmpeg
+  conserva el idioma y `visual-impaired` pero pierde NAME y repite el audio por variante). `qaa` = Versión original,
+  `ads`/`qad`/describes-video = Audiodescripción. El título de una pista de mpv es de solo lectura (verificado en 0.41):
+  los nombres se usan en el menú propio de mu-iptv y en el OSD. Lo que trae cada canal se guarda al verlo o en la
+  comprobación de salud → distintivos CC · VO · AD en las listas. `iptv.search` acepta grupo/país/categoría y los
+  ámbitos favoritos, recientes y Radio Browser con el mismo motor sin acentos. mu-prefs no aprende `ads` ni `qaa–qtz`
+  como idioma preferido.
+- ADR-057 · Suscripciones (H23): `mpvd/subscriptions` (`feeds.*`). Canales y listas con `yt-dlp --flat-playlist -J -I
+  1:N` (un canal solo mira sus N más nuevos); podcasts por RSS con caché HTTP (ETag). Nuevo = id nunca visto; la
+  primera comprobación solo toma los `initial` más recientes. Descarga por el gestor de descargas, de una en una y en
+  prioridad baja, solo si las reglas lo permiten: franja diaria, límite por franja (descargas o MB) y pausa con red
+  medida (NetworkManager). Reglas tras cada descarga: conservar N, borrar lo visto tras un margen; solo se borra lo que
+  descargó esa suscripción y dentro de sus carpetas. Cadena tras descargar: volumen igualado con `loudnorm` en dos
+  pasadas (EBU R128, −16 LUFS; ReplayGain no basta: mpv solo lo lee con `--replaygain`), renombrar con plantilla, mover
+  a una carpeta (si es de la biblioteca, se reescanea) y subtítulos IA (+ traducción) en prioridad baja. SponsorBlock
+  es opción de la propia descarga de yt-dlp, no un paso de la cadena.
+- ADR-058 · Modos de uso (H27): script `mu-modes`. Mini reproductor = `window-scale` a ~30 % del ancho de pantalla,
+  `border=no`, `ontop=yes` (en Wayland la posición la decide el compositor). Modo salón = pantalla completa,
+  `sub-scale` 1,5, `osd-font-size` 50 y `uosc-scale` 1,8 por `script-opts`; modo sencillo = `uosc-controls` reducido y
+  mu-menu muestra 4 categorías (lee `user-data/mu/modes`). Cada modo guarda lo que cambia y lo devuelve al quitarse;
+  salón y sencillo se recuerdan (mu-prefs), el mini no. Mando de consola: el mpv del sistema está compilado sin
+  `--input-gamepad` (SDL), así que mpvd lee la API de joystick de Linux (`/dev/input/js*`, `struct js_event` de 8
+  bytes, disposición del controlador xpad) en un hilo, solo mientras el modo salón está activo, y empuja acciones a
+  mu-modes (`mu-event`). Windows/macOS: sin mando (docs/PLATAFORMAS.md).

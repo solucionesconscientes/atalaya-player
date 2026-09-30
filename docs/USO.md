@@ -61,6 +61,13 @@ Opciones del instalador: `--xdg` (caché y datos en `~/.cache/mpv-uos` y `~/.loc
    apagado a esa hora, la grabación sale como *perdida*. Los archivos van a `~/Vídeos/MPV-UOS/Grabaciones`
    («Canal - Programa - 2026-09-30 21.30.mkv») y avisa al terminar.
 
+7. **Audio y subtítulos del canal.** Los canales que traen pistas propias lo dicen en la lista: `CC` (subtítulos),
+   `VO` (versión original), `AD` (audiodescripción). Mientras ves uno, *TV y radio → Audio y subtítulos del canal*
+   las muestra con nombres claros (*Español*, *Versión original*, *Audiodescripción*, *Español (para sordos)*). RTVE
+   trae subtítulos en español, inglés, gallego, catalán y euskera. No hay traducción en directo.
+8. **Buscar en esta lista.** La primera fila de *España TV*, *España radio*, cada país de *Mundo*, *Radio mundial*,
+   *Favoritos* y *Recientes* busca solo entre sus canales (sin acentos, como `alt+f`).
+
 **Lo que depende de la fuente y lo que no.** La resolución, las imágenes por segundo y el bitrate los pone cada cadena:
 RTVE emite como mucho 720p a 25 fps y 3 Mb/s, casi todo va a 25 fps y algunos canales "HD" llevan muy poco bitrate; eso
 no se puede mejorar desde el reproductor. Tampoco los canales caídos o geobloqueados. Lo que sí hace MPV-UOS: no guarda
@@ -238,6 +245,25 @@ también funcionan.
 ## 9. Mando a distancia desde el móvil
 `alt+z` muestra un QR; escanéalo con el móvil en la misma wifi y tendrás play/pausa, saltos, volumen, pistas, canales y búsqueda.
 El móvil queda emparejado hasta que lo olvides (`alt+Z`). Si no conecta, abre el puerto en el cortafuegos: docs/REMOTE.md.
+
+## 9b. Compartir: ver juntos
+`alt+W` (o *Herramientas → Compartir: ver juntos*) → *Crear una sala para ver juntos*: sale un enlace y un QR. Quien lo
+abra en tu misma red (wifi de casa) pone su nombre y ve lo mismo que tú, a la vez, en su navegador (móvil u ordenador).
+- Los invitados entran en *solo ver*. Si uno pide el control, te sale un sí/no en pantalla; en *Invitados* puedes
+  darlo, quitarlo o sacar a alguien. Verás avisos como «Ana ha pausado».
+- Vídeos de internet: el navegador del invitado los abre directamente si puede; archivos de tu equipo: MPV-UOS los
+  retransmite (con los subtítulos de texto activos).
+- El enlace caduca (24 h como mucho), se puede cambiar por uno nuevo y deja de valer al cerrar la sala.
+- Abrir la sala a internet (túnel) está pendiente de una decisión de Ser (ver NEEDS_HUMAN.md).
+
+## 9c. Mini reproductor, modo salón y modo sencillo
+- **Mini reproductor** (`alt+F`): ventana pequeña, sin bordes y siempre encima; la misma tecla la devuelve. En Wayland
+  la coloca el escritorio; si KDE no la deja encima: `Alt+F3 → Más acciones → Mantener por encima`.
+- **Modo salón** (*Preferencias*): pantalla completa y todo más grande para verlo desde el sofá. Con un mando de consola
+  (Xbox o compatible, por USB o Bluetooth): A pausa, cruceta ←/→ 10 s, ↑/↓ volumen, X subtítulos, Start menú, B cierra
+  el menú, LB/RB anterior/siguiente. Se recuerda al volver a abrir.
+- **Modo sencillo** (*Preferencias*): menú principal corto y barra mínima, para quien solo quiere ver cosas;
+  *Menú completo* lo quita.
 
 ## 10. Asistentes (MCP)
 Copia `.mcp.json.example` a `.mcp.json` para que Claude Code u otro cliente MCP controle el reproductor (reproducir, buscar en el

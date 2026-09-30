@@ -19,6 +19,9 @@ Desarrollado y probado en Linux (Ubuntu, Wayland/KDE, mpv 0.41). Lo siguiente NO
 | Decodificación por hardware (etiquetas y preferencia de códec) | ✅ `vainfo` | ❌ sin comprobar (VideoToolbox: H.264/HEVC siempre; AV1 desde M3) | ❌ sin comprobar (D3D11VA/DXVA2; `dxdiag`) |
 | Convertir (ffmpeg) | ✅ VA-API (H.264; HEVC si el driver lo codifica) o CPU | CPU (sin probar); abrir carpeta con `open` | CPU (sin probar); abrir carpeta con `explorer`; sin `nice` |
 | Controles del escritorio | ✅ MPRIS (D-Bus de sesión, `jeepney`) | ❌ falta `MPNowPlayingInfoCenter` | ❌ falta SMTC (`SystemMediaTransportControls`) |
+| Mini reproductor / modo salón / sencillo | ✅ (Wayland: posición la decide KDE) | debería ir (sin probar) | debería ir (sin probar) |
+| Mando de consola (modo salón) | ✅ `/dev/input/js*` (joydev, xpad) | ❌ falta (IOKit/GameController) | ❌ falta (XInput) |
+| Compartir: ver juntos (LAN) | ✅ puerto 8791 (abrir en `ufw` como el mando) | sin probar | sin probar; cortafuegos de Windows |
 
 ## Instalar en macOS (no probado)
 ```bash

@@ -49,6 +49,7 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 | `alt+G` | Guía de programación del canal que estás viendo (grabar un programa desde ella) |
 | `alt+r` | Grabar desde ahora / detener: directos con `stream-record`, vídeos de internet como tramo (yt-dlp) y archivos locales sin recodificar; punto rojo y contador mientras graba. Menú completo en el botón ● (capturas, solo audio, recortar tramo, carpeta) |
 | `Tab` (sobre un canal) | Acciones: favorito, copiar URL |
+| — (menú TV y radio mientras ves un canal) | **Audio y subtítulos del canal**: pistas con nombres claros (Versión original, Audiodescripción, para sordos); las listas marcan los canales con CC · VO · AD. La primera fila de cada lista es «Buscar en esta lista» |
 
 ## Vídeos de internet (mu-ytdl)
 | Tecla | Acción |
@@ -127,6 +128,18 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 |---|---|
 | `alt+z` | Mostrar / ocultar el código QR para emparejar el móvil (la URL también aparece en pantalla; el código vale una vez y caduca a los 10 min) |
 | `alt+Z` | Menú **Mando a distancia**: estado del servidor, móviles emparejados, olvidar mandos, arrancar/detener |
+
+## Compartir: ver juntos (mu-share)
+| Tecla | Acción |
+|---|---|
+| `alt+W` | Menú **Compartir**: crear una sala con enlace y QR (solo en tu red), invitados (dar o quitar el control, sacar), enlace nuevo, cerrar la sala. Si un invitado pide el control, aparece un sí/no en pantalla |
+
+## Modos (mu-modes)
+| Tecla | Acción |
+|---|---|
+| `alt+F` | **Mini reproductor**: ventana pequeña sin bordes y siempre encima; la misma tecla la devuelve a su tamaño |
+| — (Preferencias) | **Modo salón**: pantalla completa, menús, subtítulos y mensajes grandes; un mando de consola (gamepad) controla el reproductor: A pausa, B/Back cierra el menú, X subtítulos, Start/Guide menú, cruceta ←/→ 10 s, ↑/↓ volumen, LB/RB anterior/siguiente |
+| — (Preferencias) | **Modo sencillo**: menú principal corto (Abrir, TV y radio, Subtítulos, Preferencias) y barra mínima; «Menú completo» lo quita |
 
 ## Teclas de mpv que cambian
 Estas teclas por defecto de mpv 0.41 hacen otra cosa en MPV-UOS:
