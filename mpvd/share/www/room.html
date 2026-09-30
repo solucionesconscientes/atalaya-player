@@ -30,6 +30,7 @@
   <main id="room" class="hidden">
     <div id="stage">
       <video id="video" playsinline preload="auto"></video>
+      <div id="floats" aria-hidden="true"></div>
       <div id="overlay" class="hidden">
         <p id="overlay-text"></p>
         <button id="start" class="primary hidden" type="button">Empezar a ver</button>
@@ -57,8 +58,18 @@
       <p id="status" class="muted"></p>
     </div>
     <aside>
-      <h3>En la sala</h3>
+      <h3 id="guests-title">En la sala</h3>
       <ul id="guests"></ul>
+      <p id="viewers" class="muted hidden"></p>
+      <section id="chat" class="hidden">
+        <h3>Chat</h3>
+        <ul id="chat-list" aria-live="polite"></ul>
+        <form id="chat-form" autocomplete="off">
+          <input id="chat-text" type="text" maxlength="200" placeholder="Escribe un mensaje" aria-label="Mensaje">
+          <button type="submit">Enviar</button>
+        </form>
+        <div id="reactions" class="row"></div>
+      </section>
       <button id="leave" type="button" class="danger">Salir de la sala</button>
     </aside>
   </main>

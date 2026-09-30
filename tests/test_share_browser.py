@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import TMP
-from tests.test_share_http import clip, share_env  # noqa: F401 - fixtures
+from tests.test_share_http import Guest, clip, share_env  # noqa: F401 - fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
 CHROME = shutil.which("google-chrome") or shutil.which("chromium-browser") or shutil.which("chromium")
@@ -155,5 +155,62 @@ def test_browser_guest_follows_the_host(share_env, clip, engine):  # noqa: F811
         d.call("share.close")
         b.wait("document.getElementById('message-text').textContent.includes('cerrado la sala')", timeout=10)
         print(f"motor HLS del navegador: {used}; desfase: {min(diffs):.2f} s")
+    finally:
+        b.close()
+
+
+def test_browser_chat_as_text_and_public_room(share_env, clip):  # noqa: F811
+    """The chat in a real page: another guest's markup is shown as text (no element, no script), the page sends
+    messages and reactions; then a public «solo ver» link joins by itself, without name, controls or chat."""
+    h, d = share_env
+    h.command("loadfile", str(clip))
+    h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=20)
+    url = d.call("share.create")["url"]
+    base, rest = url.split("/s/", 1)
+    room, token = rest.split("#k=")
+    other = Guest(base, room)
+    assert other.req("api/join", {"token": token, "name": "Otro"})[0] == 200
+    other.listen()
+    b = Browser()
+    try:
+        b.nav(url)
+        b.wait("!document.getElementById('join').classList.contains('hidden')")
+        b.js("document.getElementById('name').value = 'Nav'; document.getElementById('join-form').requestSubmit(); true")
+        b.wait("!document.getElementById('chat').classList.contains('hidden')")
+        b.wait("document.querySelectorAll('#reactions button').length === 6")
+        evil = '<img src=x onerror="window.__xss=1"><b>negrita</b>'
+        assert other.req("api/chat", {"text": evil})[0] == 200
+        b.wait("document.getElementById('chat-list').textContent.includes('negrita')")
+        assert b.js("document.querySelector('#chat-list li:last-child .text').textContent") == evil
+        assert b.js("document.querySelectorAll('#chat-list img, #chat-list b').length") == 0
+        time.sleep(0.5)
+        assert b.js("window.__xss === undefined") is True
+        b.js("document.getElementById('chat-text').value = 'hola desde el navegador'; "
+             "document.getElementById('chat-form').requestSubmit(); true")
+        row = other.wait(lambda e, x: e == "chat" and x["who"] == "Nav")
+        assert row["text"] == "hola desde el navegador"
+        b.wait("document.getElementById('chat-text').value === ''")
+        b.js("document.querySelector('#reactions button[data-r=\"clap\"]').click(); true")
+        other.wait(lambda e, x: e == "chat" and x.get("reaction") == "clap" and x["who"] == "Nav")
+        b.wait("document.querySelectorAll('#floats .float').length >= 1", timeout=5)
+        d.call("share.close")
+        b.wait("!document.getElementById('message').classList.contains('hidden')", timeout=10)
+        other.close()
+
+        pub = d.call("share.create", {"mode": "public", "max_viewers": 5})["url"]
+        b.nav(pub)
+        b.wait("!document.getElementById('room').classList.contains('hidden')", timeout=20)
+        assert b.js("document.getElementById('join').classList.contains('hidden')") is True   # no name asked
+        assert b.js("document.getElementById('who').textContent") == "Sala pública · solo ver"
+        assert b.js("location.hash") == ""
+        for el in ("chat", "play", "ask", "guests"):
+            assert b.js(f"document.getElementById('{el}').classList.contains('hidden')") is True, el
+        b.wait("document.getElementById('viewers').textContent === '1 persona viendo'", timeout=15)
+        assert d.call("share.status")["guests"][0]["name"] == "Espectador 1"
+        # a reload keeps the seat (cookie); the page does not ask anything
+        b.nav(pub.split("#", 1)[0])
+        b.wait("!document.getElementById('room').classList.contains('hidden')", timeout=20)
+        assert len(d.call("share.status")["guests"]) == 1
+        d.call("share.close")
     finally:
         b.close()

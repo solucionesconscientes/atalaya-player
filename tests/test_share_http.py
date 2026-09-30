@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
+from mpvd.rpc import RpcError
 from tests.conftest import start_mpv
 
 MU_OPTS = "--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=10"
@@ -337,3 +338,121 @@ def test_direct_url_and_relay_on_demand(share_env, clip, tmp_path):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def _room_of(url: str) -> tuple[str, str, str]:
+    base, rest = url.split("/s/", 1)
+    room, token = rest.split("#k=")
+    return base, room, token.split("&", 1)[0]
+
+
+def test_public_room_view_only(share_env, clip):
+    """«Sala pública (solo ver)»: anyone with the link, anonymous, up to the maximum; no control, no chat."""
+    h, d = share_env
+    h.command("loadfile", str(clip))
+    h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=20)
+    res = d.call("share.create", {"mode": "public", "max_viewers": 2, "ttl_hours": 1})
+    assert res["url"].endswith("&v=1") and res["status"]["mode"] == "public" and res["status"]["max_viewers"] == 2
+    with pytest.raises(RpcError, match="ya hay una sala pública"):
+        d.call("share.create", {"mode": "private"})
+    assert d.call("share.create", {"mode": "public"})["url"] == res["url"]
+    base, room, token = _room_of(res["url"])
+
+    a = Guest(base, room)
+    status, data, _ = a.req("api/join", {"token": token, "name": "<b>Ana</b>"})
+    assert status == 200 and data["guest"]["name"] == "Espectador 1" and data["room"]["mode"] == "public"
+    assert data["room"]["guests"] == [] and data["room"]["chat"] is False
+    a.listen()
+    hello = a.wait(lambda e, x: e == "hello")
+    assert hello["room"]["mode"] == "public"
+    a.wait(lambda e, x: e == "viewers" and x == {"count": 1, "max": 2})
+    a.wait(lambda e, x: e == "media" and x.get("kind") == "hls", timeout=60)
+    b = Guest(base, room)
+    assert b.req("api/join", {"token": token})[1]["guest"]["name"] == "Espectador 2"
+    b.listen()
+    a.wait(lambda e, x: e == "viewers" and x["count"] == 2)
+    status, err, _ = Guest(base, room).req("api/join", {"token": token, "name": ""})
+    assert status == 403 and "llena" in err["error"]
+    # watching only: no control, no request, no chat, no reactions
+    for path, body in (("api/cmd", {"cmd": "pause"}), ("api/request", {}), ("api/chat", {"text": "hola"}),
+                       ("api/react", {"reaction": "like"})):
+        status, err, _ = a.req(path, body)
+        assert status == 403 and "pública" in err["error"], (path, err)
+    gid = d.call("share.status")["guests"][0]["id"]
+    with pytest.raises(RpcError, match="pública"):
+        d.call("share.permission", {"guest": gid, "perm": "control"})
+    with pytest.raises(RpcError, match="no hay chat"):
+        d.call("share.chat", {"text": "hola"})
+    # the host sees how many are watching, without a notice per viewer
+    v = _share(h, lambda v: v.get("mode") == "public" and v.get("viewers") == 2)
+    assert "se ha unido" not in v.get("last_notice", "")
+    assert not any(e == "notice" and "Espectador" in x.get("text", "") for e, x in a.events)
+    # the page itself: same room page, the public link joins by itself
+    assert a.req(f"/s/{room}")[0] == 200
+    # same attempt limit per address as private rooms
+    bad = Guest(base, room)
+    codes = [bad.req("api/join", {"token": "nope"})[0] for _ in range(5)]
+    assert codes[-1] == 429, codes
+    d.call("share.close")
+    a.wait(lambda e, x: e == "closed")
+    a.close()
+    b.close()
+    assert not h.script_errors(), h.script_errors()
+
+
+def test_chat_and_reactions(share_env, clip):
+    """Private room: chat and reactions over the SSE stream, length and rate limits, markup kept as text, the host's
+    own messages, the history for late guests, and the lines in mpv's overlay (mu-share)."""
+    h, d = share_env
+    h.command("loadfile", str(clip))
+    h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=20)
+    base, room, token = _room_of(d.call("share.create")["url"])
+    ana, luis = Guest(base, room), Guest(base, room)
+    assert ana.req("api/join", {"token": token, "name": "Ana"})[0] == 200
+    assert luis.req("api/join", {"token": token, "name": "Luis"})[0] == 200
+    me = ana.req("api/me")[1]
+    assert me["room"]["chat"] is True and me["reactions"]["laugh"] == "😂" and me["chat"] == []
+    ana.listen()
+    luis.listen()
+    luis.wait(lambda e, x: e == "hello")
+
+    xss = "<img src=x onerror=alert(1)> hola {\\b1}${path}"
+    status, r, _ = ana.req("api/chat", {"text": xss + "\n"})
+    assert status == 200 and r["chat"]["text"] == xss
+    row = luis.wait(lambda e, x: e == "chat" and x["kind"] == "chat")
+    assert row["who"] == "Ana" and row["text"] == xss and row["host"] is False and row["guest"]
+    v = _share(h, lambda v: v["last_chat"]["text"] == xss and v["chat_visible"] >= 1)
+    assert v["last_chat"]["who"] == "Ana"
+
+    assert ana.req("api/chat", {"text": "x" * 201})[0] == 400
+    assert ana.req("api/chat", {"text": "   "})[0] == 400
+    assert ana.req("api/chat", ["no"])[0] == 400
+    codes = [ana.req("api/chat", {"text": f"m{i}"})[0] for i in range(5)]
+    assert codes == [200, 200, 200, 200, 429], codes       # 5 per 10 s and guest (the first one counted)
+    assert luis.req("api/chat", {"text": "yo sí puedo"})[0] == 200   # the limit is per guest
+
+    status, r, _ = luis.req("api/react", {"reaction": "laugh"})
+    assert status == 200 and r["chat"]["emoji"] == "😂"
+    row = ana.wait(lambda e, x: e == "chat" and x["kind"] == "reaction")
+    assert row["who"] == "Luis" and row["reaction"] == "laugh" and row["words"] == "se ríe"
+    _share(h, lambda v: v["last_chat"]["kind"] == "reaction" and v["last_chat"]["reaction"] == "laugh")
+    assert luis.req("api/react", {"reaction": "<script>"})[0] == 400
+    codes = [luis.req("api/react", {"reaction": "clap"})[0] for _ in range(8)]
+    assert codes[-1] == 429 and codes[:7] == [200] * 7, codes
+
+    d.call("share.chat", {"text": "Hola a todos"})
+    row = ana.wait(lambda e, x: e == "chat" and x.get("host"))
+    assert row["who"] == "Anfitrión" and row["text"] == "Hola a todos"
+    with pytest.raises(RpcError, match="vacío"):
+        d.call("share.chat", {"text": " "})
+    # history: a late guest gets the last messages (not the reactions)
+    eva = Guest(base, room)
+    eva.req("api/join", {"token": token, "name": "Eva"})
+    hist = eva.req("api/me")[1]["chat"]
+    assert [x["text"] for x in hist][0] == xss and hist[-1]["text"] == "Hola a todos"
+    assert all(x["kind"] == "chat" for x in hist)
+    assert d.call("share.status")["chat"][-1]["text"] == "Hola a todos"
+    d.call("share.close")
+    ana.close()
+    luis.close()
+    assert not h.script_errors(), h.script_errors()
