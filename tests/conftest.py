@@ -36,6 +36,8 @@ def _isolated_user_data(tmp_path_factory: pytest.TempPathFactory) -> Any:
     os.environ["MPV_UOS_DATA_DIR"] = str(data)
     # and never pop desktop notifications at the user while the suite runs (e.g. the "moved checkout" launcher test)
     os.environ["MPV_UOS_NO_NOTIFY"] = "1"
+    # nor show test players in the desktop's media controls (MPRIS on the user's session bus); test_mpris uses its own bus
+    os.environ["MPV_UOS_MPRIS"] = "0"
     yield data
     if old is None:
         os.environ.pop("MPV_UOS_DATA_DIR", None)

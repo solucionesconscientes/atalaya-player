@@ -110,6 +110,9 @@ class MpvdServer:
         record.register(self)
         self.remote = RemoteService(self)
         register_remote(self, self.remote)
+        from mpvd import mpris  # noqa: PLC0415
+        self.mpris = mpris.MprisService(self)
+        mpris.register(self, self.mpris)
 
     # -- lifecycle -------------------------------------------------------------
 

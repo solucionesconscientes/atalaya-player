@@ -171,6 +171,14 @@ se busca en los primeros 10 minutos y los créditos en los últimos 5. Hace falt
 ## 7. Sonido e imagen
 `alt+v`: diálogo claro, modo noche (`alt+n`), reducción de ruido, sonido binaural para auriculares, protección fotosensible, perfil ligero
 para equipos modestos y diagnóstico de tirones con recomendaciones. Más en docs/AUDIO_VIDEO.md.
+- **Volumen igualado**: todos los vídeos suenan parecido de fuertes, sin tocar el mando (normalizador lento; tarda unos
+  segundos en ajustarse al empezar).
+- **Ecualizador**: *Plano*, *Más graves*, *Menos graves*, *Más agudos*, *Voz*, *Música*, *Altavoces del portátil* y
+  *Auriculares*. Se recuerda como el resto de filtros.
+- **Controles del escritorio (MPRIS)**: MPV-UOS aparece en los controles multimedia de KDE (bandeja, pantalla de
+  bloqueo, KDE Connect), responde a las teclas multimedia del teclado y a los botones de los auriculares, con título,
+  duración, posición, volumen, velocidad y repetición. Necesita el extra `desktop` (lo instala `tools/install.sh`);
+  estado: `.venv/bin/python -m mpvd call mpris.status`.
 
 ## 8. Estudiar con vídeos
 `alt+e` menú Estudio: `alt+w` repite en bucle la frase actual (`alt+←/→` anterior/siguiente), `alt+g` acelera solo los silencios,
@@ -206,7 +214,7 @@ cambian lo mismo, gana el último.
 | Pantalla completa, siempre encima, repetir la lista, decodificación por hardware (`auto-safe`/`no`), formato de yt-dlp | `f`, menús |
 | Idiomas de audio y subtítulos: al elegir una pista con idioma, ese idioma pasa a ser el preferido | `a`, `s` |
 | Subtítulos quitados: los siguientes archivos empiezan sin subtítulos hasta que actives una pista | `s` → ninguno |
-| Filtros de *Sonido e imagen* y perfil ligero | `alt+v`, `alt+n` |
+| Filtros de *Sonido e imagen* (también volumen igualado y ecualizador) y perfil ligero | `alt+v`, `alt+n` |
 | Velocidad inteligente (se reactiva en el siguiente archivo local) y su velocidad en silencios | `alt+g`, `alt+e` |
 | Continuar viendo activado o no | *Menú → Preferencias* |
 

@@ -25,6 +25,11 @@ impersonate = [
     "curl-cffi>=0.10,<0.17; implementation_name == 'cpython'",
 ]
 
+# desktop integration on Linux (MPRIS over the session D-Bus): pure Python, no dependencies
+desktop = [
+    "jeepney>=0.8,<1; sys_platform == 'linux'",
+]
+
 [dependency-groups]
 dev = [
   "pytest>=8.3",

@@ -102,8 +102,8 @@ fi
 
 # -- python env + vendored third parties ------------------------------------------------------------------
 if [ "$SYNC" = 1 ]; then
-  if [ "$EXTRAS" = 1 ]; then say "uv sync (con extras translate + semantic + impersonate)"; run uv sync --project "$ROOT" --extra translate --extra semantic --extra impersonate
-  else say "uv sync"; run uv sync --project "$ROOT"; fi
+  if [ "$EXTRAS" = 1 ]; then say "uv sync (con extras translate + semantic + impersonate)"; run uv sync --project "$ROOT" --extra translate --extra semantic --extra impersonate --extra desktop
+  else say "uv sync (con extra desktop: MPRIS)"; run uv sync --project "$ROOT" --extra desktop; fi
 fi
 if [ "$VENDOR" = 1 ]; then say "tools/vendor.sh (uosc, thumbfast, yt-dlp)"; run "$ROOT/tools/vendor.sh"; fi
 

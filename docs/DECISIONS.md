@@ -258,4 +258,15 @@
   `--help`), desactivado, validado contra la lista (argv sin shell) y aplicado también a ytdl_hook; nunca DRM.
   TikTok: vídeo y perfil (lista plana con casillas) sin cookies; Instagram: reels y publicaciones sí, perfiles no
   (extractor marcado como roto en yt-dlp).
+- ADR-051 · Escritorio y sonido (H24): MPRIS en mpvd (`mpvd/mpris.py`), no el plugin C `mpv-mpris` (habría que
+  compilarlo con cabeceras de GLib; sin sudo) ni Lua (no habla D-Bus). Un nombre `org.mpris.MediaPlayer2.mpv_uos.
+  instance<pid>` por cada mpv conectado, con su propia conexión IPC y observadores (el bucle de sesiones no cambia);
+  `PropertiesChanged` agrupados cada 50 ms, `Seeked` en `playback-restart`, `Position` bajo demanda. D-Bus con
+  `jeepney` (Python puro, sin dependencias, extra `desktop` que instalan check.sh e install.sh; mpvd sigue sin
+  dependencias obligatorias: sin él, `services.mpris=false`). Los tests usan un `dbus-daemon` privado y la batería
+  entera pone `MPV_UOS_MPRIS=0` para no llenar los controles de KDE de reproductores de prueba. Volumen igualado:
+  `dynaudnorm` lento con RMS objetivo (`f=500:g=31:p=0.9:m=8:r=0.15`, 7,5 s de anticipación); `loudnorm` descartado
+  (remuestrea a 192 kHz, varias veces la CPU) y ReplayGain queda para la música (H32). Ecualizador: 7 perfiles de
+  filtros `equalizer` (biquads baratos) con `alimiter` sin nivelado automático tras los realces; el perfil se guarda
+  en mu-prefs (`mu-av.eq`).
 

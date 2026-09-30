@@ -29,6 +29,24 @@ local opts = {
 }
 options.read_options(opts, 'mu-av')
 
+-- equalizer presets (H24): peaking biquads; boosts end in a limiter without auto-level so nothing clips
+local LIMIT = 'alimiter=limit=0.97:level=0'
+local EQ_PRESETS = {
+  { id = 'bass', title = 'Más graves', graph = 'equalizer=f=60:t=q:w=0.8:g=5,equalizer=f=150:t=q:w=1:g=2,' .. LIMIT },
+  { id = 'less_bass', title = 'Menos graves', graph = 'equalizer=f=80:t=q:w=0.8:g=-6' },
+  { id = 'treble', title = 'Más agudos', graph = 'equalizer=f=4000:t=q:w=1:g=1.5,equalizer=f=9000:t=q:w=0.7:g=4,' .. LIMIT },
+  { id = 'voice', title = 'Voz', graph = 'equalizer=f=200:t=q:w=1:g=-2,equalizer=f=2500:t=q:w=1:g=4,' .. LIMIT },
+  { id = 'music', title = 'Música', graph = 'equalizer=f=70:t=q:w=0.8:g=4,equalizer=f=1000:t=q:w=1:g=-2,' ..
+    'equalizer=f=10000:t=q:w=0.8:g=3,' .. LIMIT },
+  { id = 'laptop', title = 'Altavoces del portátil', graph = 'highpass=f=120,equalizer=f=250:t=q:w=1:g=-2,' ..
+    'equalizer=f=3000:t=q:w=1:g=3,' .. LIMIT },
+  { id = 'headphones', title = 'Auriculares', graph = 'equalizer=f=50:t=q:w=0.8:g=3,equalizer=f=3500:t=q:w=1.5:g=-2,' ..
+    'equalizer=f=8000:t=q:w=1:g=1.5,' .. LIMIT },
+}
+local EQ_GRAPHS = {}
+local EQ_TITLES = {}
+for _, e in ipairs(EQ_PRESETS) do EQ_GRAPHS[e.id] = e.graph; EQ_TITLES[e.id] = e.title end
+
 -- graphs verified headless (tools: mpv --af=help, --vf=help; run with --end=3 and no lavfi errors in the log)
 local FILTERS = {
   dialog = { kind = 'af', title = 'Diálogo claro', icon = 'record_voice_over',
@@ -54,13 +72,22 @@ local FILTERS = {
       if state.models.sofa then return string.format('sofalizer=sofa=%s:type=freq', state.models.sofa) end
       return 'crossfeed=strength=0.5:range=0.5'
     end },
+  -- H24: same loudness from one video to the next. A slow dynaudnorm (7.5 s look-ahead, target RMS): loudnorm was
+  -- discarded (resamples to 192 kHz, several times the CPU) and ReplayGain tags are rare outside music (ADR-051)
+  level = { kind = 'af', title = 'Volumen igualado', icon = 'volume_up',
+    desc = 'el mismo volumen de un vídeo a otro, sin tocar el mando',
+    graph = function() return 'dynaudnorm=f=500:g=31:p=0.9:m=8:r=0.15' end },
+  eq = { kind = 'af', title = 'Ecualizador', icon = 'graphic_eq',
+    desc = 'perfiles de graves, agudos, voz y altavoces',
+    graph = function(st) return EQ_GRAPHS[st.eq] or '' end },
   photo = { kind = 'vf', title = 'Protección fotosensible', icon = 'flash_off',
     desc = 'atenúa destellos rápidos (photosensitivity)',
     graph = function() return 'photosensitivity=frames=30:threshold=1:bypass=0' end },
 }
-local ORDER = { 'dialog', 'night', 'denoise', 'binaural', 'photo' }
+local ORDER = { 'dialog', 'night', 'level', 'eq', 'denoise', 'binaural', 'photo' }
 
-local P = prefs.ns('mu-av', { filters = {}, light = false }, function(key, v)
+local P = prefs.ns('mu-av', { filters = {}, light = false, eq = '' }, function(key, v)
+  if key == 'eq' then return v == '' or EQ_GRAPHS[v] ~= nil end
   if key ~= 'filters' then return true end
   for _, name in pairs(v) do if type(name) ~= 'string' then return false end end
   return true
@@ -82,6 +109,7 @@ local state = {
   last_error = '',
   diag = nil,
   force_open = false,
+  eq = '',                                  -- equalizer preset id ('' = flat)
 }
 
 local set_button_state
@@ -103,7 +131,7 @@ end
 
 local function publish()
   mp.set_property_native('user-data/mu/av', {
-    filters = active_filters(), light = state.light, models = state.models, view = state.view, items = state.items,
+    filters = active_filters(), light = state.light, eq = state.eq, models = state.models, view = state.view, items = state.items,
     last_error = state.last_error, diag = state.diag or {},
   })
 end
@@ -180,6 +208,7 @@ local function set_filter(name, on)
   if on then
     if is_active(name) then return end
     local graph = f.graph(state)
+    if graph == '' then return end
     local _, err = mp.command_native({ f.kind, 'add', '@' .. lbl .. ':lavfi=[' .. graph .. ']' })
     if err ~= nil then
       state.last_error = name .. ': no se pudo aplicar ' .. graph
@@ -322,8 +351,13 @@ views.root = function()
     local hint = active[name] and 'activado' or f.desc
     if name == 'denoise' and not state.models.rnnoise then hint = hint .. ' · sin modelo RNNoise (descargar)' end
     if name == 'binaural' and not state.models.sofa then hint = hint .. ' · sin SOFA (descargar)' end
-    table.insert(items, { title = f.title, hint = hint, icon = f.icon, active = active[name] == true,
-      value = { toggle = name } })
+    if name == 'eq' then
+      table.insert(items, { title = f.title, hint = state.eq ~= '' and EQ_TITLES[state.eq] or 'plano', icon = f.icon,
+        active = active.eq == true, value = { view = 'eq' } })
+    else
+      table.insert(items, { title = f.title, hint = hint, icon = f.icon, active = active[name] == true,
+        value = { toggle = name } })
+    end
   end
   table.insert(items, { title = 'Perfil ligero (menos GPU/CPU)', hint = yesno(state.light), icon = 'speed',
     active = state.light, value = { light = true }, separator = true })
@@ -332,6 +366,25 @@ views.root = function()
   table.insert(items, { title = 'Quitar todos los filtros', icon = 'filter_alt_off', value = { clear = true },
     separator = true })
   show('Filtros de imagen y sonido', items)
+end
+
+views.eq = function()
+  local items = { { title = 'Plano (sin ecualizar)', icon = state.eq == '' and 'radio_button_checked' or 'radio_button_unchecked',
+    active = state.eq == '', value = { eq = '' } } }
+  for _, e in ipairs(EQ_PRESETS) do
+    table.insert(items, { title = e.title, icon = state.eq == e.id and 'radio_button_checked' or 'radio_button_unchecked',
+      active = state.eq == e.id, value = { eq = e.id } })
+  end
+  show('Ecualizador', items, { footnote = 'se recuerda · ⌫ atrás' })
+end
+
+local function set_eq(id, quiet)
+  if id ~= '' and not EQ_GRAPHS[id] then return end
+  state.eq = id
+  set_filter('eq', false)
+  if id ~= '' then set_filter('eq', true) end
+  P:set('eq', id)
+  if not quiet then osd('Ecualizador: ' .. (id ~= '' and EQ_TITLES[id] or 'plano')) end
 end
 
 views.diag = function()
@@ -399,7 +452,11 @@ mp.register_script_message(EVENT, function(json)
   if back then ev.type = 'back' end
   if ev.type == 'activate' then
     local v = type(ev.value) == 'table' and ev.value or {}
-    if v.toggle then
+    if v.eq ~= nil then
+      set_eq(v.eq, true)
+      save_prefs()
+      reopen_current()
+    elseif v.toggle then
       toggle_filter(v.toggle, true)
       save_prefs()
       reopen_current()
@@ -409,6 +466,8 @@ mp.register_script_message(EVENT, function(json)
       reopen_current()
     elseif v.clear then
       for _, name in ipairs(ORDER) do set_filter(name, false) end
+      state.eq = ''
+      P:set('eq', '')
       save_prefs()
       osd('Filtros de sonido e imagen quitados')
       reopen_current()
@@ -490,6 +549,7 @@ N:binding('av-menu', open_root)
 mp.add_key_binding(nil, 'av-night', function() toggle_filter('night'); save_prefs() end)
 mp.register_script_message('mu-av-toggle', function(name) toggle_filter(name); save_prefs() end)
 mp.register_script_message('mu-av-set', function(name, on) set_filter(name, on == 'yes' or on == 'true'); save_prefs() end)
+mp.register_script_message('mu-av-eq', function(id) set_eq(id or ''); save_prefs() end)
 mp.register_script_message('mu-av-light', function(on) set_light(on ~= 'no' and on ~= 'false'); save_prefs() end)
 mp.register_script_message('mu-av-diagnose', function() diagnose() end)
 
@@ -502,6 +562,7 @@ mp.observe_property('af', 'native', function() publish(); set_button_state() end
 mp.observe_property('vf', 'native', function() publish(); set_button_state() end)
 
 resolve_models_local()
+state.eq = P:get('eq') or ''
 -- restore the user's filters and light profile (before the first file: `af/vf add` is accepted while idle)
 for _, name in ipairs(P:get('filters')) do
   if FILTERS[name] then set_filter(name, true) end
@@ -510,6 +571,7 @@ if P:get('light') then set_light(true) end
 P:on_change(function(reason)
   if reason ~= 'reset' then return end
   for _, name in ipairs(ORDER) do set_filter(name, false) end
+  state.eq = ''
   set_light(false)
   if uosc.open_type() == MENU then reopen_current() end
 end)

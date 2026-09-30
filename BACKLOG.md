@@ -170,7 +170,7 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
       historial, espacio en disco; «Enviar a MPV-UOS» desde el navegador (marcador + `mpv-uos://`); aviso al móvil al terminar.
 
 ## H24 · Escritorio y sonido
-- [ ] MPRIS (controles de KDE, teclas multimedia, auriculares, pantalla de bloqueo), volumen igualado entre vídeos, ecualizador sencillo.
+- [x] MPRIS (controles de KDE, teclas multimedia, auriculares, pantalla de bloqueo), volumen igualado entre vídeos, ecualizador sencillo.
 
 ## H25 · Compartir: salas, ver juntos y emitir
 - [ ] Sala privada con enlace: «ver juntos» sincronizado (cada invitado reproduce la fuente en su navegador), permisos por invitado

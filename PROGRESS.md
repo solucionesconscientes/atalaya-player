@@ -60,6 +60,30 @@ transcripción entre dos tiempos con los embeddings de H10) y E4 MPRIS (script m
 named pipe en mpvd (`server.py`, `client.py`, `mpvipc.py`) + `bin/mpv-uos.ps1`.
 
 ## Registro por iteración
+### Iteración nocturna 2026-09-30 · H24 · Escritorio y sonido — hecho
+- mpvd `mpris.py`: MPRIS por cada mpv (Play/Pause/PlayPause/Stop/Next/Previous/Seek/SetPosition/OpenUri; Metadata,
+  PlaybackStatus, Volume, Rate, LoopStatus, Shuffle, Fullscreen; PropertiesChanged y Seeked); `mpris.status`;
+  extra `desktop` (jeepney) en pyproject, check.sh e install.sh (ADR-051). Tests con `dbus-daemon` privado.
+- mu-av: *Volumen igualado* (dynaudnorm lento) y *Ecualizador* con 7 perfiles, recordados en mu-prefs;
+  `script-message mu-av-eq <perfil>`.
+- Tests: test_mpris.py (bus privado: nombre, metadatos, controles, señales, volumen, repetición, velocidad),
+  test_mu_av.py (volumen igualado, los 7 perfiles sin errores de lavfi, submenú y recuerdo).
+- Probar a mano:
+  ```bash
+  bin/mpv-uos tests/fixtures/media/video30.mkv   # aparece en los controles multimedia de KDE; teclas ⏯ ⏭ del teclado
+  gdbus call --session --dest org.mpris.MediaPlayer2.mpv_uos.instance$(pgrep -n mpv) \
+    --object-path /org/mpris/MediaPlayer2 --method org.mpris.MediaPlayer2.Player.PlayPause
+  bin/mpv-uos tests/fixtures/media/video30.mkv   # alt+v → Volumen igualado · Ecualizador → Más graves
+  .venv/bin/python -m mpvd call mpris.status
+  ```
+
+### Iteración nocturna 2026-09-30 (modo a tope) · H20 + H21 + H22 en paralelo, H24 en la sesión — plan
+- Subagentes en worktrees: H20 Convertir (mpvd/convert + mu-convert + panel «Tareas» con descargas), H21 Guía de TV
+  (EPG XMLTV de TDTChannels, now/next, parrilla) y grabación programada (ffmpeg en mpvd, persistente), H22 Biblioteca
+  (escaneo, películas/series, carátulas, seguir viendo, siguiente episodio) y OpenSubtitles por hash (desactivado).
+- Coordinador: integra textos compartidos (input.conf, ATAJOS, mu-menu, ADR, USO), fusiona y pasa check.sh una vez.
+- Sesión: H24 · MPRIS (mpvd ↔ D-Bus de sesión), volumen igualado entre vídeos y ecualizador sencillo en mu-av.
+
 ### Iteración nocturna 2026-09-30 · H19 · parte 3 (nightly, suplantación, sesión del navegador) — H19 hecho
 - mpvd: nightly de yt-dlp en `vendor/bin/yt-dlp-nightly` (bajado y verificado por SHA bajo demanda, refrescado con la
   comprobación diaria); una descarga que falla por algo que no es de disponibilidad se repite UNA vez con él

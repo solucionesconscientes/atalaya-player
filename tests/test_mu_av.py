@@ -101,9 +101,9 @@ def test_filters_light_profile_and_diagnosis(av_mpv, media_dir):
     h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-av", timeout=15)
     st = h.wait_property("user-data/mu/av", lambda v: bool(v) and v.get("view") == "root" and v.get("items"), timeout=20)
     titles = [i["title"] for i in st["items"]]
-    assert titles[:5] == ["Diálogo claro", "Modo noche", "Reducción de ruido", "Binaural para auriculares",
-                          "Protección fotosensible"]
-    assert [i["active"] for i in st["items"][:5]] == [True, False, False, True, True]
+    assert titles[:7] == ["Diálogo claro", "Modo noche", "Volumen igualado", "Ecualizador", "Reducción de ruido",
+                          "Binaural para auriculares", "Protección fotosensible"]
+    assert [i["active"] for i in st["items"][:7]] == [True, False, False, False, False, True, True]
     assert "Diagnóstico de tirones" in titles and "Quitar todos los filtros" in titles
     send_event(h, {"type": "activate", "index": titles.index("Diagnóstico de tirones") + 1, "value": {"view": "diag"}})
     st = h.wait_property("user-data/mu/av", lambda v: bool(v) and v.get("view") == "diag"
@@ -130,3 +130,53 @@ def test_av_models_download_unknown(daemon_env):
     with pytest.raises(RpcError) as exc:
         d.call("av.models.path", {"name": "rnnoise-bd"}) if not (ROOT / "vendor/models/rnnoise/bd.rnnn").exists() else (_ for _ in ()).throw(RpcError(NOT_FOUND, "x"))
     assert exc.value.code == NOT_FOUND
+
+
+def test_volume_leveling_and_equalizer_are_applied_and_remembered(daemon_env, media_dir):
+    """H24: «Volumen igualado» (slow dynaudnorm) and the equalizer presets play without lavfi errors, the preset is
+    chosen from its submenu and both come back in the next player."""
+    args = ["--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5",
+            "--keep-open=yes", "--pause=no", "--loop-file=inf"]
+    h = start_mpv(daemon_env.runtime_dir, args, env=daemon_env.env)
+    try:
+        h.wait_property("user-data/mu/av", lambda v: bool(v) and "filters" in v, timeout=20)
+        h.command("loadfile", str(media_dir / "video30.mkv"))
+        h.wait_property("time-pos", lambda v: isinstance(v, (int, float)) and v > 0.3, timeout=20)
+        h.command("script-message-to", "mu_av", "mu-av-toggle", "level")
+        h.wait_property("af", lambda v: any(f.get("label") == "mu-level" for f in v or []), timeout=10)
+        assert "dynaudnorm" in labelled(h, "af")["mu-level"]["params"]["graph"]
+        # every preset is a graph mpv accepts while playing
+        for preset in ("bass", "less_bass", "treble", "voice", "music", "laptop", "headphones"):
+            h.command("script-message-to", "mu_av", "mu-av-eq", preset)
+            h.wait_property("user-data/mu/av", lambda v, p=preset: bool(v) and v.get("eq") == p
+                            and v.get("filters", {}).get("eq"), timeout=10)
+            t0 = h.get("time-pos")
+            h.wait_property("time-pos", lambda v, t=t0: isinstance(v, (int, float)) and abs(v - t) > 0.3, timeout=15)
+        assert "highpass" not in labelled(h, "af")["mu-eq"]["params"]["graph"]
+        assert lavfi_errors(h) == [], lavfi_errors(h)
+        # submenu: flat removes the filter, «Más graves» puts it back
+        h.command("script-binding", "mu_av/av-menu")
+        st = h.wait_property("user-data/mu/av", lambda v: bool(v) and v.get("view") == "root" and v.get("items"),
+                             timeout=20)
+        titles = [i["title"] for i in st["items"]]
+        eq_row = st["items"][titles.index("Ecualizador")]
+        assert eq_row["hint"] == "Auriculares" and eq_row["active"] is True
+        send_event(h, {"type": "activate", "index": titles.index("Ecualizador") + 1, "value": {"view": "eq"}})
+        st = h.wait_property("user-data/mu/av", lambda v: bool(v) and v.get("view") == "eq", timeout=10)
+        assert [i["title"] for i in st["items"]][:2] == ["Plano (sin ecualizar)", "Más graves"]
+        send_event(h, {"type": "activate", "index": 1, "value": {"eq": ""}})
+        h.wait_property("af", lambda v: not any(f.get("label") == "mu-eq" for f in v or []), timeout=10)
+        send_event(h, {"type": "activate", "index": 2, "value": {"eq": "bass"}})
+        h.wait_property("af", lambda v: any(f.get("label") == "mu-eq" for f in v or []), timeout=10)
+        assert h.script_errors() == []
+    finally:
+        h.stop()
+    # remembered by mu-prefs (same data dir)
+    h = start_mpv(daemon_env.runtime_dir, args, env=daemon_env.env)
+    try:
+        st = h.wait_property("user-data/mu/av", lambda v: bool(v) and v.get("filters", {}).get("eq")
+                             and v.get("filters", {}).get("level"), timeout=20)
+        assert st["eq"] == "bass"
+        assert "equalizer=f=60" in labelled(h, "af")["mu-eq"]["params"]["graph"]
+    finally:
+        h.stop()
