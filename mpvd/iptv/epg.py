@@ -180,6 +180,10 @@ class EpgStore:
             return None
         return dict(zip(("imported_at", "fetched_at", "channels", "programmes", "first", "last"), row))
 
+    def touch(self, src: str, fetched_at: float) -> None:
+        with self.lock, self.db:
+            self.db.execute("UPDATE meta SET imported_at=?, fetched_at=? WHERE src=?", (time.time(), fetched_at, src))
+
     def import_file(self, src: str, path: Path, fetched_at: float = 0.0, now: float | None = None) -> dict[str, Any]:
         """Replace the guide of ``src`` with the XMLTV file at ``path`` (plain or gzip), in one transaction."""
         now = time.time() if now is None else now
@@ -310,6 +314,9 @@ class EpgService:
             if meta and not force and res.from_cache and meta.get("fetched_at") and \
                     abs(float(meta["fetched_at"]) - fetched_at) < 1:
                 return {"url": url, "unchanged": True, **meta}
+            if meta and res.status == 304:  # same file as the one imported: only its age changes
+                self.store.touch(url, fetched_at)
+                return {"url": url, "unchanged": True, **meta}
         t0 = time.monotonic()
         info = self.store.import_file(url, path, fetched_at=fetched_at)
         log.info("epg %s: %d channels, %d programmes in %.1fs", url, info["channels"], info["programmes"],
@@ -361,42 +368,50 @@ class EpgService:
 
     # -- queries ------------------------------------------------------------------------------
 
-    def locate(self, ch: Channel) -> tuple[str | None, str | None]:
-        """(EPG url, EPG channel id) of a channel, or (url, None) when its guide does not list it."""
-        url = self.url_of(ch.source)
-        if not url:
-            return None, None
-        self.ensure(url)
-        return url, self.store.match(url, ch.tvg_id, ch.name)
-
-    def now(self, ids: list[str], at: float | None = None) -> dict[str, Any]:
-        at = time.time() if at is None else at
-        out: dict[str, Any] = {}
-        loading = False
+    def prepare(self, ids: list[str]) -> tuple[list[Channel], bool]:
+        """In the event loop: the channels behind ``ids`` (unknown ids skipped) and whether one of their guides is
+        being downloaded; starts the refresh of the guides that are missing or old (jobs are not thread-safe)."""
+        chans: list[Channel] = []
+        urls: set[str] = set()
         for cid in ids:
             try:
                 ch = self.iptv.get(cid)
             except RpcError:
                 continue
+            chans.append(ch)
+            url = self.url_of(ch.source)
+            if url:
+                urls.add(url)
+        for url in urls:
+            self.ensure(url)
+        return chans, any(self.loading(u) for u in urls)
+
+    def locate(self, ch: Channel) -> tuple[str | None, str | None]:
+        """(EPG url, EPG channel id) of a channel, or (url, None) when its guide does not list it."""
+        url = self.url_of(ch.source)
+        if not url:
+            return None, None
+        return url, self.store.match(url, ch.tvg_id, ch.name)
+
+    def now(self, chans: list[Channel], at: float | None = None) -> dict[str, Any]:
+        """{channel id: {now, next}} (SQLite only: runs in a worker thread)."""
+        at = time.time() if at is None else at
+        out: dict[str, Any] = {}
+        for ch in chans:
             url, epg_id = self.locate(ch)
-            if url and self.loading(url):
-                loading = True
-            if not epg_id:
+            if not url or not epg_id:
                 continue
             cur, nxt = self.store.now_next(url, epg_id, at)
             if cur is None and nxt is None:
                 continue
-            out[cid] = {"now": cur.to_dict(False) if cur else None, "next": nxt.to_dict(False) if nxt else None}
-        return {"at": at, "channels": out, "loading": loading}
+            out[ch.id] = {"now": cur.to_dict(False) if cur else None, "next": nxt.to_dict(False) if nxt else None}
+        return out
 
-    def channel(self, cid: str, start: float | None = None, hours: float = 24.0) -> dict[str, Any]:
-        ch = self.iptv.get(cid)
-        start = time.time() if start is None else start
+    def channel(self, ch: Channel, start: float, hours: float = 24.0) -> dict[str, Any]:
         url, epg_id = self.locate(ch)
         progs = self.store.grid(url, epg_id, start, start + hours * 3600) if url and epg_id else []
         return {"channel": {"id": ch.id, "name": ch.name, "kind": ch.kind}, "epg_id": epg_id, "at": start,
-                "loading": bool(url and self.loading(url)), "has_guide": bool(url),
-                "programmes": [p.to_dict() | {"now": p.start <= start < p.stop} for p in progs]}
+                "has_guide": bool(url), "programmes": [p.to_dict() | {"now": p.start <= start < p.stop} for p in progs]}
 
     def status(self) -> list[dict[str, Any]]:
         return [{"url": u, "meta": self.store.meta(u), "loading": self.loading(u), "error": self._errors.get(u)}
@@ -412,13 +427,20 @@ def register(server: MpvdServer, service: EpgService) -> None:
         if not isinstance(ids, list):
             raise RpcError(INVALID_PARAMS, "ids must be a list of channel ids")
         await service.iptv.ensure_loaded()
-        return await asyncio.to_thread(service.now, [str(i) for i in ids[:2000]], at)
+        at = time.time() if at is None else float(at)
+        chans, loading = service.prepare([str(i) for i in ids[:2000]])
+        found = await asyncio.to_thread(service.now, chans, at)
+        return {"at": at, "channels": found, "loading": loading}
 
     @d.method("iptv.epg.channel")
     async def channel(ctx: RpcContext, id: str, start: float | None = None, hours: float = 24.0) -> dict[str, Any]:  # noqa: A002
         """Guide of one channel from ``start`` (default now) for ``hours`` (programmes with title, desc, times)."""
         await service.iptv.ensure_loaded()
-        result = await asyncio.to_thread(service.channel, id, start, max(1.0, min(float(hours), 96.0)))
+        ch = service.iptv.get(id)
+        _, loading = service.prepare([id])
+        start = time.time() if start is None else float(start)
+        result = await asyncio.to_thread(service.channel, ch, start, max(1.0, min(float(hours), 96.0)))
+        result["loading"] = loading
         sched = getattr(server, "schedule", None)
         if sched is not None:
             for p in result["programmes"]:
