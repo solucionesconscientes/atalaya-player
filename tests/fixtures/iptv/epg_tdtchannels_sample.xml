@@ -1,0 +1,172 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tv>
+	<channel id="La1.TV">
+		<display-name>La1.TV</display-name>
+	</channel>
+	<channel id="La2.TV">
+		<display-name>La2.TV</display-name>
+	</channel>
+	<channel id="24Horas.TV">
+		<display-name>24Horas.TV</display-name>
+	</channel>
+	<channel id="TV3.TV">
+		<display-name>TV3.TV</display-name>
+	</channel>
+	<programme channel="La1.TV" start="20260930154500 +0000" stop="20260930163500 +0000">
+		<title>Valle Salvaje</title>
+		<desc>Hernando presiona a Alejo: o pide matrimonio a Manuela o lo pagará caro. Será Braulio quien le revele a su primo algo inquietante sobre ella. Y Rosalía irrumpe en una cena familiar… ¿estará a la altura o será humillada de nuevo?</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MTVEP4314916" />
+		<category>SERIES</category>
+	</programme>
+	<programme channel="La1.TV" start="20260930163500 +0000" stop="20260930173500 +0000">
+		<title>La Promesa</title>
+		<desc>Samuel huyó sin consumar por miedo. Ciro sospecha de Julieta, ¿dónde ha pasado la noche? Ricardo salva la boda trayendo nuevos vinos. Curro va a dejar un collar en la habitación de Pía cuando encuentra la carta que escribió Pía para él.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MTVEP2162814" />
+		<category>SERIES</category>
+	</programme>
+	<programme channel="La1.TV" start="20260930173500 +0000" stop="20260930182500 +0000">
+		<title>Malas lenguas</title>
+		<desc>Gonzalo Miró presenta este magacín de actualidad en el que, con humor, se desmontan bulos que circulan en los medios de comunicación y las redes sociales.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MLA2P4387639" />
+		<category>ENTERTAINMENT</category>
+	</programme>
+	<programme channel="La1.TV" start="20260930182500 +0000" stop="20260930185500 +0000">
+		<title>Aquí la Tierra</title>
+		<desc>Jacob Petrus ofrece una original mirada sobre el territorio y sus habitantes a través de la meteorología. La divulgación y la información sobre el terreno conviven con el descubrimiento de la naturaleza y el medio ambiente.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MTVEP4338882" />
+		<category>ENTERTAINMENT</category>
+	</programme>
+	<programme channel="La1.TV" start="20260930185500 +0000" stop="20260930194000 +0000">
+		<title>Telediario 2</title>
+		<desc>Cientos de profesionales de TVE salen cada día a la calle en busca de noticias. El resultado, un completo repaso a la actualidad nacional e internacional conducido por Pepa Bueno. También hay espacio para la parcela deportiva.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/M24HP518466" />
+		<category>NEWS</category>
+	</programme>
+	<programme channel="La1.TV" start="20260930194000 +0000" stop="20260930194500 +0000">
+		<title>Deportes 2</title>
+		<desc>Actualidad deportiva diaria nacional e internacional.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MTVEP3921386" />
+		<category>SPORTS</category>
+	</programme>
+	<programme channel="La1.TV" start="20260930194500 +0000" stop="20260930210000 +0000">
+		<title>La revuelta</title>
+		<desc>David Broncano y su equipo reciben a todo tipo de personalidades en este irreverente programa en el que el público es protagonista.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MTVEP4394609" />
+		<category>ENTERTAINMENT</category>
+	</programme>
+	<programme channel="La1.TV" start="20260930210000 +0000" stop="20260930220500 +0000">
+		<title>La Promesa</title>
+		<desc>Es el día de la boda, pero el banquete está arruinado y Curro no aparece: no ha dormido en La Promesa. Ciro engaña a Manuel, que firma otra licencia sin darse cuenta. Curro echa a Pía de La Promesa. Al llegar el ''sí, quiero'', Curro se bloquea al mirar a Leocadia.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MTVEP2162814" />
+		<category>SERIES</category>
+	</programme>
+	<programme channel="La2.TV" start="20260930154500 +0000" stop="20260930175000 +0000">
+		<title>Malas lenguas</title>
+		<desc>Gonzalo Miró presenta este magacín de actualidad en el que, con humor, se desmontan bulos que circulan en los medios de comunicación y las redes sociales.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MLA2P4387639" />
+		<category>ENTERTAINMENT</category>
+	</programme>
+	<programme channel="La2.TV" start="20260930175000 +0000" stop="20260930184000 +0000">
+		<title>Sukha</title>
+		<desc>Magacín diario con una amplia mirada al panorama cultural actual que gira sobre tres términos: felicidad, placer y bienestar, que son precisamente el significado de la palabra sánscrita 'sukha'.</desc>
+		<category>ENTERTAINMENT</category>
+	</programme>
+	<programme channel="La2.TV" start="20260930184000 +0000" stop="20260930193000 +0000">
+		<title>Trivial Pursuit</title>
+		<desc>Egoitz Txurruka presenta esta versión televisiva del popular juego de mesa. El concurso consta de tres rondas: ''Ganarse el tablero'', ''Carrera hacia el centro'' y ''La batalla por el centro''. El mejor concursante de estas tres rondas se clasifica para la gran final.</desc>
+		<category>ENTERTAINMENT</category>
+	</programme>
+	<programme channel="La2.TV" start="20260930193000 +0000" stop="20260930200000 +0000">
+		<title>Cifras y letras</title>
+		<desc>Concurso cuyas pruebas deben superarse jugando con cifras y letras y donde, en cada entrega, los concursantes luchan por llevarse el bote acumulado. Presentado por Aitor Albizua, acompañado por los expertos Elena Herraiz y David Calle.</desc>
+		<category>ENTERTAINMENT</category>
+	</programme>
+	<programme channel="La2.TV" start="20260930200000 +0000" stop="20260930203500 +0000">
+		<title>Cifras y letras</title>
+		<desc>Concurso cuyas pruebas deben superarse jugando con cifras y letras y donde, en cada entrega, los concursantes luchan por llevarse el bote acumulado. Presentado por Aitor Albizua, acompañado por los expertos Elena Herraiz y David Calle.</desc>
+		<category>ENTERTAINMENT</category>
+	</programme>
+	<programme channel="La2.TV" start="20260930203500 +0000" stop="20260930211000 +0000">
+		<title>Cifras y letras</title>
+		<desc>Concurso cuyas pruebas deben superarse jugando con cifras y letras y donde, en cada entrega, los concursantes luchan por llevarse el bote acumulado. Presentado por Aitor Albizua, acompañado por los expertos Elena Herraiz y David Calle.</desc>
+		<category>ENTERTAINMENT</category>
+	</programme>
+	<programme channel="La2.TV" start="20260930211000 +0000" stop="20260930222000 +0000">
+		<title>Tom Cruise: la última estrella de cine</title>
+		<desc>Tom Cruise no es solo actor y productor. A pesar de que atravesó una gran crisis a mitad de su carrera, supo volver a conectar con la audiencia gracias a su firme compromiso por entretener, en ocasiones, a costa de su integridad física.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MLA2P4281991" />
+		<category>DOCUMENTARY</category>
+	</programme>
+	<programme channel="24Horas.TV" start="20260930150000 +0000" stop="20260930180000 +0000">
+		<title>La tarde en 24h</title>
+		<desc>Cristina Pampín conduce ''La Tarde en 24h''. Cinco horas en directo con todas las noticias de actualidad nacional e internacional.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/F4369960" />
+		<category>NEWS</category>
+	</programme>
+	<programme channel="24Horas.TV" start="20260930180000 +0000" stop="20260930182700 +0000">
+		<title>Noticias 24H</title>
+		<desc>Noticias de los servicios informativos del Canal 24 Horas. Producido por Televisión Española, este canal está dedicado íntegramente a ofrecer información de actualidad y es el más antiguo de los canales de este tipo en España.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/F4315170" />
+		<category>NEWS</category>
+	</programme>
+	<programme channel="24Horas.TV" start="20260930182700 +0000" stop="20260930185400 +0000">
+		<title>Noticias 24H</title>
+		<desc>Noticias de los servicios informativos del Canal 24 Horas. Producido por Televisión Española, este canal está dedicado íntegramente a ofrecer información de actualidad y es el más antiguo de los canales de este tipo en España.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/F4315170" />
+		<category>NEWS</category>
+	</programme>
+	<programme channel="24Horas.TV" start="20260930185400 +0000" stop="20260930194000 +0000">
+		<title>Telediario 2</title>
+		<desc>Cientos de profesionales de TVE salen cada día a la calle en busca de noticias. El resultado, un completo repaso a la actualidad nacional e internacional conducido por Pepa Bueno. También hay espacio para la parcela deportiva.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/M24HP518466" />
+		<category>NEWS</category>
+	</programme>
+	<programme channel="24Horas.TV" start="20260930194000 +0000" stop="20260930194500 +0000">
+		<title>Deportes 2</title>
+		<desc>Actualidad deportiva diaria nacional e internacional.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MTVEP3921386" />
+		<category>SPORTS</category>
+	</programme>
+	<programme channel="24Horas.TV" start="20260930194500 +0000" stop="20260930200000 +0000">
+		<title>Noticias 24H</title>
+		<desc>Noticias de los servicios informativos del Canal 24 Horas. Producido por Televisión Española, este canal está dedicado íntegramente a ofrecer información de actualidad y es el más antiguo de los canales de este tipo en España.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/F4315170" />
+		<category>NEWS</category>
+	</programme>
+	<programme channel="24Horas.TV" start="20260930200000 +0000" stop="20260930223000 +0000">
+		<title>La noche en 24 horas</title>
+		<desc>Informativo diario que incluye entrevistas y debates sobre diversas cuestiones de actualidad. El programa ofrece la posibilidad de que los espectadores participen opinando sobre las cuestiones debatidas mediante un foro en la web de RTVE.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/M24HP850838" />
+		<category>NEWS</category>
+	</programme>
+	<programme channel="TV3.TV" start="20260930152000 +0000" stop="20260930163500 +0000">
+		<title>La selva</title>
+		<desc>Xavier Grasset presenta aquest magazín de tardes en el que es fa un repàs a l'actualitat del dia de forma distesa. Una trobada plena de coneixement i seguiment dels fets del dia, però també amb molt d'entreteniment i amb diversos col·laboradors.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MTVCP4393972" />
+		<category>ENTERTAINMENT</category>
+	</programme>
+	<programme channel="TV3.TV" start="20260930163500 +0000" stop="20260930190000 +0000">
+		<title>Liga de Campeones F: Roma - Barcelona</title>
+		<desc>La competició de clubs més important del futbol femení. Després de dues projeccions a les rondes de classificació, els 16 millors equips del continent juguen una exigent fase de grups. La lluita més forta als playoffs pel títol que defensa el Barcelona.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MTVCP4405333" />
+		<category>SPORTS</category>
+	</programme>
+	<programme channel="TV3.TV" start="20260930190000 +0000" stop="20260930200500 +0000">
+		<title>Telenotícies vespre</title>
+		<desc>Informatiu diari que recull els esdeveniments més destacats en l’àmbit català, estatal i internacional. De dilluns a divendres, Toni Cruanyes és l'encarregat de presentar les notícies de la jornada.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MTVCP4127475" />
+		<category>NEWS</category>
+	</programme>
+	<programme channel="TV3.TV" start="20260930200500 +0000" stop="20260930212500 +0000">
+		<title>Soc i Seré</title>
+		<desc>Un territori amb història. Programa presentat per Àngel Llàcer i Júlia Bonjoch on cent persones s'enfronten a proves i exàmens de coneixements sobre Catalunya, les tradicions o la gastronomia, entre d'altres.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MTVCP4404309" />
+		<category>ENTERTAINMENT</category>
+	</programme>
+	<programme channel="TV3.TV" start="20260930212500 +0000" stop="20260930221500 +0000">
+		<title>País d'altura: Pirineus</title>
+		<desc>Els Pirineus són una frontera de muntanyes gegants i vides a gran altitud. Pobles penjats del mapa, cims que toquen el cel i gent que viu més a prop dels núvols que dels embussos.</desc>
+		<icon src="https://www.movistarplus.es/recorte/n/caratula5/MTVCP4404279" />
+		<category>DOCUMENTARY</category>
+	</programme>
+</tv>
