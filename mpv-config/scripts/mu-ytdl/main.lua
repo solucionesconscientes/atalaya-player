@@ -511,6 +511,7 @@ end
 
 local function toggle_option(name)
   local o = state.dl_options
+  if not o then return end  -- download options not loaded yet (mpvd has not answered ytdl.presets)
   if name == 'container' then
     local order = { mp4 = 'mkv', mkv = 'webm', webm = 'mp4' }
     o.container = order[o.container] or 'mp4'

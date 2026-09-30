@@ -276,6 +276,8 @@ def default_dirs(root: Path | None, data_dir: Path) -> tuple[list[Path], Path, l
     dl: list[Path] = []
     if os.environ.get("MPV_UOS_OPUS_DL"):
         dl.append(Path(os.environ["MPV_UOS_OPUS_DL"]))
+    if env:
+        return dirs, download_to, dl  # an explicit models dir is the only one (tests, custom setups)
     if root is not None:
         dirs.append(root / "vendor" / "models" / "opus-mt")
         dl.append(root / "vendor" / "dl")

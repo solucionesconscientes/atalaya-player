@@ -4,5 +4,5 @@ max_line_length = 130
 exclude_files = {
   'mpv-config/scripts/uosc',      -- vendored (see vendor.lock)
   'mpv-config/scripts/thumbfast.lua',
-  'vendor', '.venv', 'tmp', '.cache', 'logs',
+  'vendor', '.venv', 'tmp', '.cache', 'logs', '.claude',
 }

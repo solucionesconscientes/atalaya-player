@@ -45,7 +45,9 @@ def test_audio_only_and_download_options_are_remembered(daemon_env, media_dir, t
                         timeout=40)
         # a download option changed from the menu (container mp4 → mkv)
         h.command("script-binding", "mu_ytdl/ytdl-download")
-        h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and str(v.get("view", "")).startswith("download"),
+        # the options exist once mpvd answered ytdl.presets (the "Opciones" submenu is then in the menu)
+        h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and str(v.get("view", "")).startswith("download")
+                        and any(str(it.get("title", "")).startswith("Opciones") for it in v.get("items") or []),
                         timeout=30)
         send_event(h, {"type": "activate", "index": 1, "value": {"opt": "container"}})
         deadline = time.time() + 15
