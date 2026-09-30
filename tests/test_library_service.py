@@ -323,3 +323,27 @@ def test_settings_secrets_and_tmdb_only_when_enabled(tmp_path, media_dir, settin
         return await c.call("library.settings.get")
     s = run(settings, again)
     assert s["tmdb_enabled"] is True and s["osub_languages"] == "en,es" and s["osub_username"] == "ana"
+
+
+def test_removing_a_folder_keeps_the_files_of_a_subfolder_still_in_the_library(tmp_path, media_dir):
+    """H34 · las filas llevan la carpeta donde se vieron primero: quitar la de arriba se llevaba las de la subcarpeta."""
+    from mpvd.library.store import LibraryStore
+
+    root = tmp_path / "Vídeos"
+    (root / "Series").mkdir(parents=True)
+    shutil.copyfile(media_dir / "video30.mkv", root / "Una peli (2020).mkv")
+    shutil.copyfile(media_dir / "serie/ep01.mkv", root / "Series" / "Mi.Serie.S01E01.mkv")
+
+    store = LibraryStore(tmp_path / "lib.sqlite3")
+    try:
+        store.add_folder(str(root))
+        store.add_folder(str(root / "Series"))
+        store.scan([str(root), str(root / "Series")])
+        assert len(store.items()) == 2
+
+        removed = store.remove_folder(str(root))
+        rows = store.items()
+        assert removed == 1 and len(rows) == 1
+        assert rows[0]["path"].endswith("Mi.Serie.S01E01.mkv") and rows[0]["folder"] == str(root / "Series")
+    finally:
+        store.close()

@@ -150,10 +150,20 @@ class IptvStore:
         check ("master" playlist / "probe"). ``renditions`` of its HLS master are kept to name the player's tracks;
         a report without them keeps the ones stored."""
         with self._lock:
+            # a «player» report is whatever mpv knew at file-loaded (alternative audio PIDs of a TS show up seconds
+            # later): it must not wipe the badges the master playlist already proved. Fewer badges + worse source = keep.
             self._conn.execute(
                 "INSERT INTO tracks (channel_id, checked_at, source, summary, renditions) VALUES (?,?,?,?,?)"
-                " ON CONFLICT(channel_id) DO UPDATE SET checked_at=excluded.checked_at, source=excluded.source,"
-                " summary=excluded.summary, renditions=COALESCE(excluded.renditions, tracks.renditions)",
+                " ON CONFLICT(channel_id) DO UPDATE SET checked_at=excluded.checked_at,"
+                " source=CASE WHEN tracks.source IN ('master','probe') AND excluded.source='player'"
+                "             AND json_array_length(json_extract(excluded.summary, '$.badges'))"
+                "               < json_array_length(json_extract(tracks.summary, '$.badges'))"
+                "        THEN tracks.source ELSE excluded.source END,"
+                " summary=CASE WHEN tracks.source IN ('master','probe') AND excluded.source='player'"
+                "              AND json_array_length(json_extract(excluded.summary, '$.badges'))"
+                "                < json_array_length(json_extract(tracks.summary, '$.badges'))"
+                "         THEN tracks.summary ELSE excluded.summary END,"
+                " renditions=COALESCE(excluded.renditions, tracks.renditions)",
                 (channel_id, time.time(), source, json.dumps(summary, ensure_ascii=False),
                  json.dumps(renditions, ensure_ascii=False) if renditions is not None else None))
 

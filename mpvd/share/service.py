@@ -453,6 +453,7 @@ class ShareService:
                 if room.expired():
                     self._spawn(rt, self.close("expired"))
                     return
+                self.limiter.prune()   # its per-IP tables only ever grew while the daemon lived
                 s = self._session(rt)
                 if s is None:
                     self._spawn(rt, self.close("player"))

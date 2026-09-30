@@ -63,7 +63,9 @@ def lan_ip() -> str:
         s.close()
 
 
-_FIREWALL_CACHE: dict[str, Any] = {"at": 0.0, "value": None, "key": None}
+# per (port, ip, label): the remote, the share rooms and the TV all ask, and a single-entry cache made them invalidate
+# each other, so the blocking systemctl path ran on almost every call
+_FIREWALL_CACHE: dict[tuple[int, str, str], tuple[float, dict[str, Any] | None]] = {}
 
 
 def firewall_hint(port: int, ip: str, label: str = "mando") -> dict[str, Any] | None:
@@ -71,8 +73,9 @@ def firewall_hint(port: int, ip: str, label: str = "mando") -> dict[str, Any] | 
     exact command to open the port for the local network. None when no known firewall is active. ``label`` names
     the rule (the remote and the share rooms use different ports)."""
     now = time.monotonic()
-    if now - _FIREWALL_CACHE["at"] < 60 and _FIREWALL_CACHE.get("key") == (port, ip, label):
-        return _FIREWALL_CACHE["value"]
+    hit = _FIREWALL_CACHE.get((port, ip, label))
+    if hit is not None and now - hit[0] < 60:
+        return hit[1]
     value = None
     subnet = ".".join(ip.split(".")[:3]) + ".0/24" if ip.count(".") == 3 and not ip.startswith("127.") else "192.168.1.0/24"
     if shutil.which("systemctl"):
@@ -87,8 +90,51 @@ def firewall_hint(port: int, ip: str, label: str = "mando") -> dict[str, Any] | 
             if out.strip() == "active":
                 value = {"tool": unit, "port": port, "subnet": subnet, "command": command}
                 break
-    _FIREWALL_CACHE.update(at=now, value=value, key=(port, ip, label))
+    _FIREWALL_CACHE[(port, ip, label)] = (now, value)
     return value
+
+
+def _limit(query: Any, default: int, hi: int) -> int:
+    """A ``limit=`` from the network: never an unhandled ValueError (which the 500 used to echo back), never unbounded."""
+    raw = query.get("limit") if hasattr(query, "get") else None
+    if raw in (None, ""):
+        return default
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        raise HttpError(400, "limit debe ser un número") from None
+    return max(1, min(hi, n))
+
+
+_FIREWALL_INFLIGHT: set[tuple[int, str, str]] = set()
+
+
+def firewall_cached(port: int, ip: str, label: str = "mando") -> dict[str, Any] | None:
+    """The firewall hint without ever blocking the event loop.
+
+    ``firewall_hint`` runs ``systemctl is-active`` twice (up to 6 s with a slow systemd), and it used to run inside
+    ``status()``, i.e. in the loop: every alt+z froze the daemon, every mpv session and every SSE with it. Here a stale
+    (or missing) answer is returned at once and refreshed in a thread for the next call.
+    """
+    key = (port, ip, label)
+    hit = _FIREWALL_CACHE.get(key)
+    if hit is not None and time.monotonic() - hit[0] < 60:
+        return hit[1]
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return firewall_hint(port, ip, label)     # no loop (CLI, tests): answering right away is fine
+    if key not in _FIREWALL_INFLIGHT:
+        _FIREWALL_INFLIGHT.add(key)
+
+        async def refresh() -> None:
+            try:
+                await asyncio.to_thread(firewall_hint, port, ip, label)
+            finally:
+                _FIREWALL_INFLIGHT.discard(key)
+
+        loop.create_task(refresh())
+    return hit[1] if hit is not None else None
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
@@ -190,7 +236,7 @@ class RemoteService:
         port = self.http.port or self.port_pref
         return {"running": self.http.running, "host": self.host, "port": port,
                 "url": self.base_url() if self.http.running else None, "lan_ip": ip, "autostart": self.autostart,
-                "firewall": firewall_hint(port, ip) if self.host in ("0.0.0.0", "") else None,
+                "firewall": firewall_cached(port, ip) if self.host in ("0.0.0.0", "") else None,
                 "paired": [{"id": p["id"][:8], "name": p["name"], "created": p["created"], "last_seen": p.get("last_seen")}
                            for p in self.paired.values()],
                 "pending_tokens": len(self.tokens), "clients": self.clients}
@@ -314,7 +360,7 @@ class RemoteService:
         if path == "/api/search":
             return Response.json(await self._search(self._session_for(row), req.query.get("q", "")))
         if path == "/api/recents":
-            rows = await self._rpc("watch.recents", {"limit": int(req.query.get("limit", "30") or 30)})
+            rows = await self._rpc("watch.recents", {"limit": _limit(req.query, 30, 200)})
             return Response.json(rows)
         if path == "/api/tracks":
             return Response.json(await self._tracks(self._session_for(row)))
@@ -481,7 +527,7 @@ class RemoteService:
     async def _channels(self, query: dict[str, str]) -> Any:
         q = query.get("q", "").strip()
         kind = query.get("kind") or None
-        limit = int(query.get("limit", "40") or 40)
+        limit = _limit(query, 40, 500)
         if q:
             return await self._rpc("iptv.search", {"q": q, "limit": limit, "kind": kind, "compact": True})
         try:

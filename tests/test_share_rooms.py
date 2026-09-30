@@ -194,3 +194,47 @@ def test_clean_chat_and_rate_windows():
     assert rooms.rate_ok(times, 3, window=10, now=5.0) is False      # 3 in the last 10 s
     assert rooms.rate_ok(times, 3, window=10, now=10.5) is True       # the first one left the window
     assert set(rooms.REACTIONS) == {"like", "love", "laugh", "wow", "clap", "sad"}
+
+
+def test_the_link_survives_honest_typos_spread_over_time():
+    """H34 · `fails` no caducaba nunca: 20 erratas a lo largo de una tarde mataban una invitación aún válida."""
+    room = Room.new(ttl=rooms.MAX_TTL, now=1000.0)
+    bad = "x" * 20
+    for i in range(rooms.MAX_FAILS_ROOM - 1):        # una cada minuto: nunca hay 20 dentro de la ventana
+        with pytest.raises(JoinError):
+            room.join(bad, "Ana", "192.168.1.9", None, now=1000.0 + i * 60)
+    assert not room.locked and room.fails <= rooms.FAIL_WINDOW / 60 + 1
+
+    # otra mucho después: las viejas ya no cuentan
+    with pytest.raises(JoinError):
+        room.join(bad, "Ana", "192.168.1.9", None, now=20000.0)
+    assert not room.locked and room.fails == 1
+
+    # entrar con el enlace bueno reinicia la cuenta
+    for _ in range(3):
+        with pytest.raises(JoinError):
+            room.join(bad, "Ana", "192.168.1.9", None, now=20001.0)
+    assert room.fails == 4
+    room.join(room.token, "Ana", "192.168.1.9", None, now=20002.0)
+    assert room.fails == 0 and room.fail_times == []
+
+    # y la protección sigue: 20 intentos seguidos sí cierran el enlace
+    for _ in range(rooms.MAX_FAILS_ROOM):
+        with pytest.raises(JoinError):
+            room.join(bad, "Bea", "192.168.1.10", None, now=20003.0)
+    assert room.locked
+
+
+def test_a_private_room_frees_the_seats_of_guests_who_left():
+    """H34 · la limpieza de plazas estaba condicionada a las salas públicas: en privado la sala se llenaba de fantasmas."""
+    room = Room.new(ttl=3600.0, now=1000.0)
+    room.max_guests = 2
+    a = room.join(room.token, "Ana", "192.168.1.9", None, now=1000.0)
+    room.join(room.token, "Bea", "192.168.1.10", None, now=1000.0)
+    with pytest.raises(JoinError, match="llena"):
+        room.join(room.token, "Caro", "192.168.1.11", None, now=1001.0)
+
+    a.streams = 0            # Ana closed the page long ago and never said goodbye
+    later = 1000.0 + rooms.STALE_SECONDS + 5
+    caro = room.join(room.token, "Caro", "192.168.1.11", None, now=later)
+    assert caro.name == "Caro" and a.id not in room.guests

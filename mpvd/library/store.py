@@ -164,6 +164,12 @@ class LibraryStore:
     def remove_folder(self, path: str) -> int:
         with self._lock:
             n = self._conn.execute("DELETE FROM folders WHERE path=?", (path,)).rowcount
+            # rows carry the folder they were FIRST seen in, so files that live inside a folder still in the library
+            # («~/Vídeos» removed, «~/Vídeos/Series» kept) must change owner instead of disappearing from the index
+            others = [r["path"] for r in self._conn.execute("SELECT path FROM folders").fetchall()]
+            for other in sorted(others, key=len, reverse=True):
+                self._conn.execute("UPDATE items SET folder=? WHERE folder=? AND path LIKE ?",
+                                   (other, path, other.rstrip(os.sep) + os.sep + "%"))
             removed = self._conn.execute("DELETE FROM items WHERE folder=?", (path,)).rowcount
             self._drop_orphan_groups()
             self._conn.commit()

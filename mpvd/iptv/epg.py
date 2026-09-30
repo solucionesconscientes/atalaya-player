@@ -227,17 +227,19 @@ class EpgStore:
         if tables is None:
             by_id: dict[str, str] = {}
             by_name: dict[str, str] = {}
+            # read AND memo inside the same lock: import_file drops the memo at the end of its transaction, and a memo
+            # stored after that drop (built from the old table) matched nothing until the next import, twelve hours away
             with self.lock:
                 rows = self.db.execute("SELECT epg_id, names FROM channels WHERE src=?", (src,)).fetchall()
-            for epg_id, names in rows:
-                by_id[epg_id.lower()] = epg_id
-                by_name.setdefault(id_key(epg_id), epg_id)
-                for n in (names or "").split("\n"):
-                    if n and n != epg_id:
-                        by_name.setdefault(name_key(n), epg_id)
-            by_name.pop("", None)
-            tables = (by_id, by_name)
-            self._keys[src] = tables
+                for epg_id, names in rows:
+                    by_id[epg_id.lower()] = epg_id
+                    by_name.setdefault(id_key(epg_id), epg_id)
+                    for n in (names or "").split("\n"):
+                        if n and n != epg_id:
+                            by_name.setdefault(name_key(n), epg_id)
+                by_name.pop("", None)
+                tables = (by_id, by_name)
+                self._keys[src] = tables
         return tables
 
     def match(self, src: str, tvg_id: str | None, name: str | None) -> str | None:
@@ -310,6 +312,10 @@ class EpgService:
             res = self.http.fetch(url, ttl=EPG_TTL, force=force, timeout=120)
             path, fetched_at = res.path, res.fetched_at
             meta = self.store.meta(url)
+            if getattr(res, "stale", False) and meta:
+                # the download failed and we were handed the old copy: without saying so, imported_at never moved on,
+                # fresh() stayed False for ever and every «Guía de …» queued another 120 s download (infinite loop)
+                raise FetchError("no se pudo actualizar la guía ahora: se usa la que ya estaba descargada")
             # the cached file did not change since the last import (304 or still within its TTL): nothing to parse
             if meta and not force and res.from_cache and meta.get("fetched_at") and \
                     abs(float(meta["fetched_at"]) - fetched_at) < 1:

@@ -28,6 +28,25 @@ DEFAULT_USER_AGENT = f"{app_id().upper()}/{__version__} (+https://github.com/mpv
 DEFAULT_TTL = 12 * 3600.0
 
 
+_HTTP_REASON = {
+    401: "hace falta usuario y contraseña",
+    403: "el servidor rechazó la conexión",
+    404: "ya no existe",
+    410: "ya no existe",
+    429: "demasiadas peticiones: prueba en un rato",
+    500: "el servidor falló",
+    502: "el servidor falló",
+    503: "el servidor no está disponible ahora",
+    504: "el servidor tardó demasiado",
+}
+
+
+def _http_reason(code: int, url: str) -> str:
+    """Why a download failed, in the language of the menus (the text ends up in the OSD); the code stays for the log."""
+    log.warning("%s -> HTTP %s", url, code)
+    return f"{_HTTP_REASON.get(code, 'el servidor falló')} (error {code})"
+
+
 class FetchError(RuntimeError):
     pass
 
@@ -156,7 +175,7 @@ class HttpCache:
                 log.warning("%s -> HTTP %s; serving stale cache", url, exc.code)
                 cached.stale = True
                 return cached
-            raise FetchError(f"HTTP {exc.code} for {url}") from exc
+            raise FetchError(_http_reason(exc.code, url)) from exc
         except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError, OSError) as exc:
             if cached is not None:
                 log.warning("%s unreachable (%s); serving stale cache", url, exc)

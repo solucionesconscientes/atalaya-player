@@ -69,7 +69,7 @@ def load_source(http: HttpCache, source: Source, force: bool = False, timeout: f
     text = res.read_text()
     pl = parse_m3u(text)
     if pl.kind == "hls":
-        state.error = "the URL is an HLS stream, not a channel list"
+        state.error = "esa dirección es un vídeo en directo, no una lista de canales"
         return state
     channels = [entry_to_channel(e, source.id, source.kind, source.country, source.country_from_tvg_id)
                 for e in pl.entries]

@@ -178,9 +178,11 @@ class HttpServer:
             response = await self.handler(request)
         except HttpError as exc:
             response = Response.json({"error": exc.message}, exc.status)
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
+            # never hand the phone (or whoever is on the LAN) the exception text: it leaked absolute paths of the
+            # project's cache and www folders. The detail stays in the log.
             log.exception("handler failed for %s %s", request.method, request.path)
-            response = Response.json({"error": f"{type(exc).__name__}: {exc}"}, 500)
+            response = Response.json({"error": "error interno"}, 500)
         log.debug("%s %s -> %d (%.0f ms)", request.method, request.path, response.status,
                   (time.monotonic() - started) * 1000)
         await self._write(writer, response, head_only=request.method == "HEAD")

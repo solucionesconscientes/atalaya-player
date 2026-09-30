@@ -332,6 +332,8 @@ class ScheduleService:
         self.recover()
         self._wake = asyncio.Event()
         self._loop_task = asyncio.create_task(self._loop(), name="mpvd-schedule")
+        # if it ever dies anyway, say so in the log instead of «Task exception was never retrieved» at collection time
+        self._loop_task.add_done_callback(self._loop_died)
 
     async def close(self) -> None:
         """mpvd stops: running recordings are closed properly and stay «recording» (resumed at the next start)."""
@@ -355,6 +357,11 @@ class ScheduleService:
         """Something is waiting or recording: mpvd must not exit for inactivity."""
         return any(r.status in ACTIVE for r in self.items.values())
 
+    @staticmethod
+    def _loop_died(task: asyncio.Task[None]) -> None:
+        if not task.cancelled() and task.exception() is not None:
+            log.error("schedule: el bucle del programador murió: %r", task.exception())
+
     def _poke(self) -> None:
         if self._wake is not None:
             self._wake.set()
@@ -362,17 +369,25 @@ class ScheduleService:
     async def _loop(self) -> None:
         assert self._wake is not None
         while True:
-            now = time.time()
             wait = MAX_WAKE
-            for rec in list(self.items.values()):
-                if rec.status != "scheduled" or rec.id in self._tasks:
-                    continue
-                if rec.end <= now:
-                    self._finish(rec, "missed", "no se pudo empezar a tiempo")
-                elif rec.begin <= now:
-                    self._tasks[rec.id] = asyncio.create_task(self._run(rec), name=f"mpvd-rec-{rec.id}")
-                else:
-                    wait = min(wait, rec.begin - now)
+            # one bad recording (or a full disk while saving the list) must not kill the watcher: without this every
+            # scheduled recording stopped for ever, none turned into "missed", and nobody was told
+            try:
+                now = time.time()
+                for rec in list(self.items.values()):
+                    if rec.status != "scheduled" or rec.id in self._tasks:
+                        continue
+                    if rec.end <= now:
+                        self._finish(rec, "missed", "no se pudo empezar a tiempo")
+                    elif rec.begin <= now:
+                        self._tasks[rec.id] = asyncio.create_task(self._run(rec), name=f"mpvd-rec-{rec.id}")
+                    else:
+                        wait = min(wait, rec.begin - now)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - the watcher survives anything a single recording can throw
+                log.exception("schedule: fallo en el bucle del programador")
+                wait = min(wait, 5.0)
             self._wake.clear()
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(self._wake.wait(), max(0.05, wait))

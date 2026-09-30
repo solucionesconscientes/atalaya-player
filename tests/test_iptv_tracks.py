@@ -168,10 +168,16 @@ def test_store_keeps_tracks_per_channel(tmp_path):
         r = T.parse_master_media(LA1_MASTER)
         store.set_tracks("la1", T.summary([dict(t) for t in r], "master"), "master", r)
         assert store.tracks()["la1"]["badges"] == ["CC", "VO", "AD"]
-        # a report from the player without renditions keeps the ones of the master
+        # H34 · a poorer «player» report (mpv at file-loaded, before the alternative audio PIDs show up) must not wipe
+        # what the master playlist proved: the badges of the lists would flicker away
         store.set_tracks("la1", {"audio": [], "subs": [], "badges": ["VO"], "from": "player"}, "player")
         info = store.track_info("la1")
-        assert info["source"] == "player" and info["summary"]["badges"] == ["VO"] and len(info["renditions"]) == 8
+        assert info["source"] == "master" and info["summary"]["badges"] == ["CC", "VO", "AD"]
+        assert len(info["renditions"]) == 8          # a report without renditions keeps the ones of the master
+        # one that knows as much (or more) does replace it, renditions included
+        store.set_tracks("la1", {"audio": [], "subs": [], "badges": ["CC", "VO", "AD"], "from": "player"}, "player")
+        info = store.track_info("la1")
+        assert info["source"] == "player" and info["summary"]["badges"] == ["CC", "VO", "AD"]
         assert store.track_info("nope") is None
     finally:
         store.close()
@@ -353,3 +359,13 @@ def test_search_inside_one_list(tmp_path, web):
     assert "Radio Paradise" in names["radio_all"] and "Radio Nacional" in names["radio_all"]
     assert names["radio_top"] == ["Radio Paradise"]
     assert out["code"] == INVALID_PARAMS
+
+
+def test_a_subtitle_the_viewer_added_is_not_a_badge_of_the_channel():
+    """H34 · arrastrar un .srt sobre un canal no debe marcarlo con CC para todo el mundo."""
+    tl = [{"id": 1, "type": "video", "selected": True},
+          {"id": 2, "type": "audio", "lang": "spa", "selected": True},
+          {"id": 4, "type": "sub", "external": True, "title": "mis subtítulos", "selected": True}]
+    tracks = T.label_player_tracks(tl, None)
+    assert any(t.get("external") for t in tracks)                 # the external track is still offered in the menu
+    assert T.badges(tracks) == []

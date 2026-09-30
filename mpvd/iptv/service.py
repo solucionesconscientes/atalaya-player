@@ -81,7 +81,7 @@ class IptvService:
         for s in self.sources():
             if s.id == source_id:
                 return s
-        raise RpcError(NOT_FOUND, f"unknown source: {source_id}")
+        raise RpcError(NOT_FOUND, f"esa lista ya no está: {source_id}")
 
     async def load(self, source_id: str, force: bool = False) -> SourceState:
         """Load one source (deduplicating concurrent loads); results are cached in memory."""
@@ -284,7 +284,7 @@ class IptvService:
             for c in self.store.favorites() + self.store.recents(50):
                 if c.id == channel_id:
                     return c
-            raise RpcError(NOT_FOUND, f"unknown channel: {channel_id}")
+            raise RpcError(NOT_FOUND, "ese canal ya no está en la lista (prueba a actualizarla)")
         return ch
 
     def search(self, query: str, limit: int = 50, kind: str | None = None, source_id: str | None = None,

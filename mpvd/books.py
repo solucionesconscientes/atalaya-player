@@ -233,8 +233,10 @@ class BooksStore:
                     "show": tags.get("album") or tags.get("artist") or p.parent.name, "chapters": info["chapters"]}
         if p.suffix.lower() not in BOOK_EXTS and file_mark is not True:
             folder = self._folder(p, forced=dir_mark is True)
-            if folder:
-                idx = next(i for i, t in enumerate(folder["tracks"]) if t["path"] == str(p))
+            # the folder keeps only the files of its majority album (FOLDER_ALBUM_SHARE), so the file we were asked
+            # about may not be in it: that is «this is not a book», not an internal error (StopIteration)
+            idx = next((i for i, t in enumerate(folder["tracks"]) if t["path"] == str(p)), None) if folder else None
+            if folder and idx is not None:
                 return {"is_book": True, "kind": "book", "id": "dir:" + folder["dir"], "reason": "folder",
                         "title": folder["album"], "author": folder["author"], "path": folder["dir"],
                         "tracks": folder["tracks"], "track_index": idx, "duration": folder["total"],

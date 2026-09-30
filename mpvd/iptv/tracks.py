@@ -215,9 +215,14 @@ def label_all(tracks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def badges(tracks: list[dict[str, Any]]) -> list[str]:
-    """CC: the channel has subtitles; VO: original version audio; AD: audio description."""
+    """CC: the channel has subtitles; VO: original version audio; AD: audio description.
+
+    Only what the channel itself carries: a .srt the viewer dropped on the window is not a badge for everyone.
+    """
     out = set()
     for t in tracks:
+        if t.get("external"):
+            continue
         if t["kind"] == "sub":
             out.add("CC")
         elif t["role"] == "vo":

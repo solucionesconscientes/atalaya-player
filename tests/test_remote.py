@@ -145,7 +145,8 @@ def test_http_server_basics(http_server):
     assert status == 415
     assert _get(base + "/boom")[0] == 418
     status, _, body = _get(base + "/crash")
-    assert status == 500 and "kaputt" in body.decode()
+    # H34 · the body must not carry the exception text (it leaked absolute paths to whoever is on the LAN)
+    assert status == 500 and "kaputt" not in body.decode() and "error interno" in body.decode()
     assert _get(base + "/nope")[0] == 404
     status, _, body = _get(base + "/echo", data=b"x" * (1024 * 1024 + 1), method="POST",
                            headers={"Content-Type": "application/json"})
@@ -360,3 +361,18 @@ def test_mu_remote_overlay_and_menu(remote_env):
     h.wait_property("user-data/mu/remote", lambda v: bool(v) and v.get("port", 0) > 0, timeout=10)
     h.command("script-message-to", "uosc", "close-menu", "mu-remote")
     assert not h.script_errors(), h.script_errors()
+
+
+def test_a_bad_limit_is_a_clear_400_and_a_huge_one_is_capped():
+    """H34 · `?limit=abc` provocaba un 500 con el texto de la excepción; `?limit=999999999` llegaba tal cual a mpvd."""
+    from mpvd.remote.http import HttpError
+    from mpvd.remote.service import _limit
+
+    assert _limit({}, 30, 200) == 30
+    assert _limit({"limit": ""}, 30, 200) == 30
+    assert _limit({"limit": "50"}, 30, 200) == 50
+    assert _limit({"limit": "999999999"}, 30, 200) == 200
+    assert _limit({"limit": "0"}, 30, 200) == 1
+    with pytest.raises(HttpError) as exc:
+        _limit({"limit": "abc"}, 30, 200)
+    assert exc.value.status == 400

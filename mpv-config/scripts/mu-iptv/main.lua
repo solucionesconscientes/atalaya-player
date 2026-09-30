@@ -840,11 +840,12 @@ local function schedule_add(params, after)
   end)
 end
 
-views.guide = function(args)
+views.guide = function(args, tries)
   local title = 'Guía · ' .. (args.name or '')
   if not require_mpvd(title) then return end
   show_loading(title)
   local view = state.view
+  tries = (tries or 0) + 1
   rpc.call('iptv.epg.channel', { id = args.id, hours = opts.epg_hours }, function(err, res)
     if state.view ~= view then return end
     if err then show(title, uosc.message_items(fail(err, 'iptv.epg.channel'), 'error')) return end
@@ -861,8 +862,11 @@ views.guide = function(args)
         { title = text, icon = res.loading and 'spinner' or 'info', selectable = false, muted = true, align = 'center' },
         { title = 'Ver el canal', icon = 'live_tv', value = { play = args.id } },
       })
-      if res.loading then  -- first download of the guide: look again in a moment
-        mp.add_timeout(2, function() if state.view == view then open_view(state.stack[#state.stack], false) end end)
+      -- first download of the guide: look again in a moment, but not for ever (the server may be down)
+      if res.loading and tries < 20 then
+        mp.add_timeout(2, function()
+          if state.view == view then views.guide(args, tries) end
+        end)
       end
       return
     end

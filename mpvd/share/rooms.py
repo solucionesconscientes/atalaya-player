@@ -185,6 +185,9 @@ class Room:
     expires_at: float = 0.0
     guests: dict[str, Guest] = field(default_factory=dict)
     fails: int = 0
+    # when those wrong tokens happened: a sliding window, so honest typos spread over an afternoon never add up to
+    # MAX_FAILS_ROOM and kill an invitation that is still valid
+    fail_times: list[float] = field(default_factory=list)
     locked: bool = False            # too many wrong tokens: the link no longer works until rotate()
     closed: bool = False
     max_guests: int = MAX_GUESTS
@@ -223,6 +226,7 @@ class Room:
         """New invitation token (the old link stops working; guests inside stay). Unlocks the room."""
         self.token = secrets.token_urlsafe(TOKEN_BYTES)
         self.fails = 0
+        self.fail_times = []
         self.locked = False
         return self.token
 
@@ -245,15 +249,18 @@ class Room:
         if self.locked:
             raise JoinError(403, "este enlace ya no vale: pide uno nuevo al anfitrión")
         if not isinstance(token, str) or not self.check_token(token):
-            self.fails += 1
+            self.fail_times = [t for t in self.fail_times if now - t < FAIL_WINDOW]
+            self.fail_times.append(now)
+            self.fails = len(self.fail_times)
             if self.fails >= MAX_FAILS_ROOM:
                 self.locked = True
             if limiter is not None and limiter.fail(ip, now):
                 raise JoinError(429, "demasiados intentos: espera unos minutos")
             raise JoinError(403, "enlace no válido o caducado")
         active = [g for g in self.guests.values() if not g.kicked]
-        if len(active) >= self.max_guests and self.public_mode:
-            # viewers who closed the page do not say goodbye: their seats go to the new ones
+        if len(active) >= self.max_guests:
+            # viewers who closed the page do not say goodbye: their seats go to the new ones. Also in a private room,
+            # where every new join (another device, a cleared cookie, wifi dropping) used to take a seat for ever
             for g in active:
                 if g.streams == 0 and now - g.last_seen > STALE_SECONDS:
                     self.guests.pop(g.id, None)
@@ -270,6 +277,7 @@ class Room:
                 raise JoinError(400, str(exc)) from None
         if limiter is not None:
             limiter.success(ip)
+        self.fails, self.fail_times = 0, []      # somebody got in with the right link: the counter starts over
         guest = Guest(id=secrets.token_hex(8), name=clean, ip=ip, joined_at=now, last_seen=now)
         self.guests[guest.id] = guest
         return guest
