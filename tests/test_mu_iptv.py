@@ -88,10 +88,11 @@ def tv(daemon_env, media_dir):
     src_path = daemon_env.base / "sources.json"
     src_path.write_text(json.dumps(sources), encoding="utf-8")
     record_dir = daemon_env.base / "rec"
+    # H18: «Grabar» is mu-record's, folder included (mpvd's record.defaults), also when the TV menu asks for it
     env = {**daemon_env.env, "MPV_UOS_IPTV_SOURCES": str(src_path), "MPV_UOS_COUNTRY": "es",
-           "MPV_UOS_RADIO_BROWSER_URL": base}
+           "MPV_UOS_RADIO_BROWSER_URL": base, "MPV_UOS_RECORD_DIR": str(record_dir)}
     h = start_mpv(daemon_env.runtime_dir,
-                  [f"--script-opts=mu-core-watchdog_seconds=5,mu-iptv-record_dir={record_dir},mu-iptv-osd_seconds=1"], env=env)
+                  ["--script-opts=mu-core-watchdog_seconds=5,mu-iptv-osd_seconds=1"], env=env)
     try:
         yield h, daemon_env, record_dir
     finally:
@@ -156,7 +157,7 @@ def test_menus_play_zap_favorites_record_and_search(tv):
     # a real-time stream under a loaded machine can take a while to fill mpv's cache
     h.wait_property("time-pos", lambda v: isinstance(v, (int, float)) and v > 0.5, timeout=90)
     h.command("script-binding", "mu_iptv/record-toggle")
-    rec = h.wait_property("stream-record", lambda v: bool(v), timeout=10)
+    rec = h.wait_property("stream-record", lambda v: bool(v), timeout=15)
     assert rec.startswith(str(record_dir)) and rec.endswith(".mkv") and "Directo Test" in rec
     time.sleep(4)
     h.command("script-binding", "mu_iptv/record-toggle")

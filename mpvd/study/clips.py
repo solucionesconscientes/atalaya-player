@@ -28,7 +28,7 @@ FORMATS = {
 # container for an audio stream copied as is (H18): the codec's usual file type, Matroska audio for anything else
 AUDIO_COPY_EXT = {"aac": ".m4a", "alac": ".m4a", "mp3": ".mp3", "opus": ".opus", "vorbis": ".ogg", "flac": ".flac",
                   "ac3": ".ac3", "eac3": ".eac3", "pcm_s16le": ".wav", "pcm_s24le": ".wav"}
-MAX_SECONDS = 600.0
+MAX_SECONDS = 600.0   # default cap for «clips de estudio»; «Grabar» (H18) passes its own (recording an hour is normal)
 _TIME = re.compile(r"^out_time_us=(\d+)")
 _END = re.compile(r"^progress=end")
 
@@ -120,13 +120,15 @@ def ffmpeg_args(src: Path, a: float, b: float, fmt: str, out: Path, audio_track:
 
 
 async def export_clip(src: Path, a: float, b: float, fmt: str, out: Path, audio_track: int | None = None,
-                      progress: Callable[[float, str], None] | None = None, timeout: float = 900.0) -> dict[str, Any]:
+                      progress: Callable[[float, str], None] | None = None, timeout: float = 900.0,
+                      max_seconds: float | None = None) -> dict[str, Any]:
+    limit = MAX_SECONDS if max_seconds is None else max_seconds
     if not src.is_file():
         raise ClipError(f"no existe: {src}")
     if b <= a:
         raise ClipError("el final del tramo debe ser mayor que el inicio")
-    if b - a > MAX_SECONDS:
-        raise ClipError(f"tramo demasiado largo (máx. {int(MAX_SECONDS)} s)")
+    if limit > 0 and b - a > limit:
+        raise ClipError(f"tramo demasiado largo (máx. {int(limit)} s)")
     out.parent.mkdir(parents=True, exist_ok=True)
     args = ffmpeg_args(src, a, b, fmt, out, audio_track)
     proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)

@@ -110,7 +110,7 @@ local KIND_HINT = { live = 'directo', url = 'tramo del vídeo de internet', ['lo
 local function record_dir()
   local d = P:get('dir')
   if d == '' then d = state.default_dir end
-  if d == '' then d = '~~desktop/MPV-UOS' end
+  if d == '' then d = '~~desktop/' .. brand.folder end   -- H33: the name lives in brand.json, nowhere else
   return mp.command_native({ 'expand-path', d }) or d
 end
 
@@ -207,9 +207,11 @@ local function mp4_friendly()
 end
 
 -- range [a, b] of what is playing: local → lossless cut (study.clip), internet → yt-dlp section download
-local function save_range(a, b, audio, gif, kind)
+local function save_range(a, b, audio, gif, kind, path, title_at_start, mp4_at_start)
   kind = kind or source_kind()   -- a recording keeps the kind seen when it started (seekable flickers while seeking)
-  local path = current_path()
+  -- and the file it started on: «grabar desde ahora» can end because mpv moved to the next episode, and by then
+  -- current_path() is the new file (or empty), so the cut would land on the wrong video or be lost
+  path = path or current_path()
   if not kind or b <= a then
     fail({ message = string.format('%s %.2f–%.2f', tostring(kind), a, b) }, 'tramo vacío')
     osd('Tramo vacío: marca un inicio y un final')
@@ -217,12 +219,15 @@ local function save_range(a, b, audio, gif, kind)
   end
   if not rpc.connected() then fail(nil, 'mpvd no está conectado'); osd('mpvd no está conectado') return end
   local dir = record_dir()
-  local title = sanitize(media_title())
+  local title = sanitize(title_at_start or media_title())
   local what = string.format('%s–%s', hms(a), hms(b))
   if kind == 'local' then
-    local fmt = gif and 'gif' or (audio and 'audio-copy' or (mp4_friendly() and 'mp4-copy' or 'mkv-copy'))
+    local mp4 = mp4_at_start
+    if mp4 == nil then mp4 = mp4_friendly() end
+    local fmt = gif and 'gif' or (audio and 'audio-copy' or (mp4 and 'mp4-copy' or 'mkv-copy'))
+    -- max_seconds = 0: no cap. The 600 s of «clips de estudio» made every recording over ten minutes fail
     rpc.call('study.clip', { path = path, start = a, ['end'] = b, format = fmt, dir = dir, title = title,
-                             notify = SCRIPT, audio_track = nil }, function(err, item)
+                             notify = SCRIPT, audio_track = nil, max_seconds = 0 }, function(err, item)
       if err then osd('Grabar: ' .. fail(err, 'study.clip'), 5) return end
       track_job('clip', item, what)
     end, 20)
@@ -267,7 +272,7 @@ local function start_recording(audio)
                   file = file }
   else
     state.rec = { mode = 'range', audio = audio, start = mp.get_property_number('time-pos') or 0, started = mp.get_time(),
-                  kind = kind, path = current_path() }
+                  kind = kind, path = current_path(), title = media_title(), mp4 = mp4_friendly() }
   end
   publish()
   start_tick()
@@ -296,7 +301,7 @@ local function stop_recording(reason)
   end
   local b = reason == 'end' and (rec.last_pos or rec.start) or (mp.get_property_number('time-pos') or rec.start)
   publish()
-  save_range(math.min(rec.start, b), math.max(rec.start, b), rec.audio, false, rec.kind)
+  save_range(math.min(rec.start, b), math.max(rec.start, b), rec.audio, false, rec.kind, rec.path, rec.title, rec.mp4)
 end
 
 -- progress / completion pushed by mpvd (study clips, yt-dlp downloads, audio extraction) with notify = mu_record
@@ -329,7 +334,19 @@ mp.register_event('end-file', function()
   if state.rec then stop_recording('end') end
 end)
 
-mp.observe_property('stream-record', 'string', function() set_button(); publish() end)
+mp.observe_property('stream-record', 'string', function(_, value)
+  -- someone else stopped (or replaced) the recording: mu-iptv writes this property too. Without this the red dot and
+  -- the counter kept running for ever over a file mpv had already closed.
+  local rec = state.rec
+  if rec and rec.mode == 'live' and (value or '') ~= rec.file then
+    state.rec = nil
+    stop_tick()
+    state.last = { file = rec.file, status = 'done' }
+    if (value or '') == '' then osd('⏹ Grabación guardada: ' .. basename(rec.file), 5) end
+  end
+  set_button()
+  publish()
+end)
 
 -- ---------------------------------------------------------------------------------------------
 -- menus

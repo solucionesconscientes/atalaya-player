@@ -16,7 +16,8 @@ from mpvd.asr.audio import probe_duration
 from mpvd.hashing import file_hash
 from mpvd.jobs import Job, Priority
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
-from mpvd.study.clips import FORMATS, ClipError, audio_codec, audio_copy_ext, export_clip, output_path
+from mpvd.study.clips import (FORMATS, MAX_SECONDS, ClipError, audio_codec, audio_copy_ext, export_clip,
+                              output_path)
 from mpvd.study.silence import DEFAULT_DB, DEFAULT_MIN, silence_map, summary
 
 if TYPE_CHECKING:
@@ -76,11 +77,15 @@ class StudyService:
                                    payload, final=final)
 
     def submit_clip(self, src: Path, a: float, b: float, fmt: str, directory: Path | None, audio_track: int | None,
-                    title: str, notify: str) -> dict[str, Any]:
+                    title: str, notify: str, max_seconds: float | None = None) -> dict[str, Any]:
         if fmt not in FORMATS:
             raise RpcError(INVALID_PARAMS, f"formato desconocido: {fmt} (study.formats)")
         if not (b > a >= 0):
             raise RpcError(INVALID_PARAMS, "tramo inválido: fin ≤ inicio")
+        # said now, not after «Guardando…»: the job used to accept the range and fail minutes later
+        limit = MAX_SECONDS if max_seconds is None else max_seconds
+        if limit > 0 and b - a > limit:
+            raise RpcError(INVALID_PARAMS, f"tramo demasiado largo (máx. {int(limit)} s)")
         ext = audio_copy_ext(audio_codec(src, audio_track)) if fmt == "audio-copy" else None
         out = output_path(src, a, b, fmt, directory, ext=ext)
         item: dict[str, Any] = {"id": uuid.uuid4().hex[:10], "path": str(src), "title": title or src.name, "start": round(a, 3),
@@ -99,7 +104,7 @@ class StudyService:
                 self._push(item)
 
             try:
-                res = await export_clip(src, a, b, fmt, out, audio_track, progress)
+                res = await export_clip(src, a, b, fmt, out, audio_track, progress, max_seconds=max_seconds)
                 item.update({"status": "done", "progress": 1.0, "bytes": res["bytes"], "message": "listo",
                              "finished_at": time.time()})
             except asyncio.CancelledError:
@@ -162,11 +167,15 @@ def register(server: MpvdServer, service: StudyService) -> None:
     @d.method("study.clip")
     async def clip(ctx: RpcContext, path: str, start: float, end: float, format: str = "mp4",  # noqa: A002
                    dir: str | None = None, audio_track: int | None = None, title: str = "",  # noqa: A002
-                   notify: str = DEFAULT_NOTIFY) -> dict[str, Any]:
-        """Export [start, end] of a local file in the background; progress arrives as ``clip`` events."""
+                   notify: str = DEFAULT_NOTIFY, max_seconds: float | None = None) -> dict[str, Any]:
+        """Export [start, end] of a local file in the background; progress arrives as ``clip`` events.
+
+        ``max_seconds`` overrides the cap for study clips (600 s); 0 means no cap, which is what «Grabar» uses.
+        """
         p = _local(path)
         directory = Path(dir).expanduser() if dir else None
-        return service.submit_clip(p, float(start), float(end), format, directory, audio_track, title, notify)
+        return service.submit_clip(p, float(start), float(end), format, directory, audio_track, title, notify,
+                                   max_seconds)
 
     @d.method("study.clips.list")
     async def clips_list(ctx: RpcContext, limit: int = 50) -> list[dict[str, Any]]:

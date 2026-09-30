@@ -205,6 +205,12 @@ local function base_menu(title, items, extra)
   return menu
 end
 
+-- Is ``view`` still the one on screen? Answers from mpvd arrive late and must not reopen a menu the viewer closed
+-- (the state reset below runs 0.2 s after uosc says there is no menu, so the view name alone would still match).
+local function still(view)
+  return state.view == view
+end
+
 local function show(title, items, extra)
   remember(items)
   publish()
@@ -322,7 +328,7 @@ views.root = function()
   local items = root_items()
   show(brand.name, items, { footnote = 'Enter abre · ⌫ o ← atrás · Esc cierra · ? ayuda' })
   with_recents(opts.recents_in_root, true, function(_, rows)
-    if state.view ~= 'root' or #rows == 0 then return end
+    if not still('root') or #rows == 0 then return end
     local list = {}
     for _, r in ipairs(rows) do table.insert(list, recent_item(r)) end
     table.insert(list, { title = 'Todos los recientes…', icon = 'history', value = { view = 'recents' } })
@@ -442,6 +448,7 @@ end
 views.recents = function()
   show('Recientes', uosc.loading_items())
   with_recents(50, false, function(err, rows)
+    if not still('recents') then return end   -- closed with Esc while mpvd answered: do not reopen the menu
     if err then show('Recientes', uosc.message_items(fail(err, 'watch.recents'), 'error')) return end
     local items = {}
     for _, r in ipairs(rows) do table.insert(items, recent_item(r)) end
@@ -472,7 +479,7 @@ views.start = function(args)
   -- fresh rows from mu-library arrive through the observer below (not when this redraw comes from it)
   if not (args and args.from_library) then mp.commandv('script-message-to', 'mu_library', 'mu-library-home') end
   with_recents(12, false, function(_, rows)
-    if state.view ~= 'start' then return end
+    if not still('start') then return end
     local top, seen = {}, {}
     for _, it in ipairs(library_rows()) do
       if type(it.value) == 'table' and it.value.open then
@@ -672,7 +679,7 @@ local function run_palette(query)
   local pending
   local channels, recents, dialogue = {}, {}, {}
   local function finish()
-    if seq ~= palette_seq or state.view ~= 'palette' then return end
+    if seq ~= palette_seq or not still('palette') then return end
     local out = {}
     local dl = {}
     for _, hit in ipairs(dialogue) do
@@ -838,7 +845,8 @@ mp.register_script_message(EVENT, function(json)
     if state.view == 'palette' then run_palette(ev.query or '') end
   elseif ev.type == 'back' then
     table.remove(state.stack)
-    if #state.stack == 0 then uosc.close(MENU) else reopen_current() end
+    -- uosc only closes the menu whose type matches: the palette is PALETTE, so closing MENU did nothing at all
+    if #state.stack == 0 then uosc.close(uosc.open_type()) else reopen_current() end
   end
 end)
 
@@ -859,19 +867,26 @@ mp.register_script_message('mu-nav-return', function(view)
 end)
 
 local reset_timer = nil
+local function reset_state()
+  if #state.stack > 0 or state.view ~= '' then
+    state.stack = {}
+    state.view = ''
+    state.palette_query = ''
+    publish()
+  end
+end
+
 mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
   if reset_timer then reset_timer:kill(); reset_timer = nil end
   if t == MENU or t == PALETTE then return end
+  -- no menu at all: forget the view right away, so an answer from mpvd that arrives in the next few milliseconds does
+  -- not reopen what the viewer just closed. A legitimate reopen always goes through open_view, which sets it again.
+  if t == nil or t == '' then reset_state() return end
   reset_timer = mp.add_timeout(0.2, function()
     reset_timer = nil
     local open = uosc.open_type()
     if open == MENU or open == PALETTE then return end
-    if #state.stack > 0 or state.view ~= '' then
-      state.stack = {}
-      state.view = ''
-      state.palette_query = ''
-      publish()
-    end
+    reset_state()
   end)
 end)
 

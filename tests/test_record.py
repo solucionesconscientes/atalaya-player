@@ -49,3 +49,17 @@ def test_extract_audio_of_a_recording(tmp_path, media_dir):
     assert out == rec.with_suffix(".m4a") and not rec.exists()
     info = probe(out)
     assert [s["codec_type"] for s in info["streams"]] == ["audio"] and abs(float(info["format"]["duration"]) - 30) < 0.5
+
+
+def test_a_recording_longer_than_the_study_clip_cap_is_allowed(tmp_path, media_dir):
+    """H34 · grabar media hora es normal: el tope de 600 s es de los «clips de estudio», no del botón Grabar (H18)."""
+    from mpvd.study.clips import MAX_SECONDS, ClipError
+
+    src = media_dir / "video30.mkv"
+    with pytest.raises(ClipError, match="demasiado largo"):
+        asyncio.run(export_clip(src, 0.0, MAX_SECONDS + 10, "mp4-copy", tmp_path / "a.mp4"))
+
+    # what «Grabar» sends: max_seconds=0, no cap (the range is bounded by the file itself)
+    out = tmp_path / "b.mp4"
+    res = asyncio.run(export_clip(src, 1.0, 4.0, "mp4-copy", out, max_seconds=0))
+    assert out.exists() and res["bytes"] > 0

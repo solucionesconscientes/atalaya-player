@@ -9,6 +9,7 @@ recording stops (``record.audio``). Completion is pushed as ``mu-event {"event":
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 import uuid
 from pathlib import Path
@@ -27,7 +28,12 @@ DEFAULT_NOTIFY = "mu_record"
 
 
 def default_dir() -> Path:
-    return default_media_dir("video") / "Grabaciones"
+    """Where recordings go: ``MPV_UOS_RECORD_DIR`` or <Vídeos>/<marca>/Grabaciones.
+
+    The same variable the scheduled recordings honour (H21), so «Grabar» and the TV guide never disagree.
+    """
+    env = os.environ.get("MPV_UOS_RECORD_DIR")
+    return Path(env) if env else default_media_dir("video") / "Grabaciones"
 
 
 def audio_args(src: Path, out: Path) -> list[str]:

@@ -3,8 +3,10 @@ command palette (commands + channels + recents + mpvd actions) and the idle star
 
 from __future__ import annotations
 
+import contextlib
 import json
 import shutil
+import time
 
 import pytest
 
@@ -144,6 +146,62 @@ def test_palette_and_start_screen(tv, media_dir):  # noqa: F811
         send_event(h, {"type": "activate", "index": 1, "value": {"cmd": "set pause yes"}})
         h.wait_property("pause", lambda v: v is True, timeout=10)
         h.wait_property("user-data/uosc/menu/type", lambda v: not v, timeout=10)
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_recents_closed_while_mpvd_answers_does_not_reopen_itself(daemon_env, media_dir):
+    """H34 · Esc mientras se espera a watch.recents dejaba un menú huérfano encima del vídeo.
+
+    La carrera se hace segura parando el daemon (SIGSTOP) mientras se cierra el menú: la respuesta llega después.
+    """
+    import os
+    import signal
+
+    from tests.test_nav import press, wait_closed
+
+    # watchdog largo: mu-core no debe intentar resucitar al daemon mientras está parado a propósito
+    h = start_mpv(daemon_env.runtime_dir, ["--script-opts=mu-core-watchdog_seconds=600,mu-core-rpc_timeout=20",
+                                           "--keep-open=yes", "--pause=yes"], env=daemon_env.env)
+    pid = None
+    try:
+        h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected" and v.get("uosc"),
+                        timeout=40)
+        h.command("loadfile", str(media_dir / "video30.mkv"))
+        h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 0, timeout=20)
+
+        pid = int((daemon_env.runtime_dir / "mpvd.pid").read_text())
+        os.kill(pid, signal.SIGSTOP)
+        h.command("script-binding", "mu_menu/recents")
+        h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-menu", timeout=15)
+        press(h, "ESC")
+        wait_closed(h)
+    finally:
+        if pid is not None:
+            with contextlib.suppress(OSError):
+                os.kill(pid, signal.SIGCONT)
+    try:
+        time.sleep(2.0)                                # the answer to watch.recents lands in this window
+        assert not h.get("user-data/uosc/menu/type")
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_backspace_closes_the_palette(tv, media_dir):  # noqa: F811
+    """H34 · el pie dice «⌫ cierra», pero se cerraba el tipo de menú equivocado (mu-menu, no mu-palette)."""
+    from tests.test_nav import press, wait_closed
+
+    _tv_mpv, d, _record_dir = tv
+    h = start_mpv(d.runtime_dir, [MU_OPTS, "--keep-open=yes", "--pause=yes"], env=d.env)
+    try:
+        h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected" and v.get("uosc"),
+                        timeout=40)
+        h.command("script-binding", "mu_menu/palette")
+        h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-palette", timeout=20)
+        press(h, "BS")
+        wait_closed(h)
         assert h.script_errors() == [], h.script_errors()
     finally:
         h.stop()

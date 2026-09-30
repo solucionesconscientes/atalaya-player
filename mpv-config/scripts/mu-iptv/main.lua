@@ -21,7 +21,6 @@ local MENU = 'mu-iptv'
 local SEARCH_MENU = 'mu-iptv-search'
 
 local opts = {
-  record_dir = '~~desktop/MPV-UOS',  -- mpv path placeholders allowed
   osd_seconds = 3,
   world_limit = 1500,                -- channels per country (iptv-org)
   radio_limit = 300,                 -- stations per country (Radio Browser)
@@ -222,45 +221,21 @@ end)
 -- ---------------------------------------------------------------------------------------------
 -- recording
 
-local function sanitize(name)
-  return (name:gsub('[/\\:*?"<>|]', '_'):gsub('%s+', ' '):sub(1, 60))
-end
-
-local function ensure_dir(dir)
-  local info = utils.file_info(dir)
-  if info and info.is_dir then return true end
-  local platform = mp.get_property_native('platform')
-  local args = platform == 'windows' and { 'cmd', '/c', 'mkdir', dir } or { 'mkdir', '-p', dir }
-  local res = mp.command_native({ name = 'subprocess', args = args, playback_only = false })
-  return res and res.status == 0
-end
-
+-- H18: one «Grabar» for the whole player. mu-record owns stream-record, the folder, the red dot and the counter; the
+-- TV menu only asks it to start or stop (two owners of stream-record left the counter running over a closed file).
 local function record_toggle()
   local active = mp.get_property('stream-record') or ''
   if active ~= '' then
-    mp.set_property('stream-record', '')
+    mp.commandv('script-message-to', 'mu_record', 'mu-record-stop')
     state.recording = ''
     publish()
-    osd('⏹ Grabación guardada: ' .. active)
     return
   end
   if (mp.get_property('path') or '') == '' then
     osd('Nada que grabar')
     return
   end
-  local dir = mp.command_native({ 'expand-path', opts.record_dir })
-  if not ensure_dir(dir) then
-    osd('No se pudo crear la carpeta ' .. dir)
-    return
-  end
-  local name = state.current and state.current ~= '' and state.current.name or (mp.get_property('media-title') or 'grabacion')
-  local is_radio = state.current and state.current ~= '' and state.current.kind == 'radio'
-    or (mp.get_property_native('vid') == false and mp.get_property_native('aid') ~= false)
-  local path = utils.join_path(dir, sanitize(name) .. '-' .. os.date('%Y%m%d-%H%M%S') .. (is_radio and '.mka' or '.mkv'))
-  mp.set_property('stream-record', path)
-  state.recording = path
-  publish()
-  osd('⏺ Grabando en ' .. path)
+  mp.commandv('script-message-to', 'mu_record', 'mu-record-start')
 end
 
 -- ---------------------------------------------------------------------------------------------
