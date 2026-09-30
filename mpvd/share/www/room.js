@@ -8,6 +8,8 @@
   var roomId = (location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)/) || [])[1] || '';
   var base = '/s/' + roomId + '/';
   var token = (location.hash.match(/[#&]k=([A-Za-z0-9_-]+)/) || [])[1] || '';
+  // ?hlsjs=1: use hls.js even where the browser plays HLS by itself (tests, comparing engines)
+  var forceHlsJs = /[?&]hlsjs=1\b/.test(location.search);
   var video = $('video');
   var me = null, perm = 'view', pending = false;
   var state = null, anchor = 0, media = null, source = '', subsUrl = '';
@@ -60,7 +62,7 @@
     $('join-error').textContent = '';
     api('api/join', { token: token, name: name }).then(function (data) {
       localStorage.setItem('mu-share-name', name);
-      history.replaceState(null, '', location.pathname);  // the token is not needed any more
+      history.replaceState(null, '', location.pathname + location.search);  // the token is not needed any more
       enter(data.guest, true);
     }).catch(function (e) { $('join-error').textContent = e.message; });
   });
@@ -243,7 +245,7 @@
     source = url;
     if (hls) { hls.destroy(); hls = null; }
     var isHls = /\.m3u8(\?|$)/.test(url);
-    if (!isHls || video.canPlayType('application/vnd.apple.mpegurl')) {
+    if (!isHls || (!forceHlsJs && video.canPlayType('application/vnd.apple.mpegurl'))) {
       video.src = url;
       video.load();
       return;

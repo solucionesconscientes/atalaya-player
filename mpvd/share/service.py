@@ -477,12 +477,21 @@ class ShareService:
                 return int(idx) if isinstance(idx, int) else None
         return None
 
+    async def _local_path(self, s: Session | None, path: str) -> Path:
+        """mpv's ``path`` of a local file, absolute (a relative one is relative to mpv's working directory)."""
+        p = Path(path.removeprefix("file://"))
+        if not p.is_absolute() and s is not None:
+            cwd = await self._prop(s, "working-directory")
+            if cwd:
+                p = Path(str(cwd)) / p
+        return p
+
     async def _prepare_media(self, rt: RoomRuntime, key: tuple[Any, ...], path: str) -> None:
         s = self._session(rt)
         media: dict[str, Any]
         try:
             if not hls.is_url(path):
-                local = Path(path.removeprefix("file://"))
+                local = await self._local_path(s, path)
                 if not local.is_file():
                     raise ValueError("solo se retransmiten archivos de este equipo o vídeos de internet")
                 audio_index = await self._audio_ff_index(s) if s is not None else None
@@ -593,9 +602,12 @@ class ShareService:
         subs: dict[str, Any] | None = None
         if track is not None and str(track.get("codec") or "") in hls.TEXT_SUB_CODECS:
             if track.get("external") and track.get("external-filename"):
-                source, index = str(track["external-filename"]), None
+                ext = str(track["external-filename"])
+                source = ext if hls.is_url(ext) else str(await self._local_path(s, ext))
+                index = None
             elif not track.get("external") and isinstance(track.get("ff-index"), int):
-                source, index = path.removeprefix("file://"), int(track["ff-index"])
+                source = path if hls.is_url(path) else str(await self._local_path(s, path))
+                index = int(track["ff-index"])
             else:
                 source, index = "", None
             if source and not source.startswith(("memory://", "edl://")):
