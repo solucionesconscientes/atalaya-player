@@ -1,6 +1,8 @@
 // «Ver juntos» (H25): the guest page. Joins with the token of the link (#k=…) and a name, then follows the host
 // over SSE (/s/<room>/events) and keeps its own <video> in step (MuSync). HLS plays natively where the browser can
 // (Safari, iOS, Android) and through the vendored hls.js elsewhere (desktop Chrome/Firefox), loaded only if needed.
+// Private rooms add a chat and reactions (always drawn as text: textContent, never HTML). A public «solo ver» link
+// (#k=…&v=1) joins by itself without a name and shows only the picture and how many are watching.
 (function () {
   'use strict';
   var S = window.MuSync;
@@ -8,6 +10,13 @@
   var roomId = (location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)/) || [])[1] || '';
   var base = '/s/' + roomId + '/';
   var token = (location.hash.match(/[#&]k=([A-Za-z0-9_-]+)/) || [])[1] || '';
+  var publicLink = /[#&]v=1\b/.test(location.hash);
+  var tokenKey = 'mu-share-token-' + roomId;
+  try {  // a public viewer whose seat was given away can come back without the link (this tab only)
+    if (token && publicLink) sessionStorage.setItem(tokenKey, token);
+    else if (!token && sessionStorage.getItem(tokenKey)) { token = sessionStorage.getItem(tokenKey); publicLink = true; }
+  } catch (e) { /* storage disabled */ }
+  var mode = publicLink ? 'public' : 'private', lastChat = 0, reactions = {};
   // ?hlsjs=1: use hls.js even where the browser plays HLS by itself (tests, comparing engines)
   var forceHlsJs = /[?&]hlsjs=1\b/.test(location.search);
   var video = $('video');
@@ -49,6 +58,7 @@
   // -- joining -----------------------------------------------------------------------------------------
 
   function askName() {
+    if (publicLink && token) { autoJoin(); return; }
     show('message', false); show('room', false); show('join', true);
     $('name').value = localStorage.getItem('mu-share-name') || '';
     $('name').focus();
@@ -63,15 +73,35 @@
     api('api/join', { token: token, name: name }).then(function (data) {
       localStorage.setItem('mu-share-name', name);
       history.replaceState(null, '', location.pathname + location.search);  // the token is not needed any more
-      enter(data.guest, true);
+      enter(data.guest, true, data.room);
     }).catch(function (e) { $('join-error').textContent = e.message; });
   });
 
-  function enter(guest, gesture) {
+  function autoJoin() {
+    api('api/join', { token: token, name: '' }).then(function (data) {
+      history.replaceState(null, '', location.pathname + location.search);
+      enter(data.guest, false, data.room);
+    }).catch(function (e) {
+      message(e.status === 410 ? 'La sala está cerrada o ha caducado.' : 'No se puede entrar: ' + e.message);
+    });
+  }
+
+  function setMode(room) {
+    if (room && room.mode) mode = room.mode;
+    var pub = mode === 'public';
+    show('guests', !pub); show('guests-title', !pub); show('viewers', pub);
+    show('chat', !pub);
+    ['back10', 'play', 'fwd10'].forEach(function (id) { show(id, !pub); });
+    if (pub) { show('ask', false); $('seek').disabled = true; }
+    if (room && pub) renderViewers({ count: room.viewers, max: room.max_guests });
+  }
+
+  function enter(guest, gesture, room) {
     me = guest; perm = guest.perm; pending = guest.pending;
     needGesture = !gesture;
     show('join', false); show('message', false); show('room', true);
-    $('who').textContent = 'Estás como ' + guest.name;
+    setMode(room);
+    $('who').textContent = mode === 'public' ? 'Sala pública · solo ver' : 'Estás como ' + guest.name;
     updatePerm();
     connect();
   }
@@ -81,10 +111,14 @@
   function connect() {
     if (es) es.close();
     es = new EventSource(base + 'events');
-    es.addEventListener('hello', function (e) { var d = JSON.parse(e.data); me = d.guest; perm = me.perm; pending = me.pending; updatePerm(); });
+    es.addEventListener('hello', function (e) {
+      var d = JSON.parse(e.data); me = d.guest; perm = me.perm; pending = me.pending; updatePerm(); setMode(d.room);
+    });
     es.addEventListener('state', function (e) { onState(JSON.parse(e.data)); });
     es.addEventListener('media', function (e) { onMedia(JSON.parse(e.data)); });
     es.addEventListener('guests', function (e) { renderGuests(JSON.parse(e.data)); });
+    es.addEventListener('viewers', function (e) { renderViewers(JSON.parse(e.data)); });
+    es.addEventListener('chat', function (e) { addChat(JSON.parse(e.data)); });
     es.addEventListener('notice', function (e) { var n = JSON.parse(e.data); if (!me || n.who !== me.name) toast(n.text); });
     es.addEventListener('perm', function (e) {
       var d = JSON.parse(e.data);
@@ -104,7 +138,8 @@
           .catch(function (err) { finish(err.status === 410 ? 'La sala está cerrada' : 'Ya no estás en la sala'); });
       }
     };
-    api('api/me').then(function (d) { if (d.guests) renderGuests(d.guests); }).catch(function () {});
+    api('api/me').then(function (d) { if (d.room && d.room.guests) renderGuests(d.room.guests); chatHistory(d); })
+      .catch(function () {});
   }
 
   function finish(text) {
@@ -132,10 +167,75 @@
     });
   }
 
+  function renderViewers(v) {
+    if (!v) return;
+    $('viewers').textContent = v.count === 1 ? '1 persona viendo' : (v.count || 0) + ' personas viendo';
+  }
+
+  // -- chat and reactions (private rooms) ------------------------------------------------------------------
+
+  function chatHistory(d) {
+    if (d.reactions && !Object.keys(reactions).length) {
+      reactions = d.reactions;
+      var box = $('reactions');
+      box.textContent = '';
+      Object.keys(reactions).forEach(function (id) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = reactions[id];
+        b.setAttribute('data-r', id);
+        b.addEventListener('click', function () {
+          api('api/react', { reaction: id }).catch(function (e) { toast(e.message); });
+        });
+        box.appendChild(b);
+      });
+    }
+    (d.chat || []).forEach(addChat);
+  }
+
+  function addChat(row) {
+    if (!row || !row.id || row.id <= lastChat) return;
+    lastChat = row.id;
+    if (row.kind === 'reaction') { floatReaction(row); return; }
+    var li = document.createElement('li');
+    if (row.host) li.classList.add('host');
+    var who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = row.who + (me && row.guest === me.id ? ' (tú)' : '');
+    var text = document.createElement('span');
+    text.className = 'text';
+    text.textContent = row.text;       // plain text: markup is shown, never interpreted
+    li.appendChild(who); li.appendChild(text);
+    var ul = $('chat-list');
+    ul.appendChild(li);
+    while (ul.children.length > 60) ul.removeChild(ul.firstChild);
+    ul.scrollTop = ul.scrollHeight;
+  }
+
+  function floatReaction(row) {
+    var el = document.createElement('div');
+    el.className = 'float';
+    el.textContent = row.emoji || '';
+    var small = document.createElement('small');
+    small.textContent = row.who;
+    el.appendChild(small);
+    el.style.left = (10 + Math.random() * 75) + '%';
+    $('floats').appendChild(el);
+    setTimeout(function () { el.remove(); }, 3200);
+  }
+
+  $('chat-form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var text = $('chat-text').value.trim();
+    if (!text) return;
+    api('api/chat', { text: text }).then(function () { $('chat-text').value = ''; })
+      .catch(function (e) { toast(e.message); });
+  });
+
   function updatePerm() {
-    var can = perm === 'control';
+    var can = perm === 'control' && mode !== 'public';
     ['play', 'back10', 'fwd10', 'seek'].forEach(function (id) { $(id).disabled = !can; });
-    show('ask', !can);
+    show('ask', !can && mode !== 'public');
     $('ask').disabled = pending;
     $('ask').textContent = pending ? 'Esperando al anfitrión…' : 'Pedir el control';
   }
@@ -323,7 +423,7 @@
 
   if (!roomId) { message('Enlace no válido'); return; }
   api('api/me').then(function (d) {
-    enter(d.guest, false);
+    enter(d.guest, false, d.room);
     if (d.media) onMedia(d.media);
     if (d.state) onState(d.state);
   }).catch(function (e) {

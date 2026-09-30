@@ -2,6 +2,11 @@
 limits (per address and per room), guest names, per-room signed cookies and permissions (view / control with the
 host's approval, revocable, kick).
 
+Two kinds of room: ``private`` (named guests, control on request, chat and reactions) and ``public`` «solo ver»
+(anyone with the link, anonymous viewers «Espectador N» up to a configurable maximum, no control and no chat).
+Chat text is cleaned here (control characters out, spaces collapsed, length limit) and rate-limited per guest with
+a sliding window; the page shows it as text (never as HTML) and mu-share escapes it for the ASS overlay.
+
 A room link is ``/s/<room id>#k=<token>``: the token travels in the URL fragment (never in a request line or a
 log), the page posts it once with the chosen name and gets a cookie signed with the room's own secret, scoped to
 ``/s/<room id>``. Closing the room (or its expiry) invalidates every cookie: the secret dies with it."""
@@ -17,6 +22,9 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Any
 
+MODE_PRIVATE = "private"
+MODE_PUBLIC = "public"
+MODES = (MODE_PRIVATE, MODE_PUBLIC)
 PERM_VIEW = "view"
 PERM_CONTROL = "control"
 PERMS = (PERM_VIEW, PERM_CONTROL)
@@ -32,6 +40,16 @@ BLOCK_SECONDS = 600.0
 NAME_MAX = 24
 TOKEN_BYTES = 24               # 192 bits → 32 URL-safe characters
 ROOM_ID_BYTES = 6              # 48 bits → 8 characters (not a secret: the token is)
+DEFAULT_VIEWERS = 20           # public room: viewers at once (configurable up to MAX_VIEWERS)
+MAX_VIEWERS = 100
+STALE_SECONDS = 30.0           # public room full: a viewer without open streams this long leaves its seat
+CHAT_MAX = 200                 # characters of one chat message
+CHAT_BURST = 5                 # chat messages per guest inside RATE_WINDOW
+REACT_BURST = 8                # reactions per guest inside RATE_WINDOW
+RATE_WINDOW = 10.0
+# reaction id → (emoji for the page, words for the host's OSD: libass does not draw colour emoji)
+REACTIONS = {"like": ("👍", "me gusta"), "love": ("❤️", "me encanta"), "laugh": ("😂", "se ríe"),
+             "wow": ("😮", "se sorprende"), "clap": ("👏", "aplaude"), "sad": ("😢", "se entristece")}
 
 _CTRL = re.compile(r"[\x00-\x1f\x7f<>\"'`\\]")
 
@@ -63,6 +81,29 @@ def clean_name(raw: Any, taken: set[str] | None = None) -> str:
         if cand.casefold() not in taken_l:
             return cand
         n += 1
+
+
+def clean_chat(raw: Any) -> str:
+    """A chat message made safe to show: NFC, no control characters (new lines become spaces), spaces collapsed,
+    ValueError when empty or longer than CHAT_MAX. Markup is kept as typed: it is always shown as plain text."""
+    text = unicodedata.normalize("NFC", str(raw if raw is not None else ""))
+    text = re.sub(r"[\x00-\x1f\x7f\u200b-\u200f\u202a-\u202e\u2066-\u2069]", " ", text)
+    text = " ".join(text.split())
+    if not text:
+        raise ValueError("el mensaje está vacío")
+    if len(text) > CHAT_MAX:
+        raise ValueError(f"el mensaje es demasiado largo (máximo {CHAT_MAX} caracteres)")
+    return text
+
+
+def rate_ok(times: list[float], burst: int, window: float = RATE_WINDOW, now: float | None = None) -> bool:
+    """Sliding window: True (and the attempt is counted) when fewer than ``burst`` happened in the last ``window``."""
+    now = time.time() if now is None else now
+    times[:] = [t for t in times if now - t < window]
+    if len(times) >= burst:
+        return False
+    times.append(now)
+    return True
 
 
 class AttemptLimiter:
@@ -117,6 +158,8 @@ class Guest:
     last_seen: float = field(default_factory=time.time)
     streams: int = 0               # open event streams (0 = not connected right now)
     kicked: bool = False
+    chat_times: list[float] = field(default_factory=list)
+    react_times: list[float] = field(default_factory=list)
 
     @property
     def connected(self) -> bool:
@@ -145,14 +188,24 @@ class Room:
     locked: bool = False            # too many wrong tokens: the link no longer works until rotate()
     closed: bool = False
     max_guests: int = MAX_GUESTS
+    mode: str = MODE_PRIVATE
+    viewer_seq: int = 0
 
     @classmethod
     def new(cls, session_id: str | None = None, ttl: float = ROOM_TTL, now: float | None = None,
-            min_ttl: float = MIN_TTL) -> Room:
+            min_ttl: float = MIN_TTL, mode: str = MODE_PRIVATE, max_viewers: int = DEFAULT_VIEWERS) -> Room:
+        if mode not in MODES:
+            raise ValueError(f"tipo de sala desconocido: {mode}")
         now = time.time() if now is None else now
         ttl = max(min_ttl, min(MAX_TTL, float(ttl)))
+        cap = MAX_GUESTS if mode == MODE_PRIVATE else max(1, min(MAX_VIEWERS, int(max_viewers)))
         return cls(id=secrets.token_urlsafe(ROOM_ID_BYTES), token=secrets.token_urlsafe(TOKEN_BYTES),
-                   secret=secrets.token_bytes(32), session_id=session_id, created_at=now, expires_at=now + ttl)
+                   secret=secrets.token_bytes(32), session_id=session_id, created_at=now, expires_at=now + ttl,
+                   max_guests=cap, mode=mode)
+
+    @property
+    def public_mode(self) -> bool:
+        return self.mode == MODE_PUBLIC
 
     # -- life -------------------------------------------------------------------------------------------
 
@@ -163,7 +216,8 @@ class Room:
         return not self.closed and not self.expired(now)
 
     def link_path(self) -> str:
-        return f"/s/{self.id}#k={self.token}"
+        # v=1: the page joins by itself, without asking for a name (public «solo ver» room)
+        return f"/s/{self.id}#k={self.token}" + ("&v=1" if self.public_mode else "")
 
     def rotate(self) -> str:
         """New invitation token (the old link stops working; guests inside stay). Unlocks the room."""
@@ -198,12 +252,22 @@ class Room:
                 raise JoinError(429, "demasiados intentos: espera unos minutos")
             raise JoinError(403, "enlace no válido o caducado")
         active = [g for g in self.guests.values() if not g.kicked]
+        if len(active) >= self.max_guests and self.public_mode:
+            # viewers who closed the page do not say goodbye: their seats go to the new ones
+            for g in active:
+                if g.streams == 0 and now - g.last_seen > STALE_SECONDS:
+                    self.guests.pop(g.id, None)
+            active = [g for g in self.guests.values() if not g.kicked]
         if len(active) >= self.max_guests:
             raise JoinError(403, "la sala está llena")
-        try:
-            clean = clean_name(name, {g.name for g in active})
-        except ValueError as exc:
-            raise JoinError(400, str(exc)) from None
+        if self.public_mode:
+            self.viewer_seq += 1
+            clean = f"Espectador {self.viewer_seq}"
+        else:
+            try:
+                clean = clean_name(name, {g.name for g in active})
+            except ValueError as exc:
+                raise JoinError(400, str(exc)) from None
         if limiter is not None:
             limiter.success(ip)
         guest = Guest(id=secrets.token_hex(8), name=clean, ip=ip, joined_at=now, last_seen=now)
@@ -238,6 +302,8 @@ class Room:
     def request_control(self, guest_id: str) -> bool:
         """The guest asks for control; True when this is a new request the host must answer."""
         g = self._guest(guest_id)
+        if self.public_mode:
+            raise PermissionError("en una sala pública solo se puede ver")
         if g.perm == PERM_CONTROL or g.pending:
             return False
         g.pending = True
@@ -246,6 +312,8 @@ class Room:
     def set_perm(self, guest_id: str, perm: str) -> Guest:
         if perm not in PERMS:
             raise ValueError(f"permiso desconocido: {perm}")
+        if perm == PERM_CONTROL and self.public_mode:
+            raise ValueError("en una sala pública nadie más controla la reproducción")
         g = self._guest(guest_id)
         g.perm = perm
         g.pending = False
@@ -269,8 +337,15 @@ class Room:
     def pending(self) -> list[Guest]:
         return [g for g in self.active_guests() if g.pending]
 
+    def viewers(self) -> int:
+        """Guests watching right now (an open event stream)."""
+        return sum(1 for g in self.guests.values() if not g.kicked and g.connected)
+
     def public(self, now: float | None = None) -> dict[str, Any]:
         now = time.time() if now is None else now
-        return {"id": self.id, "created_at": round(self.created_at, 1), "expires_at": round(self.expires_at, 1),
-                "expires_in": max(0, int(self.expires_at - now)), "locked": self.locked,
-                "guests": [g.public() for g in self.active_guests()]}
+        out = {"id": self.id, "created_at": round(self.created_at, 1), "expires_at": round(self.expires_at, 1),
+               "expires_in": max(0, int(self.expires_at - now)), "locked": self.locked, "mode": self.mode,
+               "max_guests": self.max_guests, "chat": not self.public_mode, "viewers": self.viewers()}
+        # anonymous viewers of a public room do not see each other
+        out["guests"] = [] if self.public_mode else [g.public() for g in self.active_guests()]
+        return out

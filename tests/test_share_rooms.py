@@ -134,3 +134,63 @@ def test_permissions_request_grant_revoke_deny_kick():
         r.set_perm(g.id, rooms.PERM_CONTROL)
     pub = r.public()
     assert pub["guests"] == [] and pub["id"] == r.id and pub["expires_in"] > 0
+
+
+# -- H25 (3): public «solo ver» rooms, chat and reactions -----------------------------------------------------------
+
+
+def test_public_room_anonymous_viewers_limit_and_no_control():
+    r = Room.new(now=0.0, mode=rooms.MODE_PUBLIC, max_viewers=2)
+    assert r.public_mode and r.max_guests == 2
+    assert r.link_path() == f"/s/{r.id}#k={r.token}&v=1"
+    a = r.join(r.token, "<b>Ana</b>", "10.0.0.2", now=1.0)
+    b = r.join(r.token, "", "10.0.0.3", now=1.0)
+    assert (a.name, b.name) == ("Espectador 1", "Espectador 2")   # names are not asked (nor kept)
+    a.streams = b.streams = 1
+    with pytest.raises(JoinError) as e:
+        r.join(r.token, "", "10.0.0.4", now=100.0)
+    assert e.value.status == 403 and "llena" in e.value.message
+    # a viewer who closed the page long ago gives the seat away; one still watching keeps it
+    b.streams, b.last_seen = 0, 10.0
+    c = r.join(r.token, "", "10.0.0.4", now=100.0)
+    assert c.name == "Espectador 3" and b.id not in r.guests and a.id in r.guests
+    # same attempt limits as private rooms
+    lim = AttemptLimiter(max_fails=2, window=60, block=100)
+    with pytest.raises(JoinError):
+        r.join("bad", "", "10.9.0.1", lim, now=101.0)
+    with pytest.raises(JoinError) as e:
+        r.join("bad", "", "10.9.0.1", lim, now=102.0)
+    assert e.value.status == 429
+    # no control in a public room
+    with pytest.raises(PermissionError):
+        r.request_control(a.id)
+    with pytest.raises(ValueError):
+        r.set_perm(a.id, rooms.PERM_CONTROL)
+    r.set_perm(a.id, rooms.PERM_VIEW)
+    pub = r.public()
+    assert pub["mode"] == "public" and pub["chat"] is False and pub["guests"] == [] and pub["viewers"] == 1
+    # the maximum is clamped; expiry works as in private rooms
+    assert Room.new(mode=rooms.MODE_PUBLIC, max_viewers=10**6).max_guests == rooms.MAX_VIEWERS
+    assert Room.new(mode=rooms.MODE_PUBLIC, max_viewers=0).max_guests == 1
+    assert Room.new(mode=rooms.MODE_PRIVATE, max_viewers=90).max_guests == rooms.MAX_GUESTS
+    with pytest.raises(ValueError):
+        Room.new(mode="secret")
+    old = Room.new(now=0.0, ttl=3600, mode=rooms.MODE_PUBLIC)
+    with pytest.raises(JoinError) as e:
+        old.join(old.token, "", "ip", now=3600.0)
+    assert e.value.status == 410
+
+
+def test_clean_chat_and_rate_windows():
+    assert rooms.clean_chat("  hola\n\n  qué   tal ") == "hola qué tal"
+    assert rooms.clean_chat("<img src=x onerror=alert(1)>") == "<img src=x onerror=alert(1)>"  # kept: shown as text
+    assert rooms.clean_chat("a\x00b‮c\x1b[31m") == "a b c [31m"   # control and bidi characters out
+    assert rooms.clean_chat("x" * rooms.CHAT_MAX) == "x" * rooms.CHAT_MAX
+    for bad in ("", "   ", "\n\t", None, "x" * (rooms.CHAT_MAX + 1)):
+        with pytest.raises(ValueError):
+            rooms.clean_chat(bad)
+    times: list[float] = []
+    assert all(rooms.rate_ok(times, 3, window=10, now=t) for t in (0.0, 1.0, 2.0))
+    assert rooms.rate_ok(times, 3, window=10, now=5.0) is False      # 3 in the last 10 s
+    assert rooms.rate_ok(times, 3, window=10, now=10.5) is True       # the first one left the window
+    assert set(rooms.REACTIONS) == {"like", "love", "laugh", "wow", "clap", "sad"}

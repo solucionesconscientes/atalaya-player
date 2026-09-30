@@ -173,6 +173,7 @@ class MpvdServer:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._idle_task
         await self.share.close("host")
+        await self.share.live.close()  # H25: no orphan ffmpeg of «Emitir en directo»
         await self.sessions.close_all()
         await self.remote.close()
         await self.feeds.close()

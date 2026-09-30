@@ -2,7 +2,11 @@
 that room and watch in their browser in sync with the host's mpv (state over SSE: position, pause, speed, file;
 the page corrects its own drift). Guests start as «solo ver»; one can ask for control, the host accepts or rejects
 it in mpv (mu-share) and can take it back or expel them at any time. Joins, departures and guest actions show up
-in mpv («Ana ha pausado») and in every page.
+in mpv («Ana ha pausado») and in every page. Private rooms have a chat and reactions (``chat`` events over the same
+SSE stream, shown briefly in mpv's overlay by mu-share). A public room («solo ver») lets anyone with the link watch,
+anonymously, up to a maximum of viewers: no control, no chat, only a viewer count.
+
+«Emitir en directo» (RTMP/RTMPS with ffmpeg) lives in ``mpvd/share/live.py`` (``live.*`` methods, registered here).
 
 What the guests play: a web video's direct URL when a browser can play it (yt-dlp format), otherwise an HLS relay
 made by ffmpeg in the cache (mpvd/share/hls.py); the active text subtitle goes along as WebVTT.
@@ -36,7 +40,11 @@ from mpvd.remote.http import HttpError, HttpServer, Request, Response, sse_event
 from mpvd.remote.service import firewall_hint, lan_ip
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd.share import hls
-from mpvd.share.rooms import MIN_TTL, PERM_CONTROL, PERM_VIEW, PERMS, ROOM_TTL, AttemptLimiter, JoinError, Room
+from mpvd.share.live import LiveService
+from mpvd.share.live import register as register_live
+from mpvd.share.rooms import (CHAT_BURST, DEFAULT_VIEWERS, MIN_TTL, MODE_PRIVATE, MODES, PERM_CONTROL, PERM_VIEW,
+                              PERMS, REACT_BURST, REACTIONS, ROOM_TTL, AttemptLimiter, JoinError, Room, clean_chat,
+                              rate_ok)
 
 if TYPE_CHECKING:
     from mpvd.server import MpvdServer, RpcContext
@@ -54,6 +62,8 @@ GUEST_ECHO = 1.5                 # a change this soon after a guest's command is
 LEAVE_GRACE = 8.0                # a guest without open streams this long has left (reloads do not count)
 PING = 5.0
 MAX_STREAMS = 3                  # relays kept per room (current file + fallback + previous)
+CHAT_KEEP = 50                   # chat lines kept per room (new guests see the last ones)
+HOST_NAME = "Anfitrión"
 STATIC = {"room.js": "text/javascript; charset=utf-8", "sync.js": "text/javascript; charset=utf-8",
           "room.css": "text/css; charset=utf-8", "hls.light.min.js": "text/javascript; charset=utf-8",
           "icon.svg": "image/svg+xml"}
@@ -100,6 +110,8 @@ class RoomRuntime:
     streams: dict[str, hls.HlsStream] = field(default_factory=dict)
     guest_action: dict[str, float] = field(default_factory=dict)
     notices: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=20))
+    chat: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=CHAT_KEEP))
+    chat_seq: int = 0
     task: asyncio.Task[None] | None = None
     jobs: set[asyncio.Task[Any]] = field(default_factory=set)
     dir: Path = Path()
@@ -124,6 +136,7 @@ class ShareService:
         self._seq = 0
         self._closing = False
         server.session_listeners.append(self._session_event)
+        self.live = LiveService(server, self)
 
     # -- life of the room --------------------------------------------------------------------------------
 
@@ -138,8 +151,14 @@ class ShareService:
             raise RpcError(NOT_FOUND, "no hay ninguna sala abierta")
         return self.rt
 
-    async def create(self, session_id: str | None, ttl: float = ROOM_TTL) -> dict[str, Any]:
+    async def create(self, session_id: str | None, ttl: float = ROOM_TTL, mode: str = MODE_PRIVATE,
+                     max_viewers: int = DEFAULT_VIEWERS) -> dict[str, Any]:
+        if mode not in MODES:
+            raise RpcError(INVALID_PARAMS, f"mode debe ser {' o '.join(MODES)}")
         if self.rt is not None and self.rt.room.alive():
+            if self.rt.room.mode != mode:
+                kind = "pública" if self.rt.room.public_mode else "privada"
+                raise RpcError(UNAVAILABLE, f"ya hay una sala {kind} abierta: ciérrala antes")
             return await self.link()
         if self.rt is not None:
             await self.close("expired")
@@ -155,7 +174,7 @@ class ShareService:
                     raise RpcError(UNAVAILABLE, f"no se pudo abrir el puerto: {exc}") from exc
                 log.warning("port %d busy (%s): using a free one", self.port_pref, exc)
                 await self.http.start(self.host, 0)
-        room = Room.new(session.id, ttl, min_ttl=self.min_ttl)
+        room = Room.new(session.id, ttl, min_ttl=self.min_ttl, mode=mode, max_viewers=max_viewers)
         rt = RoomRuntime(room=room, session_id=session.id, dir=self.root / room.id)
         self.rt = rt
         if self.tunnel is not None:
@@ -167,7 +186,7 @@ class ShareService:
         if self.host in ("0.0.0.0", "") and not self.public_url:
             self.firewall = await asyncio.to_thread(firewall_hint, self.http.port, lan_ip(), "compartir")
         rt.task = asyncio.create_task(self._poll(rt), name=f"share-room-{room.id}")
-        log.info("room %s open on %s (session %s)", room.id, self.base_url(), session.id)
+        log.info("%s room %s open on %s (session %s)", mode, room.id, self.base_url(), session.id)
         return await self.link()
 
     async def link(self) -> dict[str, Any]:
@@ -194,8 +213,6 @@ class ShareService:
             for q in list(rt.queues):
                 with contextlib.suppress(asyncio.QueueFull):
                     q.put_nowait(None)
-            if reason != "host":
-                self._host_push(rt, "closed", text)
             if rt.task is not None and rt.task is not asyncio.current_task():
                 rt.task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -213,6 +230,9 @@ class ShareService:
                     await self.tunnel.stop()
             self.public_url = None
             await self.http.stop()
+            # the host's mu-share learns it too (closed from its menu, from another client or by expiry), once the
+            # server is down
+            self._host_push(rt, "closed", text if reason != "host" else "Sala cerrada")
             log.info("room %s closed (%s)", rt.room.id, reason)
         finally:
             self._closing = False
@@ -233,12 +253,15 @@ class ShareService:
             "url": None, "room": None, "guests": [], "pending": [], "media": None, "notices": [],
             "firewall": self.firewall if open_ else None, "tunnel": getattr(self.tunnel, "name", None),
             "public_url": self.public_url, "lan_only": self.public_url is None,
+            "mode": None, "viewers": 0, "max_viewers": 0, "chat": [],
         }
         if open_ and rt is not None:
             out.update({"url": self.base_url() + rt.room.link_path(), "room": rt.room.public(),
                         "guests": [g.public() for g in rt.room.active_guests()],
                         "pending": [g.public() for g in rt.room.pending()], "media": self._media_public(rt),
-                        "notices": list(rt.notices)[-5:], "title": rt.raw.get("media-title") or ""})
+                        "notices": list(rt.notices)[-5:], "title": rt.raw.get("media-title") or "",
+                        "mode": rt.room.mode, "viewers": rt.room.viewers(), "max_viewers": rt.room.max_guests,
+                        "chat": list(rt.chat)[-10:]})
         return out
 
     def _session(self, rt: RoomRuntime) -> Session | None:
@@ -270,7 +293,10 @@ class ShareService:
             raise RpcError(INVALID_PARAMS, f"perm debe ser {' o '.join(PERMS)}")
         g = self._guest(rt, guest_id)
         before = g.perm
-        rt.room.set_perm(guest_id, perm)
+        try:
+            rt.room.set_perm(guest_id, perm)
+        except ValueError as exc:
+            raise RpcError(INVALID_PARAMS, str(exc)) from None
         if perm == PERM_CONTROL:
             text = f"{g.name} puede controlar la reproducción"
         else:
@@ -343,8 +369,57 @@ class ShareService:
             self._host_push(rt, "notice", text, notice=row)
 
     def _guests_changed(self, rt: RoomRuntime) -> None:
-        self._broadcast("guests", [g.public() for g in rt.room.active_guests()])
+        if rt.room.public_mode:  # anonymous viewers only learn how many are watching
+            self._broadcast("viewers", {"count": rt.room.viewers(), "max": rt.room.max_guests})
+        else:
+            self._broadcast("guests", [g.public() for g in rt.room.active_guests()])
         self._host_push(rt, "guests")
+
+    # -- chat and reactions (private rooms) ----------------------------------------------------------------
+
+    def _chat_row(self, rt: RoomRuntime, who: str, guest_id: str, kind: str, text: str = "",
+                  reaction: str = "") -> dict[str, Any]:
+        rt.chat_seq += 1
+        row: dict[str, Any] = {"id": rt.chat_seq, "kind": kind, "who": who, "guest": guest_id,
+                               "host": guest_id == "", "text": text, "at": round(time.time(), 2)}
+        if reaction:
+            emoji, words = REACTIONS[reaction]
+            row.update({"reaction": reaction, "emoji": emoji, "words": words})
+        if kind == "chat":
+            rt.chat.append(row)
+        self._broadcast("chat", row)
+        self._host_push(rt, "chat", "", chat=row)
+        return row
+
+    def guest_chat(self, rt: RoomRuntime, guest: Any, raw: Any) -> dict[str, Any]:
+        if rt.room.public_mode:
+            raise HttpError(403, "en una sala pública no hay chat")
+        try:
+            text = clean_chat(raw)
+        except ValueError as exc:
+            raise HttpError(400, str(exc)) from None
+        if not rate_ok(guest.chat_times, CHAT_BURST):
+            raise HttpError(429, "vas muy rápido: espera unos segundos")
+        return self._chat_row(rt, guest.name, guest.id, "chat", text)
+
+    def guest_react(self, rt: RoomRuntime, guest: Any, reaction: Any) -> dict[str, Any]:
+        if rt.room.public_mode:
+            raise HttpError(403, "en una sala pública no hay reacciones")
+        if not isinstance(reaction, str) or reaction not in REACTIONS:
+            raise HttpError(400, "reacción desconocida")
+        if not rate_ok(guest.react_times, REACT_BURST):
+            raise HttpError(429, "demasiadas reacciones: espera unos segundos")
+        return self._chat_row(rt, guest.name, guest.id, "reaction", reaction=reaction)
+
+    def host_chat(self, raw: Any) -> dict[str, Any]:
+        rt = self._room()
+        if rt.room.public_mode:
+            raise RpcError(INVALID_PARAMS, "en una sala pública no hay chat")
+        try:
+            text = clean_chat(raw)
+        except ValueError as exc:
+            raise RpcError(INVALID_PARAMS, str(exc)) from None
+        return self._chat_row(rt, HOST_NAME, "", "chat", text)
 
     # -- host state ------------------------------------------------------------------------------------------
 
@@ -712,7 +787,8 @@ class ShareService:
             max_age = max(60, int(room.expires_at - time.time()))
             cookie = (f"{COOKIE}={room.cookie_value(guest.id)}; Path=/s/{room.id}; HttpOnly; SameSite=Strict; "
                       f"Max-Age={max_age}")
-            self._notice(rt, f"{guest.name} se ha unido", kind="join", who=guest.name)
+            if not room.public_mode:  # a public room does not announce each viewer
+                self._notice(rt, f"{guest.name} se ha unido", kind="join", who=guest.name)
             self._guests_changed(rt)
             return Response.json({"ok": True, "guest": guest.public(), "room": room.public()},
                                  **{"Set-Cookie": cookie})
@@ -720,6 +796,8 @@ class ShareService:
         if rest == "api/me":
             return Response.json({"guest": guest.public(), "room": room.public(), "state": rt.state or None,
                                   "media": self._media_public(rt), "notices": list(rt.notices)[-5:],
+                                  "chat": [] if room.public_mode else list(rt.chat)[-30:],
+                                  "reactions": {k: v[0] for k, v in REACTIONS.items()},
                                   "tunnel": self.public_url is not None})
         if rest == "events" and req.method in ("GET", "HEAD"):
             return Response.sse(self._events(rt, guest))
@@ -728,14 +806,24 @@ class ShareService:
             if not isinstance(body, dict) or not body.get("cmd"):
                 raise HttpError(400, "falta cmd")
             return Response.json(await self._guest_command(rt, guest, str(body["cmd"]), body))
+        if rest in ("api/chat", "api/react") and req.method == "POST":
+            body = req.json()
+            if not isinstance(body, dict):
+                raise HttpError(400, "cuerpo inválido")
+            row = self.guest_chat(rt, guest, body.get("text")) if rest == "api/chat" else \
+                self.guest_react(rt, guest, body.get("reaction"))
+            return Response.json({"ok": True, "chat": row})
         if rest == "api/request" and req.method == "POST":
+            if room.public_mode:
+                raise HttpError(403, "en una sala pública solo se puede ver")
             if room.request_control(guest.id):
                 self._host_push(rt, "request", f"{guest.name} pide el control", guest=guest.public())
                 self._guests_changed(rt)
             return Response.json({"perm": guest.perm, "pending": guest.pending})
         if rest == "api/leave" and req.method == "POST":
             room.guests.pop(guest.id, None)
-            self._notice(rt, f"{guest.name} se ha ido", kind="leave", who=guest.name)
+            if not room.public_mode:
+                self._notice(rt, f"{guest.name} se ha ido", kind="leave", who=guest.name)
             self._guests_changed(rt)
             return Response.json({"ok": True}, **{"Set-Cookie": f"{COOKIE}=; Path=/s/{room.id}; Max-Age=0"})
         if rest == "api/relay" and req.method == "POST":
@@ -786,10 +874,13 @@ class ShareService:
     async def _maybe_left(self, rt: RoomRuntime, guest: Any) -> None:
         await asyncio.sleep(LEAVE_GRACE)
         if guest.streams == 0 and not guest.kicked and guest.id in rt.room.guests and not rt.room.closed:
-            self._notice(rt, f"{guest.name} se ha desconectado", kind="leave", who=guest.name)
+            if not rt.room.public_mode:
+                self._notice(rt, f"{guest.name} se ha desconectado", kind="leave", who=guest.name)
             self._guests_changed(rt)
 
     async def _guest_command(self, rt: RoomRuntime, guest: Any, cmd: str, args: dict[str, Any]) -> dict[str, Any]:
+        if rt.room.public_mode:
+            raise HttpError(403, "en una sala pública solo se puede ver")
         if not guest.can_control:
             raise HttpError(403, "solo puedes ver: pide el control al anfitrión")
         s = self._session(rt)
@@ -812,7 +903,8 @@ class ShareService:
                     raise HttpError(400, "seconds debe ser numérico") from None
                 rt.guest_action["seek"] = time.monotonic()
                 await c.command("seek", value, "absolute" if cmd == "seek" else "relative", timeout=10)
-                pos = await self._prop(s, "time-pos")
+                # an absolute seek says where it goes (time-pos may not have moved yet when read right away)
+                pos = value if cmd == "seek" else await self._prop(s, "time-pos")
                 self._notice(rt, f"{guest.name} ha saltado a {clock(pos if pos is not None else value)}",
                              kind="seek", who=guest.name)
             else:
@@ -832,10 +924,17 @@ def register(server: MpvdServer, service: ShareService) -> None:
         return service.status()
 
     @d.method("share.create")
-    async def create(ctx: RpcContext, ttl_hours: float = ROOM_TTL / 3600, session: str | None = None) -> dict[str, Any]:
-        """Open a private room for the caller's player (or return the one already open): link + QR modules."""
+    async def create(ctx: RpcContext, ttl_hours: float = ROOM_TTL / 3600, session: str | None = None,
+                     mode: str = MODE_PRIVATE, max_viewers: int = DEFAULT_VIEWERS) -> dict[str, Any]:
+        """Open a room for the caller's player (or return the one already open): link + QR modules.
+        mode=private (named guests, control on request, chat) or public («solo ver»: anyone with the link,
+        anonymous, at most max_viewers, no control and no chat)."""
         sid = session or (ctx.session.id if ctx.session is not None else None)
-        return await service.create(sid, float(ttl_hours) * 3600)
+        try:
+            viewers = int(max_viewers)
+        except (TypeError, ValueError):
+            raise RpcError(INVALID_PARAMS, "max_viewers debe ser un número") from None
+        return await service.create(sid, float(ttl_hours) * 3600, str(mode), viewers)
 
     @d.method("share.link")
     async def link(ctx: RpcContext) -> dict[str, Any]:
@@ -866,6 +965,13 @@ def register(server: MpvdServer, service: ShareService) -> None:
     async def kick(ctx: RpcContext, guest: str) -> dict[str, Any]:
         """Expel a guest (their cookie stops working; they would need the link again)."""
         return service.kick(guest)
+
+    @d.method("share.chat")
+    async def chat(ctx: RpcContext, text: str) -> dict[str, Any]:
+        """The host writes in the chat of the private room (shown as «Anfitrión»)."""
+        return service.host_chat(text)
+
+    register_live(server, service.live)
 
 
 __all__ = ["PERM_CONTROL", "PERM_VIEW", "ShareService", "Tunnel", "register"]

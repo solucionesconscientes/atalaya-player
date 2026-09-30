@@ -40,3 +40,17 @@ aside h3 { margin:0 0 8px; font-size:.85rem; text-transform:uppercase; letter-sp
 #toasts { position:fixed; top:12px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; gap:6px; z-index:10; pointer-events:none; }
 .toast { background:rgba(24,34,58,.95); border:1px solid #2a3450; padding:8px 14px; border-radius:10px; font-size:.92rem; box-shadow:0 4px 16px rgba(0,0,0,.4); transition: opacity .4s; }
 .toast.fade { opacity:0; }
+#viewers { margin:0 0 12px; }
+#chat { margin:0 0 12px; border-top:1px solid #2a3450; padding-top:10px; }
+#chat-list { list-style:none; margin:0 0 8px; padding:0; max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; font-size:.92rem; }
+#chat-list li { overflow-wrap:anywhere; }
+#chat-list li .who { font-weight:600; margin-right:6px; }
+#chat-list li.host .who { color:var(--warn); }
+#chat-list li.react { color:var(--muted); }
+#chat-form { flex-direction:row; gap:6px; }
+#chat-text { flex:1; min-width:0; padding:8px 10px; border-radius:10px; border:1px solid #2a3450; background:#0d1320; color:var(--fg); font-size:.95rem; }
+#reactions button { min-height:36px; padding:4px 10px; font-size:1.15rem; }
+#floats { position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:2; }
+.float { position:absolute; bottom:8%; font-size:1.8rem; text-shadow:0 2px 6px rgba(0,0,0,.6); animation: rise 3s ease-out forwards; white-space:nowrap; }
+.float small { display:block; font-size:.75rem; color:#fff; text-align:center; }
+@keyframes rise { from { transform:translateY(0); opacity:1; } to { transform:translateY(-220%); opacity:0; } }

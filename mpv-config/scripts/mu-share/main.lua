@@ -3,6 +3,11 @@
 --   · Menu: create the room, show/copy the link, «Invitados» (give or take back control, expel), new link, close.
 --   · A guest asking for control opens a yes/no menu here (also `script-message-to mu_share mu-share-answer <id> yes|no`).
 --   · mpvd pushes `mu-event` {event:'share', kind, text, status}: notices («Ana ha pausado») go to the OSD.
+--   · «Sala pública (solo ver)»: anyone with the link, anonymous, up to `max_viewers`; no control, no chat.
+--   · Private rooms: chat and reactions drawn briefly at the bottom left (ASS overlay, escaped, ≤10 Hz); the host
+--     writes with a text box (uosc palette) from «Chat».
+--   · «Emitir en directo…» (live.*, ADR-061): server preset or URL, the stream key pasted from the clipboard (read
+--     by mpvd, never shown nor published here), start from here / from the beginning, status, stop.
 -- Bindings: share-menu, share-qr. Script name: mu_share. State for the tests: user-data/mu/share.
 local mp = require('mp')
 local msg = require('mp.msg')
@@ -20,6 +25,8 @@ local MENU = 'mu-share'
 local EVENT = 'mu-share-event'
 local ASK_MENU = 'mu-share-request'
 local ASK_EVENT = 'mu-share-request-event'
+local INPUT = 'mu-share-input'
+local INPUT_EVENT = 'mu-share-input-event'
 local ROOT_TITLE = 'Compartir'
 
 local opts = {
@@ -28,15 +35,23 @@ local opts = {
   ask_seconds = 30,      -- the «X pide el control» menu closes itself after this (the request stays in Invitados)
   ttl_hours = 4,         -- life of a room
   osd_seconds = 3,
+  max_viewers = 20,      -- public room: viewers at once (mpvd caps it at 100)
+  chat_osd = true,       -- show chat messages and reactions over the video
+  chat_seconds = 8,      -- how long each chat line stays on screen
+  chat_lines = 5,        -- lines on screen at most
 }
 options.read_options(opts, 'mu-share')
 
 local state = {
   status = nil, view = '', stack = {}, items = {}, force_open = false,
   qr = nil, url = '', qr_visible = false, last_notice = '', last_request = nil, asking = nil,
-  last_error = '', copied = '',
+  last_error = '', copied = '', live = nil, last_chat = nil, chat_visible = 0, input = nil,
 }
 local overlay, hide_timer, ask_timer = nil, nil, nil
+local chat_overlay, chat_timer, chat_render_pending = nil, nil, false
+local chat_rows = {}
+local live_timer = nil
+local live_hint  -- defined with the «Emitir en directo» views
 
 local function osd(text, secs) mp.osd_message(text, secs or opts.osd_seconds) end
 
@@ -48,6 +63,15 @@ local function compact_guests()
   return out
 end
 
+-- what the tests may see of «Emitir en directo» (the key never reaches this script)
+local function live_public()
+  local lv = state.live or {}
+  local run = type(lv.run) == 'table' and lv.run or {}
+  return { configured = lv.configured or false, has_key = lv.has_key or false, key_length = lv.key_length or 0,
+           server_host = lv.server_host or '', active = lv.active or false, status = run.status or '',
+           mode = run.mode or '', error = run.error or '' }
+end
+
 local function publish()
   local st = state.status or {}
   mp.set_property_native('user-data/mu/share', {
@@ -56,7 +80,10 @@ local function publish()
     qr_visible = state.qr_visible, qr_size = state.qr and state.qr.size or 0, last_notice = state.last_notice,
     last_request = state.last_request or { id = '', name = '' }, asking = state.asking or '',
     media = st.media and st.media.kind or '', last_error = state.last_error, copied = state.copied,
-    lan_only = st.lan_only ~= false, port = st.port or 0,
+    lan_only = st.lan_only ~= false, port = st.port or 0, mode = st.mode or '', viewers = st.viewers or 0,
+    max_viewers = st.max_viewers or 0, last_chat = state.last_chat or { who = '', text = '', kind = '' },
+    chat_visible = state.chat_visible, chat_osd = opts.chat_osd, input = state.input and state.input.mode or '',
+    live = live_public(),
   })
 end
 
@@ -112,7 +139,9 @@ local function draw_qr()
   local cx = math.floor(res_w / 2)
   ass:new_event()
   ass:append(string.format('{\\pos(%d,%d)\\an8\\bord2\\shad0\\fs26\\1c&HFFFFFF&\\3c&H000000&}', cx, y0 + total + 12))
-  ass:append('Ver juntos: escanea el código o comparte el enlace')
+  local public = state.status and state.status.mode == 'public'
+  ass:append(public and 'Sala pública (solo ver): escanea el código o comparte el enlace'
+             or 'Ver juntos: escanea el código o comparte el enlace')
   ass:new_event()
   ass:append(string.format('{\\pos(%d,%d)\\an8\\bord2\\shad0\\fs19\\1c&HCCCCCC&\\3c&H000000&}', cx, y0 + total + 48))
   ass:append(esc(state.url))
@@ -152,7 +181,89 @@ local function show_qr(result)
   publish()
 end
 
-mp.observe_property('osd-dimensions', 'native', function() if state.qr_visible then draw_qr() end end)
+-- ---------------------------------------------------------------------------------------------
+-- chat overlay: the last lines at the bottom left, each for chat_seconds; redrawn at most every 0.1 s
+
+local function osd_res_w()
+  local ow = mp.get_property_number('osd-width', 1280)
+  local oh = math.max(1, mp.get_property_number('osd-height', 720))
+  local w = math.floor(720 * (ow / oh) + 0.5)
+  return w < 100 and 1280 or w
+end
+
+local function clip_utf8(s, max)
+  if #s <= max then return s end
+  s = s:sub(1, max):gsub('[\192-\255][\128-\191]*$', '')  -- never cut a character in half
+  return s .. '…'
+end
+
+local chat_render
+
+local function chat_schedule()
+  if chat_render_pending then return end
+  chat_render_pending = true
+  mp.add_timeout(0.1, function() chat_render_pending = false; chat_render() end)
+end
+
+chat_render = function()
+  if chat_timer then chat_timer:kill(); chat_timer = nil end
+  local now = mp.get_time()
+  local keep = {}
+  for _, r in ipairs(chat_rows) do if r.expires > now then keep[#keep + 1] = r end end
+  while #keep > opts.chat_lines do table.remove(keep, 1) end
+  chat_rows = keep
+  state.chat_visible = #chat_rows
+  if #chat_rows == 0 then
+    if chat_overlay then chat_overlay:remove(); chat_overlay = nil end
+    publish()
+    return
+  end
+  if not chat_overlay then chat_overlay = mp.create_osd_overlay('ass-events') end
+  local ass = assdraw.ass_new()
+  local y = 720 - 96
+  local soonest = math.huge
+  for i = #chat_rows, 1, -1 do
+    local r = chat_rows[i]
+    local color = r.host and '&H40C8FF&' or '&HFFD08A&'
+    ass:new_event()
+    ass:append(string.format('{\\pos(24,%d)\\an1\\bord2\\shad0\\fs22\\3c&H000000&\\1c%s\\b1}', y, color))
+    ass:append(esc(r.who))
+    ass:append('{\\b0\\1c&HFFFFFF&' .. (r.reaction and '\\i1' or '') .. '}' .. (r.reaction and ' ' or ': '))
+    ass:append(esc(r.body))
+    y = y - 30
+    if r.expires < soonest then soonest = r.expires end
+  end
+  chat_overlay.res_x = osd_res_w()
+  chat_overlay.res_y = 720
+  chat_overlay.z = 900
+  chat_overlay.data = ass.text
+  chat_overlay:update()
+  chat_timer = mp.add_timeout(math.max(0.1, soonest - now + 0.05), chat_render)
+  publish()
+end
+
+local function chat_push(row)
+  if type(row) ~= 'table' then return end
+  local reaction = row.kind == 'reaction'
+  local body = reaction and (row.words or '') or clip_utf8(tostring(row.text or ''), 120)
+  state.last_chat = { who = row.who or '', text = row.text or '', kind = row.kind or '', reaction = row.reaction or '' }
+  if opts.chat_osd then
+    chat_rows[#chat_rows + 1] = { who = row.who or '', body = body, host = row.host == true, reaction = reaction,
+                                  expires = mp.get_time() + opts.chat_seconds }
+    chat_schedule()
+  end
+  publish()
+end
+
+local function chat_clear()
+  chat_rows = {}
+  chat_render()
+end
+
+mp.observe_property('osd-dimensions', 'native', function()
+  if state.qr_visible then draw_qr() end
+  if #chat_rows > 0 then chat_schedule() end
+end)
 
 -- ---------------------------------------------------------------------------------------------
 -- menu
@@ -233,21 +344,33 @@ views.root = function()
   elseif not st.open then
     items[#items + 1] = { title = 'Crear una sala para ver juntos', icon = 'group_add', value = { action = 'create' },
                           hint = 'enlace y QR' }
+    items[#items + 1] = { title = 'Crear una sala pública (solo ver)', icon = 'public',
+                          value = { action = 'create', mode = 'public' },
+                          hint = string.format('sin nombres ni chat · hasta %d', opts.max_viewers) }
     items[#items + 1] = { title = 'Tus invitados verán lo mismo que tú, a la vez, en su navegador', icon = 'info',
                           muted = true, selectable = false }
     items[#items + 1] = { title = 'De momento, solo en tu misma red (wifi de casa)', icon = 'wifi', muted = true,
                           selectable = false }
   else
+    local public = st.mode == 'public'
     items[#items + 1] = { title = 'Mostrar el enlace y el código QR', icon = 'qr_code_2', value = { action = 'qr' } }
     items[#items + 1] = { title = 'Copiar el enlace', icon = 'content_copy', value = { action = 'copy' } }
-    local guests = st.guests or {}
-    local online = 0
-    for _, g in ipairs(guests) do if g.connected then online = online + 1 end end
-    items[#items + 1] = { title = 'Invitados', icon = 'group', value = { view = 'guests' },
-                          hint = string.format('%d en la sala · %d conectados', #guests, online) }
-    for _, g in ipairs(st.pending or {}) do
-      items[#items + 1] = { title = g.name .. ' pide el control', icon = 'front_hand', hint = 'responder',
-                            value = { view = 'guest', id = g.id } }
+    if public then
+      items[#items + 1] = { title = 'Sala pública (solo ver)', icon = 'public', muted = true, selectable = false,
+                            hint = string.format('%d viendo · máximo %d', st.viewers or 0, st.max_viewers or 0) }
+    else
+      local guests = st.guests or {}
+      local online = 0
+      for _, g in ipairs(guests) do if g.connected then online = online + 1 end end
+      items[#items + 1] = { title = 'Invitados', icon = 'group', value = { view = 'guests' },
+                            hint = string.format('%d en la sala · %d conectados', #guests, online) }
+      for _, g in ipairs(st.pending or {}) do
+        items[#items + 1] = { title = g.name .. ' pide el control', icon = 'front_hand', hint = 'responder',
+                              value = { view = 'guest', id = g.id } }
+      end
+      local n = #(st.chat or {})
+      items[#items + 1] = { title = 'Chat', icon = 'chat', value = { view = 'chat' },
+                            hint = n > 0 and string.format('%d mensajes', n) or 'escribir a los invitados' }
     end
     local media = st.media or {}
     local mt = MEDIA_TEXT[media.kind or 'none'] or ''
@@ -264,7 +387,121 @@ views.root = function()
     items[#items + 1] = { title = expires_text(st.room) .. ' · solo tu red', icon = 'schedule', muted = true,
                           selectable = false }
   end
+  if rpc.connected() then
+    items[#items + 1] = { title = 'Emitir en directo…', icon = 'sensors', value = { view = 'live' },
+                          hint = live_hint(), separator = true }
+  end
   show(ROOT_TITLE, items)
+end
+
+views.chat = function()
+  local items = {
+    { title = 'Escribir un mensaje', icon = 'edit', value = { action = 'chat-write' } },
+    { title = 'Mostrar el chat en pantalla', icon = opts.chat_osd and 'toggle_on' or 'toggle_off',
+      hint = opts.chat_osd and 'sí' or 'no', value = { action = 'chat-osd' } },
+  }
+  local rows = state.status and state.status.chat or {}
+  if #rows == 0 then
+    items[#items + 1] = { title = 'Aún no hay mensajes', icon = 'chat_bubble_outline', muted = true,
+                          selectable = false, separator = true }
+  end
+  for i = #rows, 1, -1 do
+    local r = rows[i]
+    items[#items + 1] = { title = r.who .. ': ' .. clip_utf8(tostring(r.text or ''), 80), muted = true,
+                          selectable = false, icon = r.host and 'star' or 'person', separator = i == #rows }
+  end
+  show('Chat', items)
+end
+
+-- -- «Emitir en directo» ---------------------------------------------------------------------------
+
+local function live_status_text(run)
+  if type(run) ~= 'table' then return '' end
+  if run.status == 'connecting' then return 'Conectando con el servidor…' end
+  if run.status == 'live' then
+    local s = math.floor(run.seconds or 0)
+    local where = run.mode == 'vaapi' and 'tarjeta gráfica' or 'procesador'
+    return string.format('En directo · %d:%02d:%02d · %d kb/s · %s', math.floor(s / 3600), math.floor(s % 3600 / 60),
+                         s % 60, math.floor(run.kbps or 0), where)
+  end
+  if run.status == 'failed' then return 'Se cortó: ' .. (run.error or '') end
+  if run.status == 'done' then return 'Terminó: se acabó el vídeo' end
+  if run.status == 'stopped' then return 'Parada' end
+  return ''
+end
+
+live_hint = function()
+  local lv = state.live
+  if type(lv) ~= 'table' then return '' end
+  if lv.active then return 'en directo' end
+  if not lv.configured then return 'sin configurar' end
+  return lv.service ~= '' and lv.service or (lv.server_host or '')
+end
+
+local function refresh_live(cb)
+  rpc.call('live.status', nil, function(err, st)
+    if not err then state.live = st; publish() end
+    if cb then cb(not err) end
+  end)
+end
+
+local function live_tick()
+  if state.view ~= 'live' or uosc.open_type() ~= MENU then
+    if live_timer then live_timer:kill(); live_timer = nil end
+    return
+  end
+  refresh_live(function(ok) if ok and state.view == 'live' then reopen_current() end end)
+end
+
+views.live = function()
+  local lv = state.live or {}
+  local run = type(lv.run) == 'table' and lv.run or nil
+  local items = {
+    { title = 'Emite solo lo que tengas derecho a compartir', icon = 'gavel', muted = true, selectable = false,
+      hint = 'tuyo, libre o con permiso' },
+    { title = 'Películas, series, fútbol o canales de TV: normalmente no', icon = 'block', muted = true,
+      selectable = false },
+  }
+  if lv.ffmpeg == false then
+    items[#items + 1] = { title = 'ffmpeg no está instalado', icon = 'error', muted = true, selectable = false }
+  end
+  if lv.active then
+    items[#items + 1] = { title = live_status_text(run), icon = 'sensors', muted = true, selectable = false,
+                          separator = true }
+    items[#items + 1] = { title = 'Parar la emisión', icon = 'stop_circle', value = { live = 'stop' } }
+  elseif lv.configured then
+    items[#items + 1] = { title = 'Emitir lo que estoy viendo', hint = 'desde este punto', icon = 'sensors',
+                          value = { live = 'start' }, separator = true }
+    items[#items + 1] = { title = 'Emitir desde el principio', icon = 'replay',
+                          value = { live = 'start', from_start = true } }
+    if run and run.status == 'failed' then
+      items[#items + 1] = { title = live_status_text(run), icon = 'error', muted = true, selectable = false }
+    end
+  else
+    items[#items + 1] = { title = 'Para emitir, elige el servidor y pega tu clave de emisión', icon = 'info',
+                          muted = true, selectable = false, separator = true }
+  end
+  items[#items + 1] = { title = 'Servidor', icon = 'dns', value = { view = 'live_server' }, separator = true,
+                        hint = lv.has_server and (lv.server_host or '') or 'sin elegir' }
+  items[#items + 1] = { title = 'Pegar la clave de emisión', icon = 'key', value = { live = 'key' },
+                        hint = lv.has_key and string.format('guardada (%d caracteres)', lv.key_length or 0)
+                          or 'cópiala antes · no se muestra' }
+  if lv.has_key then
+    items[#items + 1] = { title = 'Olvidar la clave', icon = 'key_off', value = { live = 'forget' } }
+  end
+  show('Emitir en directo', items)
+  if lv.active and not live_timer then live_timer = mp.add_periodic_timer(2, live_tick) end
+end
+
+views.live_server = function()
+  local lv = state.live or {}
+  local items = {}
+  for _, p in ipairs(lv.presets or {}) do
+    items[#items + 1] = { title = p.name, hint = p.server, icon = 'dns', value = { live = 'preset', preset = p.id } }
+  end
+  items[#items + 1] = { title = 'Otro servidor (PeerTube, Owncast…)', hint = 'escribir la dirección rtmp://',
+                        icon = 'edit', value = { action = 'server-write' } }
+  show('Servidor', items)
 end
 
 views.guests = function()
@@ -339,9 +576,11 @@ local function kick(id)
   end)
 end
 
-local function create_room(then_menu)
+local function create_room(then_menu, mode)
   if not rpc.connected() then osd('Compartir: mpvd no está conectado'); return end
-  rpc.call('share.create', { ttl_hours = opts.ttl_hours }, function(err, res)
+  local params = { ttl_hours = opts.ttl_hours }
+  if mode == 'public' then params.mode = 'public'; params.max_viewers = opts.max_viewers end
+  rpc.call('share.create', params, function(err, res)
     if err then fail(err, 'no se pudo crear la sala'); return end
     state.last_error = ''
     show_qr(res)
@@ -365,10 +604,126 @@ local function copy_text(text)
   osd(ok and ('Copiado: ' .. text) or ('Compartir: ' .. text))
 end
 
+-- text box (a uosc palette whose query is the text): a chat message or the address of another server
+local INPUT_TITLES = { chat = 'Mensaje para los invitados', server = 'Dirección del servidor (rtmp:// o rtmps://)' }
+
+local function input_menu(query)
+  state.input.query = query or ''
+  local mode = state.input.mode
+  local items
+  if query ~= '' then
+    items = { { title = (mode == 'chat' and 'Enviar: ' or 'Usar: ') .. query, icon = 'check', value = { save = query } } }
+  else
+    items = { { title = mode == 'chat' and 'Escribe el mensaje y pulsa Enter'
+                or 'Escribe o pega la dirección (por ejemplo rtmp://mi-servidor/live)', icon = 'edit',
+                selectable = false, muted = true } }
+  end
+  return { type = INPUT, title = INPUT_TITLES[mode], items = items, callback = { SCRIPT, INPUT_EVENT },
+    search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
+    search_suggestion = query, footnote = 'Enter elige · ⌫ en vacío vuelve' }
+end
+
+local function open_input(mode)
+  state.input = { mode = mode, query = '' }
+  publish()
+  uosc.open(input_menu(''))
+end
+
+local function reopen_forced()
+  local spec = state.stack[#state.stack]
+  if not spec then return end
+  state.force_open = true
+  open_view(spec, false)
+end
+
+local function input_done(mode, text)
+  if mode == 'chat' then
+    rpc.call('share.chat', { text = text }, function(err)
+      if err then fail(err, 'chat') end
+      refresh_status(reopen_forced)
+    end)
+  elseif mode == 'server' then
+    rpc.call('live.configure', { server = text }, function(err, st)
+      if err then fail(err, 'servidor'); reopen_forced(); return end
+      state.live = st
+      osd('Servidor guardado: ' .. (st.server_host or ''))
+      publish()
+      if (state.stack[#state.stack] or {}).name == 'live_server' then table.remove(state.stack) end
+      reopen_forced()
+    end)
+  end
+end
+
+mp.register_script_message(INPUT_EVENT, function(json)
+  local ev = utils.parse_json(json or '') or {}
+  if not state.input then return end
+  if ev.type == 'search' then
+    uosc.update(input_menu(ev.query or ''))
+    return
+  end
+  local chosen = ev.type == 'activate' and type(ev.value) == 'table' and ev.value.save or nil
+  if ev.type ~= 'back' and ev.type ~= 'close' and chosen == nil then return end
+  local mode = state.input.mode
+  state.input = nil
+  publish()
+  if ev.type == 'close' then return end  -- Esc: nothing sent, nothing reopened
+  if uosc.open_type() == INPUT then uosc.close(INPUT) end
+  if chosen ~= nil and chosen ~= '' then
+    input_done(mode, chosen)
+  else
+    reopen_forced()
+  end
+end)
+
+local function live_call(method, params, what, done_text, cb)
+  rpc.call(method, params, function(err, st)
+    if err then fail(err, what); reopen_current(); return end
+    state.live = st
+    if done_text then osd(done_text) end
+    publish()
+    if cb then cb(st) end
+    reopen_current()
+  end, 60)
+end
+
+local function live_action(v)
+  if v.live == 'start' then
+    osd('Preparando la emisión…')
+    live_call('live.start', { from_start = v.from_start == true }, 'emitir en directo', nil, function()
+      if not live_timer then live_timer = mp.add_periodic_timer(2, live_tick) end
+    end)
+  elseif v.live == 'stop' then
+    live_call('live.stop', nil, 'parar la emisión', 'Emisión parada')
+  elseif v.live == 'key' then
+    -- mpvd reads the key from the clipboard itself: it never passes through this script nor the OSD
+    live_call('live.configure', { key_from = 'clipboard' }, 'clave de emisión', nil, function(st)
+      osd(string.format('Clave guardada (%d caracteres)', st.key_length or 0))
+    end)
+  elseif v.live == 'forget' then
+    live_call('live.configure', { key = '' }, 'olvidar la clave', 'Clave olvidada')
+  elseif v.live == 'preset' then
+    live_call('live.configure', { preset = v.preset }, 'servidor', nil, function(st)
+      osd('Servidor: ' .. (st.server_host or ''))
+      if state.view == 'live_server' then table.remove(state.stack); state.view = 'live' end
+    end)
+  end
+end
+
 local function menu_action(v)
-  if v.action == 'create' then
+  if v.live then
+    live_action(v)
+  elseif v.action == 'create' then
     uosc.close(MENU)
-    create_room(false)
+    create_room(false, v.mode)
+  elseif v.action == 'chat-write' then
+    open_input('chat')
+  elseif v.action == 'server-write' then
+    open_input('server')
+  elseif v.action == 'chat-osd' then
+    opts.chat_osd = not opts.chat_osd
+    if not opts.chat_osd then chat_clear() end
+    publish()
+    reopen_current()
   elseif v.action == 'qr' then
     uosc.close(MENU)
     if not state.qr_visible then toggle_qr() end
@@ -391,6 +746,7 @@ local function menu_action(v)
       if err then fail(err, 'cerrar la sala'); return end
       state.status = st
       hide_qr()
+      chat_clear()
       osd('Sala cerrada')
       publish()
       reopen_current()
@@ -426,10 +782,11 @@ end)
 local reset_timer = nil
 mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
   if reset_timer then reset_timer:kill(); reset_timer = nil end
-  if t == MENU then return end
+  if t == MENU or t == INPUT then return end
   reset_timer = mp.add_timeout(0.2, function()
     reset_timer = nil
-    if uosc.open_type() == MENU then return end
+    local ot = uosc.open_type()
+    if ot == MENU or ot == INPUT then return end
     if #state.stack > 0 or state.view ~= '' then
       state.stack, state.view = {}, ''
       publish()
@@ -443,6 +800,9 @@ local function open_root()
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'root' })
   refresh_status(function(ok) if ok and state.view == 'root' then reopen_current() end end)
+  if rpc.connected() then
+    refresh_live(function(ok) if ok and state.view == 'root' then reopen_current() end end)
+  end
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -499,8 +859,21 @@ end)
 
 mp.register_script_message('mu-event', function(payload)
   local ev = utils.parse_json(payload or '')
-  if type(ev) ~= 'table' or ev.event ~= 'share' then return end
+  if type(ev) ~= 'table' then return end
+  if ev.event == 'live' then
+    if type(ev.status) == 'table' then state.live = ev.status end
+    if ev.text and ev.text ~= '' then state.last_notice = ev.text; osd(ev.text) end
+    publish()
+    if state.view == 'live' or state.view == 'root' then reopen_current() end
+    return
+  end
+  if ev.event ~= 'share' then return end
   if type(ev.status) == 'table' then state.status = ev.status end
+  if ev.kind == 'chat' then
+    chat_push(ev.chat)
+    if state.view == 'chat' then reopen_current() end
+    return
+  end
   if ev.kind == 'notice' and ev.text and ev.text ~= '' then
     state.last_notice = ev.text
     osd(ev.text)
@@ -512,6 +885,7 @@ mp.register_script_message('mu-event', function(payload)
     state.last_notice = ev.text or ''
     hide_qr()
     close_ask()
+    chat_clear()
     osd(ev.text or 'Sala cerrada')
   end
   publish()
