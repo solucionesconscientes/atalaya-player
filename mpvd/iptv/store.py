@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS sources (
   enabled INTEGER NOT NULL DEFAULT 1, added_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS health (
   channel_id TEXT PRIMARY KEY, ok INTEGER NOT NULL, checked_at REAL NOT NULL, detail TEXT, quality TEXT);
+CREATE TABLE IF NOT EXISTS tracks (
+  channel_id TEXT PRIMARY KEY, checked_at REAL NOT NULL, source TEXT NOT NULL, summary TEXT NOT NULL,
+  renditions TEXT);
 """
 
 
@@ -138,3 +141,33 @@ class IptvStore:
             rows = self._conn.execute("SELECT * FROM health").fetchall()
         return {r["channel_id"]: {"ok": bool(r["ok"]), "checked_at": r["checked_at"], "detail": r["detail"],
                                   "quality": json.loads(r["quality"]) if r["quality"] else None} for r in rows}
+
+    # -- audio/subtitle tracks (H30) --------------------------------------------------------------
+
+    def set_tracks(self, channel_id: str, summary: dict[str, Any], source: str,
+                   renditions: list[dict[str, Any]] | None = None) -> None:
+        """What a channel carries (mpvd/iptv/tracks.summary), learnt while playing it ("player") or by the health
+        check ("master" playlist / "probe"). ``renditions`` of its HLS master are kept to name the player's tracks;
+        a report without them keeps the ones stored."""
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO tracks (channel_id, checked_at, source, summary, renditions) VALUES (?,?,?,?,?)"
+                " ON CONFLICT(channel_id) DO UPDATE SET checked_at=excluded.checked_at, source=excluded.source,"
+                " summary=excluded.summary, renditions=COALESCE(excluded.renditions, tracks.renditions)",
+                (channel_id, time.time(), source, json.dumps(summary, ensure_ascii=False),
+                 json.dumps(renditions, ensure_ascii=False) if renditions is not None else None))
+
+    def tracks(self) -> dict[str, dict[str, Any]]:
+        """Channel id -> stored summary (+ checked_at)."""
+        with self._lock:
+            rows = self._conn.execute("SELECT channel_id, checked_at, summary FROM tracks").fetchall()
+        return {r["channel_id"]: {**json.loads(r["summary"]), "checked_at": r["checked_at"]} for r in rows}
+
+    def track_info(self, channel_id: str) -> dict[str, Any] | None:
+        """Stored summary, renditions and time of one channel (None when never seen)."""
+        with self._lock:
+            r = self._conn.execute("SELECT * FROM tracks WHERE channel_id=?", (channel_id,)).fetchone()
+        if r is None:
+            return None
+        return {"summary": json.loads(r["summary"]), "source": r["source"], "checked_at": r["checked_at"],
+                "renditions": json.loads(r["renditions"]) if r["renditions"] else None}

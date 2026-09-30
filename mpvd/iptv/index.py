@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from mpvd.iptv.model import Channel
 
@@ -33,7 +33,10 @@ class SearchIndex:
     def __len__(self) -> int:
         return len(self._items)
 
-    def search(self, query: str, limit: int = 50, kind: str | None = None, source: str | None = None) -> list[Channel]:
+    def search(self, query: str, limit: int = 50, kind: str | None = None, source: str | None = None,
+               where: Callable[[Channel], bool] | None = None) -> list[Channel]:
+        """Channels whose name/group/category/country/tvg-id contain every word of ``query`` (accents and case
+        ignored), best matches first; ``where`` narrows the search to a subset (a country, a group...)."""
         q = normalize(query)
         if not q:
             return []
@@ -43,6 +46,8 @@ class SearchIndex:
             if kind and ch.kind != kind:
                 continue
             if source and ch.source != source:
+                continue
+            if where is not None and not where(ch):
                 continue
             if not all(t in hay for t in tokens):
                 continue
