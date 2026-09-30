@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(vendor/bin/cloudflared:*)",
+      "Bash(./vendor/bin/cloudflared:*)",
+      "Bash(/home/pc/Documentos/PROJECTES/MPV-UOS/vendor/bin/cloudflared:*)"
+    ]
+  }
+}
