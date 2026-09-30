@@ -36,7 +36,7 @@ from mpvd.remote.http import HttpError, HttpServer, Request, Response, sse_event
 from mpvd.remote.service import firewall_hint, lan_ip
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd.share import hls
-from mpvd.share.rooms import PERM_CONTROL, PERM_VIEW, PERMS, ROOM_TTL, AttemptLimiter, JoinError, Room
+from mpvd.share.rooms import MIN_TTL, PERM_CONTROL, PERM_VIEW, PERMS, ROOM_TTL, AttemptLimiter, JoinError, Room
 
 if TYPE_CHECKING:
     from mpvd.server import MpvdServer, RpcContext
@@ -115,6 +115,7 @@ class ShareService:
         env_port = os.environ.get("MPVD_SHARE_PORT")
         self.port_pref = int(env_port) if env_port not in (None, "") else DEFAULT_PORT
         self.limiter = AttemptLimiter()
+        self.min_ttl = float(os.environ.get("MPVD_SHARE_MIN_TTL") or MIN_TTL)  # tests: rooms that expire in seconds
         self.rt: RoomRuntime | None = None
         self.tunnel: Tunnel | None = None       # H25 point 3 plugs the Cloudflare tunnel in here
         self.public_url: str | None = None      # base URL given by the tunnel while a room is open
@@ -154,7 +155,7 @@ class ShareService:
                     raise RpcError(UNAVAILABLE, f"no se pudo abrir el puerto: {exc}") from exc
                 log.warning("port %d busy (%s): using a free one", self.port_pref, exc)
                 await self.http.start(self.host, 0)
-        room = Room.new(session.id, ttl)
+        room = Room.new(session.id, ttl, min_ttl=self.min_ttl)
         rt = RoomRuntime(room=room, session_id=session.id, dir=self.root / room.id)
         self.rt = rt
         if self.tunnel is not None:

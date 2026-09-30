@@ -147,9 +147,10 @@ class Room:
     max_guests: int = MAX_GUESTS
 
     @classmethod
-    def new(cls, session_id: str | None = None, ttl: float = ROOM_TTL, now: float | None = None) -> Room:
+    def new(cls, session_id: str | None = None, ttl: float = ROOM_TTL, now: float | None = None,
+            min_ttl: float = MIN_TTL) -> Room:
         now = time.time() if now is None else now
-        ttl = max(MIN_TTL, min(MAX_TTL, float(ttl)))
+        ttl = max(min_ttl, min(MAX_TTL, float(ttl)))
         return cls(id=secrets.token_urlsafe(ROOM_ID_BYTES), token=secrets.token_urlsafe(TOKEN_BYTES),
                    secret=secrets.token_bytes(32), session_id=session_id, created_at=now, expires_at=now + ttl)
 
