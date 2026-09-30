@@ -344,6 +344,7 @@ local views = {}
 local function open_view(spec, push)
   if push ~= false then table.insert(state.stack, spec) end
   state.view = spec.name
+  state.items = {}  -- never publish the new view with the previous view's rows
   publish()
   views[spec.name](spec.args or {})
 end

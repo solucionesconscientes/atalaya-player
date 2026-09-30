@@ -60,6 +60,21 @@ USO, PLATAFORMAS, NEEDS_HUMAN) y `tools/check.sh` UNA vez (con la máquina libre
 (3) Cuando todo esté [x]/[~]: `ESTADO_GLOBAL: COMPLETADO` + resumen para Ser.
 
 ## Registro por iteración
+### Iteración 3 · 2026-09-30 · H32 · Biblioteca musical (punto 1) — hecho (subagente, fusionado)
+- mpvd `music/` (`music.*`: carpetas, escaneo incremental con ffprobe, artistas/álbumes/géneros/años, búsqueda sin
+  acentos, carátulas, ReplayGain 2.0 medido en segundo plano, listas M3U8 e inteligentes, historial local) (ADR-064).
+- mu-music (`alt+M`, también en *Abrir → Música*): cola con «Reproducir a continuación», sin cortes, fundido por
+  `volume-gain`, volumen igualado (etiquetas o `replaygain-fallback`), salida exclusiva; perfiles de auriculares en mu-av.
+- Arreglo: mu-av ya no publica la vista nueva con las filas de la anterior (carrera en test_mu_av con carga).
+- Tests: test_music_service.py, test_mu_music.py, test_nav (mu_music), test_mu_av.
+- Probar a mano:
+  ```bash
+  mkdir -p tmp/musica/Artista/Disco && for n in 1 2 3; do ffmpeg -loglevel error -y -f lavfi -i sine=f=$((300*n)):d=20 \
+    -metadata artist=Artista -metadata album=Disco -metadata title="Pista $n" -metadata track=$n tmp/musica/Artista/Disco/0$n.mp3; done
+  MPV_UOS_MUSIC_DIR=$PWD/tmp/musica bin/mpv-uos   # alt+M → Artistas → Artista → Disco; Tab → Reproducir a continuación
+  ```
+  En *Ajustes*: Sin cortes, Fundido 3 s, Volumen igualado «por álbum»; `alt+v` → Ecualizador → Auriculares cerrados.
+
 ### Iteración 3 · 2026-09-30 · H32 · Letras, carátulas, audiolibros y podcasts (punto 2) — hecho (subagente, fusionado)
 - mpvd `lyrics.py` (`.lrc`/etiqueta/LRCLIB opcional → SRT en caché), `books.py` (detección, posición pista+tiempo,
   velocidad, marcadores) y `songid.py` (AcoustID con clave propia, desactivado) (ADR-065). Carátulas: mpv solo.

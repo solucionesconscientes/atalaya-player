@@ -206,7 +206,7 @@ traducción en directo. Fuera también: imagen (mejoras de imagen, visor de foto
       HEVC solo como perfil «Más pequeño» en Convertir. Tamaños orientativos por hora en la ayuda.
 
 ## H32 · Audio de primer nivel
-- [ ] Biblioteca musical (artista, álbum, año, género, carátulas, búsqueda); listas (crear, ordenar, guardar M3U8, cola «reproducir a
+- [x] Biblioteca musical (artista, álbum, año, género, carátulas, búsqueda); listas (crear, ordenar, guardar M3U8, cola «reproducir a
       continuación», listas inteligentes, historial); sin cortes entre pistas y fundido opcional; volumen igualado por pista y álbum
       (ReplayGain calculado en segundo plano si falta); ecualizador con perfiles de auriculares; salida exclusiva opcional.
 - [x] Letras sincronizadas y carátulas; audiolibros y podcasts (marcadores, posición y velocidad por libro, capítulos, temporizador de

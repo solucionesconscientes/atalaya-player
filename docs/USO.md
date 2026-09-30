@@ -326,6 +326,17 @@ Necesita palabras: subtítulos de texto del vídeo (incluidos los de la web o de
 subtítulos IA (`alt+c`). Con el modelo de búsqueda semántica instalado elige mejor; sin él cuenta las palabras que más
 se repiten. No inventa nada: son frases que se dijeron.
 
+## 9d-2. Música
+`alt+M` (o *Abrir → Música*) abre tu música. La primera vez añade tu carpeta Música y la lee en segundo plano (solo
+cambia lo nuevo en las siguientes); en *Carpetas* puedes añadir otras. Navega por *Artistas › Álbumes › Pistas*,
+*Álbumes*, *Géneros* o *Buscar* (sin importar acentos). En cualquier canción o álbum, `Tab` ofrece «Reproducir»,
+«Reproducir a continuación» y «Añadir a la cola». *Cola* muestra lo que viene (mueve con `ctrl+↑/↓`, quita o guárdala
+como lista). *Listas*: crea, ordena y exporta en M3U8, o usa las inteligentes (más escuchadas, añadidas hace poco…).
+*Historial* se guarda solo en tu equipo y se borra desde el mismo menú. En *Ajustes*: «Sin cortes» entre pistas,
+«Fundido» (baja y sube el volumen entre canciones; mpv no puede mezclar dos a la vez), «Volumen igualado» por pista o
+por álbum (usa las etiquetas ReplayGain y, si faltan, las calcula sin tocar tus archivos) y «Salida exclusiva» (solo
+PipeWire, Windows y macOS). El ecualizador (`alt+v`) tiene perfiles para auriculares de botón, cerrados y abiertos.
+
 ## 9e. Audiolibros, podcasts y letras
 Abre un audiolibro (un `.m4b`, un archivo de más de una hora o la carpeta de sus capítulos) y el reproductor lo
 reconoce: la próxima vez sigue donde lo dejaste, aunque sea en otro capítulo, y con la velocidad que le pusiste a ese

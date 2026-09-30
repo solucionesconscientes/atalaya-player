@@ -335,6 +335,7 @@ end
 views.open = function()
   show('Abrir', {
     child('Biblioteca', 'ctrl+b', 'video_library', 'mu_library', 'library-menu'),
+    child('Música', 'alt+M', 'library_music', 'mu_music', 'music-menu'),
     bind('Abrir archivo', 'o', 'folder_open', 'uosc/open-file'),
     bind('Abrir URL (YouTube y otras webs)…', 'ctrl+u', 'link', 'mu_ytdl/open-url'),
     bind('Buscar en YouTube', 'ctrl+f', 'travel_explore', 'mu_ytdl/yt-search'),

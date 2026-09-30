@@ -164,7 +164,8 @@ def test_volume_leveling_and_equalizer_are_applied_and_remembered(daemon_env, me
         eq_row = st["items"][titles.index("Ecualizador")]
         assert eq_row["hint"] == "Auriculares" and eq_row["active"] is True
         send_event(h, {"type": "activate", "index": titles.index("Ecualizador") + 1, "value": {"view": "eq"}})
-        st = h.wait_property("user-data/mu/av", lambda v: bool(v) and v.get("view") == "eq", timeout=10)
+        st = h.wait_property("user-data/mu/av", lambda v: bool(v) and v.get("view") == "eq" and v.get("items"),
+                             timeout=10)
         assert [i["title"] for i in st["items"]][:2] == ["Plano (sin ecualizar)", "Más graves"]
         send_event(h, {"type": "activate", "index": 1, "value": {"eq": ""}})
         h.wait_property("af", lambda v: not any(f.get("label") == "mu-eq" for f in v or []), timeout=10)

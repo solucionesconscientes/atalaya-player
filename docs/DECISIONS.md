@@ -465,3 +465,13 @@
   tiempo de reproducción y baja el volumen en los últimos 20 s. Identificar canciones (`songid.*`): Chromaprint `fpcalc`
   + AcoustID solo con interruptor y clave propia del usuario (0600, `songs-secrets.json`), apagado por defecto;
   «Guardar en el archivo» reescribe etiquetas con `ffmpeg -c copy` y reemplazo atómico, solo bajo petición.
+- ADR-064 · Música (H32): biblioteca en mpvd (`music.*`, `<datos>/music.sqlite3`), separada de la biblioteca de vídeo
+  (H22) porque su modelo es otro (artista/álbum/género/año, pistas y discos). Carpeta Música de XDG por defecto
+  (`MPV_UOS_MUSIC_DIR` la cambia), escaneo incremental por mtime/tamaño con ffprobe a prioridad baja, carátulas del
+  archivo o de la carpeta. Volumen igualado: `replaygain` de mpv con las etiquetas; sin etiquetas, mpvd mide ReplayGain 2.0
+  (`ebur128`, pico de muestra) en segundo plano y mu-music lo aplica como `replaygain-fallback` local del archivo; nunca se
+  escriben los archivos. Fundido: mpv reproduce un solo flujo, así que no hay fundido cruzado real: se baja y sube
+  `volume-gain`. Sin cortes: `gapless-audio=yes` + `prefetch-playlist=yes`. Listas en M3U8 (UTF-8) en los datos del
+  usuario; listas inteligentes calculadas; historial local, borrable y nunca enviado (no es scrobbling). Salida exclusiva
+  con `audio-exclusive` (solo PipeWire/WASAPI/CoreAudio). Perfiles genéricos por tipo de auricular en mu-av (sin
+  mediciones por modelo). Tecla `alt+M`.
