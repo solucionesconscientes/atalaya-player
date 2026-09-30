@@ -519,6 +519,9 @@ views.root = function()
   local n = count_active()
   table.insert(items, { title = 'Descargas', hint = n > 0 and (tostring(n) .. ' activas') or nil, icon = 'downloading',
                         value = { view = 'downloads' } })
+  -- H23: subscriptions live in mu-feeds (opened as a child: ⌫ comes back here)
+  table.insert(items, { title = 'Suscripciones', hint = 'canales, listas y podcasts', icon = 'subscriptions',
+                        value = { child = 'feeds-menu', script = 'mu_feeds' } })
   -- H20: conversions and the unified tasks panel live in mu-convert (opened as a child: ⌫ comes back here)
   table.insert(items, { title = 'Convertir…', hint = 'MP4, más pequeño, solo audio, GIF', icon = 'transform',
                         value = { child = 'convert-menu' } })
@@ -1356,7 +1359,7 @@ local function on_event(source, json)
       local crumbs = {}
       for _, c in ipairs(N.parent.crumbs or {}) do crumbs[#crumbs + 1] = c end
       for _, spec in ipairs(state.stack) do crumbs[#crumbs + 1] = spec.title end
-      nav.open_child('mu_convert', v.child, crumbs, state.view)
+      nav.open_child(v.script or 'mu_convert', v.child, crumbs, state.view)
     elseif v.view then
       if v.ensure then mp.commandv('script-message-to', 'mu_core', 'mu-ensure') end
       if v.view == 'root' then state.stack = {} end
