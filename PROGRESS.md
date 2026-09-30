@@ -62,6 +62,27 @@ la web» en mu-subs (sub-add; traducir con subs.translate sobre el SRT; guardar 
 H28, H25 punto 3–4 (túnel cloudflared solo con sala abierta, RTMP).
 
 ## Registro por iteración
+### Iteración nocturna 2026-09-30 · H21 · Guía de TV y grabación programada — hecho (subagente, fusionado)
+- Verificado: EPG de TDTChannels (`epg/TV.xml.gz`, 537 KB, 184 canales, ~11 000 programas en UTC, ~4 días; 116 de los
+  135 tvg-id de la lista casan; 129 canales con programa «ahora»). Detalles en docs/FUENTES_IPTV.md.
+- mpvd: `iptv/epg.py` (XMLTV por partes → SQLite, casado por tvg-id o nombre, refresco ≤ cada 12 h;
+  `iptv.epg.now/channel/refresh`) e `iptv/schedule.py` (grabaciones persistentes con ffmpeg `-c copy` y las cabeceras
+  del canal, parada por reloj, partes, «perdida» al arrancar, avisos; `iptv.schedule.add/list/cancel/remove/parse`).
+  mpvd no se cierra con grabaciones pendientes (ADR-049).
+- mu-iptv: «ahora: …» en las listas; Tab › Guía de programación / Programar grabación…; «Grabar este programa»;
+  «Grabaciones programadas»; paleta «21:30 22:15»; avisos; `alt+G` guía.
+- Tests: test_iptv_epg (7 + 1 con red), test_iptv_schedule (15, grabación real de un HLS en directo local),
+  test_mu_iptv_epg (2 headless).
+- Pendiente: sin arranque de mpvd al iniciar sesión (las grabaciones tras reiniciar necesitan abrir MPV-UOS una vez);
+  sin comprobar espacio libre; un solo audio.
+- Probar a mano:
+  ```bash
+  bin/mpv-uos          # alt+t → España · TV: «ahora: …» (la 1.ª vez tarda unos segundos en bajar la guía)
+                       # Tab sobre La 1 → Guía de programación → un programa → Grabar este programa (⏺ en la guía)
+                       # alt+t → Grabaciones programadas → Programar grabación… → canal → «ahora 2» → Enter
+  uv run pytest -q -m network tests/test_iptv_epg.py   # guía real: ≥20 canales con programa ahora
+  ```
+
 ### Iteración nocturna 2026-09-30 · H20 · Convertir vídeo y audio — hecho (subagente, fusionado)
 - mpvd: `mpvd/convert/` (presets → argv exacto de ffmpeg; VA-API por vainfo con `-low_power` y reintento por CPU; cola
   de una en una con nice 10, `.part` + renombrado, historial `conversions.json`, reanudación al arrancar); métodos

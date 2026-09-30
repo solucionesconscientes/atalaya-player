@@ -153,8 +153,8 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
       cola unificada con descargas (panel «Tareas»). Tests.
 
 ## H21 · Guía de TV y grabación programada
-- [ ] EPG de TDTChannels (url-tvg de la lista, XMLTV .gz) en caché: «ahora / después» en cada canal y parrilla por canal.
-- [ ] Grabación programada desde la guía o a mano (canal, inicio, fin), aunque se esté viendo otra cosa (ffmpeg en mpvd), con aviso
+- [x] EPG de TDTChannels (url-tvg de la lista, XMLTV .gz) en caché: «ahora / después» en cada canal y parrilla por canal.
+- [x] Grabación programada desde la guía o a mano (canal, inicio, fin), aunque se esté viendo otra cosa (ffmpeg en mpvd), con aviso
       al terminar; lista de grabaciones programadas y realizadas.
 
 ## H22 · Biblioteca y subtítulos automáticos

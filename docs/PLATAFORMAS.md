@@ -59,6 +59,10 @@ Hoy no funciona sin trabajo: falta el lanzador PowerShell y el transporte por na
 - Config: siempre `<proyecto>/mpv-config` vía `--config-dir` (ADR-002). Caché de mpvd: `.cache/` en desarrollo; XDG/platformdirs en producción.
 - Grabaciones de TV/radio: `~~desktop/MPV-UOS` (placeholder de mpv, válido en las tres plataformas). Copiar URL usa wl-copy/xclip/xsel
   en Linux, `pbcopy` en macOS y `clip` en Windows (no probado fuera de Linux).
+- Grabaciones programadas (H21): ffmpeg lanzado por mpvd y parado enviando `q` por su entrada estándar (vale en las tres
+  plataformas; solo probado en Linux). Aviso de escritorio al terminar: `notify-send` en Linux, `osascript` en macOS (sin
+  probar), ninguno en Windows (solo el aviso en pantalla del reproductor). Nada despierta al equipo: si está apagado o
+  suspendido toda la franja, la grabación queda «perdida»; si vuelve dentro de ella, empieza tarde (ADR-049).
 - Nombres de países en español: en Linux, del paquete `iso-codes` (`/usr/share/iso-codes` + catálogo gettext); en Windows,
   macOS o un Linux sin él, de `mpvd/iptv/data/countries_es.json` (mismos nombres). País del usuario: `MPV_UOS_COUNTRY` o
   `LANG`/`LC_ALL`; en Windows no suelen existir, así que sale España salvo que se fije `MPV_UOS_COUNTRY` (no probado).

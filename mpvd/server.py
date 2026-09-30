@@ -89,6 +89,11 @@ class MpvdServer:
         methods.register(self)
         self.iptv = IptvService(self, sources=iptv_sources, radio_base_url=radio_base_url)
         register_iptv(self, self.iptv)
+        from mpvd.iptv import epg, schedule  # noqa: PLC0415 - TV guide and scheduled recordings (H21)
+        self.epg = epg.EpgService(self, self.iptv)
+        epg.register(self, self.epg)
+        self.schedule = schedule.ScheduleService(self, self.iptv)
+        schedule.register(self, self.schedule)
         self.ytdl = YtdlService(self)
         register_ytdl(self, self.ytdl)
         self.watch = WatchService(self)
@@ -140,6 +145,7 @@ class MpvdServer:
         await self.jobs.start()
         await self.ytdl.start()
         await self.convert.start()
+        await self.schedule.start()
         await self.remote.maybe_autostart()
         self._idle_task = asyncio.create_task(self._idle_watch(), name="mpvd-idle")
         log.info("mpvd %s listening on %s (cache %s, workers %d)", __version__, s.socket_path, s.cache_dir, s.workers)
@@ -160,6 +166,7 @@ class MpvdServer:
         await self.remote.close()
         await self.ytdl.close()
         await self.convert.close()
+        await self.schedule.close()
         await self.subs.close()
         await self.asr.close()
         await self.jobs.stop()
@@ -170,6 +177,7 @@ class MpvdServer:
             await self._server.wait_closed()
         self.cache.close()
         self.iptv.close()
+        self.epg.close()
         self.watch.close()
         with contextlib.suppress(OSError):
             if self.settings.pid_path.exists() and self.settings.pid_path.read_text().strip() == str(os.getpid()):
@@ -191,7 +199,8 @@ class MpvdServer:
             timeout = self.settings.idle_timeout
             if timeout <= 0:
                 continue
-            idle = not self.sessions and not self._peers and self.jobs.pending() == 0 and self.remote.clients == 0
+            idle = not self.sessions and not self._peers and self.jobs.pending() == 0 and self.remote.clients == 0 \
+                and not self.schedule.busy()  # scheduled recordings keep mpvd alive after the player closes
             if idle and time.time() - self.last_activity > timeout:
                 log.info("idle for %.0fs without sessions: exiting", timeout)
                 self.request_shutdown()

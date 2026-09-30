@@ -273,6 +273,19 @@
   y se renombra al acabar (`-n`, « (2)» si existe). Carpeta entera: una tarea por archivo en `<salida>/<carpeta>`.
   Salida por defecto `<Vídeos>/MPV-UOS/Convertidos`. Lo pendiente al parar mpvd vuelve a la cola al arrancar.
   «Tareas» (`tasks.list` + eventos `task` a mu_convert) une descargas y conversiones.
+- ADR-049 · Guía de TV y grabación programada (H21): guía de la `url-tvg` de cada lista (TDTChannels:
+  `epg/TV.xml.gz`, XMLTV en UTC, 184 canales, ~4 días) descargada con la caché HTTP (ETag, 12 h) en un trabajo de
+  prioridad baja y leída por partes (`iterparse`) a SQLite en la caché (`epg.sqlite3`); sin zona horaria se toma UTC y
+  sin `stop` el programa acaba donde empieza el siguiente. Casado por `tvg-id` y, si falta, por nombre sin acentos,
+  espacios ni signos. mu-iptv pide «ahora» por lote y lo guarda hasta que acaba el programa. Grabaciones programadas
+  en mpvd (`<datos>/iptv-schedule.json`): ffmpeg `-c copy` con las cabeceras del canal, pistas por defecto de ffmpeg a
+  `.mkv`/`.mka` en `<Vídeos>/MPV-UOS/Grabaciones`; se para por reloj enviando `q` (un HLS en directo empieza unos
+  segmentos atrás y con `-t` terminaba antes); si el directo se corta, sigue en otra parte. Margen en «Grabar este
+  programa»: 1 min antes y 3 después. mpvd no se cierra por inactividad mientras haya grabaciones pendientes o en
+  curso. Equipo apagado o suspendido: sin systemd, cron, rtcwake ni sudo nada lo despierta ni arranca mpvd al iniciar
+  sesión; lo perdido queda «perdida» al volver a abrir MPV-UOS; si vuelve dentro de la franja, empieza tarde. Aviso de
+  escritorio al terminar (nunca con `MPV_UOS_NO_NOTIFY`) y en pantalla en todos los reproductores abiertos.
+  Descartado programarlo en mpv (`stream-record`): exige tener ese canal abierto.
 - ADR-051 · Escritorio y sonido (H24): MPRIS en mpvd (`mpvd/mpris.py`), no el plugin C `mpv-mpris` (habría que
   compilarlo con cabeceras de GLib; sin sudo) ni Lua (no habla D-Bus). Un nombre `org.mpris.MediaPlayer2.mpv_uos.
   instance<pid>` por cada mpv conectado, con su propia conexión IPC y observadores (el bucle de sesiones no cambia);

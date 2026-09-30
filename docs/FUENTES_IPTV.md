@@ -66,6 +66,15 @@ https://playerservices.streamtheworld.com/api/livestream-redirect/CADENASER.mp3
   Radio_Castilla y León 57, Radio_C. de Madrid 54, Radio_Internacional 53, Radio_Galicia 48, ... Radio_Populares 27
   (las nacionales). Todos con prefijo `Radio_`.
 
+### Guía (EPG) — verificado 2026-09-30 (H21)
+- `https://www.tdtchannels.com/epg/TV.xml.gz`: 537 KB gzip (4,7 MB XML), `etag` + `last-modified` (se regenera de
+  madrugada), servido por Cloudflare. XMLTV sin DTD: 184 `<channel id="La1.TV">` cuyo `display-name` es el propio id,
+  ~11 000 `<programme channel start stop>` con `title`, `desc` (80 %), `icon` y `category` (en inglés, «ENTERTAINMENT»).
+- Horas en UTC con `+0000` (`start="20260930055000 +0000"`); cubre desde las 00:00 de Madrid del día hasta ~4 días después.
+- Casado con la lista: 116 de los 135 `tvg-id` de la lista están en la guía; dos tercios de las entradas de la lista no
+  traen `tvg-id` (canales locales que la guía no cubre). Por nombre normalizado solo añade alguno suelto. Resultado real:
+  129 canales con programa «ahora» (test `test_real_tdtchannels_guide`). Muestra recortada: `tests/fixtures/iptv/epg_tdtchannels_sample.xml`.
+
 ## 2. iptv-org (https://github.com/iptv-org/iptv)
 
 | URL | HTTP | Bytes | Notas |

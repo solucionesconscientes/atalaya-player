@@ -50,6 +50,16 @@ Opciones del instalador: `--xdg` (caché y datos en `~/.cache/mpv-uos` y `~/.loc
    | `con anuncios` | copia FAST del canal, con cortes publicitarios insertados |
    | `+2 fuentes` | la lista trae el canal varias veces: se abre la oficial y, si falla, se prueba sola la siguiente ("Probando otra fuente de «La 1»…") |
    | `geobloqueado` | la fuente avisa de que solo funciona desde su país |
+   | `ahora: Telediario` | lo que está emitiendo el canal según la guía |
+6. **Guía y grabaciones programadas.** En las listas de TDTChannels cada canal dice qué emite (`ahora: …`). `Tab` sobre un
+   canal → *Guía de programación* (o `alt+G` para el canal que ves): ahora, después y el resto del día; entra en un
+   programa para *Grabar este programa* (empieza 1 min antes y acaba 3 después) o *Grabar lo que queda*.
+   *TV y radio → Grabaciones programadas* muestra las pendientes, la que está grabando y las hechas (cancelar, detener,
+   reproducir, quitar de la lista). *Programar grabación…* (o `Tab` → *Programar grabación…* en cualquier canal): elige
+   el canal y escribe cuándo: `21:30 22:15`, `21:30 90` (minutos), `mañana 9:00 1h30`, `ahora 30`.
+   Se graba aunque estés viendo otra cosa o cierres el reproductor, pero el equipo tiene que estar encendido: si estaba
+   apagado a esa hora, la grabación sale como *perdida*. Los archivos van a `~/Vídeos/MPV-UOS/Grabaciones`
+   («Canal - Programa - 2026-09-30 21.30.mkv») y avisa al terminar.
 
 **Lo que depende de la fuente y lo que no.** La resolución, las imágenes por segundo y el bitrate los pone cada cadena:
 RTVE emite como mucho 720p a 25 fps y 3 Mb/s, casi todo va a 25 fps y algunos canales "HD" llevan muy poco bitrate; eso
@@ -263,6 +273,7 @@ El nombre de la app sigue siendo provisional: cambiarlo es editar `name` en `bra
 | Caché (listas, transcripciones, índices, huellas) | `<proyecto>/.cache/` | `~/.cache/mpv-uos/` |
 | Datos (favoritos, recientes, notas, móviles emparejados, marcas de intro) | `<proyecto>/.cache/data/` | `~/.local/share/mpv-uos/` |
 | Descargas y clips | `~/Vídeos/MPV-UOS`, `~/Música/MPV-UOS` | igual |
+| Grabaciones programadas | `~/Vídeos/MPV-UOS/Grabaciones` (lista en `<datos>/iptv-schedule.json`) | igual |
 | Conversiones | `~/Vídeos/MPV-UOS/Convertidos` (historial en los datos: `conversions.json`) | igual |
 | Grabaciones de TV/radio | `~/Escritorio/MPV-UOS` | igual |
 | Subtítulos guardados (SRT) | junto al vídeo; si no se puede, `~/Vídeos/MPV-UOS/Subtítulos` | igual |
