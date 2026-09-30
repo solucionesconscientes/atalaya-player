@@ -60,18 +60,33 @@ def parse_link(url: str) -> dict[str, Any] | None:
     return None
 
 
-def safe_name(title: str, limit: int = 100) -> str:
-    """A file name anyone can read: the title without characters that are not allowed on Windows/macOS/Linux."""
+def safe_name(title: str, limit: int = 100, byte_limit: int = 200) -> str:
+    """A file name anyone can read: the title without characters that are not allowed on Windows/macOS/Linux.
+
+    ``byte_limit`` keeps the encoded name well inside the 255-byte limit of ext4/APFS (CJK and emoji take 3-4 bytes
+    each) with room for the ".md" and a " (99)" suffix.
+    """
     t = unicodedata.normalize("NFC", title)
     t = _BAD.sub(" ", t)
     t = " ".join(t.split()).strip(" .")
-    return t[:limit].rstrip(" .") or "Notas"
+    t = t[:limit]
+    while len(t.encode("utf-8")) > byte_limit:
+        t = t[:-1]
+    return t.rstrip(" .") or "Notas"
 
 
 def _front(meta: dict[str, str]) -> str:
     def val(v: str) -> str:
         return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"' if re.search(r'[:#"\'\n]|^\s|\s$', v) else v
     return "---\n" + "".join(f"{k}: {val(v)}\n" for k, v in meta.items()) + "---\n"
+
+
+def _export_key(path: Path) -> str:
+    """The ``clave`` of an exported notes file, or "" when it is not one of ours (someone else's file with that name)."""
+    try:
+        return NoteFile.parse(path).key
+    except (OSError, UnicodeDecodeError, IndexError):
+        return ""
 
 
 def _unquote(v: str) -> str:
@@ -84,8 +99,12 @@ def _unquote(v: str) -> str:
 class NoteFile:
     """A parsed notes file: front matter, title, the lines around the notes and the notes themselves."""
 
-    def __init__(self, path: Path, key: str, title: str, media: str, notes: list[dict[str, Any]]):
+    def __init__(self, path: Path, key: str, title: str, media: str, notes: list[dict[str, Any]],
+                 extra: list[str] | None = None):
         self.path, self.key, self.title, self.media, self.notes = path, key, title, media, notes
+        # whatever the owner wrote in the file by hand (these files are meant to be edited in Obsidian): kept verbatim
+        # and written back after the notes, so adding or editing a note never throws away their text
+        self.extra: list[str] = extra or []
 
     @classmethod
     def parse(cls, path: Path) -> NoteFile:
@@ -104,17 +123,23 @@ class NoteFile:
             body = lines[end + 1:]
         title = meta.get("titulo") or next((ln[2:].strip() for ln in body if ln.startswith("# ")), path.stem)
         media = meta.get("video") or next((ln.strip("`") for ln in body if ln.startswith("`") and ln.endswith("`")), "")
-        notes = []
+        notes, extra = [], []
         for ln in body:
             m = _NOTE.match(ln)
             if not m:
+                if not (ln.startswith("# ") or ln.startswith("[▶ ") or (ln.startswith("`") and ln.endswith("`"))):
+                    extra.append(ln)
                 continue
             t = None
             if m.group("link"):
                 parsed = parse_link(m.group("link"))
                 t = parsed["t"] if parsed else None
             notes.append({"time": t, "stamp": m.group("stamp"), "text": m.group("text")})
-        return cls(path, meta.get("clave", ""), title, media, notes)
+        while extra and not extra[0].strip():
+            extra.pop(0)
+        while extra and not extra[-1].strip():
+            extra.pop()
+        return cls(path, meta.get("clave", ""), title, media, notes, extra)
 
     def render(self) -> str:
         out = [_front({"titulo": self.title, "video": self.media, "clave": self.key}), f"# {self.title}", ""]
@@ -123,6 +148,8 @@ class NoteFile:
         for n in self.notes:
             prefix = f"[{hms(n['time'])}]({link(self.media, n['time'])}) · " if n.get("time") is not None else ""
             out.append(f"- {prefix}{n['stamp']} — {n['text']}")
+        if self.extra:
+            out += ["", *self.extra]
         return "\n".join(out) + "\n"
 
     def to_dict(self, with_notes: bool = False) -> dict[str, Any]:
@@ -156,6 +183,8 @@ class NotesStore:
             except (OSError, UnicodeDecodeError):
                 continue
             if not nf.key:      # first version: the file name is the (sanitised) key
+                if not nf.notes:
+                    continue    # someone else's .md dropped in this folder: never rewritten, never indexed
                 nf.key = p.stem
                 nf.path = self._free_path(nf.title, p)
                 nf.path.write_text(nf.render(), encoding="utf-8")
@@ -253,7 +282,14 @@ class NotesStore:
         if folder:
             dest_dir = Path(folder).expanduser()
             dest_dir.mkdir(parents=True, exist_ok=True)
-            dest = dest_dir / f"{safe_name(nf.title)}.md"
+            base = safe_name(nf.title)
+            dest = dest_dir / f"{base}.md"
+            # an Obsidian vault may already hold a file with this title: only a previous export of these same notes is
+            # replaced, anything else gets "Título (2).md" so the owner's own file is never overwritten
+            if dest.exists() and _export_key(dest) != nf.key:
+                dest = next((p for n in range(2, 1000)
+                             if not (p := dest_dir / f"{base} ({n}).md").exists() or _export_key(p) == nf.key),
+                            dest_dir / f"{base} ({int(time.time())}).md")
         else:
             media = Path(nf.media.removeprefix("file://"))
             if not nf.media or re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", nf.media) and not nf.media.startswith("file://"):

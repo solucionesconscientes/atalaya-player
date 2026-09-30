@@ -475,3 +475,10 @@
   usuario; listas inteligentes calculadas; historial local, borrable y nunca enviado (no es scrobbling). Salida exclusiva
   con `audio-exclusive` (solo PipeWire/WASAPI/CoreAudio). Perfiles genéricos por tipo de auricular en mu-av (sin
   mediciones por modelo). Tecla `alt+M`.
+- ADR-066 · Windows (H28): lanzador e instalador en PowerShell (`bin/mpv-uos.ps1` + `.cmd`, `tools/install.ps1`), compatibles
+  con Windows PowerShell 5.1 (viene con el sistema) y pwsh 7, sin administrador: accesos en el menú Inicio y `mpv-uos://` en
+  `HKCU`. Binarios de Windows fijados en `vendor.lock` y verificados por SHA-256 (`yt-dlp.exe` de la misma release que el de
+  Linux, whisper.cpp CPU oficial `b5130`); sin Git Bash ni `tools/vendor.sh`. mpvd: named pipes con el lazo Proactor y bloqueo
+  de arranque con `msvcrt.locking` (acotado a 30 s). Como no hay Windows aquí, se prueba en Linux con un pwsh 7 portátil
+  (`.cache/pwsh`, bajado por el test @network): parser real, `-DryRun` idéntico a `bin/mpv-uos`, descargas contra un servidor
+  local e instalar/desinstalar en una carpeta temporal. La prueba en un Windows real queda en NEEDS_HUMAN.md.

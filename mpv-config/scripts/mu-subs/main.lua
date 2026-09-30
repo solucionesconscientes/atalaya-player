@@ -961,6 +961,7 @@ mp.register_event('file-loaded', function()
     state.dual = false
     state.save = nil
     state.extract = nil
+    state.web = nil          -- the web subtitles belonged to the video we just left
     state.adopted = ''
     state.ai_chapters = 0
     state.chapters_status = ''
@@ -997,6 +998,7 @@ mp.register_event('end-file', function()
   state.srt = ''
   state.sid = nil
   state.path = ''
+  state.web = nil
   state.adopted = ''
   state.ai_chapters = 0
   state.chapters_status = ''

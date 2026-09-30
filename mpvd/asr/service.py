@@ -49,6 +49,11 @@ FINAL = ("done", "failed", "cancelled")
 LANG_RE = re.compile(r"^[a-z]{2,3}$")
 
 
+def _live_rank(model: str) -> int:
+    """How good a model is for live subtitles. -1 for the ones LIVE_ORDER does not rank (the English-only ones)."""
+    return LIVE_ORDER.index(model) if model in LIVE_ORDER else -1
+
+
 def plan_chunks(duration: float, chunk_seconds: float) -> list[tuple[float, float]]:
     chunks: list[tuple[float, float]] = []
     t = 0.0
@@ -235,9 +240,11 @@ class AsrService:
             "tasks": [t.to_dict() for t in self.tasks.values()],
         }
 
-    def find_task(self, key: str, model: str, language: str, translate: bool) -> AsrTask | None:
+    def find_task(self, key: str, model: str, language: str, translate: bool,
+                  audio_track: int | None = None) -> AsrTask | None:
         for t in self.tasks.values():
-            if t.key == key and t.model == model and t.language == language and t.translate == translate:
+            if (t.key == key and t.model == model and t.language == language and t.translate == translate
+                    and t.audio_track == audio_track):
                 return t
         return None
 
@@ -247,13 +254,17 @@ class AsrService:
                 return t
         return None
 
-    def _srt_path(self, key: str, model: str, language: str, translate: bool) -> Path:
+    def _srt_path(self, key: str, model: str, language: str, translate: bool,
+                  audio_track: int | None = None) -> Path:
         safe = re.sub(r"[^A-Za-z0-9_.-]", "_", key)
         suffix = ".en-translated" if translate else ""
-        return self.srt_dir / safe / f"{model}.{language}{suffix}.srt"
+        # the audio track is part of the identity: a film with its original voices and a dub must not share subtitles
+        track = "" if audio_track is None else f".a{int(audio_track)}"
+        return self.srt_dir / safe / f"{model}.{language}{track}{suffix}.srt"
 
     def _cache_params(self, task: AsrTask) -> dict[str, Any]:
-        return {"lang": task.language, "translate": task.translate, "chunk": task.chunk_seconds}
+        return {"lang": task.language, "translate": task.translate, "chunk": task.chunk_seconds,
+                "audio": task.audio_track}
 
     def _write(self, task: AsrTask) -> None:
         assert task.srt_path is not None
@@ -311,10 +322,10 @@ class AsrService:
         key, duration = await self._resolve(path)
         chunk = float(chunk_seconds or DEFAULT_CHUNK)
         if auto:
-            model = await self._adopt_model(key, language, translate, chunk) or model
+            model = await self._adopt_model(key, language, translate, chunk, audio_track) or model
         if self.models.find(model) is None:
             raise RpcError(UNAVAILABLE, f"el modelo {model} no está descargado (asr.models.download)")
-        task = self.find_task(key, model, language, translate)
+        task = self.find_task(key, model, language, translate, audio_track)
         if task is not None and abs(task.chunk_seconds - chunk) < 1e-6:
             if session_id:
                 task.sessions.add(session_id)
@@ -334,7 +345,7 @@ class AsrService:
                        duration=duration, model=model, language=language, purpose=purpose, audio_track=audio_track,
                        translate=translate, chunk_seconds=chunk, notify=notify, pos=max(0.0, float(time_pos)))
         task.plan()
-        task.srt_path = self._srt_path(key, model, language, translate)
+        task.srt_path = self._srt_path(key, model, language, translate, audio_track)
         if session_id:
             task.sessions.add(session_id)
         entry = await asyncio.to_thread(self.server.cache.get, key, ARTIFACT, model, STATE_VERSION,
@@ -357,14 +368,17 @@ class AsrService:
         self._prune_tasks()
         return task
 
-    async def _adopt_model(self, key: str, language: str, translate: bool, chunk: float) -> str | None:
+    async def _adopt_model(self, key: str, language: str, translate: bool, chunk: float,
+                           audio_track: int | None = None) -> str | None:
         """With ``model=auto``, reuse a finished transcription of this file made with another model (typically the
         pre-subtitling one, small-q8_0, while live uses base) instead of starting a worse one from scratch."""
         best: AsrTask | None = None
         for t in self.tasks.values():
             if (t.key == key and t.language == language and t.translate == translate and t.complete
+                    and t.audio_track == audio_track
                     and t.model in CATALOG and self.models.find(t.model) is not None):
-                if best is None or LIVE_ORDER.index(t.model) > LIVE_ORDER.index(best.model):
+                # CATALOG holds English-only models (base.en…) that LIVE_ORDER does not rank: never index() blindly
+                if best is None or _live_rank(t.model) > _live_rank(best.model):
                     best = t
         if best is not None:
             return best.model
@@ -372,7 +386,7 @@ class AsrService:
             if self.models.find(name) is None:
                 continue
             probe = AsrTask(id="", key=key, path="", duration=0.0, model=name, language=language, translate=translate,
-                            chunk_seconds=chunk)
+                            chunk_seconds=chunk, audio_track=audio_track)
             for c in (chunk, *LEGACY_CHUNKS):
                 entry = await asyncio.to_thread(self.server.cache.get, key, ARTIFACT, name, STATE_VERSION,
                                                 {**self._cache_params(probe), "chunk": c})

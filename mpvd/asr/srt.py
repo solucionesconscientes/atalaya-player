@@ -165,18 +165,33 @@ def split_long(seg: Segment) -> list[Segment]:
     return out
 
 
+def _words(text: str) -> str:
+    """The letters and digits of a line, for telling apart two renderings of the same speech."""
+    return re.sub(r"[^0-9a-záéíóúàèìòùäöüñçßâêîôû]", "", text.casefold())
+
+
 def merge_segments(existing: list[Segment], new: list[Segment], chunk_start: float, chunk_end: float) -> list[Segment]:
     """Replace the cues that START inside [chunk_start, chunk_end) with ``new`` (already offset to media time).
 
-    Cues from an earlier chunk that spill into this window are kept (they own their start) and trimmed below.
+    Cues from an earlier chunk that spill into this window are kept (they own their start) and trimmed below. The chunk
+    is transcribed with a pre-roll (asr.service.PRE_ROLL) for context, so ``new`` may also hold what the previous chunk
+    already said: a cue that ends before this chunk is dropped, and a line heard twice across the border becomes one.
     """
     kept = [s for s in existing if s.start < chunk_start or s.start >= chunk_end]
     fresh = []
     for s in new:
         for piece in split_long(s):
-            if piece.end - piece.start < 0.2 or piece.start >= chunk_end:
-                continue
+            if piece.end <= chunk_start or piece.end - piece.start < 0.2 or piece.start >= chunk_end:
+                continue   # entirely inside the pre-roll: that speech belongs to the previous chunk
             fresh.append(Segment(max(piece.start, chunk_start), min(piece.end, chunk_end + 0.5), piece.text))
+    # the same line from both sides of the border: keep the earlier start and the fuller text, once
+    if kept and fresh and fresh[0].start <= chunk_start:
+        last, first = kept[-1], fresh[0]
+        a, b = _words(last.text), _words(first.text)
+        if a and b and (a in b or b in a):
+            fresh[0] = Segment(min(last.start, first.start), max(last.end, first.end),
+                               last.text if len(a) >= len(b) else first.text)
+            kept.pop()
     merged = sorted([*kept, *fresh], key=lambda s: (s.start, s.end))
     # trim overlaps so subtitles never stack
     for i in range(1, len(merged)):

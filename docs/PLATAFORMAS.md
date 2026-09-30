@@ -5,20 +5,20 @@ Desarrollado y probado en Linux (Ubuntu, Wayland/KDE, mpv 0.41). Lo siguiente NO
 ## Resumen por componente
 | Componente | Linux | macOS | Windows |
 |---|---|---|---|
-| Lanzador `bin/mpv-uos` + config portable | ✅ probado | debería ir (Bash; `readlink -f` ≥ 12.3) | ❌ falta `bin/mpv-uos.ps1` |
-| Instalación de usuario `tools/install.sh` | ✅ probado (XDG, `.desktop`) | ❌ usar `bin/mpv-uos` o un alias | ❌ pendiente (acceso directo) |
+| Lanzador `bin/mpv-uos` + config portable | ✅ probado | debería ir (Bash; `readlink -f` ≥ 12.3) | `bin/mpv-uos.ps1` (+ `.cmd`): probado con pwsh 7 en Linux (`-DryRun`), sin Windows real |
+| Instalación de usuario `tools/install.sh` | ✅ probado (XDG, `.desktop`) | ❌ usar `bin/mpv-uos` o un alias | `tools/install.ps1` (menú Inicio, `mpv-uos://` en HKCU): descargas y verificación probadas con pwsh 7 en Linux; sin Windows real |
 | AppImage (`tools/build_appimage.sh`) | ✅ x86_64 probado sin ventana (mpv del sistema) | — | — |
 | `.app` de macOS (`tools/build_macos_app.sh`) | construido y validado (plist, lanzador) en Linux | ❌ sin abrir en un Mac (mpv de Homebrew) | — |
 | ARM64 (Raspberry Pi 5) | ❌ sin probar: checkout + `uv sync` deberían ir; AppImage aún solo x86_64 | — | — |
 | uosc, thumbfast, scripts `mu-*` (Lua) | ✅ | debería ir (Lua puro; rutas con `utils.join_path`) | debería ir (mu-core ya distingue `.venv\Scripts\python.exe`) |
-| mpvd: JSON-RPC y IPC con mpv | ✅ socket Unix | socket Unix (no probado) | ❌ necesita named pipes (`\\.\pipe\…`) en `server.py`, `client.py`, `mpvipc.py` |
-| mpvd: arranque desacoplado | ✅ `start_new_session` | igual (no probado) | ❌ usar `creationflags=DETACHED_PROCESS` |
-| TV y radio, yt-dlp, descargas | ✅ | debería ir | yt-dlp necesita `yt-dlp.exe` (ver abajo) |
-| Subtítulos IA (whisper.cpp) | ✅ | `DYLD_LIBRARY_PATH` (no probado) | `whisper-cli.exe` + DLL (no probado) |
+| mpvd: JSON-RPC y IPC con mpv | ✅ socket Unix | socket Unix (no probado) | named pipes (`mpvd/transport.py`, lazo Proactor) probados con un lazo simulado; sin Windows real |
+| mpvd: arranque desacoplado | ✅ `start_new_session` | igual (no probado) | `DETACHED_PROCESS` + bloqueo con `msvcrt.locking` (no probado) |
+| TV y radio, yt-dlp, descargas | ✅ | debería ir | `yt-dlp.exe` (lo instala y actualiza `install.ps1`/mpvd; no probado) |
+| Subtítulos IA (whisper.cpp) | ✅ | `DYLD_LIBRARY_PATH` (no probado) | `install.ps1 -Whisper`: build oficial CPU `whisper-bin-x64.zip` (no probado) |
 | Traducción / semántica (extras) | ✅ | wheels oficiales (no probado) | wheels oficiales (no probado) |
 | Intro/créditos (`fpcalc`) | ✅ | `brew install chromaprint` | binario de acoustid.org en PATH |
 | Mando QR/PWA | ✅ (abrir puerto en `ufw`) | aviso de conexiones entrantes | diálogo del Firewall de Windows |
-| MCP (stdio) | ✅ | debería ir | depende de mpvd en Windows |
+| MCP (stdio) | ✅ | debería ir | debería ir (mpvd por named pipe; sin probar) |
 | Decodificación por hardware (etiquetas y preferencia de códec) | ✅ `vainfo` | ❌ sin comprobar (VideoToolbox: H.264/HEVC siempre; AV1 desde M3) | ❌ sin comprobar (D3D11VA/DXVA2; `dxdiag`) |
 | Convertir (ffmpeg) | ✅ VA-API (H.264; HEVC si el driver lo codifica) o CPU | CPU (sin probar); abrir carpeta con `open` | CPU (sin probar); abrir carpeta con `explorer`; sin `nice` |
 | Controles del escritorio | ✅ MPRIS (D-Bus de sesión, `jeepney`) | ❌ falta `MPNowPlayingInfoCenter` | ❌ falta SMTC (`SystemMediaTransportControls`) |
@@ -36,19 +36,31 @@ bin/mpv-uos video.mkv                        # o: alias mpv-uos="$PWD/bin/mpv-uo
 ```
 Una app `.app` que abra archivos desde Finder queda pendiente (necesita un bundle con `Info.plist` que llame a `bin/mpv-uos`).
 
-## Instalar en Windows (pendiente)
-Hoy no funciona sin trabajo: falta el lanzador PowerShell y el transporte por named pipe de mpvd (ver tabla). Pasos previstos:
-`winget install mpv ffmpeg astral-sh.uv`, `uv sync`, `tools/vendor.sh` desde Git Bash (con `yt-dlp.exe`), y
-`bin/mpv-uos.ps1` → `mpv --config-dir=<proyecto>\mpv-config --input-ipc-server=\\.\pipe\mpv-uos-<pid>`.
+## Instalar en Windows (no probado en un Windows real)
+Sin permisos de administrador; el checkout se queda donde esté y todo apunta a él (nada en `%APPDATA%\mpv`).
+```powershell
+# antes: mpv ≥ 0.41 (build oficial de mpv.io/installation), ffmpeg/ffprobe, uv y git en el PATH
+git clone <repo> MPV-UOS; cd MPV-UOS
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\install.ps1 -Whisper     # -Extras: traducción y búsqueda
+mpv-uos video.mkv          # o desde el menú Inicio → MPV-UOS; también bin\mpv-uos.cmd sin instalar
+```
+`install.ps1` comprueba mpv (≥ 0.41), ffmpeg, ffprobe y uv, ejecuta `uv sync`, descarga y verifica con SHA-256 los binarios
+fijados en `vendor.lock` (`ziggy-windows.exe` de uosc, `yt-dlp.exe` contra el `SHA2-256SUMS` de su release, `deno.exe` si no hay
+deno/node ≥ 22 y, con `-Whisper`, whisper.cpp CPU `whisper-bin-x64.zip`), crea `%LOCALAPPDATA%\MPV-UOS\bin\mpv-uos.cmd`,
+un acceso en el menú Inicio y los enlaces `mpv-uos://` (en `HKCU\Software\Classes`). `-DryRun` enseña lo que haría sin tocar nada
+(una línea JSON); `-Uninstall` lo quita todo menos los datos (`%APPDATA%\mpv-uos`) y el checkout.
+El lanzador `bin\mpv-uos.ps1` pasa a mpv las mismas opciones que `bin/mpv-uos` y un `--input-ipc-server=\\.\pipe\mpv-uos-<pid>-<azar>`
+por instancia; `-DryRun` imprime la orden, `-Gui` muestra los errores en una ventana (acceso directo y enlaces no tienen consola).
+Ambos funcionan con Windows PowerShell 5.1 y PowerShell 7 (sin sintaxis exclusiva de la 7), pero solo se han ejecutado con
+pwsh 7.6 en Linux (`tests/test_windows_scripts.py`, con un servidor HTTP local en lugar de GitHub).
 
 ## Windows
-- `bin/mpv-uos` es Bash; hace falta un `bin/mpv-uos.ps1` equivalente (pendiente) que use `--input-ipc-server=\\.\pipe\mpv-uos-<pid>`.
-- `mpvd/mpvipc.py` solo implementa sockets Unix; el transporte de named pipe está previsto en el diseño (misma capa de mensajes).
+- Lanzador `bin/mpv-uos.ps1` e instalador `tools/install.ps1` (arriba). mpvd escucha en `\\.\pipe\mpv-uos-mpvd-<usuario>` y
+  habla con mpv por su pipe (`mpvd/transport.py`); un segundo arranque simultáneo lo evita el bloqueo `msvcrt` de `mpvd.lock`.
 - uosc incluye `bin/ziggy-windows.exe` (lo instala tools/vendor.sh). thumbfast en Windows requiere `direct_io` con LuaJIT (ver su conf).
 - ffmpeg, espeak-ng y yt-dlp deben estar en PATH o en vendor/bin.
-- yt-dlp: el asset vendorizado (`yt-dlp`, zipimport con shebang) no sirve para ytdl_hook en Windows (busca `yt-dlp.exe`);
-  tools/vendor.sh tendría que instalar `yt-dlp.exe` (SHA en docs/YTDLP.md §3) y mu-ytdl ya usa `;` como separador de rutas y
-  `vendor/bin/yt-dlp.exe`. mpvd sí puede ejecutar el zipimport con su propio Python. Runtime JS: deno `deno-x86_64-pc-windows-msvc.zip`
+- yt-dlp: ytdl_hook necesita `yt-dlp.exe` (el zipimport con shebang no le sirve): lo instala `install.ps1` en `vendor\bin` y el
+  actualizador diario de mpvd descarga en Windows ese mismo asset (`platform_asset_name()`); mu-ytdl usa `;` como separador de rutas. Runtime JS: deno `deno-x86_64-pc-windows-msvc.zip`
   (suma en vendor.lock) o node ≥ 22.
 - «Abrir URL» (mu-ytdl) lee el portapapeles con la propiedad `clipboard/text` de mpv 0.41 (backend `win32`): sin probar. Si no hay
   backend, la paleta funciona igual pero sin la entrada «Pegar: …».

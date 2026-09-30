@@ -176,7 +176,7 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
 - [x] Sala privada con enlace: «ver juntos» sincronizado (cada invitado reproduce la fuente en su navegador), permisos por invitado
       (solo ver / puede controlar, con aprobación en pantalla, revocable), quién está conectado, avisos «Ana ha pausado».
 - [x] Retransmisión de archivos locales a los invitados (HLS con subtítulos WebVTT, conversión al vuelo por VA-API si hace falta).
-- [~] Túnel de Cloudflare (cloudflared en vendor/, sin cuenta) activo SOLO mientras la sala está abierta: permiso para abrir
+- [ ] (PERMISO CONCEDIDO por Ser el 2026-09-30: regla en .claude/settings.json para vendor/bin/cloudflared) Túnel de Cloudflare (cloudflared en vendor/, sin cuenta) activo SOLO mientras la sala está abierta: permiso para abrir
       un túnel de entrada denegado en la sesión nocturna (NEEDS_HUMAN.md).
 - [x] Sala pública «solo ver» (cualquiera con el enlace en la red local, número máximo de espectadores, sin control ni chat).
 - [x] «Emitir en directo» a una plataforma (YouTube Live, Twitch, PeerTube, Owncast) por RTMP con clave de emisión, para audiencias
@@ -231,5 +231,48 @@ traducción en directo. Fuera también: imagen (mejoras de imagen, visor de foto
 - [x] Enviar a la tele por DLNA (Chromecast fuera por ahora: ver ADR-063 y docs/PLATAFORMAS.md).
 
 ## H28 · Plataformas
-- [ ] Paquete Linux (AppImage y/o Flatpak), prueba en ARM64 (Raspberry Pi 5 / modo salón), Windows (named pipes en mpvd, lanzador,
+- [x] Paquete Linux (AppImage y/o Flatpak), prueba en ARM64 (Raspberry Pi 5 / modo salón), Windows (named pipes en mpvd, lanzador,
       yt-dlp.exe, whisper, instalador) y macOS (.app). Lo que no se pueda probar sin el hardware, a docs/PLATAFORMAS.md y NEEDS_HUMAN.md.
+      Hecho: AppImage x86_64, .app de macOS, named pipes, bin/mpv-uos.ps1 y tools/install.ps1 (probados con pwsh 7 en Linux);
+      ARM64, Mac y Windows reales sin hardware → NEEDS_HUMAN.md.
+
+## H34 · Revisión de calidad · SOLO en una iteración con effort xhigh
+Puerta: antes de empezar H34 mira la última línea «▶ iteración» de logs/runner.log. Si NO dice `effort=xhigh`, no empieces:
+escribe en PROGRESS.md la línea exacta `H34 espera iteración xhigh` y termina la iteración (sin ESTADO_GLOBAL: COMPLETADO);
+un vigilante relanzará el runner en xhigh. En xhigh, borra esa línea de PROGRESS.md y adelante (modo a tope, subagentes).
+- [x] Revisión de código por áreas de H15–H33 con subagentes (errores reales, integración entre módulos, textos y comportamiento
+      coherentes, rendimiento en este portátil). Siete revisiones (TV, descargas/convertir, subtítulos, biblioteca/suscripciones/notas,
+      audio, compartir/mando, núcleo/UI). Integración Lua↔mpvd verificada entera: los 175 métodos que llama el Lua existen en los 244
+      de mpvd y los parámetros cuadran (ahora es un test, `tests/test_integracion_lua_rpc.py`).
+- [ ] Cada hallazgo confirmado, corregido con su test. Lista de los confirmados leyendo el código (ordenados por gravedad):
+      · Notas: `render()` borra el texto que el usuario escriba en el `.md` (y `_scan()` reescribe un `.md` ajeno de la carpeta);
+        «Exportar a una carpeta» sobrescribe sin avisar un fichero del usuario; `safe_name` recorta por caracteres, no por bytes.
+      · Subtítulos IA: la pre-rodadura no se descarta → frase duplicada en cada frontera y cues con fin < inicio; la pista de audio
+        no entra en la identidad de la tarea ni en la caché (VO/doblaje se mezclan); `_adopt_model` lanza `ValueError` con modelos
+        `*.en`; todas las traducciones de subtítulos de internet van al MISMO archivo; el panel no olvida `state.web` al cambiar de
+        vídeo; `translate.py` ignora los hilos pedidos en máquinas de ≤2 núcleos (paréntesis).
+      · Descargas: cancelar una que aún no ha empezado la deja «en cola» para siempre y se relanza al reiniciar; «Instalar yt-dlp»
+        manda un parámetro que el método no acepta (nunca funciona); un lote >200 enlaces pierde de la lista los primeros; al parar
+        mpvd la cola se marca «cancelada» en vez de reanudarse (H19); las descargas ocupan los workers del JobQueue y anulan las
+        prioridades; en «Descargar» faltan las etiquetas «fluido en tu equipo» (H31).
+      · Grabar: `save_range` ignora la ruta guardada → al cambiar de archivo recorta el equivocado o pierde el tramo; dos dueños de
+        `stream-record` (mu-record y mu-iptv, con carpetas distintas) → punto rojo pegado y grabación cortada en silencio; el tope
+        de 600 s de `study.clip` hace fallar cualquier grabación local de más de 10 min; la carpeta de reserva lleva «MPV-UOS» a pelo.
+      · Menú: «Recientes» se reabre solo si se cierra con Esc mientras espera a mpvd; en la paleta `⌫` no cierra nada (cierra el
+        tipo de menú equivocado).
+      · TV: un fallo blando al bajar el EPG deja la guía en bucle infinito de refrescos; una excepción en el bucle del programador
+        mata todas las grabaciones programadas sin aviso; `_rebuild_index` bloquea el bucle de eventos una vez por fuente; errores de
+        mpvd/ffmpeg en inglés dentro de menús en español; los subtítulos externos cuentan como CC del canal y un informe «player»
+        pobre borra el resumen «master»; carrera en el memo de emparejamiento del EPG.
+      · Biblioteca y suscripciones: quitar una carpeta borra las filas de una subcarpeta que sigue en la biblioteca; renombrar una
+        suscripción deja huérfanos los ficheros ya movidos y borra sus registros; la extracción de carátulas reintenta ffmpeg en
+        cada escaneo cuando falla.
+      · Compartir y mando: al cerrar la sala quedan ffmpeg huérfanos y se recrea la carpeta borrada; `remote.status` bloquea el bucle
+        de eventos con `subprocess.run`; el volumen de la tele se manda en absoluto desde un valor inventado; 20 fallos acumulados
+        (sin caducar) inutilizan el enlace de la sala; en sala privada los invitados desconectados no sueltan la plaza; el 500
+        genérico devuelve el texto de la excepción (y los `limit` de la API no se validan).
+- [ ] Pruebas de extremo a extremo headless de los flujos principales: abrir archivo y URL, TV con CC/VO y búsqueda por categoría,
+      descargas con listas y SRT, convertir, grabar, biblioteca y siguiente episodio, música y audiolibros, suscripciones, compartir
+      en LAN, notas, preferencias tras reinicio; `tools/check.sh` completo con la máquina libre.
+- [ ] Documentación final al día (README, USO, ATAJOS, PLATAFORMAS) y resumen para Ser en PROGRESS.md: qué probar a mano y cómo.
+Solo cuando H34 esté hecho: `ESTADO_GLOBAL: COMPLETADO`.

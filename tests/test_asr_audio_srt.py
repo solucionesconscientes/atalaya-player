@@ -83,3 +83,29 @@ def test_chunk_plan_prompt_and_legacy_state():
     assert n.saved == [{"path": "/v/a.es.srt", "complete": False}] and len(n.segments) == 3
     n.load_state({**old, "complete": True})
     assert n.complete
+
+
+def test_the_pre_roll_does_not_duplicate_lines_nor_write_cues_backwards():
+    """H34 · the chunk is transcribed with 0.8 s of context before it: that speech belongs to the previous chunk."""
+    from mpvd.asr.srt import Segment, merge_segments
+
+    # the previous chunk (0 → 28.5) heard the line that crosses the border; this one (28.5 → 57) hears it again
+    existing = [Segment(20.0, 22.0, "Antes de nada."), Segment(27.8, 28.9, "y entonces llegó a casa")]
+    new = [Segment(27.7, 28.4, "llegó a casa"),          # entirely inside the pre-roll
+           Segment(27.8, 29.2, "y entonces llegó a casa"),  # the same line, heard again across the border
+           Segment(30.0, 32.0, "Abrió la puerta.")]
+    merged = merge_segments(existing, new, 28.5, 57.0)
+
+    assert all(s.end > s.start for s in merged), [(s.start, s.end, s.text) for s in merged]
+    assert [s.text for s in merged].count("y entonces llegó a casa") == 1
+    assert "llegó a casa" not in [s.text for s in merged]          # the pre-roll-only copy is gone
+    assert [s.text for s in merged] == ["Antes de nada.", "y entonces llegó a casa", "Abrió la puerta."]
+    assert merged[1].start == 27.8                                  # kept the earlier, truer start
+
+
+def test_a_cue_only_in_the_pre_roll_is_dropped_instead_of_being_inverted():
+    from mpvd.asr.srt import Segment, merge_segments, render_srt
+
+    merged = merge_segments([], [Segment(27.9, 28.3, "Sí.")], 28.5, 57.0)
+    assert merged == []
+    assert render_srt(merge_segments([], [Segment(28.0, 29.0, "Sí, claro.")], 28.5, 57.0)).count("-->") == 1

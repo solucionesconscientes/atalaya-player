@@ -26,7 +26,7 @@ tools/install.sh --default     # además, reproductor por defecto para vídeo y 
 tools/install.sh --uninstall   # quita lanzador, .desktop e icono (solo si los creó el instalador); no toca datos ni el checkout
 ```
 El lanzador instalado apunta a este checkout (no copia nada) y nunca toca `~/.config/mpv`. Subtítulos IA: `tools/vendor_whisper.sh`
-(docs/WHISPER.md). Windows y macOS: docs/PLATAFORMAS.md.
+(docs/WHISPER.md). Windows (`tools\install.ps1`, sin probar en un Windows real) y macOS: docs/PLATAFORMAS.md.
 
 ## Abrir un archivo o URL
 ```bash

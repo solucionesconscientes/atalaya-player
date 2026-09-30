@@ -56,3 +56,8 @@
   otra distro (Fedora, Arch) que tenga mpv ≥ 0.41: debería abrir la pantalla de inicio y `alt+t` la TV.
 - **macOS**: en un Mac con `brew install mpv uv`: clona, `uv sync --extra desktop && tools/vendor.sh &&
   tools/build_macos_app.sh` y abre `dist/MPV-UOS.app` (la primera vez: clic derecho → Abrir, no está firmado).
+- **Windows** (no hay Windows aquí; los scripts solo se han ejecutado con pwsh 7 en Linux). En un Windows 10/11 con mpv ≥ 0.41,
+  ffmpeg, uv y git en el PATH: clona el repo y, en PowerShell,
+  `powershell -NoProfile -ExecutionPolicy Bypass -File tools\install.ps1 -Whisper` y luego `mpv-uos` (o menú Inicio → MPV-UOS):
+  debería abrir la pantalla de inicio; `alt+t` la TV, un vídeo de YouTube con `ctrl+u`. Si falla, guarda la salida del
+  instalador y `.cache\mpvd.log` del checkout (y la salida de `.venv\Scripts\python -m mpvd status`).

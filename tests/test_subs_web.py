@@ -212,3 +212,15 @@ def test_mu_subs_web_menu_adds_and_translates(daemon_env, media_dir, tmp_path):
         h.stop()
         httpd.shutdown()
         httpd_media.shutdown()
+
+
+def test_translating_the_web_subtitles_of_two_videos_writes_two_files(tmp_path):
+    """H34 · every video's web subtitles are called <lang>.<kind>.srt: the translation must not land on one file."""
+    from mpvd.subs.service import SubsService
+
+    a = tmp_path / "web" / "url_aaaa" / "en.auto.srt"
+    b = tmp_path / "web" / "url_bbbb" / "en.auto.srt"
+    assert SubsService.subtitle_key(None, a) != SubsService.subtitle_key(None, b)
+    ka = SubsService.subtitle_key("https://www.youtube.com/watch?v=aaa", a)
+    kb = SubsService.subtitle_key("https://www.youtube.com/watch?v=bbb", a)
+    assert ka != kb and ka.startswith("url:")

@@ -62,6 +62,17 @@ class SubsService:
         self.extracting: dict[str, Job] = {}                # "<key>:<ff_index>" -> running extraction job
         self.waiting: set[asyncio.Task[Any]] = set()        # "complete and save" watchers of AI tasks
 
+    @staticmethod
+    def subtitle_key(path: str | None, srt_path: Path) -> str:
+        """Cache/output key of a translation when the video is not a local file.
+
+        The web subtitles of every video are saved as ``<lang>.<kind>.srt`` (H29), so the stem alone would send the
+        translation of every video to the same file: the URL, or the folder the SRT lives in, is what tells them apart.
+        """
+        if path:
+            return "url:" + safe_name(url_key(path))
+        return "srt:" + safe_name(f"{srt_path.parent.name}-{srt_path.stem}")
+
     def _out(self, key: str, stem: str, suffix: str) -> Path:
         d = self.out_dir / safe_name(key)
         d.mkdir(parents=True, exist_ok=True)
@@ -230,7 +241,7 @@ class SubsService:
                 {"missing": [[lg.source, lg.target, lg.engine] for lg in missing]})
         cues = await self._cues(srt)
         srt_path = Path(srt)
-        key = await self._key(path) if path and not is_url(path) else "srt:" + safe_name(srt_path.stem)
+        key = await self._key(path) if path and not is_url(path) else self.subtitle_key(path, srt_path)
         try:
             legs = self.router.plan(source, target, engine)
         except TranslateError as exc:

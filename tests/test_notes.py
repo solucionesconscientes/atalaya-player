@@ -85,3 +85,59 @@ def test_export_next_to_the_video_or_into_a_folder(tmp_path):
     store.add("k2", "Vídeo web", "https://example.com/v", "Nota", 1.0)
     with pytest.raises(ValueError):
         store.export("k2")
+
+
+def test_what_the_owner_writes_in_the_file_survives_new_notes(tmp_path):
+    """H34 · these files are meant to be edited in Obsidian: adding, editing or deleting a note must not eat the text."""
+    store = NotesStore(tmp_path)
+    r = store.add("mu:abc", "Mi peli", "/v/peli.mkv", "Primera", 3.0)
+    p = Path(r["file"])
+    p.write_text(p.read_text(encoding="utf-8")
+                 + "\n## Lo que pienso\n\nUna reflexión larga.\n\n- [ ] buscar el guion\n", encoding="utf-8")
+
+    store.add("mu:abc", "Mi peli", "/v/peli.mkv", "Segunda", 9.0)
+    md = p.read_text(encoding="utf-8")
+    assert "## Lo que pienso" in md and "Una reflexión larga." in md and "- [ ] buscar el guion" in md
+    assert "Segunda" in md and md.count("Una reflexión larga.") == 1
+
+    notes = store.get("mu:abc")["items"]
+    assert [n["text"] for n in notes] == ["Primera", "Segunda"]   # the checklist line is not read as a note
+    store.edit("mu:abc", 0, "Primera, corregida")
+    store.delete("mu:abc", 1)
+    md = p.read_text(encoding="utf-8")
+    assert "## Lo que pienso" in md and "Primera, corregida" in md
+
+
+def test_a_foreign_markdown_in_the_notes_folder_is_left_alone(tmp_path):
+    d = tmp_path / "notas"
+    d.mkdir()
+    foreign = d / "Mi diario.md"
+    foreign.write_text("# Mi diario\n\nHoy he ido al cine.\n", encoding="utf-8")
+    store = NotesStore(tmp_path)
+    assert store.list() == []
+    assert foreign.read_text(encoding="utf-8") == "# Mi diario\n\nHoy he ido al cine.\n"
+
+
+def test_export_to_a_folder_never_overwrites_someone_elses_file(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    mine = vault / "Mi peli.md"
+    mine.write_text("# Mi peli\n\nMi reseña.\n", encoding="utf-8")
+    store = NotesStore(tmp_path / "data")
+    store.add("k1", "Mi peli", "/v/peli.mkv", "Nota", 1.0)
+
+    out = store.export("k1", str(vault))
+    assert Path(out["file"]) == vault / "Mi peli (2).md"
+    assert mine.read_text(encoding="utf-8") == "# Mi peli\n\nMi reseña.\n"
+    # exporting again replaces our own copy instead of piling up
+    store.add("k1", "Mi peli", "/v/peli.mkv", "Otra", 2.0)
+    again = store.export("k1", str(vault))
+    assert Path(again["file"]) == vault / "Mi peli (2).md" and again["notes"] == 2
+
+
+def test_safe_name_fits_in_a_real_file_name(tmp_path):
+    long_cjk = "あ" * 200
+    assert len(safe_name(long_cjk).encode("utf-8")) <= 200
+    store = NotesStore(tmp_path)
+    r = store.add("mu:cjk", long_cjk, "/v/anime.mkv", "Nota", 1.0)
+    assert Path(r["file"]).exists()

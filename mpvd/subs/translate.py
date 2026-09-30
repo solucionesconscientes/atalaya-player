@@ -452,7 +452,7 @@ class ArgosEngine:
     def __init__(self, store: ArgosStore, threads: int | None = None, beam_size: int = 2):
         self.store = store
         cpu = os.cpu_count() or 2
-        self.threads = threads or max(1, min(cpu - 1, 8)) if cpu > 2 else cpu
+        self.threads = threads or (max(1, min(cpu - 1, 8)) if cpu > 2 else max(1, cpu))
         self.beam_size = beam_size
         self._loaded: dict[tuple[str, str], tuple[Any, Any]] = {}
         self.stats = {"sentences": 0, "seconds": 0.0}

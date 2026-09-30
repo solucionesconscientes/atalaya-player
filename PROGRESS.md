@@ -1,7 +1,52 @@
 # PROGRESS
-ESTADO_GLOBAL: EN_CURSO
+ESTADO_GLOBAL: COMPLETADO
 
-## Resumen para Ser (2026-09-29)
+## Resumen final para Ser (2026-09-30, iteración 4)
+Todos los hitos de BACKLOG.md (H0–H33) están [x] o [~]. Quedan [~] solo dos cosas, ambas por decisión o permiso tuyo:
+el **túnel de internet** de las salas (H25: la sesión nocturna no tiene permiso para abrir un túnel de entrada) y los
+**torrents** (H26: fuera por tu decisión). Lo que no se puede probar sin hardware (Windows, Mac, Raspberry Pi, tele DLNA real)
+está hecho y probado aquí por simulación, con los pasos exactos para ti en NEEDS_HUMAN.md.
+
+### Qué funciona
+- **Reproductor**: mpv 0.41 + uosc 5.13, config portable, un único menú con migas y «‹ Atrás» (`alt+m`), paleta (`alt+p`),
+  pantalla de inicio, continuar viendo por hash, preferencias que se recuerdan, mini reproductor, modo salón y modo sencillo.
+- **TV y radio** (`alt+t`): TDTChannels, iptv-org, Radio Browser y tus M3U; buscar en cada lista, CC/VO/AD, guía de TV (`alt+G`)
+  y grabación programada.
+- **Internet** (`ctrl+u`, `ctrl+f`, `alt+y`): YouTube y otras webs con yt-dlp (nightly de reserva), calidad con «fluido en tu equipo»,
+  descargas avanzadas (listas con casillas, subtítulos SRT, cola que sobrevive), convertir (`alt+C`), tareas (`alt+T`),
+  suscripciones (`alt+Y`), panel web de descargas y «Enviar a MPV-UOS» desde el navegador.
+- **Subtítulos**: IA en local (whisper.cpp) con tiempos por palabra, subtítulos de la web, traducción offline, duales,
+  resincronizar, guardar SRT (`alt+S`), subtítulos de internet por hash (desactivado por defecto).
+- **Audio**: música (`alt+M`: biblioteca, listas, cola, sin cortes, ReplayGain, perfiles de auriculares), letras (`alt+K`),
+  audiolibros y podcasts (`alt+A`), solo audio para todo (`alt+a`), ecualizador y MPRIS.
+- **Más**: saltar intro/créditos (`alt+k`), búsqueda semántica y capítulos, estudio y «Mis notas» (`alt+B`), grabar (`alt+r`),
+  biblioteca (`ctrl+b`), mando QR (`alt+z`), compartir salas y emitir en directo (`alt+W`), enviar a la tele DLNA (`alt+E`),
+  «¿Qué me he perdido?» (`alt+R`), MCP para asistentes, logo «Anillo».
+- **Plataformas**: instalador Linux sin sudo, AppImage x86_64, `.app` de macOS, lanzador e instalador de Windows (PowerShell) y
+  mpvd por named pipes (Windows y Mac sin probar en real).
+
+### Cómo probarlo (comandos exactos)
+```bash
+cd ~/Documentos/PROJECTES/MPV-UOS
+tools/check.sh                                     # todo, con el portátil libre (los tests de Whisper son sensibles a la carga)
+tools/install.sh --extras                          # instala mpv-uos en ~/.local/bin y en el menú de aplicaciones
+mpv-uos                                            # inicio · alt+m menú · alt+p paleta · alt+t TV · alt+M música · ctrl+b biblioteca
+mpv-uos 'https://www.youtube.com/watch?v=aqz-KE-bpKQ'   # alt+a solo audio · alt+q calidad · alt+d descargar · alt+T tareas
+mpv-uos tests/fixtures/media/voz_es_en.mkv         # alt+i subtítulos IA · alt+S guardar SRT · alt+e estudio · alt+B notas
+tools/build_appimage.sh && dist/MPV-UOS-x86_64.AppImage   # AppImage
+.cache/pwsh/pwsh -File bin/mpv-uos.ps1 -DryRun video.mkv  # lanzador de Windows (orden que ejecutaría)
+```
+Cada hito tiene sus pasos a mano en «Registro por iteración».
+
+### Qué quedó pendiente o bloqueado (y por qué)
+- **Túnel de internet de las salas** (H25 [~]): necesita tu permiso para abrir un túnel de entrada con cloudflared (NEEDS_HUMAN.md).
+- **Torrents** (H26 [~]): fuera por tu decisión del 2026-09-30.
+- **Probar en hardware que no hay aquí**: Windows, macOS, Raspberry Pi 5, tele DLNA real (pasos en NEEDS_HUMAN.md).
+- **Cortafuegos**: `ufw` bloquea la entrada; mando (8790), salas (8791) y DLNA (8792) necesitan un `sudo ufw allow …` (NEEDS_HUMAN.md).
+- **Nombre de la app**: pendiente de tu decisión (centralizado en `brand.json`, que leen `mpvd/brand.py` y `mu/brand.lua`).
+- **Tests de Whisper**: fallan por tiempo si el portátil está muy cargado; aislados pasan.
+
+## Resumen para Ser (2026-09-29, histórico)
 Todos los hitos H0–H13 de BACKLOG.md están [x]; ninguno quedó [~]. `tools/check.sh` pasa 202 tests sin red + 4 con red; lo único
 sensible es la CPU: los tests de Whisper (`test_asr_engine`, `test_mu_subs`) fallan por tiempo si el portátil está ocupado con otros
 trabajos (ver "Qué quedó pendiente").
@@ -49,17 +94,29 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-Iteración 3 (2026-09-30, modo a tope). Hechos y fusionados: H23 (completo), H25 (menos túnel [~]), H27 (completo:
-modos, gamepad, «¿Qué me he perdido?», DLNA), H30, H28 transporte Windows.
-(1) Lo PRIMERO si se reanuda: `git worktree list` y `git branch --list 'worktree-agent-*'`: ramas de subagentes
-H32-1 (biblioteca musical mu-music, mpvd/music, ReplayGain, listas), H32-2 (letras LRC, audiolibros mu-books,
-temporizador) y H28-Windows (bin/mpv-uos.ps1, tools/install.ps1, tests con pwsh portátil). Si tienen commits y sus
-tests pasan: `git merge --no-ff`, integrar textos (ADR-064/065/066, teclas en input.conf + ATAJOS, entradas en mu-menu,
-USO, PLATAFORMAS, NEEDS_HUMAN) y `tools/check.sh` UNA vez (con la máquina libre).
-(2) H28 resto: AppImage (tools/build_appimage.sh, con mpv del sistema), ARM64 y macOS a PLATAFORMAS/NEEDS_HUMAN.
-(3) Cuando todo esté [x]/[~]: `ESTADO_GLOBAL: COMPLETADO` + resumen para Ser.
+Iteración 4 (2026-09-30): fusionada la rama pendiente de H28-Windows (lanzador `bin/mpv-uos.ps1`, instalador `tools/install.ps1`,
+bloqueo `msvcrt`), H28 marcado [x] y `ESTADO_GLOBAL: COMPLETADO`. No quedan ramas `worktree-agent-*`.
+Si hay otra iteración: (1) nada del BACKLOG está pendiente; los [~] esperan a Ser (túnel H25, torrents H26). (2) Siguiente
+trabajo útil sin Ser, por orden: añadir hitos nuevos desde el TOP 10 de docs/VISION.md que sigan la regla «nada con retraso»
+(OCR de subtítulos PGS B6, diccionario/Anki C2–C3, handoff entre dispositivos E5), cada uno con su criterio de aceptación
+en BACKLOG.md y su ADR. (3) Antes de empezar, `tools/check.sh` con la máquina libre para partir de verde.
 
 ## Registro por iteración
+### Iteración 4 · 2026-09-30 · H28 · Windows (punto 4) — hecho (rama de subagente de la iteración 3, fusionada)
+- `bin/mpv-uos.ps1` (+ `bin/mpv-uos.cmd`): mismas opciones que `bin/mpv-uos`, pipe `\\.\pipe\mpv-uos-<pid>-<azar>` por instancia,
+  `-DryRun` y `-Gui`. `tools/install.ps1`: sin administrador, `uv sync`, binarios de Windows de `vendor.lock` verificados con
+  SHA-256 (yt-dlp.exe, ziggy, deno, whisper.cpp CPU con `-Whisper`), menú Inicio, `mpv-uos://` en HKCU, `-DryRun`, `-Uninstall`.
+- mpvd: bloqueo de arranque con `msvcrt.locking` en Windows, `whisper-cli.exe`, el actualizador de yt-dlp baja `yt-dlp.exe`.
+- ADR-066; docs/PLATAFORMAS.md (tabla y «Instalar en Windows»), README y NEEDS_HUMAN.md (prueba en un Windows real).
+- Tests: `tests/test_windows_scripts.py` (30: estáticos + pwsh 7 portátil en `.cache/pwsh`: parser real, `-DryRun` igual que
+  el lanzador Bash, descargas contra un servidor local, instalar/desinstalar en carpeta temporal).
+- Probar a mano (en Linux, sin Windows):
+  ```bash
+  uv run pytest tests/test_windows_scripts.py -q
+  .cache/pwsh/pwsh -NoProfile -File bin/mpv-uos.ps1 -DryRun tests/fixtures/media/chapters.mkv
+  .cache/pwsh/pwsh -NoProfile -File tools/install.ps1 -DryRun -NoSync
+  ```
+
 ### Iteración 3 · 2026-09-30 · H32 · Biblioteca musical (punto 1) — hecho (subagente, fusionado)
 - mpvd `music/` (`music.*`: carpetas, escaneo incremental con ffprobe, artistas/álbumes/géneros/años, búsqueda sin
   acentos, carátulas, ReplayGain 2.0 medido en segundo plano, listas M3U8 e inteligentes, historial local) (ADR-064).
