@@ -246,4 +246,16 @@
   (verificado con un vídeo real): las rutas de los `.srt` salen de `--print "after_video:MU_SUBS
   %(requested_subtitles.:.filepath)j"`, solo en `file`/`only` (en `embed` se borran tras incrustarlos). «Todos» =
   `all,-live_chat` (el chat de un directo no es un subtítulo).
+- ADR-047 · yt-dlp nightly, suplantación y sesión del navegador (H19): el nightly (`yt-dlp/yt-dlp-nightly-builds`,
+  mismos `yt-dlp` y `SHA2-256SUMS`) vive en `vendor/bin/yt-dlp-nightly`, se baja verificado bajo demanda y se refresca
+  con la comprobación diaria; la estable sigue por defecto. Una descarga fallida se repite UNA vez con el nightly si el
+  error no es de disponibilidad (privado, inicio de sesión, cookies, país, borrado, 404, formato inexistente, disco); al
+  reproducir, mu-ytdl pone el nightly primero en `ytdl_hook-ytdl_path` para esa URL y luego lo quita (una vez por
+  URL; el resultado de ytdl_hook se guarda al cargar porque `on_after_end_file` lo borra antes de `end-file`).
+  Verificado el 2026-09-30: ok.ru falla con la estable («the JSON object must be str…») y abre con el nightly.
+  `curl_cffi` como extra opcional `impersonate` (`>=0.10,<0.17`, el rango que acepta el yt-dlp vendorizado; 38 MB): sin
+  él TikTok funciona hoy con un aviso. «Usar mi sesión del navegador» = `--cookies-from-browser` (lista y sintaxis del
+  `--help`), desactivado, validado contra la lista (argv sin shell) y aplicado también a ytdl_hook; nunca DRM.
+  TikTok: vídeo y perfil (lista plana con casillas) sin cookies; Instagram: reels y publicaciones sí, perfiles no
+  (extractor marcado como roto en yt-dlp).
 

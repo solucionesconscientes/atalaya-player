@@ -148,7 +148,8 @@ def fake_search(query: str, n: int) -> dict:
 
 def dump_json(url: str, opts: dict[str, list[str]], flags: set[str]) -> int:
     fmt = first(opts, "-f", "--format")
-    if "fail" in url:
+    nightly = os.environ.get("FAKE_YTDLP_NIGHTLY") == "1" or Path(sys.argv[0]).name.endswith("nightly")
+    if "fail" in url and not (nightly and "fail-extract" in url):
         sys.stderr.write("ERROR: [fake] Unsupported URL: " + url + "\n")
         return 1
     if url.startswith("https://fake.test/"):
@@ -184,7 +185,11 @@ def render(template: str, fields: dict[str, str]) -> str:
 
 
 def download(url: str, opts: dict[str, list[str]], flags: set[str]) -> int:
-    if "fail" in url:
+    nightly = os.environ.get("FAKE_YTDLP_NIGHTLY") == "1"   # the "nightly build" fixes "fail-extract" URLs
+    if "private" in url:
+        sys.stderr.write("ERROR: [fake] " + url + ": Private video. Sign in if you've been granted access\n")
+        return 1
+    if "fail" in url and not (nightly and "fail-extract" in url):
         sys.stderr.write("WARNING: [fake] something\nERROR: [fake] Unable to download webpage: " + url + "\n")
         return 1
     delay = float(os.environ.get("FAKE_YTDLP_DELAY", "0.05"))

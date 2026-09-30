@@ -18,7 +18,7 @@ import sys
 import time
 import uuid
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -73,6 +73,29 @@ def default_media_dir(kind: str) -> Path:
     return base / "MPV-UOS"
 
 
+# yt-dlp --cookies-from-browser BROWSER[+KEYRING][:PROFILE][::CONTAINER] (browsers from its --help, 2026.08.19)
+BROWSERS = ("firefox", "chrome", "chromium", "brave", "edge", "opera", "vivaldi", "safari", "whale")
+_BROWSER_RE = re.compile(r"^(%s)([+:][^\x00-\x1f]*)?$" % "|".join(BROWSERS))  # argv, no shell: spaces are fine
+
+
+# failures that another yt-dlp version cannot fix: the video itself is not available to this user
+PERMANENT_ERRORS = re.compile(
+    r"private video|sign in|log ?in|members.only|not available in your country|geo.?restrict|drm|"
+    r"video unavailable|has been removed|copyright|age.?restricted|premieres in|live event will begin|"
+    r"no space left|permission denied|already been recorded in the archive|http error 404|cookies|"
+    r"requested format is not available", re.IGNORECASE)
+
+
+def worth_nightly(stderr_tail: list[str]) -> bool:
+    """A yt-dlp failure the nightly build may fix: an ERROR that is not about the video's availability or the disk."""
+    errors = [ln for ln in stderr_tail if ln.startswith("ERROR")]
+    return bool(errors) and not any(PERMANENT_ERRORS.search(ln) for ln in errors)
+
+
+def valid_browser(value: str) -> bool:
+    return bool(value) and _BROWSER_RE.match(value) is not None
+
+
 @dataclass
 class DownloadSettings:
     video_dir: str = ""
@@ -90,6 +113,12 @@ class DownloadSettings:
     rate_limit: str = ""        # yt-dlp -r for every download ("" = no limit; "2M", "500K")
     archive: bool = True        # lists, channels and batches skip what was already downloaded
     list_folders: bool = True   # a list or channel goes to its own folder, numbered
+    cookies_browser: str = ""   # «usar mi sesión del navegador» (off): yt-dlp --cookies-from-browser <this>
+    nightly_fallback: bool = True  # retry a failed download once with the nightly yt-dlp
+
+    def session_args(self) -> list[str]:
+        """``--cookies-from-browser`` when the user chose a browser (never by default; DRM stays out of reach)."""
+        return ["--cookies-from-browser", self.cookies_browser] if valid_browser(self.cookies_browser) else []
 
     def resolved_dir(self, kind: str) -> Path:
         raw = self.video_dir if kind == "video" else self.audio_dir
@@ -320,8 +349,10 @@ class DownloadItem:
 
 class DownloadManager:
     def __init__(self, jobs: JobQueue, binary_provider: Callable[[], YtdlpBinary | None], data_dir: Path,
-                 on_change: Callable[[DownloadItem], None] | None = None):
+                 on_change: Callable[[DownloadItem], None] | None = None,
+                 fallback: Callable[[], Awaitable[YtdlpBinary | None]] | None = None):
         self.jobs = jobs
+        self.fallback = fallback
         self._binary = binary_provider
         self.data_dir = data_dir
         self.settings_path = data_dir / "ytdl.json"
@@ -481,21 +512,11 @@ class DownloadManager:
         if ps.done_info.get("title") and not item.title:
             item.title = str(ps.done_info["title"])
 
-    async def _run(self, item: DownloadItem, job: Job) -> dict[str, Any]:
-        binary = self._binary()
-        if binary is None:
-            self._finish(item, "failed", "yt-dlp no disponible", "yt-dlp not found (vendor/bin, $MPV_UOS_YTDLP or PATH)")
-            raise RuntimeError(item.error)
-        # Wait for a slot (the job queue has more workers than we want concurrent downloads).
-        while sum(1 for i in self.items.values() if i.status == "running") >= max(1, self.settings.concurrent):
-            await asyncio.sleep(0.5)
-        Path(item.out_dir).mkdir(parents=True, exist_ok=True)
+    async def _exec(self, item: DownloadItem, job: Job, binary: YtdlpBinary) -> tuple[int, ProgressState, list[str]]:
+        """Run one yt-dlp process for ``item`` (progress pushed as it goes); returns (rc, progress, stderr tail)."""
         args = build_args(item.spec, item.out_dir, self.settings.template, self.settings.rate_limit,
                           str(self.archive_path))
-        item.argv = binary.command(*args)
-        item.status, item.stage, item.message, item.started_at = "running", "download", "iniciando…", time.time()
-        self._changed(item)
-        job.report(0.0, item.message)
+        item.argv = binary.command(*self.settings.session_args(), *args)
         ps = ProgressState()
         stderr_tail: deque[str] = deque(maxlen=STDERR_TAIL)
         env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
@@ -532,15 +553,45 @@ class DownloadManager:
             rc = await proc.wait()
         except asyncio.CancelledError:
             await self._kill(proc)
-            self._finish(item, "cancelled", "cancelada")
             raise
         finally:
             item._proc = None
             item.stderr_tail = list(stderr_tail)
+        return rc, ps, list(stderr_tail)
+
+    async def _run(self, item: DownloadItem, job: Job) -> dict[str, Any]:
+        binary = self._binary()
+        if binary is None:
+            self._finish(item, "failed", "yt-dlp no disponible", "yt-dlp not found (vendor/bin, $MPV_UOS_YTDLP or PATH)")
+            raise RuntimeError(item.error)
+        # Wait for a slot (the job queue has more workers than we want concurrent downloads).
+        while sum(1 for i in self.items.values() if i.status == "running") >= max(1, self.settings.concurrent):
+            await asyncio.sleep(0.5)
+        Path(item.out_dir).mkdir(parents=True, exist_ok=True)
+        item.status, item.stage, item.message, item.started_at = "running", "download", "iniciando…", time.time()
+        self._changed(item)
+        job.report(0.0, item.message)
+        try:
+            rc, ps, tail = await self._exec(item, job, binary)
+            used_nightly = False
+            if not (rc == 0 and (ps.outputs or ps.stage == "done")) and self.settings.nightly_fallback \
+                    and binary.source not in ("nightly", "env-nightly") and self.fallback is not None \
+                    and worth_nightly(tail):
+                # the site changed and the stable yt-dlp does not know yet (ok.ru, 2026-09): the nightly build usually
+                # does; downloaded on demand (and refreshed daily with the stable one)
+                item.message = "la versión estable falló: probando con yt-dlp nightly…"
+                self._changed(item)
+                nightly = await self.fallback()
+                if nightly is not None:
+                    rc, ps, tail = await self._exec(item, job, nightly)
+                    used_nightly = True
+        except asyncio.CancelledError:
+            self._finish(item, "cancelled", "cancelada")
+            raise
         if rc == 0 and (ps.outputs or ps.stage == "done"):
-            self._finish(item, "done", "completado")
+            self._finish(item, "done", "completado con yt-dlp nightly" if used_nightly else "completado")
             return {"outputs": item.outputs}
-        errors = [line for line in stderr_tail if line.startswith("ERROR")] or list(stderr_tail)
+        errors = [line for line in tail if line.startswith("ERROR")] or list(tail)
         err = errors[-1] if errors else f"yt-dlp exited with {rc}"
         if rc == 0:
             err = "yt-dlp terminó sin producir ningún archivo (¿ya existía?): " + err

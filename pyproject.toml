@@ -20,6 +20,10 @@ semantic = [
     "numpy>=2.0",
     "sentencepiece>=0.2",
 ]
+# yt-dlp browser impersonation (TikTok & co.): the range the vendored yt-dlp accepts (yt_dlp/networking/_curlcffi.py)
+impersonate = [
+    "curl-cffi>=0.10,<0.17; implementation_name == 'cpython'",
+]
 
 [dependency-groups]
 dev = [

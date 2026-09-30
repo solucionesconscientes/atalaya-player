@@ -30,6 +30,8 @@ from mpvd.net import FetchError, HttpCache
 log = logging.getLogger("mpvd.ytdl.binary")
 
 RELEASES_LATEST_URL = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
+# nightly channel (H19): same asset names and SHA2-256SUMS (verified 2026-09-30, tag 2026.09.27.232945)
+NIGHTLY_RELEASES_URL = "https://api.github.com/repos/yt-dlp/yt-dlp-nightly-builds/releases/latest"
 ASSET_NAME = "yt-dlp"  # zipimport build; on Windows ytdl_hook needs yt-dlp.exe (see docs/PLATAFORMAS.md)
 SUMS_NAME = "SHA2-256SUMS"
 UPDATE_CHECK_TTL = 24 * 3600.0
@@ -137,6 +139,24 @@ def vendor_path(root: Path | None) -> Path | None:
         return None
     exe = root / "vendor" / "bin" / ("yt-dlp.exe" if sys.platform == "win32" else "yt-dlp")
     return exe
+
+
+def nightly_path(root: Path | None, data_dir: Path) -> Path:
+    """Where the nightly build lives: next to the vendored stable one (``yt-dlp-nightly``), else in the data dir."""
+    name = "yt-dlp-nightly.exe" if sys.platform == "win32" else "yt-dlp-nightly"
+    vp = vendor_path(root)
+    return (vp.parent / name) if vp is not None else (data_dir / "bin" / name)
+
+
+def find_nightly(root: Path | None, data_dir: Path) -> YtdlpBinary | None:
+    """The nightly yt-dlp if present (``$MPV_UOS_YTDLP_NIGHTLY`` wins: tests, custom builds)."""
+    js = find_js_runtime(root)
+    ffmpeg = shutil.which("ffmpeg")
+    env = os.environ.get("MPV_UOS_YTDLP_NIGHTLY")
+    if env and Path(env).is_file():
+        return YtdlpBinary(Path(env), "env-nightly", js, ffmpeg)
+    p = nightly_path(root, data_dir)
+    return YtdlpBinary(p, "nightly", js, ffmpeg) if p.is_file() else None
 
 
 def find_ytdlp(root: Path | None) -> YtdlpBinary | None:

@@ -94,3 +94,25 @@ def test_real_info_update_check_and_downloads(tmp_path, monkeypatch):
     bitrate = int(pa["format"].get("bit_rate") or audio.get("bit_rate") or 0)
     assert 110_000 <= bitrate <= 150_000, bitrate  # 128k CBR (container overhead / short file tolerance)
     assert not any(s["codec_type"] == "video" for s in pa["streams"] if s.get("disposition", {}).get("attached_pic") != 1)
+
+
+def test_real_tiktok_profile_is_a_list_with_checkboxes(tmp_path, monkeypatch):
+    """H19: a TikTok profile opens as a flat list (the menu's checkboxes) with the vendored yt-dlp, no cookies."""
+    monkeypatch.delenv("MPV_UOS_YTDLP", raising=False)
+    monkeypatch.setenv("MPV_UOS_YTDLP_AUTO_UPDATE", "0")
+    settings = Settings(runtime_dir=tmp_path / "rt", cache_dir=tmp_path / "cache", data_dir=tmp_path / "data",
+                        idle_timeout=0, workers=2)
+
+    async def go():
+        server = MpvdServer(settings)
+        await server.start()
+        try:
+            async with MpvdClient(str(settings.socket_path)) as c:
+                pl = await c.call("ytdl.playlist", {"url": "https://www.tiktok.com/@nasa"}, timeout=180)
+                entries = pl["entries"]
+                assert len(entries) >= 3, pl
+                assert all("tiktok.com/@nasa/video/" in e["url"] for e in entries[:3]), entries[:3]
+        finally:
+            await server.stop()
+
+    asyncio.run(go())

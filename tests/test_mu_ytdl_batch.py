@@ -83,6 +83,20 @@ def test_batch_list_with_checkboxes_and_settings(ytdl_mpv):
     d.wait(lambda: d.call("ytdl.settings.get")["archive"] is False, timeout=10)
     st = ytdl_state(h, lambda v: v.get("view") == "dl_settings" and
                     any(i["title"] == "Límite de velocidad" and i["hint"] == "500KB/s" for i in v.get("items", [])))
+    # «usar mi sesión del navegador»: off by default; one step → Firefox, for playback (ytdl_hook) and downloads
+    assert d.call("ytdl.settings.get")["cookies_browser"] == ""
+    send_event(h, {"type": "activate", "index": 5, "value": {"dlset": "cookies_browser"}})
+    d.wait(lambda: d.call("ytdl.settings.get")["cookies_browser"] == "firefox", timeout=10)
+    h.wait_property("ytdl-raw-options", lambda v: (v or {}).get("cookies-from-browser") == "firefox", timeout=10)
+    r = d.call("ytdl.download", {"url": "https://fake.test/cinco", "preset": "video_360"})
+    a = argv_for(arglog, "https://fake.test/cinco")
+    assert a[a.index("--cookies-from-browser") + 1] == "firefox"
+    try:
+        d.call("ytdl.settings.set", {"cookies_browser": "netscape"})
+        raise AssertionError("unknown browser accepted")
+    except Exception as exc:  # noqa: BLE001
+        assert "navegador" in str(exc)
+    assert r["id"]
     assert h.script_errors() == [], h.script_errors()
 
 
@@ -123,3 +137,44 @@ def test_subtitles_options_and_subtitles_only(ytdl_mpv):
     v = rows[-1]
     assert "--convert-subs" in v and "--embed-subs" not in v and v[v.index("--sub-langs") + 1] == "es.*"
     assert h.script_errors() == [], h.script_errors()
+
+
+def test_playback_retries_once_with_the_nightly_build(daemon_env, media_dir, tmp_path):
+    """A URL the stable yt-dlp cannot open is loaded again with the nightly build first in ytdl_hook's path; afterwards
+    the stable one is first again. A URL that fails with both is not retried in a loop."""
+    from tests.conftest import start_mpv
+    from tests.test_mu_iptv import serve
+    from tests.test_mu_ytdl import FAKE
+
+    wrapper = tmp_path / "yt-dlp-nightly"
+    wrapper.write_text("#!/usr/bin/env python3\nimport os, runpy, sys\nos.environ['FAKE_YTDLP_NIGHTLY'] = '1'\n"
+                       f"sys.argv[0] = {str(FAKE)!r}\nrunpy.run_path({str(FAKE)!r}, run_name='__main__')\n",
+                       encoding="utf-8")
+    wrapper.chmod(0o755)
+    httpd = serve({"/" + p.name: p.read_bytes() for p in media_dir.iterdir() if p.suffix in (".mkv", ".flac")})
+    env = {**daemon_env.env, "MPV_UOS_YTDLP": str(FAKE), "MPV_UOS_YTDLP_NIGHTLY": str(wrapper),
+           "FAKE_YTDLP_MEDIA": str(media_dir), "FAKE_YTDLP_MEDIA_URL": f"http://127.0.0.1:{httpd.server_address[1]}",
+           "MPV_UOS_YTDLP_AUTO_UPDATE": "0", "FAKE_YTDLP_ARGLOG": str(tmp_path / "argv.log")}
+    h = start_mpv(daemon_env.runtime_dir, [
+        "--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5,"
+        f"mu-ytdl-ytdl_path={FAKE}", "--keep-open=yes", "--pause=yes"], env=env)
+    try:
+        h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
+        url = "https://fake.test/fail-extract"
+        h.command("loadfile", url)
+        h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("active") is True and v.get("url") == url,
+                        timeout=40)
+        assert h.get("path") == url
+        # back to the stable build first once the retried file is playing
+        h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and not str(v.get("hook_path", "")).startswith(
+            str(wrapper)), timeout=10)
+        # both fail: one retry, then it stays failed (idle), no loop
+        h.command("loadfile", "https://fake.test/fail-always")
+        h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("last_event") == "nightly-retry", timeout=20)
+        h.wait_property("idle-active", lambda v: v is True, timeout=30)
+        runs = [json.loads(ln) for ln in (tmp_path / "argv.log").read_text().splitlines()]
+        assert sum(1 for a in runs if a and a[-1] == "https://fake.test/fail-always") <= 2
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+        httpd.shutdown()

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import importlib.util
 import logging
 import re
 import os
@@ -20,8 +21,16 @@ from mpvd.jobs import Priority
 from mpvd.net import HttpCache
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd.ytdl import info as info_mod
-from mpvd.ytdl.binary import YtdlpBinary, YtdlpUpdater, find_ytdlp, vendor_path
-from mpvd.ytdl.downloads import FINAL, DownloadItem, DownloadManager
+from mpvd.ytdl.binary import (
+    NIGHTLY_RELEASES_URL,
+    YtdlpBinary,
+    YtdlpUpdater,
+    find_nightly,
+    find_ytdlp,
+    nightly_path,
+    vendor_path,
+)
+from mpvd.ytdl.downloads import BROWSERS, FINAL, DownloadItem, DownloadManager, valid_browser
 from mpvd.ytdl.presets import (
     SUB_LANG_CHOICES,
     resolve_sub_langs,
@@ -62,7 +71,12 @@ class YtdlService:
         self._binary_checked = 0.0
         target = vendor_path(self.root) or (settings.data_dir / "bin" / "yt-dlp")
         self.updater = YtdlpUpdater(self.http, target)
-        self.downloads = DownloadManager(server.jobs, self.binary, settings.data_dir, on_change=self._download_changed)
+        self.nightly_updater = YtdlpUpdater(self.http, nightly_path(self.root, settings.data_dir),
+                                            releases_url=os.environ.get("MPV_UOS_YTDLP_NIGHTLY_RELEASES_URL")
+                                            or NIGHTLY_RELEASES_URL)
+        self._nightly_lock = asyncio.Lock()
+        self.downloads = DownloadManager(server.jobs, self.binary, settings.data_dir, on_change=self._download_changed,
+                                         fallback=self.ensure_nightly)
         self._info_tasks: dict[str, asyncio.Task[dict[str, Any]]] = {}
         self._search_tasks: dict[tuple[str, int], asyncio.Task[dict[str, Any]]] = {}
         self._search_cache: dict[tuple[str, int], tuple[float, list[dict[str, Any]]]] = {}
@@ -77,6 +91,30 @@ class YtdlService:
             self._binary = find_ytdlp(self.root)
             self._binary_checked = now
         return self._binary
+
+    async def ensure_nightly(self, max_age: float = 86400.0) -> YtdlpBinary | None:
+        """The nightly yt-dlp, downloaded (SHA-256 verified) when missing or older than a day; None when it cannot
+        be had (offline, GitHub down): the caller keeps the stable result."""
+        async with self._nightly_lock:
+            nb = find_nightly(self.root, self.server.settings.data_dir)
+            if nb is not None and nb.source == "env-nightly":
+                return nb
+            target = self.nightly_updater.target
+            fresh = nb is not None and time.time() - target.stat().st_mtime < max_age
+            if fresh:
+                return nb
+            if os.environ.get("MPV_UOS_YTDLP_AUTO_UPDATE", "1") == "0" and nb is None:
+                return None   # tests and offline installs: never download behind the user's back
+            st = await asyncio.to_thread(self.nightly_updater.check, "", True)
+            if not st.error:
+                st = await asyncio.to_thread(self.nightly_updater.apply)
+            if st.error:
+                log.warning("ytdl: nightly unavailable: %s", st.error)
+            return find_nightly(self.root, self.server.settings.data_dir)
+
+    async def _nightly_info(self) -> dict[str, Any]:
+        nb = find_nightly(self.root, self.server.settings.data_dir)
+        return {"path": str(nb.path), "version": await nb.version()} if nb is not None else {"path": "", "version": ""}
 
     async def require_binary(self) -> YtdlpBinary:
         b = self.binary()
@@ -96,6 +134,9 @@ class YtdlService:
             "settings": self.downloads.settings.to_dict(),
             "downloads_active": self.downloads.active(),
             "hook": self.hook_config(),
+            # yt-dlp impersonates a browser (TikTok and others) only with curl_cffi importable by its Python
+            "impersonate": importlib.util.find_spec("curl_cffi") is not None,
+            "nightly": await self._nightly_info(),
         }
 
     def hook_config(self) -> dict[str, Any]:
@@ -105,6 +146,8 @@ class YtdlService:
         if b is not None and b.js_runtime is not None:
             raw["js-runtimes"] = f"{b.js_runtime.name}:{b.js_runtime.path}"
         return {"ytdl_path": str(b.path) if b is not None else "", "raw_options": raw,
+                "cookies_browser": self.downloads.settings.cookies_browser
+                if valid_browser(self.downloads.settings.cookies_browser) else "",
                 "python": b.argv[0] if b is not None and len(b.argv) > 1 else ""}
 
     # -- updater ------------------------------------------------------------------------------
@@ -147,6 +190,8 @@ class YtdlService:
                 job.report(0.5, f"actualizando yt-dlp a {st.get('latest')}")
                 st = await self.update_apply()
             self.last_update_check = st
+            if self.downloads.settings.nightly_fallback:
+                await self.ensure_nightly()   # ready before a site breaks (playback retries cannot wait long)
             return st
 
         self.server.jobs.submit("ytdl.update", body, priority=Priority.INDEX, heavy=False)
@@ -160,7 +205,7 @@ class YtdlService:
 
     async def _run_json(self, args: list[str], timeout: float = INFO_TIMEOUT) -> dict[str, Any]:
         b = await self.require_binary()
-        cmd = b.command(*args)
+        cmd = b.command(*self.downloads.settings.session_args(), *args)
         proc = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, limit=64 * 1024 * 1024,
         )
@@ -396,6 +441,15 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
         item = service.downloads.submit(ds, title=title or "", notify=notify or DEFAULT_NOTIFY, out_dir=out_dir)
         return item.to_dict()
 
+    @d.method("ytdl.nightly")
+    async def nightly(ctx: RpcContext) -> dict[str, Any]:
+        """The nightly yt-dlp (downloaded and verified if missing or older than a day), for retrying what the stable
+        one cannot open; ``available`` false when it cannot be had."""
+        nb = await service.ensure_nightly()
+        if nb is None:
+            return {"available": False, "path": "", "version": ""}
+        return {"available": True, "path": str(nb.path), "version": await nb.version(), "argv": nb.argv}
+
     @d.method("ytdl.download.batch")
     async def download_batch(ctx: RpcContext, text: str | None = None, urls: list[str] | None = None,
                              file: str | None = None, preset: str | None = None, options: dict[str, Any] | None = None,
@@ -474,6 +528,8 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
         s = service.downloads.settings
         if "container" in values and values["container"] not in CONTAINERS:
             raise RpcError(INVALID_PARAMS, f"container must be one of {CONTAINERS}")
+        if values.get("cookies_browser") and not valid_browser(str(values["cookies_browser"])):
+            raise RpcError(INVALID_PARAMS, "navegador no admitido: " + ", ".join(BROWSERS))
         if "sponsorblock" in values and values["sponsorblock"] not in SPONSORBLOCK_MODES:
             raise RpcError(INVALID_PARAMS, f"sponsorblock must be one of {SPONSORBLOCK_MODES}")
         s.update(values)

@@ -143,7 +143,7 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
 - [x] Varias URLs a la vez (pegar lista / fichero), listas y canales con casillas (flat playlist), carpeta y numeración por lista,
       archivo de descargas (sin duplicados), simultáneas y límite de velocidad configurables, la cola sobrevive a reinicios.
 - [x] Subtítulos en SRT: «solo subtítulos» o junto al vídeo, eligiendo idiomas (por defecto originales + es + en; «todos» explícito).
-- [ ] yt-dlp: reintento automático con la versión nightly cuando la estable falle (ok.ru hoy), `curl_cffi` en el .venv para la
+- [x] yt-dlp: reintento automático con la versión nightly cuando la estable falle (ok.ru hoy), `curl_cffi` en el .venv para la
       suplantación de navegador (TikTok), opción desactivada «usar mi sesión del navegador» (cookies, nunca DRM). TikTok por enlace y
       perfil completo con casillas; Instagram por enlace.
 

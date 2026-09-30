@@ -197,6 +197,23 @@ local function apply_raw_options(raw)
   end
 end
 
+-- «usar mi sesión del navegador» (H19): the same --cookies-from-browser for playback (ytdl_hook) as for downloads;
+-- removed again when the user turns it off. A value set by the user in mpv.conf is never touched.
+local cookies_applied = nil
+local function apply_cookies(browser)
+  local current = (mp.get_property_native('ytdl-raw-options') or {})['cookies-from-browser']
+  if current ~= nil and current ~= cookies_applied then return end
+  if browser and browser ~= '' then
+    if current ~= browser then
+      mp.commandv('change-list', 'ytdl-raw-options', 'append', 'cookies-from-browser=' .. browser)
+    end
+    cookies_applied = browser
+  elseif cookies_applied then
+    mp.commandv('change-list', 'ytdl-raw-options', 'remove', 'cookies-from-browser')
+    cookies_applied = nil
+  end
+end
+
 local hook_synced = false
 local function sync_hook_with_mpvd()
   if hook_synced or not rpc.connected() then return end
@@ -204,6 +221,7 @@ local function sync_hook_with_mpvd()
   rpc.call('ytdl.hook', nil, function(err, cfg)
     if err then hook_synced = false; return end
     apply_raw_options(cfg.raw_options)
+    apply_cookies(cfg.cookies_browser)
     if opts.ytdl_path == '' and cfg.ytdl_path and cfg.ytdl_path ~= '' and not state.hook_path:find(cfg.ytdl_path, 1, true) then
       -- mpvd found something better (e.g. $MPV_UOS_YTDLP or a freshly updated vendor copy): put it first.
       local value = cfg.ytdl_path .. (is_windows and ';' or ':') .. state.hook_path
@@ -264,6 +282,72 @@ mp.register_event('end-file', function()
   state.url = ''
   state.seed = nil
   publish()
+end)
+
+-- A URL the stable yt-dlp could not open is tried once more with the nightly build (H19): sites change faster than
+-- releases. ytdl_hook's search path gets the nightly first for that one load and goes back to normal afterwards.
+local nightly = { tried = {}, active_for = nil, saved_path = nil, loading = '', ytdl_status = nil }
+
+-- ytdl_hook deletes its result in on_after_end_file, before end-file reaches scripts: keep what it said while loading
+mp.register_event('start-file', function()
+  nightly.loading = mp.get_property('path') or ''
+  nightly.ytdl_status = nil
+end)
+mp.observe_property('user-data/mpv/ytdl/json-subprocess-result', 'native', function(_, v)
+  if type(v) == 'table' then nightly.ytdl_status = v.status end
+end)
+-- the observer alone races with end-file under load (property changes and events are not ordered): read the result
+-- synchronously right after ytdl_hook ran (on_load for known sites, on_load_fail for the rest; hooks run in ascending
+-- priority) and before its on_after_end_file deletes it
+local function read_ytdl_result()
+  local v = mp.get_property_native('user-data/mpv/ytdl/json-subprocess-result')
+  if type(v) == 'table' then nightly.ytdl_status = v.status end
+end
+mp.add_hook('on_load', 11, read_ytdl_result)
+mp.add_hook('on_load_fail', 11, read_ytdl_result)
+mp.add_hook('on_after_end_file', 1, read_ytdl_result)
+
+local function restore_hook_path()
+  if nightly.saved_path then
+    mp.commandv('change-list', 'script-opts', 'append', 'ytdl_hook-ytdl_path=' .. nightly.saved_path)
+    state.hook_path = nightly.saved_path
+    nightly.saved_path, nightly.active_for = nil, nil
+    publish()
+  end
+end
+
+mp.register_event('end-file', function(ev)
+  local url = ev and ev.reason == 'error' and nightly.loading or ''
+  if nightly.active_for and nightly.active_for ~= url then restore_hook_path() end
+  if url == '' or not is_network_url(url) or nightly.tried[url] or not rpc.connected() then return end
+  if nightly.ytdl_status == nil or nightly.ytdl_status == 0 then return end   -- not a yt-dlp failure
+  nightly.tried[url] = true
+  state.last_event = 'nightly-retry'
+  publish()
+  rpc.call('ytdl.nightly', nil, function(err, nb)
+    if err or not nb or not nb.available then
+      msg.info('nightly yt-dlp not available: ' .. (err and err.message or 'no'))
+      return
+    end
+    nightly.saved_path = nightly.saved_path or state.hook_path
+    nightly.active_for = url
+    local value = nb.path .. (is_windows and ';' or ':') .. nightly.saved_path
+    mp.commandv('change-list', 'script-opts', 'append', 'ytdl_hook-ytdl_path=' .. value)
+    state.hook_path = value
+    publish()
+    osd('Probando con yt-dlp nightly (' .. (nb.version or '') .. ')…')
+    mp.commandv('loadfile', url, 'replace')
+  end, 120)
+end)
+
+mp.register_event('file-loaded', function()
+  local path = mp.get_property('path') or ''
+  if nightly.active_for and nightly.active_for ~= path then restore_hook_path() end
+  if nightly.active_for == path then
+    state.last_event = 'nightly-ok'
+    publish()
+    mp.add_timeout(1, restore_hook_path)   -- the next URL goes through the stable build again
+  end
 end)
 
 -- ---------------------------------------------------------------------------------------------
@@ -728,6 +812,10 @@ views.status = function()
       { title = 'Runtime JS', icon = 'javascript', selectable = false,
         hint = b.js_runtime and (b.js_runtime.name .. ' ' .. (b.js_runtime.version or ''))
           or 'ninguno (YouTube puede omitir formatos)' },
+      { title = 'Versión nightly (reintentos)', icon = 'nightlight', selectable = false,
+        hint = (st.nightly and st.nightly.version ~= '') and st.nightly.version or 'se descarga si hace falta' },
+      { title = 'Suplantación de navegador (TikTok…)', icon = 'masks', selectable = false,
+        hint = st.impersonate and 'disponible' or 'falta curl_cffi (tools/install.sh --extras)' },
       { title = 'Carpeta de vídeo', hint = s.video_dir_resolved or '', icon = 'folder', selectable = false },
       { title = 'Carpeta de audio', hint = s.audio_dir_resolved or '', icon = 'folder', selectable = false },
       { title = 'Actualización automática diaria', hint = bool_hint(up.auto), icon = 'update',
@@ -1004,6 +1092,7 @@ local function playlist_download(kind)
 end
 
 local RATE_STEPS = { '', '500K', '1M', '2M', '5M', '10M' }
+local BROWSER_STEPS = { '', 'firefox', 'chrome', 'chromium', 'brave', 'edge', 'vivaldi', 'opera' }
 
 views.dl_settings = function()
   if not require_mpvd('Ajustes de descarga') then return end
@@ -1019,7 +1108,11 @@ views.dl_settings = function()
         value = { dlset = 'archive' } },
       { title = 'Listas y canales en su carpeta, numerados', hint = st.list_folders and 'sí' or 'no',
         active = st.list_folders, icon = 'folder_special', value = { dlset = 'list_folders' } },
-    }, { footnote = 'Enter cambia · se aplica a las descargas nuevas · ⌫ atrás' })
+      { title = 'Usar mi sesión del navegador', hint = (st.cookies_browser or '') ~= '' and st.cookies_browser or 'no',
+        active = (st.cookies_browser or '') ~= '', icon = 'cookie', value = { dlset = 'cookies_browser' }, separator = true },
+      { title = 'Solo para lo que ya puedes ver con tu cuenta; nunca contenido con DRM', icon = 'info',
+        selectable = false, muted = true },
+    }, { footnote = 'Enter cambia · se aplica a las descargas nuevas y a lo próximo que abras · ⌫ atrás' })
   end, 15)
 end
 
@@ -1028,16 +1121,18 @@ local function dl_setting(key)
   local value
   if key == 'concurrent' then
     value = ((tonumber(st.concurrent) or 2) % 4) + 1
-  elseif key == 'rate_limit' then
-    local cur = st.rate_limit or ''
+  elseif key == 'rate_limit' or key == 'cookies_browser' then
+    local steps = key == 'rate_limit' and RATE_STEPS or BROWSER_STEPS
+    local cur = st[key] or ''
     local nxt = 1
-    for i, r in ipairs(RATE_STEPS) do if r == cur then nxt = i % #RATE_STEPS + 1 end end
-    value = RATE_STEPS[nxt]
+    for i, r in ipairs(steps) do if r == cur then nxt = i % #steps + 1 end end
+    value = steps[nxt]
   else
     value = not st[key]
   end
   rpc.call('ytdl.settings.set', { [key] = value }, function(err)
     if err then osd('Ajustes: ' .. fail(err, 'ytdl.settings.set')) end
+    if key == 'cookies_browser' and not err then apply_cookies(value) end
     reopen_current()
   end, 15)
 end

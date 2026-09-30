@@ -114,6 +114,9 @@ def test_status_info_cache_and_presets(ytdl_env):
         st = await c.call("ytdl.status")
         assert st["available"] and st["binary"]["source"] == "env" and st["version"] == "2026.08.19"
         assert st["hook"]["ytdl_path"] == str(FAKE) and st["update"]["auto"] is False
+        import importlib.util
+        assert st["impersonate"] is (importlib.util.find_spec("curl_cffi") is not None)
+        assert set(st["nightly"]) == {"path", "version"} and st["hook"]["cookies_browser"] == ""
         caps = await c.call("capabilities")
         assert caps["services"]["ytdl"] is True and any(m["name"] == "ytdl.download" for m in caps["methods"])
 
@@ -324,5 +327,41 @@ def test_subtitles_only_and_next_to_the_video(ytdl_env):
         d = await wait_status(c, r["id"], ("done", "failed"))
         exts = sorted(Path(o).suffix for o in d["outputs"])
         assert d["status"] == "done" and exts == [".mp4", ".srt"], d["outputs"]
+
+    with_server(tmp_path, fn)
+
+
+def test_failed_download_is_retried_once_with_the_nightly_build(ytdl_env, monkeypatch):
+    """H19: when the stable yt-dlp fails on something the site changed, the download is retried with the nightly build;
+    not when the video itself is unavailable (private, sign-in…), and not when the setting is off."""
+    tmp_path, arglog = ytdl_env
+    # a "#!" file is run with mpvd's Python (like the official zipimport build), so the wrapper is Python too
+    wrapper = tmp_path / "yt-dlp-nightly"
+    wrapper.write_text("#!/usr/bin/env python3\nimport os, runpy, sys\nos.environ['FAKE_YTDLP_NIGHTLY'] = '1'\n"
+                       f"sys.argv[0] = {str(FAKE)!r}\nrunpy.run_path({str(FAKE)!r}, run_name='__main__')\n",
+                       encoding="utf-8")
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("MPV_UOS_YTDLP_NIGHTLY", str(wrapper))
+
+    def calls(url):
+        return [a for a in argv_lines(arglog) if a and a[-1] == url and "--no-simulate" in a]
+
+    async def fn(server, c):
+        r = await c.call("ytdl.download", {"url": "https://fake.test/fail-extract", "preset": "video_360"})
+        d = await wait_status(c, r["id"], ("done", "failed"))
+        assert d["status"] == "done" and d["message"] == "completado con yt-dlp nightly" and len(calls(d["url"])) == 2, \
+            (d, calls(d["url"]))
+        r = await c.call("ytdl.download", {"url": "https://fake.test/failnightly", "preset": "video_360"})
+        d = await wait_status(c, r["id"], ("done", "failed"))
+        assert d["status"] == "failed" and len(calls(d["url"])) == 2   # both tried
+        r = await c.call("ytdl.download", {"url": "https://fake.test/private", "preset": "video_360"})
+        d = await wait_status(c, r["id"], ("done", "failed"))
+        assert d["status"] == "failed" and "Private video" in d["error"] and len(calls(d["url"])) == 1
+        n = await c.call("ytdl.nightly")
+        assert n["available"] and n["path"] == str(wrapper)
+        await c.call("ytdl.settings.set", {"nightly_fallback": False})
+        r = await c.call("ytdl.download", {"url": "https://fake.test/fail-extract2", "preset": "video_360"})
+        d = await wait_status(c, r["id"], ("done", "failed"))
+        assert d["status"] == "failed" and len(calls(d["url"])) == 1
 
     with_server(tmp_path, fn)

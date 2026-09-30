@@ -82,8 +82,17 @@ abre. Si un canal entrelazado se ve con "peines" (7TV), pulsa `d`. Detalles en d
   aparte (junto al vídeo); *Idiomas* entre originales + es + en (por defecto), solo el original, español, inglés y todos.
   *Solo subtítulos (SRT)* baja únicamente los `.srt` (sin vídeo). «Original» es el idioma del vídeo según la web (y, en
   YouTube, sus subtítulos automáticos del idioma original).
+- **Cuando la web cambia**: si la versión estable de yt-dlp no puede abrir o descargar algo (p. ej. ok.ru en septiembre de
+  2026), MPV-UOS lo intenta una vez con la versión *nightly* (se descarga y verifica sola; *Estado de yt-dlp* muestra cuál
+  hay). No se reintenta lo que no es cosa de versión: vídeos privados, con inicio de sesión, bloqueados en tu país,
+  borrados…
+- **TikTok e Instagram**: un vídeo o reel se abre y se descarga con su enlace; un perfil de TikTok se descarga con
+  *Descargar de una lista o canal…* (casillas). Los perfiles de Instagram no funcionan hoy en yt-dlp (su extractor está
+  roto). La suplantación de navegador que TikTok prefiere necesita `curl_cffi` (`tools/install.sh --extras`).
 - **Ajustes de descarga**: descargas a la vez (1–4), límite de velocidad (sin límite, 500 KB/s … 10 MB/s), no repetir lo ya
-  descargado y carpeta por lista. Si cierras el reproductor con descargas a medias, siguen al volver a abrirlo.
+  descargado, carpeta por lista y *Usar mi sesión del navegador* (desactivado; Firefox, Chrome, Chromium, Brave, Edge…:
+  yt-dlp lee sus cookies para lo que ya puedes ver con tu cuenta; vale también al reproducir; nunca sirve para DRM).
+  Si cierras el reproductor con descargas a medias, siguen al volver a abrirlo.
 
 ## 4. Subtítulos con IA, traducción, duales y guardar SRT
 1. `alt+c` inicia los subtítulos IA del archivo local abierto (whisper.cpp; el modelo se elige según tu CPU, docs/BENCHMARKS.md).

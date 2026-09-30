@@ -60,6 +60,25 @@ transcripción entre dos tiempos con los embeddings de H10) y E4 MPRIS (script m
 named pipe en mpvd (`server.py`, `client.py`, `mpvipc.py`) + `bin/mpv-uos.ps1`.
 
 ## Registro por iteración
+### Iteración nocturna 2026-09-30 · H19 · parte 3 (nightly, suplantación, sesión del navegador) — H19 hecho
+- mpvd: nightly de yt-dlp en `vendor/bin/yt-dlp-nightly` (bajado y verificado por SHA bajo demanda, refrescado con la
+  comprobación diaria); una descarga que falla por algo que no es de disponibilidad se repite UNA vez con él
+  (`worth_nightly`); `ytdl.nightly`; ajuste `cookies_browser` (`--cookies-from-browser`, desactivado, validado) aplicado a
+  descargas, `-J` y ytdl_hook; `status` informa de `impersonate` (curl_cffi) y del nightly. Extra `impersonate` en
+  pyproject (curl_cffi 0.16) instalado por check.sh e `install.sh --extras` (ADR-047).
+- mu-ytdl: al reproducir, una URL que la estable no abre se recarga una vez con el nightly primero en `ytdl_path` y
+  luego vuelve la estable; Ajustes de descarga › *Usar mi sesión del navegador*; Estado de yt-dlp muestra nightly y
+  suplantación.
+- Tests: test_ytdl_downloads (reintento con nightly, sin reintento en privados ni con el ajuste apagado),
+  test_mu_ytdl_batch (reproducción con reintento único, sesión del navegador), @network perfil de TikTok como lista.
+- Probar a mano:
+  ```bash
+  bin/mpv-uos 'https://ok.ru/video/<id>'        # «Probando con yt-dlp nightly…» y reproduce
+  bin/mpv-uos   # alt+y → Descargar de una lista o canal… → https://www.tiktok.com/@nasa → casillas → Descargar
+  bin/mpv-uos   # alt+y → Ajustes de descarga → Usar mi sesión del navegador (Enter cambia de navegador)
+  .venv/bin/python -m mpvd call ytdl.nightly
+  ```
+
 ### Iteración nocturna 2026-09-30 · H19 · parte 2 (subtítulos SRT al descargar)
 - `subs_mode` embed/file/only, idiomas `orig,es.*,en.*` (mpvd resuelve «orig» con el idioma del vídeo), preset *Solo
   subtítulos (SRT)* y rutas de los `.srt` por `after_video` (ADR-046). Menú Descargar: *Subtítulos* (no / dentro / SRT
