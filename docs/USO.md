@@ -326,6 +326,23 @@ Necesita palabras: subtítulos de texto del vídeo (incluidos los de la web o de
 subtítulos IA (`alt+c`). Con el modelo de búsqueda semántica instalado elige mejor; sin él cuenta las palabras que más
 se repiten. No inventa nada: son frases que se dijeron.
 
+## 9e. Audiolibros, podcasts y letras
+Abre un audiolibro (un `.m4b`, un archivo de más de una hora o la carpeta de sus capítulos) y el reproductor lo
+reconoce: la próxima vez sigue donde lo dejaste, aunque sea en otro capítulo, y con la velocidad que le pusiste a ese
+libro (los demás archivos siguen a velocidad normal). `alt+A` abre *Audiolibros y podcasts*: capítulos, marcadores con
+una nota (Enter salta, Tab borra), velocidad, «Seguir escuchando» y el temporizador de apagado (15, 30, 45 o 60
+minutos, o al terminar el capítulo): al final baja el volumen poco a poco y pausa. `alt+J` / `alt+L` saltan 30 s
+atrás o adelante. Si algo se reconoce mal, el mismo menú tiene «Esto no es un audiolibro» o «Tratar como audiolibro».
+Los podcasts recuerdan la posición de cada episodio y la velocidad de cada programa. No se guarda qué escuchaste ni
+cuándo: solo dónde vas.
+
+Letras: si junto a la canción hay un `.lrc` con el mismo nombre o la letra va dentro del archivo, aparece como
+subtítulo «Letra» (`v` la oculta). `alt+K` muestra la letra entera; Enter salta a esa línea. Buscar letras en internet
+(LRCLIB) e identificar canciones por su sonido (AcoustID) están apagados: se encienden en `alt+K` → *Ajustes de letras
+y canciones*. Para identificar hace falta tu propia clave gratuita de acoustid.org/new-application (se guarda solo en
+tu equipo); «Guardar en el archivo» escribe título, artista y álbum en la canción. La carátula (cover.jpg, folder.jpg…
+junto a la canción) se muestra sola.
+
 ## 10. Asistentes (MCP)
 Copia `.mcp.json.example` a `.mcp.json` para que Claude Code u otro cliente MCP controle el reproductor (reproducir, buscar en el
 diálogo, canales, descargas, notas). Lo que interrumpe lo que ves pide confirmación en pantalla. Más en docs/MCP.md.

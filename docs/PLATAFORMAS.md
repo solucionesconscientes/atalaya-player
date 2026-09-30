@@ -107,3 +107,7 @@ Probado solo en Linux (ffmpeg 8.0, Intel iHD con `-low_power 1`). En Windows y m
 por ACL). La clave se lee de la propiedad `clipboard/text` de mpv, que depende del backend de portapapeles (win32, mac,
 wayland, x11); sin portapapeles nativo, configúrala con `live.configure {"key": "…"}` (MCP/CLI). En Linux la clave se ve
 en `/proc/<pid>/cmdline` mientras se emite.
+
+## Letras, audiolibros e identificar canciones (H32)
+Usan ffprobe/ffmpeg/fpcalc del PATH; probado solo en Linux. En Windows, «Guardar en el archivo» (reemplazo atómico)
+falla si otro programa tiene la canción abierta.

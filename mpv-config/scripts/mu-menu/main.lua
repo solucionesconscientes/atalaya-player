@@ -366,6 +366,8 @@ views.av = function()
     cmd('Quitar rayas (desentrelazar)', 'd', 'blur_linear', { 'cycle', 'deinterlace' }, { separator = true }),
     child('Filtros: diálogo claro, modo noche, ruido…', 'alt+v', 'tune', 'mu_av', 'av-menu'),
     bind('Modo noche', 'alt+n', 'bedtime', 'mu_av/av-night'),
+    child('Audiolibros y podcasts', 'alt+A', 'menu_book', 'mu_books', 'books-menu', { separator = true }),
+    child('Letra de la canción', 'alt+K', 'lyrics', 'mu_lyrics', 'lyrics-menu'),
   })
 end
 

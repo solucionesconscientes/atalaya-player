@@ -153,6 +153,13 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 | `alt+R` | **¿Qué me he perdido?**: las frases que resumen lo que se dijo mientras la ventana estaba minimizada o en segundo plano (o en los últimos 5 min); Enter salta a ese momento. Usa los subtítulos de texto del vídeo o su transcripción IA |
 | — (Preferencias) | **Modo sencillo**: menú principal corto (Abrir, TV y radio, Subtítulos, Preferencias) y barra mínima; «Menú completo» lo quita |
 
+## Audiolibros, podcasts y letras (mu-books, mu-lyrics)
+| Tecla | Acción |
+|---|---|
+| `alt+A` | **Audiolibros y podcasts**: capítulos (los del archivo o uno por pista), marcadores con nota (añadir, saltar, borrar con Tab), velocidad de este libro, «Seguir escuchando» y temporizador de apagado (15/30/45/60 min o al terminar el capítulo; baja el volumen poco a poco y pausa) |
+| `alt+J` / `alt+L` | Atrás / adelante 30 s |
+| `alt+K` | **Letra** de la canción: las líneas con su minuto (Enter salta), mostrar u ocultar; «¿Qué canción es?» y sus ajustes (internet desactivado por defecto) |
+
 ## Teclas de mpv que cambian
 Estas teclas por defecto de mpv 0.41 hacen otra cosa en MPV-UOS:
 

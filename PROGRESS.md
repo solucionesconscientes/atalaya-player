@@ -60,6 +60,30 @@ USO, PLATAFORMAS, NEEDS_HUMAN) y `tools/check.sh` UNA vez (con la máquina libre
 (3) Cuando todo esté [x]/[~]: `ESTADO_GLOBAL: COMPLETADO` + resumen para Ser.
 
 ## Registro por iteración
+### Iteración 3 · 2026-09-30 · H32 · Letras, carátulas, audiolibros y podcasts (punto 2) — hecho (subagente, fusionado)
+- mpvd `lyrics.py` (`.lrc`/etiqueta/LRCLIB opcional → SRT en caché), `books.py` (detección, posición pista+tiempo,
+  velocidad, marcadores) y `songid.py` (AcoustID con clave propia, desactivado) (ADR-065). Carátulas: mpv solo.
+- mu-books (`alt+A`, `alt+J`/`alt+L` ±30 s, temporizador de apagado) y mu-lyrics (`alt+K`).
+- Tests: test_lyrics.py, test_books.py, test_nav (mu_books, mu_lyrics).
+- Probar a mano:
+  ```bash
+  printf ';FFMETADATA1\ntitle=Libro\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=60000\ntitle=Uno\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=60000\nEND=120000\ntitle=Dos\n' > tmp/libro.ffmeta
+  ffmpeg -f lavfi -i sine=d=120 -i tmp/libro.ffmeta -map_metadata 1 -map_chapters 1 -c:a aac tmp/libro.m4b
+  bin/mpv-uos tmp/libro.m4b   # alt+A → Velocidad ×1.5, Añadir marcador…, Temporizador → Al terminar el capítulo
+  bin/mpv-uos <canción con su .lrc al lado>   # la letra sale como subtítulo; alt+K → Enter en una línea
+  ```
+- Pendiente: «al terminar el capítulo» pausa ~0,3 s antes del cambio; sin ventana en audios sin carátula.
+
+### Iteración 3 · 2026-09-30 · H28 · AppImage y .app de macOS — hecho
+- `tools/build_appimage.sh` → `dist/MPV-UOS-x86_64.AppImage` (41 MB: app + CPython 3.12 de uv + yt-dlp; mpv del
+  sistema), yt-dlp actualizable en `<datos>/bin` (`MPV_UOS_VENDOR_BIN`) (ADR-067). `tools/build_macos_app.sh` → `.app`
+  mínimo (sin probar en un Mac). Tests: test_appimage.py (contenido, Python reubicado, arranque sin ventana con mpvd),
+  test_macos_app.py. ARM64/macOS: NEEDS_HUMAN.
+- Probar a mano:
+  ```bash
+  tools/build_appimage.sh && dist/MPV-UOS-x86_64.AppImage tests/fixtures/media/video30.mkv
+  ```
+
 ### Iteración 3 · 2026-09-30 · H25 · Sala pública, chat y «Emitir en directo» — hecho (subagente, fusionado)
 - Sala pública solo ver (LAN, `&v=1`, hasta 20 espectadores anónimos), chat y reacciones en salas privadas (límites,
   texto nunca como HTML), `live.*` por RTMP/RTMPS con ffmpeg (clave 0600 leída del portapapeles por mpvd, 720p30,

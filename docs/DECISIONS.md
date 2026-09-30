@@ -451,3 +451,17 @@
   fijado por SHA-256 en vendor.lock (la release no publica sumas). Flatpak descartado por ahora: habría que compilar
   mpv y ffmpeg dentro del SDK (horas en 4 núcleos) o depender de extensiones; el AppImage (41 MB) cubre el caso
   «descargar y abrir». ARM64 sin probar (hace falta la máquina; NEEDS_HUMAN).
+- ADR-065 · Letras, audiolibros y «¿Qué canción es?» (H32): letras en mpvd (`lyrics.get`): `.lrc` junto a la canción,
+  etiqueta de letra (LYRICS/UNSYNCEDLYRICS, `lyrics-<idioma>` de USLT, `©lyr`) leída con ffprobe y, solo si el usuario
+  lo enciende, LRCLIB (`GET /api/get`, verificado; respuestas y fallos en caché 7 días). Se muestran como pista de
+  subtítulos «Letra» (LRC → SRT en la caché, `sub-add`), no como overlay: ocultar (`v`), retardo y estilo ya existen; si
+  mpv ya cargó el `.lrc` (sub-auto incluye `lrc`) no se duplica. Carátulas: mpv ya carga cover/folder/front… por
+  defecto (`cover-art-auto=exact`, `cover-art-whitelist`). Audiolibros en mpvd (`books.*`, `<datos>/books.json`): libro
+  = m4b/aa/aax, género de libro, > 1 h, o carpeta de ≥ 3 pistas del mismo álbum de > 1 h en total con mediana ≥ 8 min o
+  pista en género/nombres (un disco largo no es un libro); el usuario lo fuerza en ambos sentidos. Podcast = género
+  Podcast: posición por episodio y velocidad heredada del programa. Solo posición (pista + tiempo), velocidad,
+  marcadores con nota y «terminado»: sin historial de escuchas. mu-books aplica la velocidad como
+  `file-local-options/speed` (vuelve la normal al cambiar de archivo y mu-prefs no la aprende); el temporizador cuenta
+  tiempo de reproducción y baja el volumen en los últimos 20 s. Identificar canciones (`songid.*`): Chromaprint `fpcalc`
+  + AcoustID solo con interruptor y clave propia del usuario (0600, `songs-secrets.json`), apagado por defecto;
+  «Guardar en el archivo» reescribe etiquetas con `ffmpeg -c copy` y reemplazo atómico, solo bajo petición.
