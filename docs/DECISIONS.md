@@ -258,6 +258,21 @@
   `--help`), desactivado, validado contra la lista (argv sin shell) y aplicado también a ytdl_hook; nunca DRM.
   TikTok: vídeo y perfil (lista plana con casillas) sin cookies; Instagram: reels y publicaciones sí, perfiles no
   (extractor marcado como roto en yt-dlp).
+- ADR-048 · Convertir (H20): módulo `mpvd/convert` (presets → argv exacto de ffmpeg 8) y script `mu-convert`. Presets:
+  «MP4 compatible» (libx264 CRF 20/23/28 + AAC, faststart), «Más pequeño» (libx265 CRF 24/28/32; mp4 con AAC y
+  `-tag:v hvc1`, que exigen QuickTime/iOS, o mkv con Opus), «Web» = WebM VP9 (CRF 31/35/40, `-b:v 0 -row-mt 1`,
+  `-deadline good -cpu-used 4`) + Opus (el formato abierto de la web; para compatibilidad total ya está MP4), solo audio
+  (MP3 con ID3v2.3, M4A/AAC, Opus, FLAC, WAV; bitrate por calidad o elegido) y GIF en dos pasadas
+  (palettegen → paletteuse, 10/12/15 fps, 320/480/640 px, máx. 60 s). Resolución máxima sobre el lado corto (un vídeo
+  vertical no se tumba), tamaños pares, nunca se amplía. Tramo con `-ss/-t` de entrada; con subtítulos, además `-t` de
+  salida (la de entrada deja pasar rótulos posteriores, verificado). Subtítulos de texto → mov_text (mp4) / WebVTT
+  (webm); mkv los copia; los de imagen (PGS/VobSub) solo caben en mkv: se avisa. VA-API solo para H.264/H.265 cuando
+  `vainfo --display drm` lo ofrece y ffmpeg tiene el codificador; con solo `VAEntrypointEncSliceLP` se pasa
+  `-low_power 1` (Intel iHD de este portátil: H.264 sí, HEVC no); si la GPU falla, se repite por CPU. Una conversión
+  cada vez, trabajo «pesado» (se pausa si la reproducción pierde fotogramas) y `nice 10`. Se escribe `nombre.part.ext`
+  y se renombra al acabar (`-n`, « (2)» si existe). Carpeta entera: una tarea por archivo en `<salida>/<carpeta>`.
+  Salida por defecto `<Vídeos>/MPV-UOS/Convertidos`. Lo pendiente al parar mpvd vuelve a la cola al arrancar.
+  «Tareas» (`tasks.list` + eventos `task` a mu_convert) une descargas y conversiones.
 - ADR-051 · Escritorio y sonido (H24): MPRIS en mpvd (`mpvd/mpris.py`), no el plugin C `mpv-mpris` (habría que
   compilarlo con cabeceras de GLib; sin sudo) ni Lua (no habla D-Bus). Un nombre `org.mpris.MediaPlayer2.mpv_uos.
   instance<pid>` por cada mpv conectado, con su propia conexión IPC y observadores (el bucle de sesiones no cambia);

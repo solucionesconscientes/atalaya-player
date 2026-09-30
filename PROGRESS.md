@@ -60,6 +60,25 @@ transcripción entre dos tiempos con los embeddings de H10) y E4 MPRIS (script m
 named pipe en mpvd (`server.py`, `client.py`, `mpvipc.py`) + `bin/mpv-uos.ps1`.
 
 ## Registro por iteración
+### Iteración nocturna 2026-09-30 · H20 · Convertir vídeo y audio — hecho (subagente, fusionado)
+- mpvd: `mpvd/convert/` (presets → argv exacto de ffmpeg; VA-API por vainfo con `-low_power` y reintento por CPU; cola
+  de una en una con nice 10, `.part` + renombrado, historial `conversions.json`, reanudación al arrancar); métodos
+  `convert.presets/hw/start/list/get/cancel/retry/remove/clear`, `tasks.list`, `tasks.clear`; eventos `convert` y
+  `task` (también de las descargas) a mu_convert (ADR-048).
+- mu-convert: menú «Convertir» (preset → opciones → iniciar; tramo con las marcas A-B), «Convertir una carpeta
+  entera…», panel «Tareas» en vivo (cancelar, repetir, quitar, abrir carpeta), carpeta y opciones recordadas.
+  mu-ytdl: «Convertir…» y «Tareas» en «Descargas y conversión» (⌫ vuelve a él). Teclas `alt+C` y `alt+T`.
+- Tests: test_convert_presets, test_convert_service (conversiones reales con ffprobe, tramo, subtítulos, cancelar,
+  carpeta, VA-API real y reintento por CPU, reanudación, tasks.list), test_mu_convert.
+- Probar a mano:
+  ```bash
+  bin/mpv-uos tests/fixtures/media/voz_es_en.mkv   # alt+C → MP4 compatible → Resolución 720p → Convertir ahora
+  bin/mpv-uos tests/fixtures/media/video30.mkv     # l en 0:05 y l en 0:10 → alt+C → GIF animado → Convertir ahora
+  bin/mpv-uos   # alt+y → Convertir… → Convertir una carpeta entera… → tests/fixtures/media/serie → Solo audio · MP3
+  bin/mpv-uos   # alt+T → Tab sobre una tarea: cancelar / repetir / abrir la carpeta
+  .venv/bin/python -m mpvd call convert.hw
+  ```
+
 ### Iteración nocturna 2026-09-30 · H31 · Formatos de descarga y decodificación del equipo — hecho
 - mpvd `hwdecode.py` (vainfo → códecs por hardware, `MPV_UOS_HWDECODE` para fijarlos), `ytdl.hw`, filas de `ytdl.info`
   con `hw` y «fluido en tu equipo» / «exigente (por procesador)»; descargas con `-S vcodec:<mejor por hardware>,res,

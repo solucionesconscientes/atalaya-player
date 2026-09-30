@@ -113,6 +113,10 @@ class MpvdServer:
         from mpvd import mpris  # noqa: PLC0415
         self.mpris = mpris.MprisService(self)
         mpris.register(self, self.mpris)
+        from mpvd.convert.service import ConvertService  # noqa: PLC0415
+        from mpvd.convert.service import register as register_convert  # noqa: PLC0415
+        self.convert = ConvertService(self)
+        register_convert(self, self.convert)
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -135,6 +139,7 @@ class MpvdServer:
         s.pid_path.write_text(str(os.getpid()), encoding="utf-8")
         await self.jobs.start()
         await self.ytdl.start()
+        await self.convert.start()
         await self.remote.maybe_autostart()
         self._idle_task = asyncio.create_task(self._idle_watch(), name="mpvd-idle")
         log.info("mpvd %s listening on %s (cache %s, workers %d)", __version__, s.socket_path, s.cache_dir, s.workers)
@@ -154,6 +159,7 @@ class MpvdServer:
         await self.sessions.close_all()
         await self.remote.close()
         await self.ytdl.close()
+        await self.convert.close()
         await self.subs.close()
         await self.asr.close()
         await self.jobs.stop()

@@ -102,6 +102,20 @@ abre. Si un canal entrelazado se ve con "peines" (7TV), pulsa `d`. Detalles en d
   yt-dlp lee sus cookies para lo que ya puedes ver con tu cuenta; vale también al reproducir; nunca sirve para DRM).
   Si cierras el reproductor con descargas a medias, siguen al volver a abrirlo.
 
+## 3b. Convertir vídeo y audio
+- `alt+C` (o *Descargas y conversión → Convertir…*): con un archivo de tu equipo abierto, elige **MP4 compatible**
+  (se abre en cualquier sitio), **Más pequeño (H.265)** (ocupa más o menos la mitad y tarda más), **Web (WebM)**,
+  **solo audio** (MP3, M4A, Opus, FLAC o WAV) o **GIF animado**. Luego, las opciones: resolución máxima (original, 1080p,
+  720p, 480p), calidad (alta, normal, pequeña), bitrate del audio, conservar los subtítulos y *Solo un tramo*: usa las
+  marcas A-B (tecla `l` o las filas *Marcar el inicio / el final aquí*). La primera fila, *Convertir ahora*, empieza.
+- **Carpeta entera** (*Convertir una carpeta entera…*): escribe o pega la ruta; cada archivo es una tarea y se convierten
+  de uno en uno en `Convertidos/<nombre de la carpeta>`.
+- **Tarjeta gráfica**: si tu equipo codifica por VA-API (Linux, `vainfo`), MP4 se hace con la GPU (mucho menos CPU);
+  si falla, se repite solo por CPU. Se desactiva en *Usar la tarjeta gráfica*.
+- **Tareas** (`alt+T`): descargas y conversiones con su progreso; `Tab` cancela, repite, quita de la lista o abre la
+  carpeta. Nunca se sobrescribe un archivo («(2)» si ya existe) y lo que queda a medias al cerrar sigue al volver.
+- Destino por defecto: `~/Vídeos/MPV-UOS/Convertidos` (se cambia en *Carpeta de salida*).
+
 ## 4. Subtítulos con IA, traducción, duales y guardar SRT
 1. `alt+c` inicia los subtítulos IA del archivo local abierto (whisper.cpp; el modelo se elige según tu CPU, docs/BENCHMARKS.md).
    Aparecen unos segundos por delante de lo que ves; tras un salto, se transcribe primero lo nuevo. Quedan guardados para la próxima vez.
@@ -249,6 +263,7 @@ El nombre de la app sigue siendo provisional: cambiarlo es editar `name` en `bra
 | Caché (listas, transcripciones, índices, huellas) | `<proyecto>/.cache/` | `~/.cache/mpv-uos/` |
 | Datos (favoritos, recientes, notas, móviles emparejados, marcas de intro) | `<proyecto>/.cache/data/` | `~/.local/share/mpv-uos/` |
 | Descargas y clips | `~/Vídeos/MPV-UOS`, `~/Música/MPV-UOS` | igual |
+| Conversiones | `~/Vídeos/MPV-UOS/Convertidos` (historial en los datos: `conversions.json`) | igual |
 | Grabaciones de TV/radio | `~/Escritorio/MPV-UOS` | igual |
 | Subtítulos guardados (SRT) | junto al vídeo; si no se puede, `~/Vídeos/MPV-UOS/Subtítulos` | igual |
 | Modelos de traducción | Argos: `<proyecto>/vendor/models/argos` · OPUS-MT: `<proyecto>/.cache/data/models/opus-mt` | Argos igual · OPUS-MT: `~/.local/share/mpv-uos/models/opus-mt` |

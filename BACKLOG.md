@@ -148,7 +148,7 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
       perfil completo con casillas; Instagram por enlace.
 
 ## H20 · Convertir vídeo y audio
-- [ ] «Convertir» en el menú: MP4 compatible (H.264/AAC), más pequeño (H.265), web, solo audio (MP3/M4A/Opus/FLAC/WAV), GIF; límite
+- [x] «Convertir» en el menú: MP4 compatible (H.264/AAC), más pequeño (H.265), web, solo audio (MP3/M4A/Opus/FLAC/WAV), GIF; límite
       de resolución y calidad, tramo, conservar subtítulos, carpeta entera; codificación por hardware VA-API si `vainfo` la ofrece;
       cola unificada con descargas (panel «Tareas»). Tests.
 
