@@ -449,6 +449,7 @@ class LiveService:
         self.session_id: str | None = None
         self.clipboard_prop = os.environ.get("MPVD_LIVE_CLIPBOARD_PROP") or CLIPBOARD_PROP  # tests: a user-data prop
         self._starting = False
+        self._tasks: set[asyncio.Task[Any]] = set()
         server.session_listeners.append(self._session_event)
 
     # -- state -------------------------------------------------------------------------------------------------
@@ -474,7 +475,9 @@ class LiveService:
 
     def _session_event(self, kind: str, session: Session) -> None:
         if kind == "closed" and self.session_id == session.id and self.run is not None and self.run.active:
-            asyncio.create_task(self.stop())  # the player that started it has closed: no orphan ffmpeg
+            t = asyncio.create_task(self.stop())  # the player that started it has closed: no orphan ffmpeg
+            self._tasks.add(t)
+            t.add_done_callback(self._tasks.discard)
 
     # -- configuration -------------------------------------------------------------------------------------------
 

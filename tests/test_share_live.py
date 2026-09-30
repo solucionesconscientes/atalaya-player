@@ -470,3 +470,21 @@ def test_player_closing_stops_the_emission(live_env, tmp_path):
         assert rx.wait(20) is not None
     finally:
         rx.stop()
+
+
+def test_mpvd_shutdown_stops_the_emission(live_env, tmp_path):
+    h, d = live_env
+    rx = _receiver(tmp_path / "out.flv")
+    try:
+        d.call("live.configure", {"server": rx.url, "key": KEY})
+        d.call("live.start", {"from_start": True})
+        d.wait(lambda: d.call("live.status")["run"]["status"] == "live", timeout=40)
+        pid = d.call("live.status")["run"]["pid"]
+        d.call("shutdown", timeout=10)
+        deadline = time.monotonic() + 15
+        while _pid_alive(pid) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert not _pid_alive(pid)
+        assert rx.wait(20) is not None
+    finally:
+        rx.stop()
