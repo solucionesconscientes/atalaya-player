@@ -50,3 +50,10 @@ EMBED_SPM_SHA256=cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db286
 APPIMAGETOOL_VERSION=1.9.1
 APPIMAGETOOL_URL=https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
 APPIMAGETOOL_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+# Windows (H28, tools/install.ps1): yt-dlp.exe de la misma release que YTDLP_VERSION (install.ps1 lo verifica además contra el
+# SHA2-256SUMS de esa release) y whisper.cpp oficial para CPU x64 (asset whisper-bin-x64.zip de la build b5130, publicada
+# con v1.9.4). Esa release no trae fichero de sumas: el SHA-256 es el "digest" de la API de GitHub, comprobado al descargarlo.
+YTDLP_EXE_SHA256=66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a
+WHISPER_WIN_VERSION=b5130
+WHISPER_WIN_URL=https://github.com/ggml-org/whisper.cpp/releases/download/b5130/whisper-bin-x64.zip
+WHISPER_WIN_SHA256=f9ec6c52a2e949b62ab51fa21d0d497958f9e41c3010c157c4e42932d5316f3c

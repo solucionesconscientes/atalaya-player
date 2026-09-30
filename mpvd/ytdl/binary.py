@@ -32,7 +32,15 @@ log = logging.getLogger("mpvd.ytdl.binary")
 RELEASES_LATEST_URL = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
 # nightly channel (H19): same asset names and SHA2-256SUMS (verified 2026-09-30, tag 2026.09.27.232945)
 NIGHTLY_RELEASES_URL = "https://api.github.com/repos/yt-dlp/yt-dlp-nightly-builds/releases/latest"
-ASSET_NAME = "yt-dlp"  # zipimport build; on Windows ytdl_hook needs yt-dlp.exe (see docs/PLATAFORMAS.md)
+
+
+def platform_asset_name() -> str:
+    """The release asset the updater installs: the zipimport build (runs with any python3), or on Windows the native
+    ``yt-dlp.exe`` that ytdl_hook needs and vendor_path() points at (tools/install.ps1; docs/PLATAFORMAS.md)."""
+    return "yt-dlp.exe" if sys.platform == "win32" else "yt-dlp"
+
+
+ASSET_NAME = platform_asset_name()
 SUMS_NAME = "SHA2-256SUMS"
 UPDATE_CHECK_TTL = 24 * 3600.0
 VERSION_RE = re.compile(r"^\d{4}\.\d{2}\.\d{2}(\.\d+)?$")
@@ -223,11 +231,12 @@ class UpdateState:
 
 
 class YtdlpUpdater:
-    def __init__(self, http: HttpCache, target: Path, releases_url: str | None = None, asset_name: str = ASSET_NAME):
+    def __init__(self, http: HttpCache, target: Path, releases_url: str | None = None,
+                 asset_name: str | None = None):
         self.http = http
         self.target = target
         self.releases_url = releases_url or os.environ.get("MPV_UOS_YTDLP_RELEASES_URL") or RELEASES_LATEST_URL
-        self.asset_name = asset_name
+        self.asset_name = asset_name or platform_asset_name()
         self.state = UpdateState()
 
     def check(self, installed: str, force: bool = False) -> UpdateState:

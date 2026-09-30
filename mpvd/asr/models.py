@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+import sys
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -202,7 +203,10 @@ def default_model_dirs(root: Path | None, data_dir: Path) -> list[Path]:
 
 
 def find_binary(name: str, root: Path | None) -> Path | None:
-    """``whisper-cli`` / ``whisper-server`` from $MPV_UOS_WHISPER_BIN, vendor/whisper/bin or PATH."""
+    """``whisper-cli`` / ``whisper-server`` from $MPV_UOS_WHISPER_BIN, vendor/whisper/bin or PATH (``.exe`` on Windows,
+    where tools/install.ps1 unpacks the official whisper-bin-x64.zip)."""
+    if sys.platform == "win32" and not name.lower().endswith(".exe"):
+        name += ".exe"
     env = os.environ.get("MPV_UOS_WHISPER_BIN")
     candidates = [Path(env) / name] if env else []
     if root is not None:
