@@ -698,10 +698,14 @@ views.download = function(args)
   with_presets(function(err, res)
     if err then show('Descargar', uosc.message_items(fail(err, 'ytdl.presets'), 'error')) return end
     local o = state.dl_options
+    -- H31: the same label as in «Calidad». The download asks for the codec this machine decodes in hardware, so if we
+    -- know of any, what comes down plays «fluido en tu equipo»; if we know of none, it will be decoded by the processor.
+    local hw_hint = #hw.names > 0 and (hw.names[1] .. ' · fluido en tu equipo') or 'exigente (por procesador)'
     local video, audio, subs = {}, {}, {}
     for _, p in ipairs(res.presets or {}) do
       local it = { title = p.title, icon = p.group == 'audio' and 'audiotrack' or 'movie',
                    value = { preset = p.id, url = target, title = target and target_title or nil } }
+      if p.group == 'video' then it.hint = hw_hint end
       if p.group == 'audio' then table.insert(audio, it)
       elseif p.group == 'subs' then
         it.icon, it.hint = 'subtitles', sub_langs_label(o.sub_langs)
@@ -709,7 +713,7 @@ views.download = function(args)
       else table.insert(video, it) end
     end
     local items = {
-      { title = 'Vídeo', hint = o.container, items = video },
+      { title = 'Vídeo', hint = o.container .. ' · ' .. hw_hint, items = video },
       { title = 'Audio', hint = tostring(#audio), items = audio },
       { title = 'Opciones', hint = (o.subtitles and 'subs ' or '') .. (o.sponsorblock ~= 'none' and 'SB ' or '') .. o.container,
         items = options_items(o) },

@@ -178,3 +178,29 @@ def test_favorites_user_sources_and_health(tmp_path, web, media_dir):
     assert by_name == {"Prueba local": True, "Rota": False}
     assert status[mine["items"][0]["id"]]["ok"] is True and "video" in status[mine["items"][0]["id"]]["detail"]
     assert removed == {"removed": True} and [s["id"] for s in srcs2] == ["tdt_tv", "tdt_radio", "iptv_org"]
+
+
+def test_loading_every_list_rebuilds_the_search_index_once(tmp_path, monkeypatch):
+    """H34 · el índice se reconstruía una vez por lista dentro del bucle de eventos: con tres listas y 12.000 canales
+    mpvd dejaba de responder a mpv y a los menús mientras duraba «Actualizar listas»."""
+    import asyncio
+
+    from mpvd.config import Settings
+    from mpvd.server import MpvdServer
+
+    sources = [Source(f"s{n}", f"Lista {n}", f"file://{tmp_path}/l{n}.m3u", "tv", "es", country="es")
+               for n in range(3)]
+    for n in range(3):
+        (tmp_path / f"l{n}.m3u").write_text(
+            "#EXTM3U\n" + "".join(f'#EXTINF:-1 tvg-id="C{n}{i}.TV",Canal {n}-{i}\nhttp://x/{n}/{i}\n'
+                                 for i in range(20)), encoding="utf-8")
+    server = MpvdServer(Settings(runtime_dir=tmp_path / "rt", cache_dir=tmp_path / "cache", idle_timeout=0, workers=1),
+                        iptv_sources=sources)
+    calls = []
+    real = server.iptv._rebuild_index
+    monkeypatch.setattr(server.iptv, "_rebuild_index", lambda: (calls.append(1), real())[1])
+
+    states = asyncio.run(server.iptv.load_all())
+    assert len(states) == 3 and sum(len(s.channels) for s in states) == 60
+    assert len(calls) == 1, f"reconstrucciones del índice: {len(calls)}"
+    assert len(server.iptv.search("Canal 1-3")) >= 1

@@ -83,7 +83,7 @@ class IptvService:
                 return s
         raise RpcError(NOT_FOUND, f"esa lista ya no está: {source_id}")
 
-    async def load(self, source_id: str, force: bool = False) -> SourceState:
+    async def load(self, source_id: str, force: bool = False, rebuild: bool = True) -> SourceState:
         """Load one source (deduplicating concurrent loads); results are cached in memory."""
         source = self.source(source_id)
         task = self._loads.get(source_id)
@@ -94,12 +94,23 @@ class IptvService:
         async with self._lock:
             if not state.error or source_id not in self._states:
                 self._states[source_id] = state
-            self._rebuild_index()
+            if rebuild:
+                await self._rebuild_index_async()
         return self._states[source_id]
 
     async def load_all(self, force: bool = False, only: list[str] | None = None) -> list[SourceState]:
         ids = only or [s.id for s in self.sources()]
-        return list(await asyncio.gather(*(self.load(sid, force) for sid in ids)))
+        # the index is rebuilt once, at the end: it is O(all channels) (iptv-org alone is ~12 000 entries, each one
+        # normalised half a dozen times), and doing it per source froze the event loop three times over
+        out = list(await asyncio.gather(*(self.load(sid, force, rebuild=False) for sid in ids)))
+        async with self._lock:
+            await self._rebuild_index_async()
+        return out
+
+    async def _rebuild_index_async(self) -> None:
+        """Rebuild in a thread: with every list loaded this is hundreds of thousands of string normalisations, and in
+        the loop it made mpvd stop answering mpv and the menus while «Actualizar listas» ran."""
+        await asyncio.to_thread(self._rebuild_index)
 
     def _rebuild_index(self) -> None:
         self._index = SearchIndex()

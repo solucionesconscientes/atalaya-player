@@ -131,9 +131,14 @@ def test_hook_path_switch_quality_download_and_panel(ytdl_mpv, media_dir):
     wait_view(h, "download")
     st = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("view") == "download"
                          and any(i["title"] == "Opciones" for i in v.get("items", [])), timeout=30)
-    assert [(i["title"], i["hint"]) for i in st["items"]][:2] == [("Vídeo", "mp4"), ("Audio", "9")]
+    # H31: «Vídeo» y sus presets llevan la etiqueta de decodificación, como en «Calidad»
+    head = [(i["title"], i["hint"]) for i in st["items"]][:2]
+    assert head[0][0] == "Vídeo" and head[0][1].startswith("mp4 · ")
+    assert "fluido en tu equipo" in head[0][1] or "exigente" in head[0][1]
+    assert head[1] == ("Audio", "9")
     send_event(h, {"type": "activate", "index": 1, "value": {"opt": "container"}})  # mp4 → mkv, menu stays open
-    h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and any(i["title"] == "Vídeo" and i["hint"] == "mkv"
+    h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and any(i["title"] == "Vídeo"
+                                                                   and str(i["hint"]).startswith("mkv")
                                                                      for i in v.get("items", [])), timeout=15)
     send_event(h, {"type": "activate", "index": 1, "value": {"preset": "audio_mp3_128"}})
     ev = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and isinstance(v.get("last_event"), dict)
