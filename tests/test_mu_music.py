@@ -228,3 +228,37 @@ def test_a_missing_file_in_the_album_does_not_shift_what_enter_plays(music_mpv):
     h.wait_property("path", lambda v: v == str(p["t2"]), timeout=15)
     assert playlist(h) == [str(p["t2"])] and h.get("playlist-pos") == 0
     assert h.script_errors() == [], h.script_errors()
+
+
+def test_moving_in_the_queue_uses_the_track_index_not_the_menu_row(music_mpv):
+    """H34 · uosc manda el número de fila del menú que dibuja, y el buscador lo filtra: con la búsqueda activa, Tab ›
+    Subir movía otra entrada (o ninguna). La fila lleva su índice real, que es el que vale."""
+    h, d, root, p = music_mpv
+    h.command("script-binding", "mu_music/music-menu")
+    wait_nav(h, "mu-music", "MPV-UOS › Música")
+    d.wait(lambda: d.call("music.status", {"default_folder": False})["tracks"] == 5
+           and not d.call("music.status", {"default_folder": False})["scanning"], timeout=60)
+
+    for path in (p["t1"], p["t2"], p["emb"]):
+        h.command("loadfile", str(path), "append-play")
+    h.wait_property("playlist", lambda v: len(v) >= 3, timeout=20)
+    h.command("set_property", "pause", True)
+
+    ev(h, {"type": "back"})
+    h.wait_property("user-data/uosc/menu/type", lambda t: t != "mu-music", timeout=10)
+    h.command("script-binding", "mu_music/music-menu")
+    s = st(h, lambda v: v["view"] == "root" and "Cola" in titles(v))
+    activate(h, s, "Cola")
+    s = st(h, lambda v: v["view"] == "queue"
+           and len([i for i in v["items"] if isinstance(i.get("value"), dict) and "qplay" in i["value"]]) >= 2)
+
+    rows = [i for i in s["items"] if isinstance(i.get("value"), dict) and "qplay" in i["value"]]
+    target = rows[-1]["value"]["qplay"]
+    before = playlist(h)
+    # the row number is deliberately wrong (as it is when the search box filtered the list); the value is right
+    ev(h, {"type": "activate", "index": 999, "value": rows[-1]["value"], "action": "up"})
+    h.wait_property("playlist", lambda v: [e["filename"] for e in v][target - 1] == before[target], timeout=20)
+    after = playlist(h)
+    assert after[target - 1] == before[target] and after[target] == before[target - 1]
+    assert sorted(after) == sorted(before)
+    assert h.script_errors() == [], h.script_errors()

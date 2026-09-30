@@ -864,12 +864,10 @@ end
 local apply_audio_settings
 local apply_gain
 
--- queue: menu rows → playlist indices
-local function queue_move(from_row, to_row)
+-- queue: playlist indices (0-based, as the rows carry them in v.qplay)
+local function queue_move_at(a, b)
   local m = state.move
   if not m then return end
-  local a = m.base + (from_row - m.first)
-  local b = m.base + (to_row - m.first)
   local n = #playlist()
   if a < m.base or b < m.base or a >= n or b >= n or a == b then reopen_current() return end
   -- playlist-move puts the entry in the place of the target: moving down needs the target after it
@@ -877,15 +875,27 @@ local function queue_move(from_row, to_row)
   mp.add_timeout(0.05, function() reopen_current() end)
 end
 
-local function list_move(from_row, to_row)
+local function list_move_at(a, b)
   local m = state.move
   if not m then return end
-  local a, b = from_row - m.first, to_row - m.first
   if a < 0 or b < 0 or a == b then reopen_current() return end
   rpc.call('music.playlists.move', { name = m.name, src = a, dst = b }, function(err)
     if err then osd('Mover: ' .. fail(err, 'music.playlists.move')) end
     reopen_current()
   end, 15)
+end
+
+-- drag and drop through uosc's own «move» event, which does send menu rows (and is refused while searching)
+local function queue_move(from_row, to_row)
+  local m = state.move
+  if not m then return end
+  queue_move_at(m.base + (from_row - m.first), m.base + (to_row - m.first))
+end
+
+local function list_move(from_row, to_row)
+  local m = state.move
+  if not m then return end
+  list_move_at(from_row - m.first, to_row - m.first)
 end
 
 handle_activate = function(ev)
@@ -907,10 +917,14 @@ handle_activate = function(ev)
     return
   end
   if action == 'up' or action == 'down' then
-    local row = ev.index or 0
-    local other = action == 'up' and row - 1 or row + 1
-    if state.move and state.move.kind == 'queue' then queue_move(row, other)
-    elseif state.move and state.move.kind == 'list' then list_move(row, other) end
+    -- the row number uosc sends is its position in the menu it is DRAWING, which the search box filters (uosc refuses
+    -- to drag while searching for the same reason). The row itself carries its real index: use that.
+    local step = action == 'up' and -1 or 1
+    if state.move and state.move.kind == 'queue' and v.qplay then
+      queue_move_at(v.qplay, v.qplay + step)
+    elseif state.move and state.move.kind == 'list' and v.index then
+      list_move_at(v.index, v.index + step)
+    end
     return
   elseif action == 'remove' then
     if state.move and state.move.kind == 'queue' and v.qplay then
