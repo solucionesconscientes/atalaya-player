@@ -126,6 +126,9 @@ class MpvdServer:
         register_convert(self, self.convert)
         self.library = LibraryService(self)
         register_library(self, self.library)
+        from mpvd.music.service import MusicService, register as register_music  # noqa: PLC0415 - H32
+        self.music = MusicService(self)
+        register_music(self, self.music)
         from mpvd.share.service import ShareService, register as register_share  # noqa: PLC0415
         self.share = ShareService(self)
         register_share(self, self.share)
@@ -199,6 +202,7 @@ class MpvdServer:
         self.iptv.close()
         self.epg.close()
         self.library.close()
+        self.music.close()
         self.watch.close()
         with contextlib.suppress(OSError):
             if self.settings.pid_path.exists() and self.settings.pid_path.read_text().strip() == str(os.getpid()):
