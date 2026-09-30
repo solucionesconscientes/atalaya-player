@@ -116,11 +116,11 @@ el túnel de internet se acepta SOLO mientras haya una sala de "Compartir" abier
 desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implementa hasta que Ser decida (sáltalo).
 
 ## H15 · Interfaz y navegación más simples
-- [ ] Un único menú con migas en el título («MPV-UOS › TV y radio › España»), «‹ Atrás» como primera fila de cada submenú (ratón),
+- [x] Un único menú con migas en el título («MPV-UOS › TV y radio › España»), «‹ Atrás» como primera fila de cada submenú (ratón),
       Retroceso/← vuelve un nivel y Esc cierra; «atrás» en la raíz de un módulo vuelve al menú principal (pila de navegación
       compartida entre scripts: módulo `mu/nav`). Menú principal en 7–8 categorías con icono: Abrir, TV y radio, Descargas y
       conversión, Subtítulos, Imagen y sonido, Grabar, Herramientas, Preferencias.
-- [ ] Barra de uosc reducida (reproducción, subtítulos, audio, velocidad, menú, grabar, pantalla completa); el resto en el menú.
+- [x] Barra de uosc reducida (reproducción, subtítulos, audio, velocidad, menú, grabar, pantalla completa); el resto en el menú.
       Letra de menú algo mayor, textos cortos sin tecnicismos, `?` muestra una ayuda en pantalla, clic en el vídeo para pausar como
       preferencia (desactivada por defecto). Tests headless de navegación (entrar, atrás, cerrar) en todos los módulos.
 
@@ -181,8 +181,8 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
 - [ ] «Emitir en directo» a una plataforma (YouTube Live, Twitch, PeerTube, Owncast) por RTMP con clave de emisión, para audiencias
       grandes. Chat y reacciones en salas privadas. Aviso legal: solo contenido que se puede compartir.
 
-## H26 · Torrents · DECISIÓN PENDIENTE
-- [ ] Propuesta: integrarse con qBittorrent (ya instalado; Ser activa su interfaz web en localhost) para añadir magnets, descargar en
+## H26 · Torrents · FUERA POR AHORA (decisión de Ser, 2026-09-30: no implementar)
+- [~] Propuesta aparcada: integrarse con qBittorrent (ya instalado; Ser activa su interfaz web en localhost) para añadir magnets, descargar en
       orden y «ver mientras descarga» en MPV-UOS, con libtorrent en el .venv solo como alternativa si no hay qBittorrent.
 
 ## H27 · Diferenciales

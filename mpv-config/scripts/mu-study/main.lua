@@ -11,6 +11,8 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local nav = require('mu.nav')
+local N = nav.new()
 local prefs = require('mu.prefs')
 
 local SCRIPT = mp.get_script_name()
@@ -405,8 +407,8 @@ local function root_items()
 end
 
 local function base_menu()
-  return { type = MENU, title = 'Estudio', items = root_items(), callback = { SCRIPT, EVENT }, keep_open = true,
-    search_submenus = false, footnote = 'Repetir · velocidad inteligente · notas · clips' }
+  return nav.decorate({ type = MENU, title = N:title({ 'Estudio' }), items = root_items(), callback = { SCRIPT, EVENT },
+    keep_open = true, search_submenus = false, footnote = 'Repetir · velocidad inteligente · notas · clips' })
 end
 
 local function refresh_menu()
@@ -429,6 +431,12 @@ mp.register_script_message('mu-study-menu-refresh', refresh_menu)
 
 mp.register_script_message(EVENT, function(json)
   local ev = utils.parse_json(json or '') or {}
+  local back, handled = nav.classify(ev)
+  if handled then return end
+  if back then
+    if not N:leave() then uosc.close(MENU) end
+    return
+  end
   if ev.type ~= 'activate' then
     if ev.type == 'close' then state.view = ''; publish() end
     return
@@ -488,7 +496,7 @@ mp.observe_property('ab-loop-a', 'native', function()
   if state.repeat_line and (cur == nil or cur == 'no') then repeat_stop(true) end
 end)
 
-mp.add_key_binding(nil, 'study-menu', open_menu)
+N:binding('study-menu', open_menu)
 mp.add_key_binding(nil, 'repeat-line', repeat_toggle)
 mp.add_key_binding(nil, 'repeat-prev', function() repeat_step(-1) end)
 mp.add_key_binding(nil, 'repeat-next', function() repeat_step(1) end)

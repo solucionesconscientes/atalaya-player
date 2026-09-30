@@ -186,3 +186,15 @@
   episodio); bordes afinados solo ±6 s (coste casi fijo). Marcas manuales = datos de usuario (`<datos>/intro-marks.json`)
   trasladadas a la temporada localizando su huella. Nada se escribe junto a los vídeos salvo `intro.export` (segments.json con
   Type/StartTicks de Jellyfin). Detección y salto automático se recuerdan (mu-prefs).
+- ADR-041 · Un solo menú con migas (H15): cada script sigue siendo un hilo con su propio tipo de menú en uosc, pero todos usan
+  `script-modules/mu/nav.lua`: título con migas («MPV-UOS › TV y radio › España», máx. 4 tramos), fila «Atrás» primera en cada
+  vista (la selección de teclado empieza en la siguiente), `⌫`/botón atrás del ratón (evento `back` de uosc) y `←` en una raíz
+  (llega como `key` `left`: uosc solo lo usa si hay submenú padre o búsqueda) vuelven un nivel; la fila llama a
+  `script-binding uosc/menu-back` para que dentro de un submenú de uosc vuelva al padre. La pila compartida es un traspaso: quien
+  abre un módulo le manda `mu-nav-open <entrada> {crumbs, script, view}` y el módulo, al vaciar su pila, devuelve el control con
+  `mu-nav-return <view>`; abierto con su tecla, su padre es la raíz del menú principal. Las paletas (URL, YouTube, canal) se cierran
+  con `⌫` vacío. Menú principal en ocho categorías; TV y Descargas abren su módulo directamente y el resto son vistas de mu-menu
+  que llevan a los módulos. Barra reducida (reproducción, subtítulos, audio, velocidad, grabar, menú, pantalla completa; ⏭ solo
+  dentro de un segmento), `menu_item_height` 36→42 (letra ≈ 20 px), `?` ayuda (sustituye a la página de teclas de stats) y
+  «Pausar con un clic» como preferencia desactivada: mientras está activa, `MBTN_LEFT` va a mu-menu (uosc sigue recibiendo los
+  clics sobre sus elementos porque sus secciones se activan encima) y el clic deja de arrastrar la ventana.

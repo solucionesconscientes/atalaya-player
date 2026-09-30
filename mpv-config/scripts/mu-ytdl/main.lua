@@ -12,6 +12,8 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local nav = require('mu.nav')
+local N = nav.new()
 local prefs = require('mu.prefs')
 
 local SCRIPT = mp.get_script_name()
@@ -51,6 +53,8 @@ mp.observe_property('ytdl-format', 'string', function(_, value)
   end
 end)
 local function default_video_format() return global_video_format end
+
+local ROOT_TITLE = 'Descargas y conversión'
 
 local state = {
   active = false,        -- current file was resolved by ytdl_hook
@@ -318,7 +322,7 @@ local function base_menu(title, items, extra)
     on_close = 'callback', keep_open = false, search_submenus = true,
   }
   for k, v in pairs(extra or {}) do menu[k] = v end
-  return menu
+  return N:frame(menu, state.stack)
 end
 
 local function show(title, items, extra)
@@ -392,7 +396,7 @@ views.root = function()
   table.insert(items, { title = 'Descargas', hint = n > 0 and (tostring(n) .. ' activas') or nil, icon = 'downloading',
                         value = { view = 'downloads' }, separator = true })
   table.insert(items, { title = 'Estado de yt-dlp', icon = 'settings', value = { view = 'status' } })
-  show('yt-dlp', items)
+  show(ROOT_TITLE, items)
 end
 
 -- quality ---------------------------------------------------------------------------------------
@@ -945,6 +949,9 @@ end
 
 local function on_event(source, json)
   local ev = utils.parse_json(json or '') or {}
+  local back, handled = nav.classify(ev)
+  if handled then return end
+  if back then ev.type = 'back' end
   if ev.type == 'activate' then
     local v = type(ev.value) == 'table' and ev.value or {}
     if v.open or v.result then
@@ -1000,7 +1007,12 @@ local function on_event(source, json)
     if source == URL_MENU then url_typed(ev.query or '') elseif source == SEARCH_MENU then run_search(ev.query or '') end
   elseif ev.type == 'back' then
     table.remove(state.stack)
-    if #state.stack == 0 then close_menus() else reopen_current() end
+    if #state.stack == 0 then
+      -- palettes (open URL, YouTube search) close: ⌫ there is mostly "delete text"; menus return to their opener
+      if source ~= MENU or not N:leave() then close_menus() end
+    else
+      reopen_current()
+    end
   end
   -- `close` is not used for state (racy, ADR-013): the observer below owns the reset
 end
@@ -1066,11 +1078,15 @@ local function open_root()
   open_view({ name = 'root' })
 end
 
-mp.add_key_binding(nil, 'ytdl-menu', open_root)
+N:binding('ytdl-menu', open_root)
 mp.add_key_binding(nil, 'ytdl-toggle-audio', toggle_audio)
-mp.add_key_binding(nil, 'ytdl-quality', function() state.stack = { { name = 'root' } }; open_view({ name = 'quality' }) end)
-mp.add_key_binding(nil, 'ytdl-download', function() state.stack = { { name = 'root' } }; open_view({ name = 'download' }) end)
-mp.add_key_binding(nil, 'ytdl-downloads', function() state.stack = { { name = 'root' } }; open_view({ name = 'downloads' }) end)
+local function open_under_root(view)
+  state.stack = { { name = 'root', title = ROOT_TITLE } }
+  open_view({ name = view })
+end
+N:binding('ytdl-quality', function() open_under_root('quality') end)
+N:binding('ytdl-download', function() open_under_root('download') end)
+N:binding('ytdl-downloads', function() open_under_root('downloads') end)
 
 -- Palettes: bindings, plus messages with an optional initial text for other scripts
 -- (`script-message-to mu_ytdl mu-ytdl-open-url [texto]`, `script-message-to mu_ytdl mu-ytdl-search [consulta]`;

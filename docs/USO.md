@@ -15,7 +15,16 @@ Opciones del instalador: `--xdg` (caché y datos en `~/.cache/mpv-uos` y `~/.loc
 `--default` (reproductor por defecto para vídeo y audio), `--dry-run`, `--uninstall` (solo borra lo que creó).
 
 ## 1. Moverse por la interfaz
-- **Menú MPV-UOS**: botón derecho, tecla `MENU` o `alt+m`. Reúne todo lo de esta guía.
+- **Menú MPV-UOS**: botón derecho, tecla `MENU`, `alt+m` o el botón ▦ de la barra. Reúne todo lo de esta guía en ocho
+  categorías: Abrir, TV y radio, Descargas y conversión, Subtítulos, Imagen y sonido, Grabar, Herramientas y Preferencias
+  (arriba, *Continuar viendo* si hay algo a medias).
+- **Un solo menú**: el título dice dónde estás («MPV-UOS › Subtítulos › Subtítulos IA»); la primera fila, **Atrás**, vuelve un
+  nivel, igual que `⌫` o `←`; `Esc` cierra. Desde la raíz de cualquier módulo (aunque lo abras con su tecla) *Atrás* te lleva al
+  menú principal. Las paletas de búsqueda (`ctrl+u`, `ctrl+f`, `alt+f`) se cierran con `⌫` cuando están vacías.
+- **Ayuda**: `?` muestra las teclas principales.
+- **Barra de controles**: reproducir/pausa (y anterior/siguiente si hay lista), subtítulos, audio (si hay varias pistas), velocidad,
+  grabar ●, menú ▦ y pantalla completa. Lo demás está en el menú. El botón ⏭ aparece solo dentro de una intro o unos créditos.
+- **Pausar con un clic en el vídeo**: *Menú → Preferencias* (desactivado por defecto; activado, el clic ya no arrastra la ventana).
 - **Paleta** (`alt+p`): escribe para buscar comandos, canales, recientes, acciones de mpvd y (si hay transcripción) frases del diálogo.
 - **Continuar viendo** (`alt+h`): los recientes se reconocen por contenido, aunque renombres o muevas el archivo.
 
@@ -107,8 +116,8 @@ créditos. La primera vez tarda unos segundos por episodio (≈10 s en una serie
   el título se compara sin acentos, puntuación ni etiquetas entre corchetes, y debe coincidir la temporada. Se usan los 3 vecinos más
   cercanos por número de episodio que se puedan leer (los rotos o sin audio se saltan). Con nombres sin serie (`ep01.mkv`) se usan los
   demás vídeos de la carpeta.
-- **Qué verás**: el botón ⏭ está siempre en la barra con vídeos locales; si aún no hay nada que saltar, su tooltip dice por qué
-  (analizando, sin otros episodios, error). Dentro de la intro o los créditos se ilumina y aparece un recuadro **Saltar intro ▸**
+- **Qué verás**: el botón ⏭ aparece en la barra solo dentro de la intro o los créditos (el menú `alt+j` dice por qué aún no hay
+  nada que saltar: analizando, sin otros episodios, error), junto a un recuadro **Saltar intro ▸**
   clicable. `alt+k` salta (fuera de un segmento, al final del siguiente; durante el análisis dice «Analizando… NN %»). Si no se detecta
   nada, un aviso breve lo explica (p. ej. «Saltar intro: no hay otros episodios para comparar · alt+j»).
 - **Saltar créditos** lleva al siguiente elemento de la lista; si no hay lista, abre el siguiente episodio encontrado (aunque esté en

@@ -93,6 +93,10 @@ Un item con `items` es un submenú; admite `title`, `hint`, `icon` (se fuerza `c
 `muted`, `separator`, `align`, `footnote`, `keep_open`, `search_*`, `on_*` e `id`. Su `id` por defecto es la cadena de
 títulos `"Padre > Hijo"` (`Menu.lua:192`); es lo que llega en `event.menu_id` y lo que acepta `open-menu` como 2.º arg.
 Navegación: `→`/Enter entra, `←`/Backspace vuelve; en la raíz, Backspace envía `{type:'back'}`.
+`←` en la raíz (sin búsqueda) no hace nada en uosc y llega al callback como `{type:'key', id:'left'}`; `script-binding
+uosc/menu-back` vuelve al submenú padre o, en la raíz, envía `back` (`Menu.lua:618`, `main.lua:1005`). `selected_index` del JSON
+solo cuenta en la raíz; los submenús empiezan en su primer elemento. Tras `open-menu`, uosc enlaza sus teclas unos ms después de
+publicar `user-data/uosc/menu/type` (los tests esperan a `input-bindings`). Uso en MPV-UOS: ADR-041 (`mu/nav.lua`).
 
 ## 3. Modo callback: eventos que recibe tu script
 

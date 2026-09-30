@@ -7,10 +7,17 @@ menú **Más opciones** de uosc (`ctrl+m`). Los atajos por defecto de mpv siguen
 ## Menús de MPV-UOS
 | Tecla | Acción |
 |---|---|
-| `MBTN_RIGHT`, `MENU`, `alt+m` | Menú principal **MPV-UOS** (buscar, abrir, continuar viendo, TV y radio, yt-dlp, lista, subtítulos, audio, capítulos, captura, salir) |
+| `MBTN_RIGHT`, `MENU`, `alt+m` | Menú principal **MPV-UOS**: Continuar viendo, Abrir, TV y radio, Descargas y conversión, Subtítulos, Imagen y sonido, Grabar, Herramientas, Preferencias |
+| `?` | Ayuda en pantalla con las teclas principales (Enter en la última fila: todas las teclas) |
 | `alt+p` | Paleta global: comandos (todas las teclas con título), canales de TV/radio, vídeos recientes y acciones de mpvd; escribe para filtrar (sin acentos); con transcripción IA, sección **Diálogo** (búsqueda semántica multilingüe, Enter salta al momento) |
 | `alt+h` | Recientes / continuar viendo (Tab sobre un elemento: olvidar) |
 | `ctrl+m` | Más opciones: menú de uosc agrupado (Ver, Audio, Subtítulos, Velocidad, Repetir…) |
+
+### Moverse por los menús
+Todos los menús de MPV-UOS son uno solo: el título lleva las migas («MPV-UOS › TV y radio › España») y la primera fila es
+**Atrás**. `⌫` (Retroceso) o `←` vuelven un nivel; en la raíz de un módulo (TV, descargas, subtítulos IA, filtros…) vuelven
+al menú desde el que se abrió o, si se abrió con su tecla, al menú principal. `Esc` cierra. Con el ratón: clic en **Atrás**
+o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 
 ## Archivo y reproducción (uosc)
 | Tecla | Acción |
@@ -119,3 +126,5 @@ Estas teclas por defecto de mpv 0.41 hacen otra cosa en MPV-UOS:
 | `alt+v` | Subtítulo secundario visible | Menú Sonido e imagen (el secundario está en `ctrl+alt+v`) |
 | `alt+←/→/↑/↓` | Desplazar el vídeo | Estudio (repetir línea anterior/siguiente) y zapping de TV |
 | Botón derecho, `MENU` | Pausa / menú contextual | Menú principal MPV-UOS |
+| `?` | Página de teclas de las estadísticas | Ayuda de MPV-UOS (las estadísticas siguen en `i` / `I`) |
+| Clic izquierdo | Nada (arrastra la ventana) | Igual; con Preferencias › «Pausar con un clic en el vídeo», pausa |

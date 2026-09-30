@@ -12,6 +12,8 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local nav = require('mu.nav')
+local N = nav.new()
 local prefs = require('mu.prefs')
 
 local SCRIPT = mp.get_script_name()
@@ -282,7 +284,7 @@ local function base_menu(title, items, extra)
   local menu = { type = MENU, title = title, items = items, callback = { SCRIPT, EVENT }, on_close = 'callback',
     keep_open = false, search_submenus = false }
   for k, v in pairs(extra or {}) do menu[k] = v end
-  return menu
+  return N:frame(menu, state.stack)
 end
 
 local function show(title, items, extra)
@@ -329,7 +331,7 @@ views.root = function()
   table.insert(items, { title = 'Modelos (RNNoise, HRTF)', icon = 'cloud_download', value = { view = 'models' } })
   table.insert(items, { title = 'Quitar todos los filtros', icon = 'filter_alt_off', value = { clear = true },
     separator = true })
-  show('Sonido e imagen', items)
+  show('Filtros de imagen y sonido', items)
 end
 
 views.diag = function()
@@ -392,6 +394,9 @@ end
 
 mp.register_script_message(EVENT, function(json)
   local ev = utils.parse_json(json or '') or {}
+  local back, handled = nav.classify(ev)
+  if handled then return end
+  if back then ev.type = 'back' end
   if ev.type == 'activate' then
     local v = type(ev.value) == 'table' and ev.value or {}
     if v.toggle then
@@ -420,7 +425,11 @@ mp.register_script_message(EVENT, function(json)
     end
   elseif ev.type == 'back' then
     table.remove(state.stack)
-    if #state.stack == 0 then uosc.close(MENU) else reopen_current() end
+    if #state.stack == 0 then
+      if not N:leave() then uosc.close(MENU) end
+    else
+      reopen_current()
+    end
   end
 end)
 
@@ -477,7 +486,7 @@ local function open_root()
   refresh_models(function() open_view({ name = 'root' }) end)
 end
 
-mp.add_key_binding(nil, 'av-menu', open_root)
+N:binding('av-menu', open_root)
 mp.add_key_binding(nil, 'av-night', function() toggle_filter('night'); save_prefs() end)
 mp.register_script_message('mu-av-toggle', function(name) toggle_filter(name); save_prefs() end)
 mp.register_script_message('mu-av-set', function(name, on) set_filter(name, on == 'yes' or on == 'true'); save_prefs() end)

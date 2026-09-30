@@ -1,9 +1,10 @@
 -- mu-intro: skip intro / credits detected locally by mpvd (intro.*: Chromaprint between episodes of the same season, in
 -- the same folder or in one folder per episode). On file-loaded asks mpvd for the segments (starting the analysis in the
--- background if needed). The uosc button mu-skip is always there for local videos (tooltip says why nothing can be skipped
--- yet); inside a segment it lights up and a clickable "Saltar intro ▸" box floats over the video. alt+k skips (intro → its
--- end; credits → next playlist item, else the next episode found by mpvd, else the end). Optional automatic skipping with a
--- short countdown (Esc cancels), manual marking (applied by mpvd to the whole season), season analysis and on-demand export.
+-- background if needed). The uosc button mu-skip only shows inside a segment (H15: reduced control bar), with a
+-- clickable "Saltar intro ▸" box floating over the video; the menu (alt+j) says why nothing can be skipped yet.
+-- alt+k skips (intro → its end; credits → next playlist item, else the next episode found by mpvd, else the end).
+-- Optional automatic skipping with a short countdown (Esc cancels), manual marking (applied by mpvd to the whole season),
+-- season analysis and on-demand export.
 -- Script name: mu_intro. State in user-data/mu/intro.
 local mp = require('mp')
 local msg = require('mp.msg')
@@ -12,6 +13,8 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local nav = require('mu.nav')
+local N = nav.new()
 local prefs = require('mu.prefs')
 
 local SCRIPT = mp.get_script_name()
@@ -488,7 +491,7 @@ set_button = function()
     tooltip = 'Saltar intro: ' .. why() .. ' · alt+j para marcarla a mano'
   end
   local spec = {
-    icon = 'skip_next', active = inside, hide = not opts.enabled or not state.local_video, tooltip = tooltip,
+    icon = 'skip_next', active = inside, hide = not opts.enabled or not state.local_video or not inside, tooltip = tooltip,
     badge = inside and (state.current == 'intro' and 'intro' or 'fin') or nil,
     command = { 'script-binding', SCRIPT .. '/skip' },
   }
@@ -627,9 +630,9 @@ local function menu_items()
 end
 
 local function base_menu()
-  return { type = MENU, title = 'Saltar intro y créditos', items = menu_items(), callback = { SCRIPT, EVENT },
-    keep_open = true, search_submenus = false,
-    footnote = 'mpvd compara el audio con los otros episodios de la temporada (misma carpeta o carpetas hermanas)' }
+  return nav.decorate({ type = MENU, title = N:title({ 'Saltar intro y créditos' }), items = menu_items(),
+    callback = { SCRIPT, EVENT }, keep_open = true, search_submenus = false,
+    footnote = 'mpvd compara el audio con los otros episodios de la temporada (misma carpeta o carpetas hermanas)' })
 end
 
 refresh_menu = function()
@@ -708,6 +711,12 @@ end
 
 mp.register_script_message(EVENT, function(json)
   local ev = utils.parse_json(json or '') or {}
+  local back, handled = nav.classify(ev)
+  if handled then return end
+  if back then
+    if not N:leave() then uosc.close(MENU) end
+    return
+  end
   if ev.type ~= 'activate' then return end
   local v = type(ev.value) == 'table' and ev.value or {}
   if v.toggle then
@@ -744,7 +753,7 @@ on_options = function()
 end
 
 mp.add_key_binding(nil, 'skip', function() skip(nil) end)
-mp.add_key_binding(nil, 'intro-menu', open_menu)
+N:binding('intro-menu', open_menu)
 mp.add_key_binding(nil, 'intro-mark-start', function() mark('intro', 'start') end)
 mp.add_key_binding(nil, 'intro-mark-end', function() mark('intro', 'end') end)
 mp.add_key_binding(nil, 'credits-mark-start', function() mark('credits', 'start') end)

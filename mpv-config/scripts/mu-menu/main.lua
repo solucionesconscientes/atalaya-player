@@ -9,6 +9,7 @@ package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local prefs = require('mu.prefs')
+local nav = require('mu.nav')
 
 local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-menu-event'
@@ -24,11 +25,13 @@ local opts = {
   recents_in_root = 5,     -- "continue watching" entries shown inline in the root menu
   palette_limit = 8,       -- results per section in the palette
   osd_seconds = 3,
+  click_pause = false,     -- a left click on the video toggles pause (preference, off by default)
 }
 options.read_options(opts, 'mu-menu')
 -- remembered "continue watching" switch (mu/prefs.lua; --script-opts=mu-menu-resume=… still wins)
-local P = prefs.ns('mu-menu', { resume = opts.resume })
-P:apply_opts(opts, 'mu-menu', { 'resume' })
+local P = prefs.ns('mu-menu', { resume = opts.resume, click_pause = opts.click_pause })
+P:apply_opts(opts, 'mu-menu', { 'resume', 'click_pause' })
+local N = nav.new()
 
 local state = {
   view = '', stack = {}, items = {},
@@ -41,7 +44,7 @@ local function publish()
     view = state.view, depth = #state.stack, items = state.items, path = state.path, tracked = state.tracked,
     resumed = state.resumed, position = state.position, palette_query = state.palette_query,
     palette_results = state.palette_results, last_error = state.last_error, start_shown = state.start_shown,
-    resume = opts.resume,
+    resume = opts.resume, click_pause = opts.click_pause,
   })
 end
 
@@ -184,10 +187,20 @@ local function remember(items)
   state.items = out
 end
 
+local function levels()
+  local out = {}
+  for _, spec in ipairs(state.stack) do out[#out + 1] = spec.title end
+  return out
+end
+
 local function base_menu(title, items, extra)
-  local menu = { type = MENU, title = title, items = items, callback = { SCRIPT, EVENT }, on_close = 'callback',
+  local top = state.stack[#state.stack]
+  if top then top.title = title end
+  local menu = { type = MENU, title = N:title(levels()), items = items, callback = { SCRIPT, EVENT }, on_close = 'callback',
                  keep_open = false, search_submenus = true }
   for k, v in pairs(extra or {}) do menu[k] = v end
+  -- the top of the main menu (root, start screen) has nowhere to go back to
+  if #state.stack > 1 then nav.decorate(menu) end
   return menu
 end
 
@@ -229,55 +242,6 @@ local function recent_item(r)
   }
 end
 
-local function static_root_items()
-  local playing = (mp.get_property('path') or '') ~= ''
-  local items = {
-    { title = 'Buscar: comandos, canales, recientes…', hint = 'alt+p', icon = 'search', value = { view = 'palette' } },
-    { title = 'Abrir archivo', hint = 'o', icon = 'folder_open', value = { cmd = { 'script-binding', 'uosc/open-file' } } },
-    { title = 'Abrir URL (YouTube y otras webs)…', hint = 'ctrl+u', icon = 'link',
-      value = { cmd = { 'script-binding', 'mu_ytdl/open-url' } } },
-    { title = 'Buscar en YouTube', hint = 'ctrl+f', icon = 'travel_explore',
-      value = { cmd = { 'script-binding', 'mu_ytdl/yt-search' } } },
-    { title = 'TV y radio', hint = 'alt+t', icon = 'live_tv', value = { cmd = { 'script-binding', 'mu_iptv/tv-menu' } } },
-    { title = 'Vídeos de internet: calidad y descargas', hint = 'alt+y', icon = 'download',
-      value = { cmd = { 'script-binding', 'mu_ytdl/ytdl-menu' } } },
-    { title = 'Subtítulos IA (whisper)', hint = 'alt+i', icon = 'closed_caption',
-      value = { cmd = { 'script-binding', 'mu_subs/subs-menu' } } },
-    { title = 'Sonido e imagen (filtros, diagnóstico)', hint = 'alt+v', icon = 'tune',
-      value = { cmd = { 'script-binding', 'mu_av/av-menu' } } },
-    { title = 'Saltar intro y créditos', hint = 'alt+j', icon = 'skip_next',
-      value = { cmd = { 'script-binding', 'mu_intro/intro-menu' } } },
-    { title = 'Estudio (repetir línea, velocidad inteligente, notas, clips)', hint = 'alt+e', icon = 'school',
-      value = { cmd = { 'script-binding', 'mu_study/study-menu' } } },
-    { title = 'Mando a distancia (QR para el móvil)', hint = 'alt+z', icon = 'qr_code_2',
-      value = { cmd = { 'script-binding', 'mu_remote/remote-qr' } } },
-    { title = 'Lista de reproducción', hint = 'p', icon = 'list_alt', value = { cmd = { 'script-binding', 'uosc/playlist' } },
-      separator = true },
-  }
-  local function binding(title, key, icon, name)
-    return { title = title, hint = key, icon = icon, value = { cmd = { 'script-binding', name } } }
-  end
-  if playing then
-    table.insert(items, binding('Subtítulos', 's', 'subtitles', 'uosc/subtitles'))
-    table.insert(items, binding('Audio', 'a', 'graphic_eq', 'uosc/audio'))
-    table.insert(items, binding('Capítulos', 'c', 'bookmark', 'uosc/chapters'))
-    table.insert(items, { title = 'Captura de pantalla', hint = 'ctrl+s', icon = 'photo_camera',
-                          value = { cmd = { 'async', 'screenshot' } } })
-  end
-  table.insert(items, { title = 'Preferencias', icon = 'settings', items = {
-    { title = 'Continuar viendo', hint = opts.resume and 'activado' or 'desactivado', icon = 'history',
-      active = opts.resume, value = { cmd = { 'script-binding', SCRIPT .. '/resume-toggle' } } },
-    { title = 'Restablecer preferencias…', hint = 'se guarda una copia', icon = 'restart_alt',
-      value = { cmd = { 'script-message-to', 'mu_prefs', 'reset-ask' } } },
-  } })
-  table.insert(items, { title = 'Más opciones (ver, audio, subtítulos, repetir…)', hint = 'ctrl+m', icon = 'menu',
-                        value = { cmd = { 'script-binding', 'uosc/menu' } } })
-  table.insert(items, { title = 'Todas las teclas', icon = 'keyboard',
-                        value = { cmd = { 'script-binding', 'uosc/keybinds' } }, separator = true })
-  table.insert(items, { title = 'Salir', hint = 'q', icon = 'logout', value = { cmd = { 'quit' } } })
-  return items
-end
-
 local function with_recents(limit, unfinished, cb)
   if not rpc.connected() then cb(nil, {}) return end
   rpc.call('watch.recents', { limit = limit, unfinished_only = unfinished }, function(err, rows)
@@ -286,21 +250,166 @@ local function with_recents(limit, unfinished, cb)
   end, 10)
 end
 
+-- item builders: a command, a key binding, another view of this menu, another script's menu one level down
+local function cmd(title, hint, icon, command, extra)
+  local it = { title = title, hint = hint, icon = icon, value = { cmd = command } }
+  for k, v in pairs(extra or {}) do it[k] = v end
+  return it
+end
+local function bind(title, hint, icon, name, extra) return cmd(title, hint, icon, { 'script-binding', name }, extra) end
+local function sub(title, hint, icon, view, extra)
+  local it = { title = title, hint = hint, icon = icon, value = { view = view } }
+  for k, v in pairs(extra or {}) do it[k] = v end
+  return it
+end
+local function child(title, hint, icon, script, entry, extra)
+  local it = { title = title, hint = hint, icon = icon, value = { child = { script = script, entry = entry } } }
+  for k, v in pairs(extra or {}) do it[k] = v end
+  return it
+end
+local function toggle(title, on, icon, pref, extra)
+  local it = { title = title, hint = on and 'sí' or 'no', icon = icon, active = on, value = { pref = pref } }
+  for k, v in pairs(extra or {}) do it[k] = v end
+  return it
+end
+
+-- The main menu: eight categories (H15). TV y radio and Descargas open their module directly; the others are views
+-- here that lead into the modules one level down (their "Atrás" comes back to the category).
+local CATEGORIES = {
+  { title = 'Abrir', icon = 'folder_open', hint = 'archivo, URL, YouTube', view = 'open' },
+  { title = 'TV y radio', icon = 'live_tv', hint = 'alt+t', child = { 'mu_iptv', 'tv-menu' } },
+  { title = 'Descargas y conversión', icon = 'download', hint = 'alt+y', child = { 'mu_ytdl', 'ytdl-menu' } },
+  { title = 'Subtítulos', icon = 'subtitles', view = 'subs' },
+  { title = 'Imagen y sonido', icon = 'tune', view = 'av' },
+  { title = 'Grabar', icon = 'fiber_manual_record', hint = 'capturas, directos, clips', view = 'record' },
+  { title = 'Herramientas', icon = 'handyman', hint = 'intro, estudio, mando…', view = 'tools' },
+  { title = 'Preferencias', icon = 'settings', view = 'prefs' },
+}
+
+local function root_items()
+  local items = {}
+  for _, c in ipairs(CATEGORIES) do
+    if c.view then table.insert(items, sub(c.title, c.hint, c.icon, c.view))
+    else table.insert(items, child(c.title, c.hint, c.icon, c.child[1], c.child[2])) end
+  end
+  items[#items].separator = true
+  table.insert(items, { title = 'Buscar comandos, canales y recientes…', hint = 'alt+p', icon = 'search',
+                        value = { view = 'palette' } })
+  table.insert(items, bind('Ayuda: teclas principales', '?', 'help_outline', SCRIPT .. '/help'))
+  table.insert(items, cmd('Salir', 'q', 'logout', { 'quit' }))
+  return items
+end
+
 views.root = function()
-  local items = static_root_items()
-  show('MPV-UOS', items, { footnote = 'Enter abre · / busca · ⌫ atrás' })
+  local items = root_items()
+  show('MPV-UOS', items, { footnote = 'Enter abre · ⌫ o ← atrás · Esc cierra · ? ayuda' })
   with_recents(opts.recents_in_root, true, function(_, rows)
-    if state.view ~= 'root' then return end
-    if #rows > 0 then
-      local sub = {}
-      for _, r in ipairs(rows) do table.insert(sub, recent_item(r)) end
-      table.insert(sub, { title = 'Todos los recientes…', icon = 'history', value = { view = 'recents' } })
-      table.insert(items, 2, { title = 'Continuar viendo', hint = tostring(#rows), items = sub })
-    else
-      table.insert(items, 2, { title = 'Recientes', icon = 'history', value = { view = 'recents' } })
-    end
-    show('MPV-UOS', items, { footnote = 'Enter abre · / busca · ⌫ atrás' })
+    if state.view ~= 'root' or #rows == 0 then return end
+    local list = {}
+    for _, r in ipairs(rows) do table.insert(list, recent_item(r)) end
+    table.insert(list, { title = 'Todos los recientes…', icon = 'history', value = { view = 'recents' } })
+    table.insert(items, 1, { title = 'Continuar viendo', hint = tostring(#rows), icon = 'history', items = list,
+                             separator = true })
+    show('MPV-UOS', items, { footnote = 'Enter abre · ⌫ o ← atrás · Esc cierra · ? ayuda' })
   end)
+end
+
+views.open = function()
+  show('Abrir', {
+    bind('Abrir archivo', 'o', 'folder_open', 'uosc/open-file'),
+    bind('Abrir URL (YouTube y otras webs)…', 'ctrl+u', 'link', 'mu_ytdl/open-url'),
+    bind('Buscar en YouTube', 'ctrl+f', 'travel_explore', 'mu_ytdl/yt-search'),
+    cmd('Pegar URL o ruta copiada', 'ctrl+v', 'content_paste', { 'loadfile', '${clipboard/text}', 'replace' }),
+    sub('Recientes', 'alt+h', 'history', 'recents', { separator = true }),
+    bind('Lista de reproducción', 'p', 'playlist_play', 'uosc/playlist'),
+  })
+end
+
+views.subs = function()
+  show('Subtítulos', {
+    bind('Elegir pista de subtítulos', 's', 'subtitles', 'uosc/subtitles'),
+    bind('Cargar un archivo de subtítulos', 'alt+s', 'upload_file', 'uosc/load-subtitles'),
+    cmd('Mostrar u ocultar', 'v', 'visibility', { 'cycle', 'sub-visibility' }, { separator = true }),
+    child('Subtítulos IA y traducción', 'alt+i', 'closed_caption', 'mu_subs', 'subs-menu'),
+    bind('Guardar subtítulos (SRT)', 'alt+S', 'save', 'mu_subs/subs-save'),
+  })
+end
+
+views.av = function()
+  show('Imagen y sonido', {
+    bind('Pista de audio', 'a', 'graphic_eq', 'uosc/audio'),
+    bind('Salida de sonido', nil, 'speaker', 'uosc/audio-device'),
+    cmd('Silenciar', 'm', 'volume_off', { 'cycle', 'mute' }, { separator = true }),
+    bind('Pista de vídeo', nil, 'movie', 'uosc/video'),
+    bind('Calidad del directo o del vídeo', 'ctrl+q', 'high_quality', 'uosc/stream-quality'),
+    cmd('Relación de aspecto', 'A', 'aspect_ratio', { 'cycle-values', 'video-aspect-override', '16:9', '4:3', '2.35:1', '-1' }),
+    cmd('Quitar rayas (desentrelazar)', 'd', 'blur_linear', { 'cycle', 'deinterlace' }, { separator = true }),
+    child('Filtros: diálogo claro, modo noche, ruido…', 'alt+v', 'tune', 'mu_av', 'av-menu'),
+    bind('Modo noche', 'alt+n', 'bedtime', 'mu_av/av-night'),
+  })
+end
+
+views.record = function()
+  show('Grabar', {
+    cmd('Captura de pantalla', 'ctrl+s', 'photo_camera', { 'async', 'screenshot' }),
+    cmd('Captura sin subtítulos', nil, 'photo_camera', { 'async', 'screenshot', 'video' }, { separator = true }),
+    bind('Grabar el directo / detener', 'alt+r', 'fiber_manual_record', 'mu_iptv/record-toggle'),
+    cmd('Marcar tramo A-B', 'l', 'repeat', { 'ab-loop' }),
+    bind('Guardar el tramo A-B como clip', 'alt+u', 'content_cut', 'mu_study/clip'),
+  })
+end
+
+views.tools = function()
+  show('Herramientas', {
+    sub('Buscar comandos, canales y recientes…', 'alt+p', 'search', 'palette'),
+    child('Saltar intro y créditos', 'alt+j', 'skip_next', 'mu_intro', 'intro-menu'),
+    child('Estudio: repetir, velocidad, notas', 'alt+e', 'school', 'mu_study', 'study-menu'),
+    child('Mando desde el móvil', 'alt+Z', 'qr_code_2', 'mu_remote', 'remote-menu', { separator = true }),
+    bind('Capítulos', 'c', 'bookmark', 'uosc/chapters'),
+    cmd('Repetir este archivo', 'L', 'repeat_one', { 'cycle-values', 'loop-file', 'inf', 'no' }),
+    bind('Mostrar en la carpeta', 'alt+o', 'folder', 'uosc/show-in-directory', { separator = true }),
+    { title = 'Estado del reproductor', icon = 'monitor_heart', value = { action = 'status' } },
+    bind('Todas las teclas', nil, 'keyboard', 'uosc/keybinds'),
+    bind('Todas las opciones de mpv', 'ctrl+m', 'menu', 'uosc/menu'),
+  })
+end
+
+views.prefs = function()
+  show('Preferencias', {
+    toggle('Continuar viendo donde lo dejé', opts.resume, 'history', 'resume'),
+    toggle('Pausar con un clic en el vídeo', opts.click_pause, 'touch_app', 'click_pause', { separator = true }),
+    { title = 'Restablecer preferencias…', hint = 'se guarda una copia', icon = 'restart_alt',
+      value = { cmd = { 'script-message-to', 'mu_prefs', 'reset-ask' } } },
+    bind('Abrir la carpeta de configuración', 'ctrl+o', 'folder_open', 'uosc/open-config-directory'),
+  })
+end
+
+-- On-screen help (`?`): the keys that matter, in plain words; Enter on the last row lists every key.
+local HELP = {
+  { 'Espacio', 'reproducir / pausa' },
+  { '← →', 'atrás / adelante 5 segundos' },
+  { '↑ ↓', 'atrás / adelante 1 minuto' },
+  { '9 0 · rueda', 'volumen' },
+  { 'f · doble clic', 'pantalla completa' },
+  { 'm', 'silenciar' },
+  { 's · a', 'subtítulos · audio' },
+  { 'alt+m · clic derecho', 'menú' },
+  { 'alt+p', 'buscar comandos, canales y recientes' },
+  { 'ctrl+u · ctrl+f', 'abrir URL · buscar en YouTube' },
+  { 'alt+t', 'TV y radio' },
+  { '⌫ · ←', 'volver atrás en un menú' },
+  { 'Esc', 'cerrar el menú' },
+  { 'q', 'salir' },
+}
+
+views.help = function()
+  local items = {}
+  for _, h in ipairs(HELP) do
+    table.insert(items, { title = h[2], hint = h[1], selectable = false })
+  end
+  items[#items].separator = true
+  table.insert(items, bind('Ver todas las teclas', nil, 'keyboard', 'uosc/keybinds'))
+  show('Ayuda', items, { footnote = 'Esc cierra' })
 end
 
 views.recents = function()
@@ -318,14 +427,12 @@ end
 
 views.start = function()
   local items = {
-    { title = 'Abrir archivo', hint = 'o', icon = 'folder_open', value = { cmd = { 'script-binding', 'uosc/open-file' } } },
-    { title = 'Abrir URL (YouTube y otras webs)…', hint = 'ctrl+u', icon = 'link',
-      value = { cmd = { 'script-binding', 'mu_ytdl/open-url' } } },
-    { title = 'Buscar en YouTube', hint = 'ctrl+f', icon = 'travel_explore',
-      value = { cmd = { 'script-binding', 'mu_ytdl/yt-search' } } },
-    { title = 'TV y radio', hint = 'alt+t', icon = 'live_tv', value = { cmd = { 'script-binding', 'mu_iptv/tv-menu' } } },
-    { title = 'Buscar comandos, canales y recientes…', hint = 'alt+p', icon = 'search', value = { view = 'palette' } },
-    { title = 'Más opciones', hint = 'alt+m', icon = 'apps', value = { view = 'root' }, separator = true },
+    bind('Abrir archivo', 'o', 'folder_open', 'uosc/open-file'),
+    bind('Abrir URL (YouTube y otras webs)…', 'ctrl+u', 'link', 'mu_ytdl/open-url'),
+    bind('Buscar en YouTube', 'ctrl+f', 'travel_explore', 'mu_ytdl/yt-search'),
+    child('TV y radio', 'alt+t', 'live_tv', 'mu_iptv', 'tv-menu'),
+    sub('Buscar comandos, canales y recientes…', 'alt+p', 'search', 'palette'),
+    sub('Menú principal', 'alt+m', 'apps', 'root', { separator = true }),
   }
   show('MPV-UOS · Inicio', items)
   with_recents(12, false, function(_, rows)
@@ -611,11 +718,24 @@ local function open_recent(v)
   mp.commandv('loadfile', v.open, 'replace')
 end
 
+local set_pref  -- defined with the bindings
+
 mp.register_script_message(EVENT, function(json)
   local ev = utils.parse_json(json or '') or {}
+  local back, handled = nav.classify(ev)
+  if handled then return end
+  if back then ev.type = 'back' end
   if ev.type == 'activate' then
     local v = type(ev.value) == 'table' and ev.value or {}
-    if v.cmd then
+    if v.child then
+      -- another script's menu, one level below this one: it gets our crumbs and comes back here on "Atrás"
+      local crumbs = { nav.HOME }
+      for _, spec in ipairs(state.stack) do crumbs[#crumbs + 1] = spec.title end
+      nav.open_child(v.child.script, v.child.entry, crumbs, state.view)
+    elseif v.pref then
+      set_pref(v.pref, not opts[v.pref])
+      reopen_current()
+    elseif v.cmd then
       uosc.close(MENU)
       uosc.close(PALETTE)
       if type(v.cmd) == 'table' then mp.command_native(v.cmd) else mp.command(v.cmd) end
@@ -656,6 +776,22 @@ mp.register_script_message(EVENT, function(json)
   end
 end)
 
+-- a module opened from here went back past its root: show the view it was opened from (one level above it)
+mp.register_script_message('mu-nav-return', function(view)
+  if not uosc.available() then return end
+  state.stack = {}
+  if view == 'start' then
+    table.insert(state.stack, { name = 'start' })
+  else
+    table.insert(state.stack, { name = 'root', title = nav.HOME })
+    if view and view ~= '' and view ~= 'root' and view ~= 'palette' and views[view] then
+      table.insert(state.stack, { name = view })
+    end
+  end
+  state.force_open = true
+  open_view(table.remove(state.stack))
+end)
+
 local reset_timer = nil
 mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
   if reset_timer then reset_timer:kill(); reset_timer = nil end
@@ -689,21 +825,55 @@ local function open_palette()
   open_view({ name = 'palette' })
 end
 
+-- opens a view of the main menu with the root below it (so "Atrás" leads to the main menu)
+local function open_under_root(view)
+  if not uosc.available() then osd('uosc no está cargado') return end
+  state.stack = { { name = 'root', title = nav.HOME } }
+  state.force_open = uosc.open_type() ~= MENU
+  open_view({ name = view })
+end
+
+-- click on the video → pause (only while the preference is on: bound, the left button would stop dragging the window)
+local function apply_click_pause()
+  if opts.click_pause then
+    mp.add_key_binding('MBTN_LEFT', 'click-pause', function()
+      mp.command('cycle pause')
+    end)
+  else
+    mp.remove_key_binding('click-pause')
+  end
+end
+
+local PREF_LABELS = { resume = 'Continuar viendo', click_pause = 'Pausar con un clic en el vídeo' }
+set_pref = function(name, value)
+  opts[name] = value and true or false
+  P:set(name, opts[name])
+  if name == 'click_pause' then apply_click_pause() end
+  publish()
+  osd((PREF_LABELS[name] or name) .. ': ' .. (opts[name] and 'activado' or 'desactivado'))
+end
+
 mp.add_key_binding(nil, 'root', open_root)
 mp.add_key_binding(nil, 'palette', open_palette)
-mp.add_key_binding(nil, 'recents', function() state.stack = { { name = 'root' } }; open_view({ name = 'recents' }) end)
-mp.add_key_binding(nil, 'resume-toggle', function()
-  opts.resume = not opts.resume
-  P:set('resume', opts.resume)
-  publish()
-  osd(opts.resume and 'Continuar viendo: activado' or 'Continuar viendo: desactivado')
-end)
+mp.add_key_binding(nil, 'recents', function() open_under_root('recents') end)
+mp.add_key_binding(nil, 'help', function() open_under_root('help') end)
+mp.add_key_binding(nil, 'record', function() open_under_root('record') end)
+mp.add_key_binding(nil, 'resume-toggle', function() set_pref('resume', not opts.resume) end)
+mp.add_key_binding(nil, 'click-pause-toggle', function() set_pref('click_pause', not opts.click_pause) end)
+N:entry('root', open_root)
 P:on_change(function(reason)
-  if reason == 'reset' then opts.resume = P:get('resume'); publish() end
+  if reason == 'reset' then
+    opts.resume, opts.click_pause = P:get('resume'), P:get('click_pause')
+    apply_click_pause()
+    publish()
+  end
 end)
+apply_click_pause()
 
 local function set_button()
-  uosc.set_button('mu-menu', { icon = 'apps', tooltip = 'MPV-UOS (alt+m)', command = { 'script-binding', SCRIPT .. '/root' } })
+  uosc.set_button('mu-menu', { icon = 'apps', tooltip = 'Menú (alt+m)', command = { 'script-binding', SCRIPT .. '/root' } })
+  uosc.set_button('mu-record', { icon = 'fiber_manual_record', tooltip = 'Grabar',
+                                 command = { 'script-binding', SCRIPT .. '/record' } })
 end
 mp.register_script_message('uosc-version', set_button)
 mp.observe_property('user-data/mu/core', 'native', function(_, core)

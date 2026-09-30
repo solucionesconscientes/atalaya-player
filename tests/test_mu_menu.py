@@ -74,12 +74,12 @@ def test_continue_watching_survives_rename_and_root_menu(menu_mpv, media_dir, tm
     h.wait_property("idle-active", lambda v: v is True, timeout=30)  # keep-open=no → eof → idle
     d.wait(lambda: any(r["path"].endswith("chapters.mkv") and r["finished"] for r in d.call("watch.recents")), timeout=20)
 
-    # root menu: static entries + "Continuar viendo" submenu with the unfinished video
+    # root menu: "Continuar viendo" submenu with the unfinished video on top of the eight categories
     h.command("script-binding", "mu_menu/root")
     h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-menu", timeout=15)
     st = wait_menu(h, "root", lambda v: "Continuar viendo" in titles(v))
     t = titles(st)
-    assert t[0].startswith("Buscar") and "Abrir archivo" in t and "TV y radio" in t and "Salir" in t
+    assert t[0] == "Continuar viendo" and "Abrir" in t and "TV y radio" in t and "Preferencias" in t and "Salir" in t
     cont = next(i for i in st["items"] if i["title"] == "Continuar viendo")
     assert cont["submenu"] == 2 and cont["hint"] == "1"  # 1 resumable + "Todos los recientes…"
     # activating a recent through the callback loads it (uosc would send the leaf item's value)

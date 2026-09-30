@@ -14,6 +14,8 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local nav = require('mu.nav')
+local N = nav.new()
 local prefs = require('mu.prefs')
 
 local SCRIPT = mp.get_script_name()
@@ -584,7 +586,6 @@ local function translate_apply(res)
   state.translate.out = res.srt
   state.translate.progress = 1
   state.translate.engines = table.concat(res.engines or {}, '+')
-  publish()
   local existing = find_track(res.srt)
   local title = 'Traducción (' .. (res.target or state.translate.target or '?') .. ')'
   if existing then
@@ -593,6 +594,7 @@ local function translate_apply(res)
   else
     mp.command_native({ 'sub-add', res.srt, 'select', title, res.target or '' })
   end
+  publish()  -- after the track exists: whoever sees "done" finds it in track-list
   if state.dual or P:get('dual') then apply_dual(true) end
   if opts.notify_done then
     osd('✓ ' .. title .. (res.cached and ' (caché)' or '') .. ': ' .. tostring(res.cues or 0) .. ' cues')
@@ -969,7 +971,7 @@ local function base_menu(title, items, extra)
     on_close = 'callback', keep_open = false, search_submenus = false,
   }
   for k, v in pairs(extra or {}) do menu[k] = v end
-  return menu
+  return N:frame(menu, state.stack)
 end
 
 local function show(title, items, extra)
@@ -1333,6 +1335,9 @@ end
 
 mp.register_script_message(EVENT, function(json)
   local ev = utils.parse_json(json or '') or {}
+  local back, handled = nav.classify(ev)
+  if handled then return end
+  if back then ev.type = 'back' end
   if ev.type == 'activate' then
     local v = type(ev.value) == 'table' and ev.value or {}
     if v.toggle then
@@ -1396,7 +1401,11 @@ mp.register_script_message(EVENT, function(json)
     end
   elseif ev.type == 'back' then
     table.remove(state.stack)
-    if #state.stack == 0 then uosc.close(MENU) else reopen_current() end
+    if #state.stack == 0 then
+      if not N:leave() then uosc.close(MENU) end
+    else
+      reopen_current()
+    end
   end
 end)
 
@@ -1441,12 +1450,12 @@ end
 
 open_save_menu = function()
   if not uosc.available() then return end
-  state.stack = { { name = 'root' } }
+  state.stack = { { name = 'root', title = 'Subtítulos IA' } }
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'save' })
 end
 
-mp.add_key_binding(nil, 'subs-menu', open_root)
+N:binding('subs-menu', open_root)
 mp.add_key_binding(nil, 'subs-toggle', toggle)
 mp.add_key_binding(nil, 'subs-resync', resync_selected)
 mp.add_key_binding(nil, 'subs-save', save_default)

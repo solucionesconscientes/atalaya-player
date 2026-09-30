@@ -49,8 +49,9 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-H15 · Interfaz y navegación (plan aprobado por Ser el 2026-09-30: H15–H28 en BACKLOG.md; H26 torrents pendiente de decisión).
-H14 cerrado (2026-09-30). Pendiente de Ser: abrir el puerto del mando en ufw y probar el desentrelazado con 7TV (NEEDS_HUMAN.md).
+H16 · Sincronía de los subtítulos IA (tiempos por palabra de whisper.cpp: verificar primero las opciones reales del whisper-cli
+vendorizado — `--dtw`, `-ml`, `-sow`, `-ojf`/tokens — con un subagente; luego cortes y reglas de lectura con test de desfase < 150 ms).
+H15 cerrado (2026-09-30, ADR-041). H14 cerrado (2026-09-30). Pendiente de Ser: abrir el puerto del mando en ufw y probar el desentrelazado con 7TV (NEEDS_HUMAN.md).
 Siguiente tanda posible: B11 «¿qué me he perdido?», B6 OCR de subtítulos, C2–C3 diccionario/Anki, E4 MPRIS, I1/I5.
 Backlog completo. Si se reanuda: (1) Ser abre el puerto del mando y autoriza Notion (NEEDS_HUMAN.md) y ejecuta `/registrar`;
 (2) nuevos hitos a partir del TOP 10 de docs/VISION.md, empezando por B11 "¿qué me he perdido?" (resumen extractivo de la
@@ -58,6 +59,38 @@ transcripción entre dos tiempos con los embeddings de H10) y E4 MPRIS (script m
 named pipe en mpvd (`server.py`, `client.py`, `mpvipc.py`) + `bin/mpv-uos.ps1`.
 
 ## Registro por iteración
+### Iteración nocturna 2026-09-30 · H15 · Interfaz y navegación — hecho
+- `script-modules/mu/nav.lua` (ADR-041): migas en el título, fila «Atrás», ⌫/←/botón atrás del ratón y traspaso entre scripts
+  (`mu-nav-open` / `mu-nav-return`); integrado en mu-menu, mu-iptv, mu-ytdl, mu-subs, mu-av, mu-intro, mu-study y mu-remote.
+  Las paletas (URL, YouTube, canal) siguen cerrándose con ⌫ vacío.
+- Menú principal: *Continuar viendo* (si hay algo) + Abrir, TV y radio, Descargas y conversión, Subtítulos, Imagen y sonido, Grabar,
+  Herramientas, Preferencias; `?` ayuda; Preferencias › «Pausar con un clic en el vídeo» (desactivado); botón ● Grabar en la barra
+  (abre la categoría Grabar hasta H18). Raíces renombradas: «Descargas y conversión» (yt-dlp), «Filtros de imagen y sonido».
+- uosc.conf: barra reducida (⏭ solo dentro de un segmento), `menu_item_height=42`.
+- De paso: mu-subs publicaba «traducción lista» antes de añadir la pista (carrera que hacía fallar test_mu_subs en el check).
+- Tests: `tests/test_nav.py` (9: categorías y migas, entrar en un módulo desde una categoría y volver con la fila Atrás, ⌫ y ← reales
+  por uosc, Esc, ayuda, cada uno de los 7 módulos abre con su tecla → ⌫ al menú principal → Esc, clic-pausa opcional).
+  `tools/check.sh`: 301 sin red + 8 con red en verde.
+- Probar a mano:
+  ```bash
+  bin/mpv-uos tests/fixtures/media/video30.mkv
+  # clic derecho → Subtítulos → «Subtítulos IA y traducción»: el título dice «MPV-UOS › Subtítulos › Subtítulos IA»;
+  #   ⌫ vuelve a Subtítulos, ← otra vez al principal, Esc cierra; clic en «Atrás» hace lo mismo con el ratón
+  # alt+t (TV) y ⌫ → menú principal · ? → ayuda · Preferencias → «Pausar con un clic en el vídeo» y clic sobre el vídeo
+  uv run pytest tests/test_nav.py -q
+  ```
+#### H15 — plan
+- Verificado en uosc 5.13 (vendorizado): el título solo se pinta en la raíz de un menú; ⌫ y el botón «atrás» del ratón en la raíz
+  mandan `{type:'back'}`; ← en la raíz (sin submenú padre ni búsqueda) llega como `{type:'key', id:'left'}`; `script-binding
+  uosc/menu-back` vuelve al submenú padre o, en la raíz, manda `back`; `selected_index` del JSON solo cuenta en la raíz.
+- `script-modules/mu/nav.lua`: migas («MPV-UOS › TV y radio › España»), fila «‹ Atrás» primera en cada vista (con la selección de
+  teclado en la fila siguiente), ←/⌫/fila = atrás, y al vaciar la pila de un módulo vuelve a quien lo abrió (por defecto el menú
+  principal) con `script-message-to mu_menu mu-nav-return <vista>`. El menú principal abre los módulos con `mu-nav-open` y les pasa
+  sus migas. `user-data/mu/nav` publica el título y el script activos (tests).
+- mu-menu: raíz en 8 categorías con icono (Abrir, TV y radio, Descargas y conversión, Subtítulos, Imagen y sonido, Grabar,
+  Herramientas, Preferencias); `?` abre una ayuda en pantalla; clic en el vídeo para pausar como preferencia (desactivada).
+- Barra de uosc: reproducción, subtítulos, audio, velocidad, grabar, menú y pantalla completa; letra del menú mayor.
+- Tests headless de navegación (entrar, atrás, cerrar) en todos los módulos.
 ### Iteración 5 · 2026-09-29
 #### H13 · Cierre — hecho (commit "H13: cierre")
 - `tools/install.sh` (lanzador `~/.local/bin/mpv-uos` → checkout, `.desktop` validado con tipos MIME y `--wayland-app-id=mpv-uos`,

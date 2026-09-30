@@ -8,6 +8,8 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local nav = require('mu.nav')
+local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-iptv-event'
@@ -279,7 +281,7 @@ local function base_menu(title, items, extra)
     footnote = 'Enter reproduce · Tab acciones (★ favorito, copiar URL) · / busca · ⌫ atrás',
   }
   for k, v in pairs(extra or {}) do menu[k] = v end
-  return menu
+  return N:frame(menu, state.stack)
 end
 
 -- Titles and hints of the menu shown (two levels, capped): uosc does not expose its items (tests/diagnostics).
@@ -655,6 +657,9 @@ end
 
 mp.register_script_message(EVENT, function(json)
   local ev = utils.parse_json(json or '') or {}
+  local back, handled = nav.classify(ev)
+  if handled then return end
+  if back then ev.type = 'back' end
   if ev.type == 'activate' then
     local v = type(ev.value) == 'table' and ev.value or {}
     if v.health then
@@ -683,8 +688,13 @@ mp.register_script_message(EVENT, function(json)
   elseif ev.type == 'paste' then
     if state.view == 'add_list' then add_list(ev.value or '') end
   elseif ev.type == 'back' then
-    table.remove(state.stack)
-    if #state.stack == 0 then uosc.close(MENU) else reopen_current() end
+    local from = table.remove(state.stack)
+    if #state.stack == 0 then
+      -- the search palette closes (⌫ there is mostly "delete text"); menus return to their opener
+      if (from and from.name == 'search') or not N:leave() then uosc.close(MENU); uosc.close(SEARCH_MENU) end
+    else
+      reopen_current()
+    end
   elseif ev.type == 'close' then
     -- Not used for state: uosc dispatches `close` from its own thread while replacing a menu (old destroyed,
     -- new not yet created), so it is racy. The observer of user-data/uosc/menu/type below owns the reset.
@@ -723,9 +733,9 @@ local function open_root()
   open_view({ name = 'root' })
 end
 
-mp.add_key_binding(nil, 'tv-menu', open_root)
+N:binding('tv-menu', open_root)
 mp.register_script_message('mu-iptv-play', function(channel_id) if channel_id and channel_id ~= '' then play(channel_id) end end)
-mp.add_key_binding(nil, 'tv-search', function()
+N:binding('tv-search', function()
   state.stack = {}
   open_view({ name = 'search' })
 end)

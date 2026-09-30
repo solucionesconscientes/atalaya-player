@@ -8,6 +8,8 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local nav = require('mu.nav')
+local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
 local MENU = 'mu-remote'
@@ -178,15 +180,19 @@ local function menu_items()
   return items
 end
 
+local function remote_menu(items)
+  return nav.decorate({ type = MENU, title = N:title({ 'Mando a distancia' }), items = items, callback = { SCRIPT, EVENT } })
+end
+
 local function refresh_menu()
   if uosc.open_type() ~= MENU then return end
-  uosc.update({ type = MENU, title = 'Mando a distancia', items = menu_items(), callback = { SCRIPT, EVENT } })
+  uosc.update(remote_menu(menu_items()))
 end
 
 local function open_menu()
   if not uosc.available() then osd('Mando: uosc no disponible'); return end
   state.view = 'menu'
-  uosc.open({ type = MENU, title = 'Mando a distancia', items = uosc.loading_items(), callback = { SCRIPT, EVENT } })
+  uosc.open(remote_menu(uosc.loading_items()))
   rpc.call('remote.status', nil, function(err, st)
     if err then fail(err, 'estado del mando'); return end
     state.status = st
@@ -225,12 +231,18 @@ end
 mp.register_script_message(EVENT, function(json)
   local ev = require('mp.utils').parse_json(json or '')
   if type(ev) ~= 'table' then return end
+  local back, handled = nav.classify(ev)
+  if handled then return end
+  if back then
+    if not N:leave() then uosc.close(MENU) end
+    return
+  end
   if ev.type == 'activate' and type(ev.value) == 'table' then menu_action(ev.value) end
   if ev.type == 'close' then state.view = ''; publish() end
 end)
 
 mp.add_key_binding(nil, 'remote-qr', toggle)
-mp.add_key_binding(nil, 'remote-menu', open_menu)
+N:binding('remote-menu', open_menu)
 mp.register_script_message('mu-remote-show', toggle)
 mp.register_script_message('mu-remote-hide', hide)
 publish()
