@@ -49,19 +49,68 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-Iteración 2026-09-30 (modo a tope) en curso. Hechos y en la rama: H19, H20 (fusionado), H24, H31, H33.
-(1) Lo PRIMERO si se reanuda: `git worktree list` y `git branch --list 'worktree-agent-*'`: ramas de subagentes H21
-(guía de TV y grabación programada, mu-iptv), H22 (biblioteca + OpenSubtitles, parche para mu-menu) y H25 (salas «ver
-juntos» + HLS, mu-share). Si tienen commits y sus tests pasan, `git merge --no-ff`, integrar sus textos compartidos
-(input.conf, ATAJOS.md, mu-menu, ADR 049/050/054, USO, PLATAFORMAS, PROGRESS) y `tools/check.sh` UNA vez.
-(2) H29 (subtítulos de la web): investigación en tmp/research-websubs/ (fixture de -J con automatic_captions y VTT
-automático real). Plan: `mpvd/subs/web.py` (lista de idiomas manuales/automáticos desde el -J, descarga del VTT,
-limpieza de líneas «rodantes» duplicadas de YouTube, SRT en caché), métodos `subs.web.list/fetch`, menú «Subtítulos de
-la web» en mu-subs (sub-add; traducir con subs.translate sobre el SRT; guardar como pista), test @network >1 min.
-(3) Después: H30 (TV: pistas CC/VO/AD y «Buscar en esta lista», cuando H21 esté fusionado), H23 (tras H22), H32, H27,
-H28, H25 punto 3–4 (túnel cloudflared solo con sala abierta, RTMP).
+Iteración 3 (2026-09-30, modo a tope) en curso. Fusionados: H30, H25 (salas + HLS), H23 (suscripciones: mpvd y
+cadena). Hechos: H27 modos (mini, salón con gamepad, sencillo) y «¿Qué me he perdido?».
+(1) Lo PRIMERO si se reanuda: `git worktree list` y `git branch --list 'worktree-agent-*'`: ramas de subagentes
+H23-UI (script mu-feeds, «Suscripciones»), H23 panel web de descargas (+ marcador «Enviar a MPV-UOS») y H25 sin
+túnel (sala pública solo ver, chat y reacciones, emitir por RTMP). Si tienen commits y sus tests pasan: `git merge
+--no-ff`, integrar sus textos (ADR-059/060/061, USO, input.conf/ATAJOS si proponen teclas, entrada en «Descargas y
+conversión» y test_nav) y `tools/check.sh` UNA vez.
+(2) Siguientes por orden: H32 puntos 1–2 (biblioteca musical, listas, ReplayGain, gapless/fundido; letras LRC,
+audiolibros con marcadores/velocidad por libro/temporizador), H27 «Enviar a la tele» (DLNA con SSDP+AVTransport;
+Chromecast con extra opcional), H28 (AppImage; Windows named pipe documentado).
+(3) Túnel de Compartir: bloqueado por permisos (NEEDS_HUMAN.md).
 
 ## Registro por iteración
+### Iteración 3 · 2026-09-30 · H27 · «¿Qué me he perdido?» — hecho
+- mpvd `recap.py` (`recap.summarize`): frases del propio diálogo del tramo (SRT/VTT/ASS externo, pista de texto
+  incrustada extraída a la caché, o transcripción IA ya hecha); embeddings de `semantic` si están, si no palabras que
+  se repiten; MMR para no repetir; 3–7 frases con su minuto (ADR-062).
+- mu-recap (`alt+R`, *Herramientas*): sigue foco/minimizado; al volver tras ≥ 60 s avisa; Enter salta a la frase.
+- Tests: test_recap.py (selección, ventana, fuentes por RPC con pista incrustada real, mu-recap headless con ausencia
+  simulada y salto, sin subtítulos).
+- Probar a mano:
+  ```bash
+  bin/mpv-uos --sub-file=<un .srt> <su vídeo>   # minimiza 2 min, vuelve: «¿Te has perdido algo? alt+R» → alt+R → Enter
+  ```
+
+### Iteración 3 · 2026-09-30 · H27 · Mini reproductor, modo salón y modo sencillo — hecho
+- mu-modes: mini (`alt+F`: ventana ~30 % del ancho, sin bordes, encima), salón (pantalla completa, uosc 1,8×,
+  subtítulos y OSD grandes; mando de consola), sencillo (menú principal de 4 categorías + «Menú completo», barra
+  mínima). Cada modo devuelve lo que cambió; salón y sencillo se recuerdan. En *Preferencias* (ADR-058).
+- mpvd `gamepad.py`: API de joystick de Linux (`/dev/input/js*`) en un hilo solo con el modo salón; A pausa, cruceta
+  ←/→ 10 s, ↑/↓ volumen, X subtítulos, Start menú, B cierra, LB/RB anterior/siguiente.
+- Tests: test_mu_modes.py (aplicar/restaurar, recordar, menú sencillo, gamepad con una FIFO).
+- Probar a mano:
+  ```bash
+  bin/mpv-uos tests/fixtures/media/video30.mkv   # alt+F mini · alt+m → Preferencias → Modo salón (con un mando Xbox)
+  bin/mpv-uos                                    # alt+m → Preferencias → Modo sencillo → alt+m muestra 4 categorías
+  ```
+
+### Iteración 3 · 2026-09-30 · H30 · TV: pistas del canal y «Buscar en esta lista» — hecho (subagente, fusionado)
+- mpvd `iptv/tracks.py` + `iptv.tracks` (nombres legibles desde el master HLS y el track-list; CC/VO/AD guardados por
+  canal), `iptv.search` por lista (ADR-055). mu-iptv: *Audio y subtítulos del canal*, distintivos, primera fila
+  «Buscar en esta lista». Tests: test_iptv_tracks, test_mu_iptv_tracks, @network La 1.
+- Probar a mano:
+  ```bash
+  bin/mpv-uos   # alt+t → España TV → «Buscar en esta lista» → la 1 → Enter · alt+t → Audio y subtítulos del canal
+  ```
+
+### Iteración 3 · 2026-09-30 · H25 · Compartir: salas y retransmisión (puntos 1–2) — hecho (subagente, fusionado)
+- mpvd `share/` (puerto 8791, token en el fragmento, cookie por sala, caducidad, intentos, permisos, SSE, HLS con
+  VA-API/CPU y WebVTT, hls.js vendorizado) y mu-share (`alt+W`, *Herramientas → Compartir*) (ADR-054).
+- Tests: test_share_rooms/http/hls/browser (Chrome sin ventana), test_mu_share.
+- Probar a mano (otro equipo de la wifi; antes el `ufw allow … 8791` de NEEDS_HUMAN.md):
+  ```bash
+  bin/mpv-uos tests/fixtures/media/video30.mkv   # alt+W → Crear una sala → abre el enlace del QR en el móvil
+  ```
+
+### Iteración 3 · 2026-09-30 · H23 · Suscripciones y cadena tras descargar (mpvd) — fusionado; menú en curso
+- mpvd `subscriptions/` (`feeds.*`): canales/listas por yt-dlp plano, podcasts RSS con ETag, franja, límite, red
+  medida, conservar N, borrar lo visto; cadena: loudnorm 2 pasadas, renombrar, mover a la biblioteca, subtítulos IA
+  (ADR-057). Tests: test_feeds, test_feeds_service, test_feeds_chain.
+- Probar a mano: `.venv/bin/python -m mpvd call feeds.detect '{"url":"https://www.youtube.com/@BlenderOfficial"}'`
+
 ### Iteración nocturna 2026-09-30 · H32 · punto 3 (solo audio en cualquier fuente) — hecho
 - mu-ytdl: `alt+a` en archivos locales y directos sin yt-dlp = `vid=no` local del archivo (instantáneo, sin recargar).
 - mu-av: *Solo audio al minimizar la ventana* (mu-prefs, desactivado): observa `window-minimized`, quita la pista de

@@ -165,7 +165,7 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
 ## H23 · Suscripciones, panel web y automatismos
 - [ ] Suscripciones a canales, listas y podcasts (RSS) con reglas (calidad, solo audio, conservar N, borrar lo visto), horarios de
       descarga, límite por franja y pausa con red medida.
-- [ ] Cadena tras descargar (SponsorBlock, volumen igualado, subtítulos IA + traducción, renombrar y mover a la biblioteca).
+- [x] Cadena tras descargar (SponsorBlock, volumen igualado, subtítulos IA + traducción, renombrar y mover a la biblioteca).
 - [ ] Panel web de descargas servido por mpvd (misma base que la PWA del mando): tabla, selección múltiple, arrastrar enlaces,
       historial, espacio en disco; «Enviar a MPV-UOS» desde el navegador (marcador + `mpv-uos://`); aviso al móvil al terminar.
 
@@ -173,10 +173,10 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
 - [x] MPRIS (controles de KDE, teclas multimedia, auriculares, pantalla de bloqueo), volumen igualado entre vídeos, ecualizador sencillo.
 
 ## H25 · Compartir: salas, ver juntos y emitir
-- [ ] Sala privada con enlace: «ver juntos» sincronizado (cada invitado reproduce la fuente en su navegador), permisos por invitado
+- [x] Sala privada con enlace: «ver juntos» sincronizado (cada invitado reproduce la fuente en su navegador), permisos por invitado
       (solo ver / puede controlar, con aprobación en pantalla, revocable), quién está conectado, avisos «Ana ha pausado».
-- [ ] Retransmisión de archivos locales a los invitados (HLS con subtítulos WebVTT, conversión al vuelo por VA-API si hace falta).
-- [ ] Túnel de Cloudflare (cloudflared en vendor/, sin cuenta) activo SOLO mientras la sala está abierta, con caducidad y límite de
+- [x] Retransmisión de archivos locales a los invitados (HLS con subtítulos WebVTT, conversión al vuelo por VA-API si hace falta).
+- [~] (túnel: permiso denegado en la sesión nocturna, ver NEEDS_HUMAN.md) Túnel de Cloudflare (cloudflared en vendor/, sin cuenta) activo SOLO mientras la sala está abierta, con caducidad y límite de
       intentos. Sala pública «solo ver» (cualquiera con el enlace, número máximo de espectadores, sin control ni chat).
 - [ ] «Emitir en directo» a una plataforma (YouTube Live, Twitch, PeerTube, Owncast) por RTMP con clave de emisión, para audiencias
       grandes. Chat y reacciones en salas privadas. Aviso legal: solo contenido que se puede compartir.
@@ -192,9 +192,9 @@ traducción en directo. Fuera también: imagen (mejoras de imagen, visor de foto
       vídeo de YouTube de más de 1 min con subtítulos automáticos.
 
 ## H30 · TV: subtítulos y audios del canal, búsqueda por categoría
-- [ ] Pistas propias del canal con nombres legibles (RTVE trae WebVTT es/en/gl/ca/eu; audio «qaa» = Versión original, «ads» =
+- [x] Pistas propias del canal con nombres legibles (RTVE trae WebVTT es/en/gl/ca/eu; audio «qaa» = Versión original, «ads» =
       Audiodescripción), distintivos CC / VO / AD en la lista de canales y acceso rápido desde el menú. Sin traducción en directo.
-- [ ] Buscador dentro de cada categoría general: en España TV, España radio, cada país de Mundo, Radio mundial, Favoritos y
+- [x] Buscador dentro de cada categoría general: en España TV, España radio, cada país de Mundo, Radio mundial, Favoritos y
       Recientes, «Buscar en esta lista» filtra solo sus canales (sin acentos, mismo motor que la búsqueda global).
 
 ## H31 · Formatos de descarga y decodificación del equipo
@@ -225,8 +225,9 @@ traducción en directo. Fuera también: imagen (mejoras de imagen, visor de foto
       orden y «ver mientras descarga» en MPV-UOS, con libtorrent en el .venv solo como alternativa si no hay qBittorrent.
 
 ## H27 · Diferenciales
-- [ ] Enviar a la tele (Chromecast/DLNA), mini reproductor flotante, modo salón (letra grande, mando HDMI-CEC o gamepad), modo sencillo,
-      «¿qué me he perdido?» con modelo local (si el rendimiento lo permite).
+- [x] Mini reproductor flotante, modo salón (letra grande, gamepad; HDMI-CEC no: necesita hardware y libcec), modo sencillo.
+- [x] «¿Qué me he perdido?» con modelo local (extractivo, ADR-062).
+- [ ] Enviar a la tele (Chromecast/DLNA).
 
 ## H28 · Plataformas
 - [ ] Paquete Linux (AppImage y/o Flatpak), prueba en ARM64 (Raspberry Pi 5 / modo salón), Windows (named pipes en mpvd, lanzador,
