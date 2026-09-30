@@ -186,6 +186,15 @@ def test_scan_lists_progress_continue_next_search(tmp_path, media_dir, settings)
         assert (r["added"], r["updated"], r["unchanged"], r["removed"]) == (1, 1, 4, 1), r
         assert (await c.call("library.status"))["episodes"] == 3
 
+        # a folder inside another one: its files are not hashed again nor counted twice
+        await c.call("library.folders.add", {"path": str(lib / "Series"), "scan": False})
+        r = (await c.call("library.scan", {"wait": True}))["result"]
+        assert (r["added"], r["updated"], r["removed"], r["seen"]) == (0, 0, 0, 6), r
+        with pytest.raises(RpcError):
+            await c.call("library.scan", {"path": str(tmp_path)})       # only folders of the library
+        assert (await c.call("library.folders.remove", {"path": str(lib / "Series")}))["removed"] == 0
+        assert (await c.call("library.status"))["files"] == 6
+
         # removing the folder forgets its files (the files stay on disk)
         with pytest.raises(RpcError):
             await c.call("library.folders.remove", {"path": str(tmp_path)})

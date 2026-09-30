@@ -118,7 +118,8 @@ class LibraryService:
     def close(self) -> None:
         for t in list(self.waiting):
             t.cancel()
-        if self._osub is not None:
+        if self._osub is not None and self._osub.token:
+            self._osub.timeout = 3.0     # the API asks for a logout; never hold the shutdown for long
             with contextlib.suppress(Exception):
                 self._osub.logout()
         self.store.close()
@@ -151,7 +152,8 @@ class LibraryService:
             self.last_scan = {**stats.to_dict(), **art, "at": time.time()}
             return self.last_scan
 
-        job = self.server.jobs.submit("library.scan", body, priority=Priority.INDEX, heavy=False, session_id=session_id,
+        # heavy: waits while the performance guardian sees dropped frames (hashing, ffmpeg frames, TMDB)
+        job = self.server.jobs.submit("library.scan", body, priority=Priority.INDEX, heavy=True, session_id=session_id,
                                       meta={"notify": notify} if notify else {})
         self.scan_job = job
         return job
@@ -616,6 +618,8 @@ def register(server: MpvdServer, service: LibraryService) -> None:  # noqa: C901
                    notify: str | None = None) -> dict[str, Any]:
         """Rescan every folder (or one) in the background at INDEX priority; ``wait`` returns the result."""
         folders = [_folder(path)] if path else None
+        if folders and folders[0] not in {f["path"] for f in await asyncio.to_thread(service.store.folders)}:
+            raise RpcError(NOT_FOUND, f"no está en la biblioteca: {folders[0]}")
         job = service.submit_scan(folders, bool(force), notify, _sid(ctx))
         if wait:
             await job.wait()

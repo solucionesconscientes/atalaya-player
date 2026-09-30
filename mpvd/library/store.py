@@ -195,6 +195,11 @@ class LibraryStore:
         stats = ScanStats()
         t0 = time.monotonic()
         roots = [f["path"] for f in self.folders()] if not folders else folders
+        with self._lock:
+            # every known file, whatever folder it was found under (nested library folders must not rehash)
+            known = {r["path"]: (r["size"], r["mtime"], r["folder"]) for r in
+                     self._conn.execute("SELECT path, size, mtime, folder FROM items")}
+        seen: set[str] = set()
         for fi, root_s in enumerate(roots):
             root = Path(root_s)
             stats.folders += 1
@@ -202,10 +207,6 @@ class LibraryStore:
                 stats.missing.append(root_s)
                 continue
             files = self.walk(root)
-            with self._lock:
-                known = {r["path"]: (r["size"], r["mtime"]) for r in
-                         self._conn.execute("SELECT path, size, mtime FROM items WHERE folder=?", (root_s,))}
-            seen: set[str] = set()
             images: dict[Path, dict[str, str]] = {}
             rows: list[tuple[Any, ...]] = []
             groups: dict[tuple[str, str], tuple[str, int | None, str]] = {}
@@ -234,7 +235,7 @@ class LibraryStore:
                         continue
                     search = norm(" ".join(filter(None, (name.title, name.episode_title, f.stem,
                                                          str(name.year or "")))))
-                    rows.append((sp, root_s, st.st_size, st.st_mtime, h.key,
+                    rows.append((sp, old[2] if old is not None else root_s, st.st_size, st.st_mtime, h.key,
                                  h.opensubtitles if st.st_size >= 131072 else "", name.kind, name.title,
                                  name.group_key, name.year, name.season, name.episode, name.episode_end,
                                  name.episode_title, item_poster(f, images), time.time(), search))
@@ -247,7 +248,7 @@ class LibraryStore:
                     groups[gk] = (name.title, name.year, group_poster(f, name, root, images))
                 if progress is not None and (i % 25 == 0 or i == len(files) - 1):
                     progress((fi + (i + 1) / max(1, len(files))) / max(1, len(roots)), f.name)
-            gone = [p for p in known if p not in seen]
+            gone = [p for p, k in known.items() if k[2] == root_s and p not in seen]
             with self._lock:
                 self._conn.executemany(
                     "INSERT INTO items (path,folder,size,mtime,key,oshash,kind,title,group_key,year,season,episode,"
