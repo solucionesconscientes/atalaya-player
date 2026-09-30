@@ -884,14 +884,17 @@ end
 
 local function update_action(kind)
   osd(kind == 'apply' and 'Instalando yt-dlp…' or 'Buscando actualización…')
-  rpc.call(kind == 'apply' and 'ytdl.update.apply' or 'ytdl.update.check', { force = true }, function(err, st)
+  local function done(err, st)
     if err then osd(fail(err, 'ytdl.update')) return end
     if st.error and st.error ~= '' then osd('yt-dlp: ' .. st.error)
     elseif kind == 'apply' then osd('yt-dlp actualizado a ' .. (st.installed or '?'))
     elseif st.update_available then osd('Disponible yt-dlp ' .. st.latest .. ' (instalado ' .. (st.installed or '?') .. ')')
     else osd('yt-dlp al día (' .. (st.installed or '?') .. ')') end
     if state.view == 'status' then open_view({ name = 'status' }, false) end
-  end, 600)
+  end
+  -- 'apply' takes no parameters: sending force there answered «parámetros no válidos» and never installed anything
+  if kind == 'apply' then rpc.call('ytdl.update.apply', nil, done, 600)
+  else rpc.call('ytdl.update.check', { force = true }, done, 600) end
 end
 
 -- ---------------------------------------------------------------------------------------------

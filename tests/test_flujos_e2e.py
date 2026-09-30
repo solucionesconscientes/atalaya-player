@@ -73,8 +73,14 @@ def test_nota_preferencia_y_posicion_siguen_ahi_tras_reiniciar_mpv(flow, media_d
     h.command("script-message-to", "mu_study", "mu-study-note", "La escena del puerto")
     d.wait(lambda: any(n["text"] == "La escena del puerto" for n in d.call("notes.get", {"path": str(video)})["items"]),
            timeout=20)
+    # a real user choice: only once the loading window closed does mu-prefs count a change as the viewer's
+    h.wait_property("user-data/mu/prefs", lambda v: bool(v) and v.get("loading") is False and v.get("loads", 0) >= 1,
+                    timeout=30)
     h.command("set_property", "volume", 77)
-    h.wait_property("user-data/mu/prefs", lambda v: bool(v) and v.get("values", {}).get("volume") == 77, timeout=15)
+    # mu-prefs publishes an empty store as a list (mpv's user-data): read it the way tests/test_prefs.py does
+    h.wait_property("user-data/mu/prefs",
+                    lambda v: isinstance((v or {}).get("values"), dict) and v["values"].get("volume") == 77,
+                    timeout=15)
     h.command("set_property", "pause", True)   # pause → the position is saved right away
     d.wait(lambda: any(r["path"] == str(video) and r["position"] >= 22 and r["resume"]
                        for r in d.call("watch.recents")), timeout=20)

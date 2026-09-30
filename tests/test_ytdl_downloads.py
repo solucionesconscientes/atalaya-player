@@ -15,6 +15,7 @@ from mpvd.config import Settings
 from mpvd.rpc import RpcError
 from mpvd.server import MpvdServer
 from mpvd.ytdl.downloads import DownloadSettings, ProgressState, fmt_eta
+from mpvd.ytdl.presets import DownloadSpec
 
 FIX = Path(__file__).parent / "fixtures" / "ytdlp"
 FAKE = FIX / "fake_ytdlp.py"
@@ -382,3 +383,53 @@ def test_mp4_merge_that_ffmpeg_refuses_is_saved_as_mkv(ytdl_env):
         assert d["outputs"] and d["outputs"][0].endswith(".mkv")
 
     with_server(tmp_path, fn)
+
+
+# -- H34: what the queue does when nothing is running yet ------------------------------------------------------
+
+
+def idle_manager(tmp_path: Path):
+    """A real DownloadManager whose jobs never run (the server is built but not started): queue bookkeeping only."""
+    server = MpvdServer(make_settings(tmp_path))
+    return server, server.ytdl.downloads
+
+
+def test_cancelling_a_download_that_has_not_started_leaves_it_cancelled(tmp_path, monkeypatch):
+    monkeypatch.setenv("MPV_UOS_DOWNLOAD_DIR", str(tmp_path / "dl"))
+    _server, dl = idle_manager(tmp_path)
+    a = dl.submit(DownloadSpec(url="https://fake.test/uno"))
+    b = dl.submit(DownloadSpec(url="https://fake.test/dos"))
+    assert (a.status, b.status) == ("queued", "queued") and dl.active() == 2
+
+    assert dl.cancel(b.id) is True
+    assert b.status == "cancelled" and b.message == "cancelada" and b.finished_at
+    assert dl.active() == 1                      # it no longer takes a slot of «descargas a la vez»
+    assert [r["id"] for r in dl.list(include_finished=False)] == [a.id]
+    assert dl.cancel(b.id) is False               # already final
+
+
+def test_a_batch_of_more_than_two_hundred_links_keeps_them_all(tmp_path, monkeypatch):
+    monkeypatch.setenv("MPV_UOS_DOWNLOAD_DIR", str(tmp_path / "dl"))
+    _server, dl = idle_manager(tmp_path)
+    items = [dl.submit(DownloadSpec(url=f"https://fake.test/{n}")) for n in range(250)]
+
+    rows = dl.list()
+    assert len(rows) == 250 and dl.active() == 250
+    assert {r["id"] for r in rows} == {i.id for i in items}     # the first ones did not silently fall out
+    dl._save_history()
+    assert len(json.loads((tmp_path / "data" / "downloads.json").read_text(encoding="utf-8"))) == 250
+
+
+def test_stopping_mpvd_leaves_the_queue_to_be_resumed_not_cancelled(tmp_path, monkeypatch):
+    """H19 «la cola sobrevive a reinicios»: a clean shutdown is not the viewer pressing «Cancelar»."""
+    monkeypatch.setenv("MPV_UOS_DOWNLOAD_DIR", str(tmp_path / "dl"))
+    _server, dl = idle_manager(tmp_path)
+    kept = [dl.submit(DownloadSpec(url=f"https://fake.test/{n}")) for n in range(3)]
+    asyncio.run(dl.cancel_all(closing=True))
+
+    assert [i.status for i in kept] == ["queued"] * 3
+    assert all(i.resume and i.message == "se reanudará" for i in kept)
+
+    _server2, dl2 = idle_manager(tmp_path)        # a new mpvd over the same data folder
+    assert dl2.resume_pending() == 3
+    assert [i["status"] for i in dl2.list()] == ["queued"] * 3

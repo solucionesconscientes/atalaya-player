@@ -26,6 +26,40 @@ def lua_files() -> list[Path]:
                    *SCRIPTS.glob("script-modules/mu/*.lua")])
 
 
+def _blank_comments(text: str) -> str:
+    """The same text with Lua comments blanked out (offsets and line numbers kept): a ``-- (H31)`` inside a call
+    would otherwise unbalance the bracket scan."""
+    out = list(text)
+    i, quote = 0, ""
+    while i < len(text):
+        c = text[i]
+        if quote:
+            if c == "\\":
+                i += 2
+                continue
+            if c == quote or (quote == "\n" and c == "\n"):
+                quote = ""
+        elif c in "'\"":
+            quote = c
+        elif text.startswith("--[[", i):
+            end = text.find("]]", i)
+            end = len(text) if end < 0 else end + 2
+            for j in range(i, end):
+                if out[j] != "\n":
+                    out[j] = " "
+            i = end
+            continue
+        elif text.startswith("--", i):
+            end = text.find("\n", i)
+            end = len(text) if end < 0 else end
+            for j in range(i, end):
+                out[j] = " "
+            i = end
+            continue
+        i += 1
+    return "".join(out)
+
+
 def _balanced(text: str, start: int, open_ch: str = "{", close_ch: str = "}") -> tuple[str, int]:
     """Substring from the bracket at ``start`` to its match, ignoring brackets inside quoted strings."""
     depth, i, quote = 0, start, ""
@@ -84,43 +118,74 @@ def _table_keys(table: str) -> set[str]:
     return keys
 
 
-def lua_calls() -> list[tuple[Path, int, str, set[str] | None]]:
-    """(file, line, method, param names) for every rpc.call in the scripts.
+def _split_args(text: str, start: int) -> list[str]:
+    """The top-level arguments of the call whose ``(`` is at ``start``."""
+    call, _ = _balanced(text, start, "(", ")")
+    inner = call[1:-1]
+    args, depth, quote, cur = [], 0, "", []
+    i = 0
+    while i < len(inner):
+        c = inner[i]
+        if quote:
+            if c == "\\":
+                cur.append(inner[i:i + 2])
+                i += 2
+                continue
+            if c == quote:
+                quote = ""
+        elif c in "'\"":
+            quote = c
+        elif c in "{([":
+            depth += 1
+        elif c in "})]":
+            depth -= 1
+        elif c == "," and depth == 0:
+            args.append("".join(cur))
+            cur = []
+            i += 1
+            continue
+        cur.append(c)
+        i += 1
+    args.append("".join(cur))
+    return args
 
-    A method built by concatenation (``'remote.' .. action``) keeps its literal part and a trailing ``*``; its params
-    are unknown (None) when they are not a table literal either.
+
+def _methods_in(expr: str) -> list[str]:
+    """The method names an argument expression can produce.
+
+    Literal (``'ping'``), the ``cond and 'a' or 'b'`` idiom Lua uses for two methods, and a concatenation
+    (``'remote.' .. action``), which keeps its literal part plus a ``*``. An expression with no literal at all (a
+    variable) yields nothing: there is nothing to check statically.
     """
+    out = []
+    for m in re.finditer(r"'([^']*)'", expr):
+        name = m.group(1)
+        if re.match(r"\s*\.\.", expr[m.end():]):
+            name += "*"
+        if "." in name or name.isidentifier():
+            out.append(name)
+    return out
+
+
+def lua_calls() -> list[tuple[Path, int, str, set[str] | None]]:
+    """(file, line, method, param names) for every rpc.call in the scripts; params is None when unknown."""
     calls = []
     for path in lua_files():
-        text = path.read_text(encoding="utf-8")
+        text = _blank_comments(path.read_text(encoding="utf-8"))
         for m in CALL_RE.finditer(text):
             line = text.count("\n", 0, m.start()) + 1
-            i = m.end()
-            while text[i] in " \t\n":
-                i += 1
-            name_m = re.match(r"'([^']*)'", text[i:])
-            if not name_m:  # a variable holds the method name: nothing to check statically
+            args = _split_args(text, m.end() - 1)
+            names = _methods_in(args[0])
+            if not names:
                 continue
-            name = name_m.group(1)
-            i += name_m.end()
-            rest = text[i:i + 4].lstrip()
-            if rest.startswith(".."):
-                name += "*"
-                calls.append((path, line, name, None))
-                continue
-            while text[i] in " \t\n":
-                i += 1
             params: set[str] | None = None
-            if text[i] == ",":
-                i += 1
-                while text[i] in " \t\n":
-                    i += 1
-                if text[i] == "{":
-                    table, _ = _balanced(text, i)
-                    params = _table_keys(table)
-                elif re.match(r"nil\b", text[i:]):
-                    params = set()
-            calls.append((path, line, name, params))
+            second = args[1].strip() if len(args) > 1 else ""
+            if second.startswith("{"):
+                params = _table_keys(_balanced(second, 0)[0])
+            elif re.match(r"nil\b", second):
+                params = set()
+            for name in names:
+                calls.append((path, line, name, params))
     return calls
 
 

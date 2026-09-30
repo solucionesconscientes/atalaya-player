@@ -201,7 +201,8 @@ class YtdlService:
     async def close(self) -> None:
         if self._auto_task is not None:
             self._auto_task.cancel()
-        await self.downloads.cancel_all()
+        # stopping mpvd is not the viewer cancelling: the queue must be there on the next start (H19)
+        await self.downloads.cancel_all(closing=True)
 
     # -- info (-J) ----------------------------------------------------------------------------
 

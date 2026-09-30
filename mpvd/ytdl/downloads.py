@@ -376,7 +376,10 @@ class DownloadManager:
         # post-download chain hang from here
         self.final_hooks: list[Callable[[DownloadItem], None]] = []
         self.items: dict[str, DownloadItem] = {}
-        self._order: deque[str] = deque(maxlen=MAX_HISTORY)
+        # no maxlen: submit() trims the finished ones, and a queued/running item falling out of here would keep
+        # downloading while being invisible in the panel and absent from downloads.json (a 250-link batch)
+        self._order: deque[str] = deque()
+        self._closing = False
         self._load_history()
 
     # -- persistence --------------------------------------------------------------------------
@@ -480,6 +483,9 @@ class DownloadManager:
         if item is None or item.status in FINAL:
             return False
         if item.job_id and self.jobs.cancel(item.job_id):
+            # a job still in the queue (or waiting for a free slot) never reaches the CancelledError handler in _run
+            if item.status != "running":
+                self._finish(item, "cancelled", "cancelada")
             return True
         self._finish(item, "cancelled", "cancelada")
         return True
@@ -510,10 +516,25 @@ class DownloadManager:
         self._save_history()
         return len(finished)
 
-    async def cancel_all(self) -> None:
+    async def cancel_all(self, closing: bool = False) -> None:
+        """Stop everything in flight. With ``closing`` (mpvd shutting down) they are left to be resumed, not cancelled."""
+        self._closing = closing
         for item in list(self.items.values()):
             if item.status in ("queued", "running"):
-                self.cancel(item.id)
+                if closing:
+                    self._pause_for_restart(item)
+                else:
+                    self.cancel(item.id)
+        if closing:
+            self._save_history()
+
+    def _pause_for_restart(self, item: DownloadItem) -> None:
+        """Leave a download ready for the next mpvd (yt-dlp --continue picks its .part file up)."""
+        if item.job_id:
+            self.jobs.cancel(item.job_id)
+        item.status, item.stage, item.message = "queued", "queued", "se reanudará"
+        item.resume, item.speed, item.eta = True, None, None
+        item.started_at = item.finished_at = None
 
     # -- running ------------------------------------------------------------------------------
 
@@ -622,7 +643,11 @@ class DownloadManager:
                     rc, ps, tail = await self._exec(item, job, nightly)
                     used_nightly = True
         except asyncio.CancelledError:
-            self._finish(item, "cancelled", "cancelada")
+            if self._closing:      # mpvd stopping: queued again on the next start
+                self._pause_for_restart(item)
+                self._changed(item, persist=True)
+            else:
+                self._finish(item, "cancelled", "cancelada")
             raise
         if rc == 0 and (ps.outputs or ps.stage == "done"):
             self._finish(item, "done", "completado con yt-dlp nightly" if used_nightly else "completado")
