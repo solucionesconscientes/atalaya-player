@@ -34,6 +34,8 @@ def _isolated_user_data(tmp_path_factory: pytest.TempPathFactory) -> Any:
     data = tmp_path_factory.mktemp("user-data")
     old = os.environ.get("MPV_UOS_DATA_DIR")
     os.environ["MPV_UOS_DATA_DIR"] = str(data)
+    # and never pop desktop notifications at the user while the suite runs (e.g. the "moved checkout" launcher test)
+    os.environ["MPV_UOS_NO_NOTIFY"] = "1"
     yield data
     if old is None:
         os.environ.pop("MPV_UOS_DATA_DIR", None)

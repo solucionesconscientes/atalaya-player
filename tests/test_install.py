@@ -94,8 +94,11 @@ def test_moved_checkout_is_reported(prefix):
     run(env, "--no-sync", "--no-vendor")
     launcher = base / "bin" / "mpv-uos"
     launcher.write_text(launcher.read_text(encoding="utf-8").replace(str(ROOT), str(base / "movida")), encoding="utf-8")
+    # MPV_UOS_NO_NOTIFY (set for the whole suite in conftest): the error goes to stderr only, no desktop notification
+    env = {**env, "MPV_UOS_NO_NOTIFY": "1"}
     out = subprocess.run([str(launcher), "--version"], env=env, capture_output=True, text=True, timeout=30)
     assert out.returncode == 1 and "has movido la carpeta" in out.stderr
+    assert "MPV_UOS_NO_NOTIFY" in launcher.read_text(encoding="utf-8")
 
 
 def test_mime_types_include_the_system_mpv_ones(prefix):

@@ -37,7 +37,7 @@ XDG=0 EXTRAS=0 SYNC=1 VENDOR=1 DEFAULT=0 DRY=0 UNINSTALL=0
 for arg in "$@"; do
   case "$arg" in
     --xdg) XDG=1 ;;             # cache in ~/.cache/mpv-uos instead of <checkout>/.cache (data is always there)
-    --extras) EXTRAS=1 ;;       # also install the optional translate + semantic extras (~220 MB)
+    --extras) EXTRAS=1 ;;       # also install the optional translate + semantic + impersonate extras (~260 MB)
     --no-sync) SYNC=0 ;;
     --no-vendor) VENDOR=0 ;;
     --default) DEFAULT=1 ;;     # make MPV-UOS the default app for the video/audio MIME types (xdg-mime)
@@ -102,7 +102,7 @@ fi
 
 # -- python env + vendored third parties ------------------------------------------------------------------
 if [ "$SYNC" = 1 ]; then
-  if [ "$EXTRAS" = 1 ]; then say "uv sync (con extras translate + semantic)"; run uv sync --project "$ROOT" --extra translate --extra semantic
+  if [ "$EXTRAS" = 1 ]; then say "uv sync (con extras translate + semantic + impersonate)"; run uv sync --project "$ROOT" --extra translate --extra semantic --extra impersonate
   else say "uv sync"; run uv sync --project "$ROOT"; fi
 fi
 if [ "$VENDOR" = 1 ]; then say "tools/vendor.sh (uosc, thumbfast, yt-dlp)"; run "$ROOT/tools/vendor.sh"; fi
@@ -126,7 +126,7 @@ $MARK
 if [ ! -x "$ROOT/bin/mpv-uos" ]; then
   # the checkout was moved or deleted: say so instead of failing silently from the desktop
   msg="No encuentro MPV-UOS en $ROOT (¿has movido la carpeta?). Ejecuta tools/install.sh desde su nueva ubicación."
-  notify-send -a MPV-UOS "MPV-UOS" "\$msg" 2>/dev/null || true
+  [ -n "\${MPV_UOS_NO_NOTIFY:-}" ] || notify-send -a MPV-UOS "MPV-UOS" "\$msg" 2>/dev/null || true
   echo "\$msg" >&2
   exit 1
 fi
