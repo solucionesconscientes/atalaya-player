@@ -49,15 +49,17 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-H19 · punto 3 (1 y 2 hechos, ADR-045/046). (3) Reintento automático con yt-dlp nightly si falla la estable (canal
-`nightly` de yt-dlp: releases en github.com/yt-dlp/yt-dlp-nightly-builds; vendorizar aparte, verificar SHA), `curl_cffi`
-en el .venv (uv add opcional) para `--impersonate`, opción «usar mi sesión del navegador» (`--cookies-from-browser`,
-desactivada), TikTok (perfil con casillas = lista) e Instagram por enlace. H15 cerrado (2026-09-30, ADR-041). H14 cerrado (2026-09-30). Pendiente de Ser: abrir el puerto del mando en ufw y probar el desentrelazado con 7TV (NEEDS_HUMAN.md).
-Siguiente tanda posible: B11 «¿qué me he perdido?», B6 OCR de subtítulos, C2–C3 diccionario/Anki, E4 MPRIS, I1/I5.
-Backlog completo. Si se reanuda: (1) Ser abre el puerto del mando y autoriza Notion (NEEDS_HUMAN.md) y ejecuta `/registrar`;
-(2) nuevos hitos a partir del TOP 10 de docs/VISION.md, empezando por B11 "¿qué me he perdido?" (resumen extractivo de la
-transcripción entre dos tiempos con los embeddings de H10) y E4 MPRIS (script mpv-mpris o DBus desde mpvd); (3) Windows: transporte
-named pipe en mpvd (`server.py`, `client.py`, `mpvipc.py`) + `bin/mpv-uos.ps1`.
+Iteración 2026-09-30 (modo a tope) en curso. Hechos y en la rama: H19, H20 (fusionado), H24, H31, H33.
+(1) Lo PRIMERO si se reanuda: `git worktree list` y `git branch --list 'worktree-agent-*'`: ramas de subagentes H21
+(guía de TV y grabación programada, mu-iptv), H22 (biblioteca + OpenSubtitles, parche para mu-menu) y H25 (salas «ver
+juntos» + HLS, mu-share). Si tienen commits y sus tests pasan, `git merge --no-ff`, integrar sus textos compartidos
+(input.conf, ATAJOS.md, mu-menu, ADR 049/050/054, USO, PLATAFORMAS, PROGRESS) y `tools/check.sh` UNA vez.
+(2) H29 (subtítulos de la web): investigación en tmp/research-websubs/ (fixture de -J con automatic_captions y VTT
+automático real). Plan: `mpvd/subs/web.py` (lista de idiomas manuales/automáticos desde el -J, descarga del VTT,
+limpieza de líneas «rodantes» duplicadas de YouTube, SRT en caché), métodos `subs.web.list/fetch`, menú «Subtítulos de
+la web» en mu-subs (sub-add; traducir con subs.translate sobre el SRT; guardar como pista), test @network >1 min.
+(3) Después: H30 (TV: pistas CC/VO/AD y «Buscar en esta lista», cuando H21 esté fusionado), H23 (tras H22), H32, H27,
+H28, H25 punto 3–4 (túnel cloudflared solo con sala abierta, RTMP).
 
 ## Registro por iteración
 ### Iteración nocturna 2026-09-30 · H20 · Convertir vídeo y audio — hecho (subagente, fusionado)
