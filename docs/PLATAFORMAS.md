@@ -111,3 +111,12 @@ en `/proc/<pid>/cmdline` mientras se emite.
 ## Letras, audiolibros e identificar canciones (H32)
 Usan ffprobe/ffmpeg/fpcalc del PATH; probado solo en Linux. En Windows, «Guardar en el archivo» (reemplazo atómico)
 falla si otro programa tiene la canción abierta.
+
+## Música (H32)
+- Carpeta por defecto: en Linux la de `XDG_MUSIC_DIR` (`~/.config/user-dirs.dirs`); en Windows y macOS `~/Music` (no probado).
+  `MPV_UOS_MUSIC_DIR` la sustituye (vacía = ninguna). Se añade una sola vez, la primera vez que se abre «Música».
+- `ffprobe`/`ffmpeg` del PATH a la prioridad más baja (`os.nice(19)` en el hijo; en Windows prioridad normal, no probado).
+- «Salida exclusiva» (`audio-exclusive`) solo la respetan algunas salidas de mpv: PipeWire, WASAPI (Windows), CoreAudio y
+  AudioUnit (macOS). Con PulseAudio/ALSA mpv la ignora sin avisar. Solo probado con `--ao=null`.
+- Listas M3U8 con rutas absolutas (UTF-8, `\n`); la exportación con rutas relativas usa `os.path.relpath` (en Windows falla
+  entre unidades distintas y deja la ruta absoluta).

@@ -147,7 +147,8 @@ def test_volume_leveling_and_equalizer_are_applied_and_remembered(daemon_env, me
         h.wait_property("af", lambda v: any(f.get("label") == "mu-level" for f in v or []), timeout=10)
         assert "dynaudnorm" in labelled(h, "af")["mu-level"]["params"]["graph"]
         # every preset is a graph mpv accepts while playing
-        for preset in ("bass", "less_bass", "treble", "voice", "music", "laptop", "headphones"):
+        for preset in ("bass", "less_bass", "treble", "voice", "music", "laptop", "hp_inear", "hp_closed", "hp_open",
+                       "headphones"):
             h.command("script-message-to", "mu_av", "mu-av-eq", preset)
             h.wait_property("user-data/mu/av", lambda v, p=preset: bool(v) and v.get("eq") == p
                             and v.get("filters", {}).get("eq"), timeout=10)
