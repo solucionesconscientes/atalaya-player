@@ -241,3 +241,48 @@ de TV de TDTChannels sin los grupos internacionales, pidiendo cada lista maestra
   grupos limpios ("General;Public" → "General · Público", "Radio_C. Valenciana" → "Radio C. Valenciana");
   "geobloqueado". El país del usuario (`MPV_UOS_COUNTRY`, si no el territorio del locale, si no España) va primero en
   *Mundo* y *Radio mundial*. Los valores originales no cambian (filtros, favoritos, MCP y mando siguen igual).
+
+## 8. Audio y subtítulos propios de los canales (verificado 2026-09-30, host dell, H30)
+
+### 8.1 Lo que declaran las listas maestras (`#EXT-X-MEDIA`)
+Barrido de las 575 URL HLS distintas de `tv.m3u8` de TDTChannels (6 peticiones a la vez, 8 s de límite): **137**
+declaran pistas propias. Patrones reales (fixtures recortadas en `tests/fixtures/iptv/rtve_la1_master.m3u8` y
+`3cat_324_master.m3u8`):
+
+| Emisor | Audio (LANGUAGE · NAME) | Subtítulos | Notas |
+|---|---|---|---|
+| RTVE La 1, La 2, Clan | `spa` Castellano (sin URI: va dentro del vídeo) · `qaa` Original · `ads` Audio Descripcion (`CHARACTERISTICS="public.accessibility.describes-video"`) | WebVTT `es` `en` `gl` `ca` `eu` (FORCED=NO) | Clan igual con la URL `ztnr` |
+| RTVE 24h | `spa` · `qaa` Original | los mismos 5 | sin audiodescripción |
+| RTVE Teledeporte | `spa` Español | los mismos 5 | la copia de TDTChannels es FAST (ottera, sin pistas) |
+| 3Cat (3CatInfo, Esport3, SX3) | `ca` Català · `qaa` Versió Original · `qad` Audiodescripció (describes-video) | `ca` | 3Cat usa **`qad`** para la audiodescripción |
+| Congreso / Canal Parlamento | `qaa` audio original · `es` castellano | Parlamento: SUBTITLES `qad` NAME Castellano | `qad` aquí son subtítulos: manda el NAME |
+| Senado | `spa` Traducido · `spa` Sonido Sala (repetidos en dos grupos) | CLOSED-CAPTIONS `es` | mismo idioma, se distinguen por NAME |
+| FAST (Rakuten, Amagi…) | a veces `eng` con NAME basura (`aac1`, `stream_3`, `output track 01 (PID 306)`) | `SPA` spa_full / spa_forced (FORCED=YES), CLOSED-CAPTIONS CC1 sin idioma | |
+| Alemanas de iptv-org | `de` · «Klare Sprache» (LANGUAGE `klare sprache`, no es un código) · Audiodeskription | `de` | |
+
+La mayoría de autonómicas (ETB, TVG, Canal Extremadura…) y las copias FAST de RTVE no declaran nada: solo variantes.
+
+### 8.2 Lo que ve mpv 0.41 (`track-list`, La 1, La 2, 24h, Clan y Teledeporte en headless)
+- FFmpeg conserva `LANGUAGE` (`qaa`, `ads`, `es`…) y marca la audiodescripción como `visual-impaired` (mpv le pone
+  el título «visual impaired»), pero **pierde el NAME** («Original», «Audio Descripcion»).
+- Subtítulos `webvtt`, ninguno `forced`; mpv elige `es` por `slang` de mpv.conf.
+- El audio que va dentro del vídeo (`spa`) aparece **una vez por variante** (`program-id` 0, 1, 2…); el que suena es
+  el del programa del vídeo elegido. Las pistas `qaa`/`ads` y los subtítulos, solo una vez.
+- `track-list/N/title` **no se puede cambiar** (`set_property` → «error accessing property»): los nombres legibles
+  viven en el menú propio de mu-iptv y en el aviso en pantalla, no en los menús de pistas de uosc.
+
+### 8.3 Nombres y distintivos (mpvd/iptv/tracks.py)
+- Idiomas en español con los iso-codes del sistema (`iso_639-2` + gettext) y una lista propia para Windows/macOS;
+  «Euskera», «Catalán», «Neerlandés» en vez de «Vasco», «Catalán, Valenciano», «Holandés, Flamenco».
+- `qaa` (o NAME con «original»/«VO») → **Versión original**; `ads`, `qad`, `visual-impaired`, describes-video o NAME
+  «audiodescripción/Audiodeskription» → **Audiodescripción**; `mul` → Varios idiomas; `mis` → Otro idioma; `und`,
+  `zxx` o vacío → el NAME si dice algo, si no «Audio»/«Subtítulos».
+- Subtítulos: `hearing-impaired`, transcribes-spoken-dialog / describes-music-and-sound o NAME «sordos/SDH» →
+  «Inglés · para sordos»; FORCED → «· forzados»; CLOSED-CAPTIONS o `eia_608` → «· CC». Dos pistas con el mismo nombre
+  se distinguen por su NAME («Español · Traducido» / «Español · Sonido Sala») o se numeran.
+- Distintivos en la lista de canales: **CC** (trae subtítulos), **VO** (versión original), **AD** (audiodescripción).
+  mpvd los aprende al reproducir el canal (mu-iptv le pasa el `track-list`; la maestra se lee una vez por canal para
+  recuperar los NAME) y en *Comprobar canales en segundo plano* (maestra HLS o, si no declara nada, las etiquetas
+  `language` y las disposiciones que da ffprobe). Se guardan en la tabla `tracks` de `iptv.sqlite3`.
+- `ads` y `qaa`–`qtz` no son idiomas: mu-prefs no los aprende como idioma preferido (elegir la audiodescripción una
+  vez no la pone por defecto en todos los canales).
