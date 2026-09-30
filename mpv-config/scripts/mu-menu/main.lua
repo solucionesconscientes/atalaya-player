@@ -277,7 +277,7 @@ end
 -- The main menu: eight categories (H15). TV y radio and Descargas open their module directly; the others are views
 -- here that lead into the modules one level down (their "Atrás" comes back to the category).
 local CATEGORIES = {
-  { title = 'Abrir', icon = 'folder_open', hint = 'archivo, URL, YouTube', view = 'open' },
+  { title = 'Abrir', icon = 'folder_open', hint = 'biblioteca, archivo, URL, YouTube', view = 'open' },
   { title = 'TV y radio', icon = 'live_tv', hint = 'alt+t', child = { 'mu_iptv', 'tv-menu' } },
   { title = 'Descargas y conversión', icon = 'download', hint = 'alt+y', child = { 'mu_ytdl', 'ytdl-menu' } },
   { title = 'Subtítulos', icon = 'subtitles', view = 'subs' },
@@ -317,6 +317,7 @@ end
 
 views.open = function()
   show('Abrir', {
+    child('Biblioteca', 'ctrl+b', 'video_library', 'mu_library', 'library-menu'),
     bind('Abrir archivo', 'o', 'folder_open', 'uosc/open-file'),
     bind('Abrir URL (YouTube y otras webs)…', 'ctrl+u', 'link', 'mu_ytdl/open-url'),
     bind('Buscar en YouTube', 'ctrl+f', 'travel_explore', 'mu_ytdl/yt-search'),
@@ -333,6 +334,7 @@ views.subs = function()
     cmd('Mostrar u ocultar', 'v', 'visibility', { 'cycle', 'sub-visibility' }, { separator = true }),
     child('Subtítulos IA y traducción', 'alt+i', 'closed_caption', 'mu_subs', 'subs-menu'),
     bind('Guardar subtítulos (SRT)', 'alt+S', 'save', 'mu_subs/subs-save'),
+    child('Buscar subtítulos en internet', 'OpenSubtitles', 'travel_explore', 'mu_library', 'library-subs'),
   })
 end
 
@@ -388,6 +390,7 @@ local HELP = {
   { 'alt+m · clic derecho', 'menú' },
   { 'alt+p', 'buscar comandos, canales y recientes' },
   { 'ctrl+u · ctrl+f', 'abrir URL · buscar en YouTube' },
+  { 'ctrl+b', 'biblioteca: películas y series' },
   { 'alt+t', 'TV y radio' },
   { '⌫ · ←', 'volver atrás en un menú' },
   { 'Esc', 'cerrar el menú' },
@@ -417,8 +420,15 @@ views.recents = function()
   end)
 end
 
-views.start = function()
+-- «seguir viendo» / «siguiente episodio» of the library, published ready-made by mu-library (H22)
+local function library_rows()
+  local rows = mp.get_property_native('user-data/mu/library/home')
+  return type(rows) == 'table' and rows or {}
+end
+
+views.start = function(args)
   local items = {
+    child('Biblioteca', 'ctrl+b', 'video_library', 'mu_library', 'library-menu'),
     bind('Abrir archivo', 'o', 'folder_open', 'uosc/open-file'),
     bind('Abrir URL (YouTube y otras webs)…', 'ctrl+u', 'link', 'mu_ytdl/open-url'),
     bind('Buscar en YouTube', 'ctrl+f', 'travel_explore', 'mu_ytdl/yt-search'),
@@ -427,23 +437,41 @@ views.start = function()
     sub('Menú principal', 'alt+m', 'apps', 'root', { separator = true }),
   }
   show(brand.name .. ' · Inicio', items)
+  -- fresh rows from mu-library arrive through the observer below (not when this redraw comes from it)
+  if not (args and args.from_library) then mp.commandv('script-message-to', 'mu_library', 'mu-library-home') end
   with_recents(12, false, function(_, rows)
     if state.view ~= 'start' then return end
-    if #rows > 0 then
-      local header = { { title = 'Continuar viendo', icon = 'history', selectable = false, muted = true, align = 'center' } }
-      local recents = {}
-      for _, r in ipairs(rows) do table.insert(recents, recent_item(r)) end
-      local all = {}
-      for _, it in ipairs(recents) do table.insert(all, it) end
-      for i, it in ipairs(items) do
-        if i == 1 then it.separator = true end
-        table.insert(all, it)
+    local top, seen = {}, {}
+    for _, it in ipairs(library_rows()) do
+      if type(it.value) == 'table' and it.value.open then
+        seen[strip_file(it.value.open)] = true
+        table.insert(top, it)
       end
-      for i = #header, 1, -1 do table.insert(all, 1, header[i]) end
-      show(brand.name .. ' · Inicio', all)
     end
+    for _, r in ipairs(rows) do
+      if not seen[strip_file(r.path)] then table.insert(top, recent_item(r)) end
+    end
+    if #top == 0 then return end
+    local all = { { title = 'Continuar viendo', icon = 'history', selectable = false, muted = true, align = 'center' } }
+    for _, it in ipairs(top) do table.insert(all, it) end
+    for i, it in ipairs(items) do
+      if i == 1 then it.separator = true end
+      table.insert(all, it)
+    end
+    show(brand.name .. ' · Inicio', all)
   end)
 end
+
+-- the start screen follows the library rows (they change when a scan ends or an episode is finished)
+local library_home_json = ''
+mp.observe_property('user-data/mu/library/home', 'native', function(_, rows)
+  local json = utils.format_json(rows or {}) or ''
+  if json == library_home_json then return end
+  library_home_json = json
+  if state.view == 'start' and #state.stack == 1 and uosc.open_type() == MENU then
+    open_view({ name = 'start', args = { from_library = true } }, false)
+  end
+end)
 
 -- ---------------------------------------------------------------------------------------------
 -- command palette

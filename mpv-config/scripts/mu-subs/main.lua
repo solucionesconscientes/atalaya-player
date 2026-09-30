@@ -1115,6 +1115,8 @@ views.root = function()
     hint = ext and ((rs and rs.srt == ext['external-filename'] and rs.status ~= 'done') and rs.status
       or (ext['external-filename']:match('[^/\\]+$'))) or 'selecciona un .srt/.ass externo',
     value = { resync = true }, muted = ext == nil })
+  table.insert(items, { title = 'Buscar subtítulos en internet (OpenSubtitles)', icon = 'travel_explore',
+    hint = 'por hash del archivo', value = { library_subs = true } })
   local sv = state.save
   local sv_hint = 'alt+S'
   if sv and sv.status == 'done' then sv_hint = sv.name or 'guardado'
@@ -1349,6 +1351,9 @@ mp.register_script_message(EVENT, function(json)
     elseif v.resync then
       resync_selected()
       uosc.close(MENU)
+    elseif v.library_subs then
+      uosc.close(MENU)
+      mp.commandv('script-binding', 'mu_library/library-subs')
     elseif v.translate then
       P:set('translate_target', v.translate)
       translate_selected(v.translate)

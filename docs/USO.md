@@ -262,6 +262,22 @@ los valores de `mpv.conf`. Desde la consola de mpv: `script-message-to mu_prefs 
 `--script-opts=mu-prefs-enabled=no`. Si `prefs.json` se estropea, se aparta como `prefs.json.corrupt-<fecha>` y se sigue con los valores
 por defecto.
 
+## 12. Biblioteca: películas, series y subtítulos de internet
+`ctrl+b` (o *Abrir › Biblioteca*, o la pantalla de inicio) abre la **Biblioteca**.
+- **Carpetas**: *Añadir la carpeta del archivo actual* o *Escribir o pegar una ruta…*. MPV-UOS las revisa en segundo plano, sin
+  frenar la reproducción; la segunda vez solo mira lo nuevo. Tab sobre una carpeta: *Reescanear* o *Quitar* (no se borra nada del disco).
+- **Películas** y **Series › Temporada › Episodio**: ✓ = visto, «45 %» = empezado. Se reconocen `Serie S01E02`, `Serie 1x06`,
+  `Serie/Temporada 1/01 - Título.mkv`, `Película (1975)`, nombres con etiquetas (1080p, x264, WEB-DL…) y anime `[Grupo] Serie - 05`.
+- **Seguir viendo** y **Siguiente episodio** salen arriba en la Biblioteca y en la pantalla de inicio.
+- **Siguiente episodio automático**: al acabar un episodio, si no queda nada en la lista, aparece «Siguiente episodio en 5 s»
+  (Esc cancela, Enter ya). Se apaga en *Biblioteca › Ajustes*.
+- **Carátulas**: `poster.jpg`, `folder.jpg`, `cover.jpg` o `<nombre del vídeo>.jpg` junto al vídeo o en la carpeta de la serie; si no
+  hay, un fotograma del vídeo. Opcional: *Carátulas y datos de internet (TMDB)* con tu propia clave (themoviedb.org → Ajustes → API).
+- **Subtítulos de internet** (*Biblioteca › Buscar subtítulos en internet*, o en el menú de subtítulos): necesita tu Api-Key de
+  opensubtitles.com (Ajustes; sin cuenta, 5 descargas al día; con cuenta gratuita, 20). Primero busca los hechos para ese mismo
+  archivo («✓ exacto»); si no hay, por el nombre. Si no es exacto y hay Whisper, se ajusta solo a la voz (Ajustes › *Resincronizar
+  con la voz*: si no es exacto / siempre / nunca). Las claves se guardan solo en tu equipo.
+
 ## Nombre y logo
 El logo «C · Anillo» es el icono del menú de aplicaciones, de la PWA del mando y de los controles del escritorio.
 El nombre de la app sigue siendo provisional: cambiarlo es editar `name` en `brand.json` y volver a ejecutar
@@ -274,6 +290,7 @@ El nombre de la app sigue siendo provisional: cambiarlo es editar `name` en `bra
 | Datos (favoritos, recientes, notas, móviles emparejados, marcas de intro) | `<proyecto>/.cache/data/` | `~/.local/share/mpv-uos/` |
 | Descargas y clips | `~/Vídeos/MPV-UOS`, `~/Música/MPV-UOS` | igual |
 | Grabaciones programadas | `~/Vídeos/MPV-UOS/Grabaciones` (lista en `<datos>/iptv-schedule.json`) | igual |
+| Biblioteca (índice, ajustes, claves en archivo privado) y subtítulos bajados | `<datos>/library.sqlite3`, `library-settings.json`, `library-secrets.json` · caché `<caché>/library/` | igual (rutas XDG) |
 | Conversiones | `~/Vídeos/MPV-UOS/Convertidos` (historial en los datos: `conversions.json`) | igual |
 | Grabaciones de TV/radio | `~/Escritorio/MPV-UOS` | igual |
 | Subtítulos guardados (SRT) | junto al vídeo; si no se puede, `~/Vídeos/MPV-UOS/Subtítulos` | igual |

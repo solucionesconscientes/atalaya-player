@@ -96,6 +96,13 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 | `alt+v` | Menú **Sonido e imagen**: diálogo claro, modo noche, reducción de ruido (RNNoise/afftdn), binaural para auriculares (HRTF/crossfeed), protección fotosensible, perfil ligero, diagnóstico de tirones, modelos |
 | `alt+n` | Modo noche (compresor + limitador) activar/desactivar |
 
+## Biblioteca (mu-library)
+| Tecla | Acción |
+|---|---|
+| `ctrl+b` | **Biblioteca**: Seguir viendo, Películas, Series › temporada › episodio (✓ visto, % empezado), Buscar, Buscar subtítulos en internet, Carpetas (añadir, quitar con Tab, reescanear) y Ajustes |
+| `Esc` / `Enter` | Solo durante la cuenta atrás «Siguiente episodio en 5 s»: cancelar / reproducir ya |
+| (menú `ctrl+b`) | `mu_library/library-next` (siguiente episodio ahora), `mu_library/library-subs` (subtítulos de internet), `mu_library/auto-next-toggle` |
+
 ## Saltar intro y créditos (mu-intro)
 | Tecla | Acción |
 |---|---|

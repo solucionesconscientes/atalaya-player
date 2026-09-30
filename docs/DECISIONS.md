@@ -286,6 +286,26 @@
   sesión; lo perdido queda «perdida» al volver a abrir MPV-UOS; si vuelve dentro de la franja, empieza tarde. Aviso de
   escritorio al terminar (nunca con `MPV_UOS_NO_NOTIFY`) y en pantalla en todos los reproductores abiertos.
   Descartado programarlo en mpv (`stream-record`): exige tener ese canal abierto.
+- ADR-050 · Biblioteca sin servidor y subtítulos de internet (H22). **Índice**: `<datos>/library.sqlite3` (carpetas,
+  archivos, grupos película/serie); escaneo INDEX «pesado» (espera si el guardián ve tirones), incremental por tamaño y
+  mtime (hash solo de lo nuevo), carpetas anidadas sin duplicados; se relanza si el último tiene más de 30 min al pedir
+  la lista o las filas de inicio. Identidad = clave `mu:` de «continuar viendo» (progreso y visto sin tabla propia;
+  mover o renombrar conserva el progreso). **Nombres**: parser propio (sin guessit): S01E02, 1x06, Temporada/Season N
+  Capítulo M, Cap.102, «Serie - 05», número inicial en carpeta de temporada, carpeta por episodio; películas: el último
+  año plausible que no sea la primera palabra (1917, 2001…, Blade Runner 2049). **Inicio**: «Seguir viendo» = archivos
+  con posición reanudable; «Siguiente episodio» = el primero no visto tras el último terminado; una fila por título.
+  **Siguiente episodio automático**: solo con archivos de la biblioteca y si la lista no sigue; `eof-reached` (keep-open)
+  o end-file eof; cuenta atrás de 5 s (Esc cancela, Enter ya); no se duplica con mu-intro. **Carátulas**: local > TMDB
+  > fotograma ffmpeg (10 %, máx. 5 min, 342 px, en caché); uosc no pinta imágenes en menús: se exponen en `library.*`.
+  **TMDB** opcional y desactivado (clave v3 o token Bearer, sin caché HTTP para no escribir la clave en disco).
+  **OpenSubtitles REST v1** (desactivado): `Api-Key`, `User-Agent: MPV-UOS v<versión>`, parámetros ordenados en
+  minúsculas; hash verificado contra la referencia oficial y solo con archivos ≥ 128 KiB; primero por hash, luego por
+  nombre; orden exacto > idioma preferido > sin traducción automática > sin SDH > de confianza > más descargas;
+  anónimo o con cuenta; caché `<caché>/library/subs/…` (nunca se gasta cupo dos veces); credenciales en
+  `<datos>/library-secrets.json` (0600), nunca en respuestas ni logs. **Resincronización**: por hash no se toca (salvo
+  `osub_resync=always`); por nombre se resincroniza con `subs.resync` si hay Whisper y el subtítulo está en el idioma del
+  audio; se muestra el original mientras tanto y un evento `library-subs` lo cambia; si el alineado es pobre, se queda
+  el original.
 - ADR-051 · Escritorio y sonido (H24): MPRIS en mpvd (`mpvd/mpris.py`), no el plugin C `mpv-mpris` (habría que
   compilarlo con cabeceras de GLib; sin sudo) ni Lua (no habla D-Bus). Un nombre `org.mpris.MediaPlayer2.mpv_uos.
   instance<pid>` por cada mpv conectado, con su propia conexión IPC y observadores (el bucle de sesiones no cambia);

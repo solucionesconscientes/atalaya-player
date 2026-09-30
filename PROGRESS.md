@@ -62,6 +62,25 @@ la web» en mu-subs (sub-add; traducir con subs.translate sobre el SRT; guardar 
 H28, H25 punto 3–4 (túnel cloudflared solo con sala abierta, RTMP).
 
 ## Registro por iteración
+### Iteración nocturna 2026-09-30 · H22 · Biblioteca y subtítulos automáticos — hecho (subagente, fusionado)
+- mpvd `library.*`: carpetas elegidas, escaneo incremental en segundo plano (INDEX), películas y series › temporadas ›
+  episodios con el progreso de «continuar viendo», búsqueda, `library.continue` (seguir viendo + siguiente episodio),
+  `library.next`, carátulas locales o fotograma ffmpeg; TMDB y OpenSubtitles opcionales y desactivados, claves en un
+  archivo 0600; subtítulos por hash y luego por nombre, en caché y resincronizados con la voz cuando conviene (ADR-050).
+- mu-library (`ctrl+b`): Biblioteca, carpetas, ajustes, subtítulos de internet y siguiente episodio automático con cuenta
+  atrás; filas para la pantalla de inicio (mu-menu las muestra) y «Biblioteca» en *Abrir*; entrada en mu-subs.
+- Tests: test_library_parse (≈50 nombres reales), test_library_service, test_opensubtitles (API falsa + hash contra la
+  referencia oficial), test_mu_library (headless), test_nav[mu_library].
+- Pendiente: carátulas no visibles en menús (uosc no pinta imágenes); el cambio diferido a la pista resincronizada no
+  se probó con Whisper real.
+- Probar a mano:
+  ```bash
+  bin/mpv-uos      # ctrl+b → Carpetas → Escribir o pegar una ruta… → ~/Vídeos → Series → una serie → temporada → Enter
+                   # al final del episodio: «Siguiente episodio en 5 s» · la pantalla de inicio muestra «Siguiente episodio»
+  .venv/bin/python -m mpvd call library.status
+  .venv/bin/python -m mpvd call library.continue
+  ```
+
 ### Iteración nocturna 2026-09-30 · H21 · Guía de TV y grabación programada — hecho (subagente, fusionado)
 - Verificado: EPG de TDTChannels (`epg/TV.xml.gz`, 537 KB, 184 canales, ~11 000 programas en UTC, ~4 días; 116 de los
   135 tvg-id de la lista casan; 129 canales con programa «ahora»). Detalles en docs/FUENTES_IPTV.md.

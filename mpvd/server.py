@@ -72,6 +72,8 @@ class MpvdServer:
         from mpvd.intro.service import IntroService  # noqa: PLC0415
         from mpvd.intro.service import register as register_intro  # noqa: PLC0415
         from mpvd.iptv.service import IptvService  # noqa: PLC0415
+        from mpvd.library.service import LibraryService  # noqa: PLC0415
+        from mpvd.library.service import register as register_library  # noqa: PLC0415
         from mpvd.semantic.service import SemanticService  # noqa: PLC0415
         from mpvd.semantic.service import register as register_semantic  # noqa: PLC0415
         from mpvd.study.service import StudyService  # noqa: PLC0415
@@ -122,6 +124,8 @@ class MpvdServer:
         from mpvd.convert.service import register as register_convert  # noqa: PLC0415
         self.convert = ConvertService(self)
         register_convert(self, self.convert)
+        self.library = LibraryService(self)
+        register_library(self, self.library)
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -178,6 +182,7 @@ class MpvdServer:
         self.cache.close()
         self.iptv.close()
         self.epg.close()
+        self.library.close()
         self.watch.close()
         with contextlib.suppress(OSError):
             if self.settings.pid_path.exists() and self.settings.pid_path.read_text().strip() == str(os.getpid()):

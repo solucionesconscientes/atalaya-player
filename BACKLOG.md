@@ -158,9 +158,9 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
       al terminar; lista de grabaciones programadas y realizadas.
 
 ## H22 · Biblioteca y subtítulos automáticos
-- [ ] Biblioteca sin servidor: carpetas elegidas, películas y series por temporada, carátulas locales (y metadatos opcionales con clave
+- [x] Biblioteca sin servidor: carpetas elegidas, películas y series por temporada, carátulas locales (y metadatos opcionales con clave
       propia, desactivado), «seguir viendo» y «siguiente episodio» automático en la pantalla de inicio.
-- [ ] Subtítulos de internet por hash (OpenSubtitles, cuenta propia, desactivado por defecto) con resincronización automática.
+- [x] Subtítulos de internet por hash (OpenSubtitles, cuenta propia, desactivado por defecto) con resincronización automática.
 
 ## H23 · Suscripciones, panel web y automatismos
 - [ ] Suscripciones a canales, listas y podcasts (RSS) con reglas (calidad, solo audio, conservar N, borrar lo visto), horarios de
