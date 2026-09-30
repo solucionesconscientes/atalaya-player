@@ -3,6 +3,7 @@
   mpvd serve                      run the daemon in the foreground (mu-core spawns it detached)
   mpvd ensure --attach <ipc>      start the daemon if needed and attach an mpv instance (used by mu-core)
   mpvd call <method> [json]       call a method on the running daemon
+  mpvd link <mpv-uos://download?url=…>   queue a download sent from the browser (bin/mpv-uos, H23)
   mpvd status | stop | --version
 """
 
@@ -177,6 +178,29 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return asyncio.run(serve(str(settings.socket_path), args.session, autoconfirm))
 
 
+def cmd_link(args: argparse.Namespace) -> int:
+    """``mpv-uos://download?url=…`` links from the browser: start the daemon if needed, queue, notify, print JSON."""
+    from mpvd import handoff  # noqa: PLC0415
+
+    settings = _settings(args)
+    out: dict[str, Any]
+    if not any(handoff.parse(link) for link in args.links):
+        out = {"ok": False, "count": 0, "rejected": len(args.links),
+               "error": "enlace no válido (se esperaba mpv-uos://download?url=https://…)"}
+    else:
+        try:
+            ensure_daemon(settings, root=args.root or os.environ.get("MPV_UOS_ROOT"), timeout=args.timeout)
+            out = handoff.handle(str(settings.socket_path), args.links, timeout=args.timeout)
+        except RpcError as exc:
+            out = {"ok": False, "count": 0, "error": exc.message}
+        except Exception as exc:  # noqa: BLE001 - reported to the user as a notification
+            out = {"ok": False, "count": 0, "error": f"{type(exc).__name__}: {exc}"}
+    if not args.quiet:
+        handoff.notify(out)
+    print(json.dumps(out, ensure_ascii=False))
+    return 0 if out.get("ok") else 1
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     settings = _settings(args)
     if not _ping(settings):
@@ -237,6 +261,11 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--compact", action="store_true")
     c.set_defaults(fn=cmd_call)
 
+    lk = sub.add_parser("link", parents=[common], help="queue mpv-uos://download?url=… links (from the browser)")
+    lk.add_argument("links", nargs="+")
+    lk.add_argument("--root", default=None, help="project root to pass to the daemon (MPV_UOS_ROOT)")
+    lk.add_argument("--quiet", action="store_true", help="no desktop notification")
+    lk.set_defaults(fn=cmd_link)
     sub.add_parser("status", parents=[common], help="show sessions, jobs and guardian").set_defaults(fn=cmd_status)
     m = sub.add_parser("mcp", parents=[common], help="MCP server over stdio (for Claude Code, Claude Desktop, etc.)")
     m.add_argument("--session", default=None, help="mpv session id to drive (default: the most recent one)")

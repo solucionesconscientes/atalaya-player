@@ -1,6 +1,7 @@
 -- mu-remote: phone remote control. alt+z asks mpvd for a one-time pairing token (remote.pair) and draws the QR of the
 -- PWA URL as an ASS overlay (mp.create_osd_overlay + mp.assdraw, like uosc; verified in docs/REMOTE_API.md).
--- Menu 'mu-remote' (status, paired phones, forget, stop). State in user-data/mu/remote. Script name: mu_remote.
+-- Menu 'mu-remote' (status, paired phones, forget, stop) and, H23, the downloads panel opened in this computer's
+-- browser (remote.pair path=/downloads, a loopback URL). State in user-data/mu/remote. Script name: mu_remote.
 local mp = require('mp')
 local msg = require('mp.msg')
 local assdraw = require('mp.assdraw')
@@ -19,10 +20,12 @@ local opts = {
   qr_seconds = 120,     -- hide the QR automatically after this many seconds (0 = never)
   qr_size = 300,        -- QR side in PlayRes(720) pixels
   osd_seconds = 4,
+  open_command = '',    -- program that opens a URL ('' = xdg-open / open / explorer); tests use `true`
 }
 options.read_options(opts, 'mu-remote')
 
-local state = { visible = false, url = '', token = '', expires_at = 0, status = nil, last_error = '', qr = nil, view = '' }
+local state = { visible = false, url = '', token = '', expires_at = 0, status = nil, last_error = '', qr = nil, view = '',
+                downloads_url = '' }
 local overlay = nil
 local hide_timer = nil
 
@@ -33,7 +36,7 @@ local function publish()
     visible = state.visible, url = state.url, token = state.token, expires_at = state.expires_at,
     running = state.status and state.status.running or false, port = state.status and state.status.port or 0,
     paired = state.status and #(state.status.paired or {}) or 0, last_error = state.last_error, view = state.view,
-    qr_size = state.qr and state.qr.size or 0,
+    qr_size = state.qr and state.qr.size or 0, downloads_url = state.downloads_url,
   })
 end
 
@@ -140,6 +143,23 @@ local function toggle()
   end)
 end
 
+-- H23: the downloads panel in this computer's browser, already paired (one-time token in the URL)
+local function open_downloads()
+  if not rpc.connected() then osd('Descargas: mpvd no está conectado'); return end
+  rpc.call('remote.pair', { path = '/downloads', ['local'] = true }, function(err, result)
+    if err then fail(err, 'panel de descargas'); return end
+    if type(result.status) == 'table' then state.status = result.status end
+    state.downloads_url = result.url or ''
+    publish()
+    local platform = mp.get_property_native('platform') or ''
+    local cmd = opts.open_command
+    if cmd == '' then cmd = platform == 'windows' and 'explorer' or (platform == 'darwin' and 'open' or 'xdg-open') end
+    mp.command_native_async({ name = 'subprocess', args = { cmd, state.downloads_url }, detach = true,
+                              playback_only = false, capture_stdout = false }, function() end)
+    osd('Panel de descargas abierto en el navegador')
+  end)
+end
+
 mp.observe_property('osd-dimensions', 'native', function() if state.visible then draw_qr() end end)
 
 -- ---------------------------------------------------------------------------------------------
@@ -150,6 +170,8 @@ local function menu_items()
   local items = {}
   items[#items + 1] = { title = state.visible and 'Ocultar el código QR' or 'Mostrar código QR para emparejar un móvil',
                         hint = 'alt+z', icon = 'qr_code_2', value = { action = 'toggle' } }
+  items[#items + 1] = { title = 'Panel de descargas en el navegador', hint = 'este ordenador', icon = 'download',
+                        value = { action = 'downloads' } }
   if st.running then
     items[#items + 1] = { title = 'Servidor activo: ' .. tostring(st.url or ''), hint = 'puerto ' .. tostring(st.port),
                           icon = 'wifi', value = { action = 'copy' } }
@@ -205,6 +227,9 @@ local function menu_action(v)
   if v.action == 'toggle' then
     toggle()
     uosc.close(MENU)
+  elseif v.action == 'downloads' then
+    uosc.close(MENU)
+    open_downloads()
   elseif v.action == 'copy' or v.action == 'copy-fw' then
     local fw = state.status and state.status.firewall
     local text = v.action == 'copy' and tostring(state.status and state.status.url or '') or (fw and fw.command or '')
@@ -245,4 +270,5 @@ mp.add_key_binding(nil, 'remote-qr', toggle)
 N:binding('remote-menu', open_menu)
 mp.register_script_message('mu-remote-show', toggle)
 mp.register_script_message('mu-remote-hide', hide)
+mp.register_script_message('mu-remote-downloads', open_downloads)
 publish()
