@@ -78,6 +78,10 @@ abre. Si un canal entrelazado se ve con "peines" (7TV), pulsa `d`. Detalles en d
   (*Descargar de una lista o canal…*): pega su URL, *Ver la lista y elegir* muestra todos los vídeos marcados; desmarca los
   que no quieras y descarga: van a una carpeta con el nombre de la lista, numerados (`001 - …`). Lo ya descargado de una
   lista, un canal o un lote no se repite (archivo `ytdl-archive.txt` en tus datos).
+- **Subtítulos al descargar** (*Descargar → Opciones*): *Subtítulos* rota entre no, dentro del vídeo y archivo SRT
+  aparte (junto al vídeo); *Idiomas* entre originales + es + en (por defecto), solo el original, español, inglés y todos.
+  *Solo subtítulos (SRT)* baja únicamente los `.srt` (sin vídeo). «Original» es el idioma del vídeo según la web (y, en
+  YouTube, sus subtítulos automáticos del idioma original).
 - **Ajustes de descarga**: descargas a la vez (1–4), límite de velocidad (sin límite, 500 KB/s … 10 MB/s), no repetir lo ya
   descargado y carpeta por lista. Si cierras el reproductor con descargas a medias, siguen al volver a abrirlo.
 

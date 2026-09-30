@@ -84,3 +84,42 @@ def test_batch_list_with_checkboxes_and_settings(ytdl_mpv):
     st = ytdl_state(h, lambda v: v.get("view") == "dl_settings" and
                     any(i["title"] == "Límite de velocidad" and i["hint"] == "500KB/s" for i in v.get("items", [])))
     assert h.script_errors() == [], h.script_errors()
+
+
+def test_subtitles_options_and_subtitles_only(ytdl_mpv):
+    """Descargar → Opciones: subtítulos no → dentro del vídeo → archivo SRT aparte, idiomas que rotan; «Solo subtítulos
+    (SRT)» baja solo los .srt (sin vídeo) con «originales» resueltos por mpvd."""
+    h, d, arglog, _tmp = ytdl_mpv
+    from tests.test_mu_ytdl import URL
+
+    h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
+    h.command("loadfile", URL)
+    h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("active") is True, timeout=40)
+    h.command("script-binding", "mu_ytdl/ytdl-download")
+    st = ytdl_state(h, lambda v: v.get("view") == "download" and "Solo subtítulos (SRT)" in titles(v))
+    opts = next(i for i in st["items"] if i["title"] == "Opciones")
+    assert opts["submenu"] > 0
+    for expected in ("dentro del vídeo", "archivo SRT aparte"):
+        send_event(h, {"type": "activate", "index": 1, "value": {"opt": "subtitles"}})
+        h.wait_property("user-data/mu/ytdl", lambda v, e=expected: bool(v) and v.get("view") == "download", timeout=10)
+    send_event(h, {"type": "activate", "index": 1, "value": {"opt": "sub_langs"}})   # → solo el original
+    send_event(h, {"type": "activate", "index": 1, "value": {"opt": "sub_langs"}})   # → español
+    st = ytdl_state(h, lambda v: v.get("view") == "download" and any(
+        i["title"] == "Solo subtítulos (SRT)" and i["hint"] == "español" for i in v.get("items", [])))
+    item = next(i for i in st["items"] if i["title"] == "Solo subtítulos (SRT)")
+    send_event(h, {"type": "activate", "index": 3, "value": item["value"]})
+    a = argv_for(arglog, URL)
+    assert "--skip-download" in a and a[a.index("--sub-langs") + 1] == "es.*" and "-f" not in a
+    d.wait(lambda: any(r["status"] == "done" and r["outputs"] and all(o.endswith(".es.srt") for o in r["outputs"])
+                       for r in d.call("ytdl.downloads.list")), timeout=30)
+    # a video with subtitles as a separate file: the next download carries --convert-subs srt, not --embed-subs
+    send_event(h, {"type": "activate", "index": 1, "value": {"preset": "video_360"}})
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        rows = [x for x in argv_lines(arglog) if x and x[-1] == URL and "--no-simulate" in x and "-f" in x]
+        if rows:
+            break
+        time.sleep(0.1)
+    v = rows[-1]
+    assert "--convert-subs" in v and "--embed-subs" not in v and v[v.index("--sub-langs") + 1] == "es.*"
+    assert h.script_errors() == [], h.script_errors()

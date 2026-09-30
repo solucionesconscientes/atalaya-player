@@ -482,6 +482,7 @@ local function default_dl_options(settings)
     container = settings.container or 'mp4', subtitles = settings.subtitles == true,
     chapters = settings.chapters ~= false, thumbnail = settings.thumbnail == true,
     metadata = settings.metadata ~= false, sponsorblock = settings.sponsorblock or 'none', playlist = false,
+    subs_mode = 'embed', sub_langs = settings.sub_langs or 'orig,es.*,en.*',
   }
 end
 
@@ -507,11 +508,22 @@ local function opt_item(title, hint, icon, name)
 end
 
 local SB_HINT = { none = 'no', mark = 'marcar capítulos', remove = 'quitar segmentos' }
+-- subtitles: off → inside the video → .srt next to it (H19); languages cycle through these
+local SUBS_HINT = { off = 'no', embed = 'dentro del vídeo', file = 'archivo SRT aparte' }
+local SUB_LANGS = {
+  { 'orig,es.*,en.*', 'originales + es + en' }, { 'orig', 'solo el original' }, { 'es.*', 'español' },
+  { 'en.*', 'inglés' }, { 'all,-live_chat', 'todos' },
+}
+local function sub_langs_label(v)
+  for _, l in ipairs(SUB_LANGS) do if l[1] == v then return l[2] end end
+  return v or ''
+end
 
 local function options_items(o)
   return {
     opt_item('Contenedor de vídeo', o.container, 'inventory_2', 'container'),
-    opt_item('Subtítulos (es, en) incrustados', bool_hint(o.subtitles), 'subtitles', 'subtitles'),
+    opt_item('Subtítulos', SUBS_HINT[o.subtitles and (o.subs_mode or 'embed') or 'off'], 'subtitles', 'subtitles'),
+    opt_item('Idiomas de los subtítulos', sub_langs_label(o.sub_langs), 'translate', 'sub_langs'),
     opt_item('Capítulos', bool_hint(o.chapters), 'bookmarks', 'chapters'),
     opt_item('Miniatura como portada', bool_hint(o.thumbnail), 'image', 'thumbnail'),
     opt_item('Metadatos', bool_hint(o.metadata), 'sell', 'metadata'),
@@ -529,6 +541,14 @@ local function toggle_option(name)
   elseif name == 'sponsorblock' then
     local order = { none = 'mark', mark = 'remove', remove = 'none' }
     o.sponsorblock = order[o.sponsorblock] or 'none'
+  elseif name == 'subtitles' then
+    if not o.subtitles then o.subtitles, o.subs_mode = true, 'embed'
+    elseif o.subs_mode ~= 'file' then o.subs_mode = 'file'
+    else o.subtitles, o.subs_mode = false, 'embed' end
+  elseif name == 'sub_langs' then
+    local nxt = 1
+    for i, l in ipairs(SUB_LANGS) do if l[1] == o.sub_langs then nxt = i % #SUB_LANGS + 1 end end
+    o.sub_langs = SUB_LANGS[nxt][1]
   else
     o[name] = not o[name]
   end
@@ -547,11 +567,15 @@ views.download = function(args)
   with_presets(function(err, res)
     if err then show('Descargar', uosc.message_items(fail(err, 'ytdl.presets'), 'error')) return end
     local o = state.dl_options
-    local video, audio = {}, {}
+    local video, audio, subs = {}, {}, {}
     for _, p in ipairs(res.presets or {}) do
       local it = { title = p.title, icon = p.group == 'audio' and 'audiotrack' or 'movie',
                    value = { preset = p.id, url = target, title = target and target_title or nil } }
-      if p.group == 'audio' then table.insert(audio, it) else table.insert(video, it) end
+      if p.group == 'audio' then table.insert(audio, it)
+      elseif p.group == 'subs' then
+        it.icon, it.hint = 'subtitles', sub_langs_label(o.sub_langs)
+        table.insert(subs, it)
+      else table.insert(video, it) end
     end
     local items = {
       { title = 'Vídeo', hint = o.container, items = video },
@@ -559,6 +583,7 @@ views.download = function(args)
       { title = 'Opciones', hint = (o.subtitles and 'subs ' or '') .. (o.sponsorblock ~= 'none' and 'SB ' or '') .. o.container,
         items = options_items(o) },
     }
+    for i, it in ipairs(subs) do table.insert(items, 2 + i, it) end
     show('Descargar · ' .. (target_title or ''), items, {
       footnote = 'Enter descarga con el preset · Opciones: Enter alterna · ⌫ atrás',
     })
@@ -571,6 +596,7 @@ local function start_download(params)
   params.options = state.dl_options and {
     container = state.dl_options.container, subtitles = state.dl_options.subtitles, chapters = state.dl_options.chapters,
     thumbnail = state.dl_options.thumbnail, metadata = state.dl_options.metadata,
+    subs_mode = state.dl_options.subs_mode, sub_langs = state.dl_options.sub_langs,
     sponsorblock = state.dl_options.sponsorblock, playlist = state.dl_options.playlist,
   } or nil
   for _, k in ipairs({ 'container', 'playlist', 'playlist_items' }) do  -- with a preset only `options` count

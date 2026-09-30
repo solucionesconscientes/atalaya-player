@@ -203,6 +203,23 @@ def download(url: str, opts: dict[str, list[str]], flags: set[str]) -> int:
         ext = first(opts, "--merge-output-format", default="mp4").split("/")[0]
     vid = "fake-" + (url.rstrip("/").rsplit("/", 1)[-1] or "video")
     title = "Fake Test Video"
+    # subtitles: one .srt per requested language that exists ("es", "en"; a regex like "en.*" matches), reported by
+    # the after_video print like the real binary; --skip-download stops there
+    sub_prints = [p.split(":", 1)[1] for p in opts.get("--print", []) if p.startswith("after_video:")]
+    written = []
+    if "--write-subs" in flags or "--write-auto-subs" in flags:
+        wanted = first(opts, "--sub-langs", default="en").split(",")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for lang in ("es", "en"):
+            if any(w == "all" or re.fullmatch(w, lang) for w in wanted if not w.startswith("-")):
+                base = render(template, {"title": title, "id": vid, "ext": "x"})[: -len(".x")]
+                sub = out_dir / f"{base}.{lang}.srt"
+                sub.write_text(f"1\n00:00:01,000 --> 00:00:03,000\nsubtítulo {lang}\n", encoding="utf-8")
+                written.append(str(sub))
+        for tpl in sub_prints:
+            print(tpl.split(" ", 1)[0] + " " + json.dumps(written), flush=True)
+    if "--skip-download" in flags:
+        return 0
     files = ["f137." + ("webm" if not audio else "m4a"), "f140.m4a"] if "+" in fmt.split("/")[0] else ["f18." + ext]
     total = 120000
     prog_templates = opts.get("--progress-template", [])

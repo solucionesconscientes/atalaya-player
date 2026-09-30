@@ -306,3 +306,23 @@ def test_batch_rate_limit_archive_list_folders_and_resume_after_restart(ytdl_env
         assert d["status"] == "done" and d["outputs"]
 
     with_server(tmp_path, fn2)
+
+
+def test_subtitles_only_and_next_to_the_video(ytdl_env):
+    tmp_path, arglog = ytdl_env
+
+    async def fn(server, c):
+        r = await c.call("ytdl.download", {"url": "https://fake.test/charla", "preset": "subs_only",
+                                            "options": {"sub_langs": "es.*,en.*"}})
+        d = await wait_status(c, r["id"], ("done", "failed"))
+        assert d["status"] == "done", d
+        assert sorted(Path(o).name.rsplit(".", 2)[-2] for o in d["outputs"]) == ["en", "es"]
+        assert all(o.endswith(".srt") and Path(o).is_file() for o in d["outputs"])
+        assert not any(o.endswith((".mp4", ".mkv")) for o in d["outputs"])      # no video
+        r = await c.call("ytdl.download", {"url": "https://fake.test/peli", "preset": "video_360",
+                                            "options": {"subtitles": True, "subs_mode": "file", "sub_langs": "es.*"}})
+        d = await wait_status(c, r["id"], ("done", "failed"))
+        exts = sorted(Path(o).suffix for o in d["outputs"])
+        assert d["status"] == "done" and exts == [".mp4", ".srt"], d["outputs"]
+
+    with_server(tmp_path, fn)

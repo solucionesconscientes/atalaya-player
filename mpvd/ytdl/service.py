@@ -23,6 +23,8 @@ from mpvd.ytdl import info as info_mod
 from mpvd.ytdl.binary import YtdlpBinary, YtdlpUpdater, find_ytdlp, vendor_path
 from mpvd.ytdl.downloads import FINAL, DownloadItem, DownloadManager
 from mpvd.ytdl.presets import (
+    SUB_LANG_CHOICES,
+    resolve_sub_langs,
     AUDIO_BITRATES,
     AUDIO_FORMATS,
     CONTAINERS,
@@ -279,6 +281,19 @@ class YtdlService:
                 session.push_event(target, "download:" + item.id, item.status, payload, min_interval=0.25,
                                    final=item.status in FINAL)
 
+    async def resolve_langs(self, spec: DownloadSpec) -> None:
+        """«orig» in the subtitle languages → the video's language (from its -J info; a list keeps ``.*-orig``)."""
+        if "orig" not in spec.sub_langs.split(",") or not (spec.subtitles or spec.subs_mode == "only"):
+            return
+        language = None
+        if not spec.playlist:
+            try:
+                data = await self.raw_info(spec.url)
+                language = data.get("language") if isinstance(data, dict) else None
+            except Exception as exc:  # noqa: BLE001 - no info: keep the other languages and YouTube's -orig
+                log.info("ytdl: no info for the subtitle language of %s (%s)", spec.url, exc)
+        spec.sub_langs = resolve_sub_langs(spec.sub_langs, language)
+
     def spec_from_params(self, params: dict[str, Any]) -> DownloadSpec:
         url = params.get("url")
         if not url:
@@ -363,6 +378,7 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
     async def presets(ctx: RpcContext) -> dict[str, Any]:
         """Download presets and the option vocabularies for the menu."""
         return {"presets": PRESETS, "containers": list(CONTAINERS), "audio_formats": list(AUDIO_FORMATS),
+                "sub_langs": SUB_LANG_CHOICES,
                 "audio_bitrates": list(AUDIO_BITRATES), "sponsorblock": list(SPONSORBLOCK_MODES),
                 "settings": service.downloads.settings.to_dict()}
 
@@ -376,6 +392,7 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
         if title:
             ds.title = title
         await service.require_binary()
+        await service.resolve_langs(ds)
         item = service.downloads.submit(ds, title=title or "", notify=notify or DEFAULT_NOTIFY, out_dir=out_dir)
         return item.to_dict()
 
@@ -406,6 +423,7 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
         for url in unique:
             ds = service.spec_from_params({"url": url, "preset": preset, "options": options})
             ds.archive = ds.archive or service.downloads.settings.archive
+            await service.resolve_langs(ds)
             items.append(service.downloads.submit(ds, notify=notify or DEFAULT_NOTIFY, out_dir=out_dir).to_dict())
         return {"count": len(items), "items": items}
 

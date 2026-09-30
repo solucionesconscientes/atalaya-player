@@ -107,7 +107,8 @@ def test_live_subtitles_track_seek_precompute_and_menu(subs_mpv, media_dir, tmp_
         st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("view") == "translate"
                              and any(i["title"] == "Inglés" for i in v.get("items", [])), timeout=30)
         ingles = next(i for i in st["items"] if i["title"] == "Inglés")
-        assert ingles["hint"] in ("paquete listo", "idioma de origen según la pista"), ingles
+        # Argos package, or OPUS-MT when its model is already on disk (engine «auto», ADR-038)
+        assert ingles["hint"] in ("paquete listo", "OPUS-MT listo", "idioma de origen según la pista"), ingles
         send_event(h, {"type": "activate", "index": 1, "value": {"translate": "en"}})
         st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("translate_status") == "done", timeout=120)
         assert st["translate_target"] == "en" and st["translate_out"].endswith(".en.srt")

@@ -239,4 +239,11 @@
   otra vez en otro formato. Límite de velocidad global (`-r`, validado `N[KMG]`) y simultáneas (ya existía, 1–4). La cola
   sobrevive a reinicios: lo que no terminó se reencola al arrancar mpvd (`--continue` aprovecha los `.part`) en vez de
   marcarse «interrumpida».
+- ADR-046 · Subtítulos al descargar (H19): tres modos en DownloadSpec (`subs_mode`): `embed` (como antes), `file`
+  (`--convert-subs srt`, quedan junto al vídeo) y `only` (`--skip-download`, sin `-f`/`-S`). Idiomas por defecto
+  `orig,es.*,en.*`; mpvd resuelve `orig` con el `language` del `-J` del vídeo (+ `.*-orig`, los automáticos del idioma
+  original de YouTube); sin información se queda con el resto. Con `--skip-download` yt-dlp no llega a `after_move`
+  (verificado con un vídeo real): las rutas de los `.srt` salen de `--print "after_video:MU_SUBS
+  %(requested_subtitles.:.filepath)j"`, solo en `file`/`only` (en `embed` se borran tras incrustarlos). «Todos» =
+  `all,-live_chat` (el chat de un directo no es un subtítulo).
 

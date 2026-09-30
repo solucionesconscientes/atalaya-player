@@ -26,9 +26,11 @@ from typing import Any
 from mpvd.jobs import Job, JobQueue, Priority, Status
 from mpvd.ytdl.binary import YtdlpBinary
 from mpvd.ytdl.presets import (
+    DEFAULT_SUB_LANGS,
     DEFAULT_TEMPLATE,
     DONE_PREFIX,
     POSTPROCESS_PREFIX,
+    SUBS_PREFIX,
     PROGRESS_PREFIX,
     DownloadSpec,
     build_args,
@@ -78,7 +80,7 @@ class DownloadSettings:
     template: str = DEFAULT_TEMPLATE
     auto_update: bool = True  # daily yt-dlp update (verified against the official checksums)
     container: str = "mp4"
-    sub_langs: str = "es.*,en.*"
+    sub_langs: str = DEFAULT_SUB_LANGS
     subtitles: bool = False
     chapters: bool = True
     thumbnail: bool = False
@@ -152,7 +154,19 @@ class ProgressState:
             return self._feed_pp(line[len(POSTPROCESS_PREFIX) + 1:])
         if line.startswith(DONE_PREFIX + " "):
             return self._feed_done(line[len(DONE_PREFIX) + 1:])
+        if line.startswith(SUBS_PREFIX + " "):
+            return self._feed_subs(line[len(SUBS_PREFIX) + 1:])
         return False
+
+    def _feed_subs(self, text: str) -> bool:
+        try:
+            paths = json.loads(text)
+        except ValueError:
+            return True   # "NA" when no subtitle was requested or found
+        for fp in paths if isinstance(paths, list) else []:
+            if isinstance(fp, str) and fp and fp not in self.outputs:
+                self.outputs.append(fp)
+        return True
 
     @staticmethod
     def _json(text: str) -> dict[str, Any] | None:

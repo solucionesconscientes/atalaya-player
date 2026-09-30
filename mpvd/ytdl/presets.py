@@ -33,8 +33,17 @@ FORMAT_SORT = {"mp4": "vcodec:h264,res,acodec:aac", "mkv": "", "webm": "vcodec:v
 PROGRESS_PREFIX = "MU_PROGRESS"
 POSTPROCESS_PREFIX = "MU_PP"
 DONE_PREFIX = "MU_DONE"
+SUBS_PREFIX = "MU_SUBS"   # after_video: paths of the subtitle files written (also with --skip-download)
 DEFAULT_TEMPLATE = "%(title).120B [%(id)s].%(ext)s"
-DEFAULT_SUB_LANGS = "es.*,en.*"
+DEFAULT_SUB_LANGS = "orig,es.*,en.*"   # «orig» = the video's own language (resolved by mpvd, see resolve_sub_langs)
+SUBS_MODES = ("embed", "file", "only")  # inside the video · .srt next to it · only the .srt (no video)
+SUB_LANG_CHOICES = [  # menu order (H19)
+    {"value": "orig,es.*,en.*", "label": "originales + es + en"},
+    {"value": "orig", "label": "solo el original"},
+    {"value": "es.*", "label": "español"},
+    {"value": "en.*", "label": "inglés"},
+    {"value": "all,-live_chat", "label": "todos"},
+]
 
 
 @dataclass
@@ -49,6 +58,7 @@ class DownloadSpec:
     audio_vbr: int = 0                  # audio_convert with audio_bitrate=None: 0 (best) … 10
     subtitles: bool = False
     sub_langs: str = DEFAULT_SUB_LANGS
+    subs_mode: str = "embed"            # embed | file (.srt next to the video) | only (just the .srt)
     chapters: bool = False
     thumbnail: bool = False
     metadata: bool = False
@@ -90,6 +100,8 @@ class DownloadSpec:
             raise ValueError(f"sponsorblock must be one of {SPONSORBLOCK_MODES}")
         if self.height is not None and int(self.height) <= 0:
             raise ValueError("height must be positive")
+        if self.subs_mode not in SUBS_MODES:
+            raise ValueError(f"subs_mode must be one of {SUBS_MODES}")
         if self.sections is not None and not SECTIONS_RE.match(self.sections):
             raise ValueError("sections must look like *START-END in seconds (END may be inf)")
 
@@ -152,6 +164,19 @@ def progress_args() -> list[str]:
     ]
 
 
+def resolve_sub_langs(langs: str, language: str | None) -> str:
+    """``orig`` → the video's language (``<lang>.*``) plus YouTube's original-language auto captions (``.*-orig``)."""
+    out: list[str] = []
+    for tok in [t.strip() for t in langs.split(",") if t.strip()]:
+        if tok == "orig":
+            if language:
+                out.append(f"{language.split('-')[0]}.*")
+            out.append(".*-orig")
+        else:
+            out.append(tok)
+    return ",".join(dict.fromkeys(out))
+
+
 def list_template(template: str) -> str:
     """``<list title>/<NNN> - <name>``: a folder per playlist or channel, files numbered in the list's order."""
     return "%(playlist_title,playlist_id|Lista)s/%(playlist_index)03d - " + template
@@ -170,10 +195,14 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
         args += ["-r", rate_limit]
     if spec.archive and archive_file:
         args += ["--download-archive", archive_file]
-    args += ["-f", spec.format_expression()]
-    if spec.kind == "video" and FORMAT_SORT[spec.container]:
+    only_subs = spec.subs_mode == "only"
+    if not only_subs:
+        args += ["-f", spec.format_expression()]
+    if spec.kind == "video" and FORMAT_SORT[spec.container] and not only_subs:
         args += ["-S", FORMAT_SORT[spec.container]]
-    if spec.is_audio:
+    if only_subs:
+        pass
+    elif spec.is_audio:
         args += ["-x"]
         if spec.kind == "audio_convert":
             args += ["--audio-format", spec.audio_format]
@@ -187,8 +216,19 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
         args += ["--merge-output-format", MERGE_PREFERENCES[spec.container]]
         if REMUX_RULES[spec.container]:
             args += ["--remux-video", REMUX_RULES[spec.container]]
-    if spec.subtitles and not spec.is_audio:
-        args += ["--write-subs", "--write-auto-subs", "--sub-langs", spec.sub_langs, "--embed-subs"]
+    langs = spec.sub_langs.replace("orig,", "").replace(",orig", "") if "orig" in spec.sub_langs.split(",") else \
+        spec.sub_langs  # an unresolved «orig» (no info): the other languages
+    langs = langs if langs != "orig" else ".*-orig"
+    # .srt files that stay on disk: their paths come from an after_video print (after_move never runs without a
+    # download); embedded subtitles are deleted once inside the video, so they are not reported
+    subs_print = ["--print", f"after_video:{SUBS_PREFIX} %(requested_subtitles.:.filepath)j"]
+    if spec.subs_mode == "only":
+        args += ["--skip-download", "--write-subs", "--write-auto-subs", "--sub-langs", langs, "--convert-subs", "srt",
+                 *subs_print]
+    elif spec.subtitles and spec.subs_mode == "file":
+        args += ["--write-subs", "--write-auto-subs", "--sub-langs", langs, "--convert-subs", "srt", *subs_print]
+    elif spec.subtitles and not spec.is_audio:
+        args += ["--write-subs", "--write-auto-subs", "--sub-langs", langs, "--embed-subs"]
     if spec.chapters:
         args += ["--embed-chapters"]
     if spec.thumbnail:
@@ -241,6 +281,8 @@ PRESETS: list[dict[str, Any]] = [
      "spec": {"kind": "audio_convert", "audio_format": "m4a", "audio_bitrate": 192}},
     {"id": "audio_flac", "title": "Audio · FLAC (sin pérdida)", "group": "audio",
      "spec": {"kind": "audio_convert", "audio_format": "flac", "audio_bitrate": None}},
+    {"id": "subs_only", "title": "Solo subtítulos (SRT)", "group": "subs",
+     "spec": {"kind": "video", "subs_mode": "only", "subtitles": True}},
     {"id": "audio_wav", "title": "Audio · WAV", "group": "audio",
      "spec": {"kind": "audio_convert", "audio_format": "wav", "audio_bitrate": None}},
 ]

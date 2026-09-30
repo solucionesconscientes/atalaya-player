@@ -49,10 +49,7 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-H19 · puntos 2 y 3 (el 1 está hecho, ADR-045). (2) Subtítulos en SRT: preset «solo subtítulos» (`--skip-download
---write-subs --write-auto-subs --convert-subs srt --sub-langs …`) y «junto al vídeo» (sin incrustar) con idiomas
-elegibles (por defecto originales + es + en; verificar cómo pedir «el idioma original»: `--sub-langs` acepta regex y
-`-live_chat`; mirar `yt-dlp --list-subs`). (3) Reintento automático con yt-dlp nightly si falla la estable (canal
+H19 · punto 3 (1 y 2 hechos, ADR-045/046). (3) Reintento automático con yt-dlp nightly si falla la estable (canal
 `nightly` de yt-dlp: releases en github.com/yt-dlp/yt-dlp-nightly-builds; vendorizar aparte, verificar SHA), `curl_cffi`
 en el .venv (uv add opcional) para `--impersonate`, opción «usar mi sesión del navegador» (`--cookies-from-browser`,
 desactivada), TikTok (perfil con casillas = lista) e Instagram por enlace. H15 cerrado (2026-09-30, ADR-041). H14 cerrado (2026-09-30). Pendiente de Ser: abrir el puerto del mando en ufw y probar el desentrelazado con 7TV (NEEDS_HUMAN.md).
@@ -63,6 +60,14 @@ transcripción entre dos tiempos con los embeddings de H10) y E4 MPRIS (script m
 named pipe en mpvd (`server.py`, `client.py`, `mpvipc.py`) + `bin/mpv-uos.ps1`.
 
 ## Registro por iteración
+### Iteración nocturna 2026-09-30 · H19 · parte 2 (subtítulos SRT al descargar)
+- `subs_mode` embed/file/only, idiomas `orig,es.*,en.*` (mpvd resuelve «orig» con el idioma del vídeo), preset *Solo
+  subtítulos (SRT)* y rutas de los `.srt` por `after_video` (ADR-046). Menú Descargar: *Subtítulos* (no / dentro / SRT
+  aparte) e *Idiomas* (originales + es + en, solo el original, español, inglés, todos).
+- Tests: presets (modos, «orig»), downloads (solo SRT y SRT aparte con el yt-dlp falso), test_mu_ytdl_batch (menú).
+  Ajustados: test_mu_ytdl_palettes (nueva entrada) y test_mu_subs (acepta «OPUS-MT listo»). check: 334 + 8 en verde.
+- Probar a mano: `bin/mpv-uos 'https://www.youtube.com/watch?v=jNQXAC9IVRw'` → `alt+d` → *Solo subtítulos (SRT)*.
+
 ### Iteración nocturna 2026-09-30 · H19 · Gestor de descargas — parte 1 (varias URL, listas, ajustes, cola)
 - mpvd: `ytdl.download.batch` (texto, lista o `.txt`), `sections`/`archive`/`list_folder` en DownloadSpec, ajustes
   `rate_limit`, `archive`, `list_folders`; plantilla por lista; la cola pendiente se reanuda al arrancar (ADR-045).

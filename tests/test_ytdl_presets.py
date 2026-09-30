@@ -167,3 +167,23 @@ def test_sections_download_a_time_range_with_its_own_name():
     for bad in ("10-20", "*a-b", "*10", "intro"):
         with _pytest.raises(ValueError):
             DownloadSpec(url="https://x/y", sections=bad).validate()
+
+
+def test_subtitle_modes_and_original_language():
+    """H19: subtitles inside the video, as .srt next to it or only the .srt; «orig» = the video's own language."""
+    from mpvd.ytdl.presets import DownloadSpec, build_args, resolve_sub_langs, spec_from_preset
+
+    assert resolve_sub_langs("orig,es.*,en.*", "fr") == "fr.*,.*-orig,es.*,en.*"
+    assert resolve_sub_langs("orig,es.*,en.*", "en-US") == "en.*,.*-orig,es.*"
+    assert resolve_sub_langs("orig", None) == ".*-orig" and resolve_sub_langs("all,-live_chat", "es") == "all,-live_chat"
+
+    only = build_args(spec_from_preset("subs_only", "https://x/y", {"sub_langs": "es.*,en.*"}), "/o")
+    assert "--skip-download" in only and only[only.index("--convert-subs") + 1] == "srt"
+    assert only[only.index("--sub-langs") + 1] == "es.*,en.*" and "--embed-subs" not in only
+    assert any(a.startswith("after_video:MU_SUBS ") for a in only)
+    f = build_args(DownloadSpec(url="https://x/y", subtitles=True, subs_mode="file", sub_langs="es.*"), "/o")
+    assert "--skip-download" not in f and "--embed-subs" not in f and f[f.index("--convert-subs") + 1] == "srt"
+    e = build_args(DownloadSpec(url="https://x/y", subtitles=True, sub_langs="es.*"), "/o")
+    assert "--embed-subs" in e and "--convert-subs" not in e
+    unresolved = build_args(DownloadSpec(url="https://x/y", subtitles=True, sub_langs="orig,es.*"), "/o")
+    assert unresolved[unresolved.index("--sub-langs") + 1] == "es.*"
