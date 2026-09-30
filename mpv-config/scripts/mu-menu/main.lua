@@ -281,7 +281,7 @@ local CATEGORIES = {
   { title = 'Descargas y conversión', icon = 'download', hint = 'alt+y', child = { 'mu_ytdl', 'ytdl-menu' } },
   { title = 'Subtítulos', icon = 'subtitles', view = 'subs' },
   { title = 'Imagen y sonido', icon = 'tune', view = 'av' },
-  { title = 'Grabar', icon = 'fiber_manual_record', hint = 'capturas, directos, clips', view = 'record' },
+  { title = 'Grabar', icon = 'fiber_manual_record', hint = 'capturas, directos, tramos', child = { 'mu_record', 'record-menu' } },
   { title = 'Herramientas', icon = 'handyman', hint = 'intro, estudio, mando…', view = 'tools' },
   { title = 'Preferencias', icon = 'settings', view = 'prefs' },
 }
@@ -346,16 +346,6 @@ views.av = function()
     cmd('Quitar rayas (desentrelazar)', 'd', 'blur_linear', { 'cycle', 'deinterlace' }, { separator = true }),
     child('Filtros: diálogo claro, modo noche, ruido…', 'alt+v', 'tune', 'mu_av', 'av-menu'),
     bind('Modo noche', 'alt+n', 'bedtime', 'mu_av/av-night'),
-  })
-end
-
-views.record = function()
-  show('Grabar', {
-    cmd('Captura de pantalla', 'ctrl+s', 'photo_camera', { 'async', 'screenshot' }),
-    cmd('Captura sin subtítulos', nil, 'photo_camera', { 'async', 'screenshot', 'video' }, { separator = true }),
-    bind('Grabar el directo / detener', 'alt+r', 'fiber_manual_record', 'mu_iptv/record-toggle'),
-    cmd('Marcar tramo A-B', 'l', 'repeat', { 'ab-loop' }),
-    bind('Guardar el tramo A-B como clip', 'alt+u', 'content_cut', 'mu_study/clip'),
   })
 end
 
@@ -858,7 +848,8 @@ mp.add_key_binding(nil, 'root', open_root)
 mp.add_key_binding(nil, 'palette', open_palette)
 mp.add_key_binding(nil, 'recents', function() open_under_root('recents') end)
 mp.add_key_binding(nil, 'help', function() open_under_root('help') end)
-mp.add_key_binding(nil, 'record', function() open_under_root('record') end)
+-- the ● button and «Grabar» belong to mu-record (H18); kept for old bindings
+mp.add_key_binding(nil, 'record', function() mp.commandv('script-binding', 'mu_record/record-menu') end)
 mp.add_key_binding(nil, 'resume-toggle', function() set_pref('resume', not opts.resume) end)
 mp.add_key_binding(nil, 'click-pause-toggle', function() set_pref('click_pause', not opts.click_pause) end)
 N:entry('root', open_root)
@@ -873,8 +864,6 @@ apply_click_pause()
 
 local function set_button()
   uosc.set_button('mu-menu', { icon = 'apps', tooltip = 'Menú (alt+m)', command = { 'script-binding', SCRIPT .. '/root' } })
-  uosc.set_button('mu-record', { icon = 'fiber_manual_record', tooltip = 'Grabar',
-                                 command = { 'script-binding', SCRIPT .. '/record' } })
 end
 mp.register_script_message('uosc-version', set_button)
 mp.observe_property('user-data/mu/core', 'native', function(_, core)

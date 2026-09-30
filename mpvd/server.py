@@ -106,6 +106,8 @@ class MpvdServer:
         self.study = StudyService(self)
         register_study(self, self.study)
         control.register(self)
+        from mpvd import record  # noqa: PLC0415
+        record.register(self)
         self.remote = RemoteService(self)
         register_remote(self, self.remote)
 

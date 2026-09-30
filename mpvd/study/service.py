@@ -16,7 +16,7 @@ from mpvd.asr.audio import probe_duration
 from mpvd.hashing import file_hash
 from mpvd.jobs import Job, Priority
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
-from mpvd.study.clips import FORMATS, ClipError, export_clip, output_path
+from mpvd.study.clips import FORMATS, ClipError, audio_codec, audio_copy_ext, export_clip, output_path
 from mpvd.study.silence import DEFAULT_DB, DEFAULT_MIN, silence_map, summary
 
 if TYPE_CHECKING:
@@ -81,7 +81,8 @@ class StudyService:
             raise RpcError(INVALID_PARAMS, f"formato desconocido: {fmt} (study.formats)")
         if not (b > a >= 0):
             raise RpcError(INVALID_PARAMS, "tramo inválido: fin ≤ inicio")
-        out = output_path(src, a, b, fmt, directory)
+        ext = audio_copy_ext(audio_codec(src, audio_track)) if fmt == "audio-copy" else None
+        out = output_path(src, a, b, fmt, directory, ext=ext)
         item: dict[str, Any] = {"id": uuid.uuid4().hex[:10], "path": str(src), "title": title or src.name, "start": round(a, 3),
                                 "end": round(b, 3), "format": fmt, "file": str(out), "status": "queued", "progress": 0.0,
                                 "message": "", "created_at": time.time(), "notify": notify}

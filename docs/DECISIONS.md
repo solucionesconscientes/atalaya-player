@@ -218,4 +218,17 @@
   mu-notes (prioridad 5, antes de ytdl_hook) hace `loadfile … replace -1 start=T`. Menú en un script propio (`mu-notes`,
   pila de vistas y migas de ADR-041); las notas se siguen tomando con `alt+b` en mu-study. Los archivos de la primera
   versión (`<clave>.md`, enlaces `mpv://seek`) se migran al leer la carpeta.
+- ADR-044 · Botón «Grabar» unificado (H18): script `mu-record` (botón ● de uosc, `alt+r`, *Grabar* del menú principal).
+  Según la fuente, fijada al empezar: **directo** (canal de mu-iptv; URL sin duración o que no permite buscar; por yt-dlp
+  solo si su JSON dice `is_live`) → `stream-record` de mpv a `.mkv` (`.mka` para radio); solo audio → al parar mpvd
+  copia la pista de audio (`record.audio`, contenedor según el códec) y borra el vídeo; tramo ya en caché → `dump-cache`.
+  **Vídeo de internet** → yt-dlp `--download-sections "*A-B"` sin `--force-keyframes-at-cuts` (sin recodificar) y con
+  formato H.264/AAC (`bv*[vcodec^=avc1]+ba[ext=m4a]`/`ba[ext=m4a]`): con webm/opus de YouTube el tramo sale mal (16 s en
+  vez de 6, verificado); nombre con el tramo para que `--no-overwrites` no se salte otro tramo del mismo vídeo.
+  **Archivo local** → `study.clip`: `mp4-copy` si los códecs caben en mp4 (la lista de edición hace que empiece justo en
+  A) o `mkv-copy` (empieza en el fotograma clave anterior); `-avoid_negative_ts make_zero` quitado de ambos (en mp4
+  borraba la lista de edición); solo audio → `audio-copy` (búsqueda gruesa en la entrada + exacta en la salida, FLAC
+  reescrito en FLAC). Descartado `dump-cache` para locales (necesita `--cache=yes` y con fuentes MKV pierde los
+  fotogramas B). Indicador: superposición ASS «● REC m:ss» a 1 Hz y contador en el botón; alt+r de mu-iptv queda como
+  binding sin tecla. Carpeta recordada en mu-prefs; por defecto `<Vídeos>/MPV-UOS/Grabaciones` (`record.defaults`).
 

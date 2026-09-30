@@ -24,6 +24,12 @@ Opciones del instalador: `--xdg` (caché y datos en `~/.cache/mpv-uos` y `~/.loc
 - **Ayuda**: `?` muestra las teclas principales.
 - **Barra de controles**: reproducir/pausa (y anterior/siguiente si hay lista), subtítulos, audio (si hay varias pistas), velocidad,
   grabar ●, menú ▦ y pantalla completa. Lo demás está en el menú. El botón ⏭ aparece solo dentro de una intro o unos créditos.
+- **Grabar** (botón ● de la barra o `alt+r`): capturas con o sin subtítulos, *Grabar desde ahora* (vídeo o solo audio)
+  hasta *Detener*, y *Recortar un tramo* con marcas de inicio y final (son las del bucle A-B, tecla `l`). Mientras graba
+  verás un punto rojo y un contador. Qué hace según lo que suena: un directo de TV o radio se graba tal cual llega; un
+  vídeo de internet se descarga solo ese tramo con yt-dlp (en H.264/AAC); un archivo local se corta sin recodificar (en
+  mp4 empieza justo en la marca; en mkv, en el fotograma clave anterior). Solo audio guarda la pista original sin
+  recodificar. Carpeta: *Carpeta de grabaciones* (por defecto `~/Vídeos/MPV-UOS/Grabaciones`).
 - **Pausar con un clic en el vídeo**: *Menú → Preferencias* (desactivado por defecto; activado, el clic ya no arrastra la ventana).
 - **Paleta** (`alt+p`): escribe para buscar comandos, canales, recientes, acciones de mpvd y (si hay transcripción) frases del diálogo.
 - **Continuar viendo** (`alt+h`): los recientes se reconocen por contenido, aunque renombres o muevas el archivo.

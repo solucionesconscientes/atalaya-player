@@ -23,7 +23,11 @@ FORMATS = {
     "mp3": {"ext": ".mp3", "kind": "audio", "label": "MP3 192 kbps"},
     "opus": {"ext": ".opus", "kind": "audio", "label": "Opus 96 kbps"},
     "wav": {"ext": ".wav", "kind": "audio", "label": "WAV"},
+    "audio-copy": {"ext": ".mka", "kind": "audio", "label": "Audio original (sin recodificar)"},
 }
+# container for an audio stream copied as is (H18): the codec's usual file type, Matroska audio for anything else
+AUDIO_COPY_EXT = {"aac": ".m4a", "alac": ".m4a", "mp3": ".mp3", "opus": ".opus", "vorbis": ".ogg", "flac": ".flac",
+                  "ac3": ".ac3", "eac3": ".eac3", "pcm_s16le": ".wav", "pcm_s24le": ".wav"}
 MAX_SECONDS = 600.0
 _TIME = re.compile(r"^out_time_us=(\d+)")
 _END = re.compile(r"^progress=end")
@@ -38,15 +42,40 @@ def hms_name(t: float) -> str:
     return f"{s // 3600:02d}.{s % 3600 // 60:02d}.{s % 60:02d}"
 
 
-def output_path(src: Path, a: float, b: float, fmt: str, directory: Path | None = None) -> Path:
+def audio_codec(src: Path, audio_track: int | None = None, timeout: float = 20.0) -> str | None:
+    """codec_name of the chosen (or first) audio stream, via ffprobe."""
+    import json  # noqa: PLC0415
+    import shutil  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return None
+    sel = f"a:{audio_track}" if audio_track is not None else "a:0"
+    try:
+        out = subprocess.run([ffprobe, "-v", "error", "-select_streams", sel, "-show_entries", "stream=codec_name",
+                              "-of", "json", str(src)], capture_output=True, text=True, timeout=timeout, check=False)
+        streams = json.loads(out.stdout or "{}").get("streams") or []
+        return str(streams[0]["codec_name"]) if streams else None
+    except (OSError, ValueError, subprocess.TimeoutExpired, KeyError):
+        return None
+
+
+def audio_copy_ext(codec: str | None) -> str:
+    return AUDIO_COPY_EXT.get(codec or "", ".mka")
+
+
+def output_path(src: Path, a: float, b: float, fmt: str, directory: Path | None = None, ext: str | None = None,
+                stem: str | None = None) -> Path:
     spec = FORMATS[fmt]
+    ext = ext or spec["ext"]
+    stem = stem or src.stem
     folder = directory or (default_media_dir(spec["kind"]) / "clips")
-    name = f"{src.stem} [{hms_name(a)}-{hms_name(b)}]{spec['ext']}"
-    out = folder / name
+    out = folder / f"{stem} [{hms_name(a)}-{hms_name(b)}]{ext}"
     n = 1
     while out.exists():
         n += 1
-        out = folder / f"{src.stem} [{hms_name(a)}-{hms_name(b)}] ({n}){spec['ext']}"
+        out = folder / f"{stem} [{hms_name(a)}-{hms_name(b)}] ({n}){ext}"
     return out
 
 
@@ -59,9 +88,10 @@ def ffmpeg_args(src: Path, a: float, b: float, fmt: str, out: Path, audio_track:
     base = [ffmpeg_path(), "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-progress", "pipe:1", "-nostats"]
     amap = ["-map", f"0:a:{audio_track}"] if audio_track is not None else ["-map", "0:a:0?"]
     if fmt in ("mp4-copy", "mkv-copy"):
-        # -ss before -i seeks by keyframe (fast); copy both streams, drop subtitles/data
-        args = [*base, "-ss", f"{a:.3f}", "-t", f"{dur:.3f}", "-i", str(src), "-map", "0:v:0?", *amap, "-c", "copy",
-                "-avoid_negative_ts", "make_zero"]
+        # -ss before -i seeks by keyframe (fast); copy both streams, drop subtitles/data. The copy starts at the
+        # keyframe before A: mp4 hides that lead-in with an edit list (plays from A exactly), mkv shows it.
+        # No -avoid_negative_ts: it drops mp4's edit list (verified with ffmpeg 8, 2026-09-30).
+        args = [*base, "-ss", f"{a:.3f}", "-t", f"{dur:.3f}", "-i", str(src), "-map", "0:v:0?", *amap, "-c", "copy"]
         if fmt == "mp4-copy":
             args += ["-movflags", "+faststart"]
     elif fmt == "mp4":
@@ -74,6 +104,14 @@ def ffmpeg_args(src: Path, a: float, b: float, fmt: str, out: Path, audio_track:
         args = [*base, "-ss", f"{a:.3f}", "-t", f"{dur:.3f}", "-i", str(src), "-filter_complex", fc, "-loop", "0", "-an"]
     elif fmt == "mp3":
         args = [*base, "-ss", f"{a:.3f}", "-t", f"{dur:.3f}", "-i", str(src), "-vn", *amap, "-c:a", "libmp3lame", "-b:a", "192k"]
+    elif fmt == "audio-copy":
+        # every audio packet is a keyframe: a coarse input seek up to 5 s before A, then an exact output seek (an input
+        # seek alone keeps a lead-in in .mka/.mp3). FLAC is re-encoded to FLAC (lossless): a copied stream keeps the
+        # source's STREAMINFO (wrong duration).
+        pre = min(a, 5.0)
+        codec = ["-c:a", "flac"] if out.suffix == ".flac" else ["-c:a", "copy"]
+        args = [*base, "-ss", f"{a - pre:.3f}", "-i", str(src), "-ss", f"{pre:.3f}", "-t", f"{dur:.3f}", "-vn", *amap,
+                *codec]
     elif fmt == "opus":
         args = [*base, "-ss", f"{a:.3f}", "-t", f"{dur:.3f}", "-i", str(src), "-vn", *amap, "-c:a", "libopus", "-b:a", "96k"]
     else:  # wav

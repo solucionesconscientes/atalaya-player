@@ -34,7 +34,7 @@ WITH_VALUE = {
     "--ffmpeg-location", "--retries", "-R", "--socket-timeout", "--progress-delta", "--playlist-items", "-I",
     "--color", "--sponsorblock-mark", "--sponsorblock-remove", "--convert-subs", "--extractor-args",
     "--remote-components", "--cookies", "--cookies-from-browser", "-S", "--format-sort", "--user-agent",
-    "--sub-langs", "--ytdl-format",
+    "--sub-langs", "--ytdl-format", "--download-sections",
 }
 
 

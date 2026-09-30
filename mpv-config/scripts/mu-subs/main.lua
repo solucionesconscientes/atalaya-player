@@ -1,6 +1,6 @@
 -- mu-subs: live AI subtitles for MPV-UOS. Asks mpvd (asr.*) to transcribe the current local file ahead of the playback
 -- position with whisper.cpp, adds the incremental SRT as an external subtitle track (`sub-add`) and reloads it
--- (`sub-reload`) on every push event; the look-ahead cursor follows seeks (`asr.seek`). Menu "Subtítulos IA" (uosc):
+-- (a fresh copy replaces it) on every push event; the look-ahead cursor follows seeks (`asr.seek`). Menu "Subtítulos IA" (uosc):
 -- start/stop, language, model (download on demand), automatic start, pre-subtitling of the next playlist item, status.
 -- Also: translation (Argos / OPUS-MT, subs.translate), resync (subs.resync), extraction of embedded text tracks
 -- (subs.extract) and "Guardar subtítulos (SRT)" (subs.save: AI track, translation, resync or the selected track).
@@ -282,18 +282,21 @@ local function reload_track()
   end
   state.last_reload = now
   state.reload_pending = false
-  mp.commandv('sub-reload', tostring(t.id))
-  local nt = find_track(state.srt)
-  state.sid = nt and nt.id or state.sid
-  if sec == t.id and sid ~= t.id then
-    -- it was the secondary (dual mode): mpv will select it as primary in a moment; put both back afterwards
-    mp.add_timeout(0.1, function()
-      local n2 = find_track(state.srt)
-      if n2 then
-        mp.set_property_native('sid', sid)
-        mp.set_property_native('secondary-sid', n2.id)
-      end
-    end)
+  -- Not sub-reload: it re-adds AND re-selects the track asynchronously, which could undo a track the viewer picks a
+  -- moment later. A fresh copy is added unselected, takes the old one's place (primary or secondary) and the old one
+  -- goes; all synchronous.
+  local args = { 'sub-add', state.srt, 'auto', t.title or TRACK_TITLE }
+  if t.lang then table.insert(args, t.lang) end
+  mp.command_native(args)
+  local nt = nil
+  for _, tr in ipairs(mp.get_property_native('track-list') or {}) do
+    if tr.type == 'sub' and tr['external-filename'] == state.srt and tr.id ~= t.id then nt = tr end
+  end
+  if nt then
+    if sid == t.id then mp.set_property_native('sid', nt.id) end
+    if sec == t.id then mp.set_property_native('secondary-sid', nt.id) end
+    mp.commandv('sub-remove', tostring(t.id))
+    state.sid = nt.id
   end
   publish()
 end

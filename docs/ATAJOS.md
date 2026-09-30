@@ -46,7 +46,7 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 | `alt+t` | Menú TV y radio (España TV/Radio, Mundo por país, Radio mundial, Favoritos, Recientes, Mis listas) |
 | `alt+f` | Buscar canal o emisora (paleta) |
 | `alt+UP` / `alt+DOWN` | Canal siguiente / anterior dentro del grupo actual |
-| `alt+r` | Grabar / detener la grabación del directo (`~/Escritorio/MPV-UOS`) |
+| `alt+r` | Grabar desde ahora / detener: directos con `stream-record`, vídeos de internet como tramo (yt-dlp) y archivos locales sin recodificar; punto rojo y contador mientras graba. Menú completo en el botón ● (capturas, solo audio, recortar tramo, carpeta) |
 | `Tab` (sobre un canal) | Acciones: favorito, copiar URL |
 
 ## Vídeos de internet (mu-ytdl)

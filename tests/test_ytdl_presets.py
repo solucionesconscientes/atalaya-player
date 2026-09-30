@@ -152,3 +152,18 @@ def test_real_ytdlp_selection_on_recorded_youtube_info(container, height, expect
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=True).stdout.strip().splitlines()
     vcodec, acodec, ext, h = out[-1].split("|")
     assert (vcodec.split(".")[0], acodec.split(".")[0], ext, int(h)) == expected, out
+
+
+def test_sections_download_a_time_range_with_its_own_name():
+    """H18 «Grabar» of internet videos: --download-sections with a time range, no re-encode, a name per range."""
+    import pytest as _pytest
+
+    from mpvd.ytdl.presets import DownloadSpec, build_args
+
+    args = build_args(DownloadSpec(url="https://x/y", kind="audio_original", sections="*12.50-20"), "/out")
+    assert args[args.index("--download-sections") + 1] == "*12.50-20" and "--force-keyframes-at-cuts" not in args
+    assert args[args.index("-o") + 1].endswith(" [%(section_start)d-%(section_end)d s].%(ext)s")
+    assert "--download-sections" not in build_args(DownloadSpec(url="https://x/y"), "/out")
+    for bad in ("10-20", "*a-b", "*10", "intro"):
+        with _pytest.raises(ValueError):
+            DownloadSpec(url="https://x/y", sections=bad).validate()

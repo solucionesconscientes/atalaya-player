@@ -49,11 +49,11 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-H18 · Botón «Grabar» unificado: hoy el botón ● (mu-menu `record`) abre la categoría Grabar del menú principal. Falta un
-script (p. ej. `mu-record`) con captura con/sin subtítulos, grabar desde ahora (directos: `stream-record` como mu-iptv;
-vídeos de internet: yt-dlp `--download-sections` — verificar la opción con `vendor/bin/yt-dlp --help`; locales: corte sin
-recodificar con ffmpeg `-c copy` en mpvd), solo audio, recortar tramo A-B, punto rojo + contador mientras graba y
-carpeta configurable. H17 cerrado (ADR-043). H16 cerrado (ADR-042). H15 cerrado (2026-09-30, ADR-041). H14 cerrado (2026-09-30). Pendiente de Ser: abrir el puerto del mando en ufw y probar el desentrelazado con 7TV (NEEDS_HUMAN.md).
+H19 · Gestor de descargas avanzado (tres puntos en BACKLOG.md). Empezar por el primero: varias URLs (pegar lista /
+fichero), listas y canales con casillas (`ytdl.playlist` ya da la lista plana), carpeta y numeración por lista
+(`--download-archive` para no duplicar; verificar opciones con `.venv/bin/python vendor/bin/yt-dlp --help`), simultáneas y
+límite de velocidad (`-r`), y cola persistente entre reinicios (mirar `mpvd/ytdl/downloads.py`: historial y ajustes ya
+persisten). Luego subtítulos SRT y el reintento con yt-dlp nightly + curl_cffi. H18 cerrado (ADR-044). H15 cerrado (2026-09-30, ADR-041). H14 cerrado (2026-09-30). Pendiente de Ser: abrir el puerto del mando en ufw y probar el desentrelazado con 7TV (NEEDS_HUMAN.md).
 Siguiente tanda posible: B11 «¿qué me he perdido?», B6 OCR de subtítulos, C2–C3 diccionario/Anki, E4 MPRIS, I1/I5.
 Backlog completo. Si se reanuda: (1) Ser abre el puerto del mando y autoriza Notion (NEEDS_HUMAN.md) y ejecuta `/registrar`;
 (2) nuevos hitos a partir del TOP 10 de docs/VISION.md, empezando por B11 "¿qué me he perdido?" (resumen extractivo de la
@@ -61,6 +61,26 @@ transcripción entre dos tiempos con los embeddings de H10) y E4 MPRIS (script m
 named pipe en mpvd (`server.py`, `client.py`, `mpvipc.py`) + `bin/mpv-uos.ps1`.
 
 ## Registro por iteración
+### Iteración nocturna 2026-09-30 · H18 · Botón «Grabar» unificado — hecho
+- Verificado (subagente, notas en tmp/rec/NOTES.md): `--download-sections "*A-B"` corta con ffmpeg sin recodificar; con
+  webm/opus de YouTube el tramo sale mal, con H.264/AAC bien (±0,03 s); `dump-cache`/`stream-record` de mpv pierden
+  fotogramas B con fuentes MKV; en ffmpeg, `-avoid_negative_ts make_zero` rompe la lista de edición de mp4.
+- `mu-record` (script nuevo, ADR-044): botón ● y `alt+r`; capturas con/sin subtítulos; grabar desde ahora (vídeo o solo
+  audio) hasta detener; recortar tramo con las marcas A-B; punto rojo + contador «● REC m:ss» y contador en el botón;
+  carpeta recordada (por defecto `~/Vídeos/MPV-UOS/Grabaciones`). Directos → `stream-record` (+ `record.audio` de mpvd
+  para quedarse con el audio); internet → yt-dlp `sections` (formato H.264/AAC, nombre con el tramo); locales →
+  `study.clip` `mp4-copy`/`mkv-copy`/`audio-copy` (nuevo). Tipo de fuente fijado al empezar (yt-dlp dice si es directo).
+- De paso: `mp4-copy`/`mkv-copy` ya no usan `make_zero` (el mp4 empieza justo en A); mu-subs ya no usa `sub-reload`
+  (volvía a seleccionar la pista IA de forma asíncrona y pisaba la elegida: el test_mu_subs intermitente).
+- Tests: test_record (3), test_mu_record (local vídeo/audio/tramo, directo con contador y solo audio, tramo de internet
+  con el yt-dlp falso), presets (sections), nav (mu_record, mu_notes). `tools/check.sh`: 329 sin red + 8 con red.
+- Probar a mano:
+  ```bash
+  bin/mpv-uos tests/fixtures/media/video30.mkv   # ● → Grabar desde ahora … Detener · Recortar un tramo (marcas) · alt+r
+  bin/mpv-uos                                     # alt+t → un canal → alt+r (punto rojo) → alt+r: ~/Vídeos/MPV-UOS/Grabaciones
+  bin/mpv-uos 'https://www.youtube.com/watch?v=aqz-KE-bpKQ'   # ● → Grabar desde ahora … Detener: descarga solo ese tramo
+  ```
+
 ### Iteración nocturna 2026-09-30 · H17 · «Mis notas» — hecho
 - `mpvd/notes.py` (ADR-043): un Markdown por vídeo con el título como nombre y cabecera `titulo/video/clave` (la clave de
   contenido de «continuar viendo»), notas por tiempo, `notes.get/edit/delete/export`, migración de los archivos de H8.

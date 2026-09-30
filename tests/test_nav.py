@@ -22,6 +22,8 @@ MODULES = {
     "mu_intro": ("intro-menu", "mu-intro", "Saltar intro y créditos"),
     "mu_study": ("study-menu", "mu-study", "Estudio"),
     "mu_remote": ("remote-menu", "mu-remote", "Mando a distancia"),
+    "mu_notes": ("notes-menu", "mu-notes", "Mis notas"),
+    "mu_record": ("record-menu", "mu-record", "Grabar"),
 }
 CATEGORIES = ["Abrir", "TV y radio", "Descargas y conversión", "Subtítulos", "Imagen y sonido", "Grabar", "Herramientas",
               "Preferencias"]

@@ -5,6 +5,8 @@ Every option below was verified against ``yt-dlp --help`` of the vendored releas
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -53,6 +55,7 @@ class DownloadSpec:
     sponsorblock: str = "none"          # none | mark | remove
     playlist: bool = False              # whole playlist vs only the referenced item
     playlist_items: str | None = None   # e.g. "1:5"
+    sections: str | None = None         # time range only: "*10.5-16" (seconds; H18 «Grabar» of internet videos)
     title: str | None = None            # display only
     extra: dict[str, Any] = field(default_factory=dict)  # display-only info (preset id...)
 
@@ -85,6 +88,8 @@ class DownloadSpec:
             raise ValueError(f"sponsorblock must be one of {SPONSORBLOCK_MODES}")
         if self.height is not None and int(self.height) <= 0:
             raise ValueError("height must be positive")
+        if self.sections is not None and not SECTIONS_RE.match(self.sections):
+            raise ValueError("sections must look like *START-END in seconds (END may be inf)")
 
     @property
     def is_audio(self) -> bool:
@@ -93,6 +98,13 @@ class DownloadSpec:
     def format_expression(self) -> str:
         if self.kind == "exact":
             return str(self.format)
+        if self.sections:
+            # sections are cut by ffmpeg with input seeking + stream copy: with YouTube's webm/opus formats the range
+            # comes out wrong (16 s instead of 6, verified 2026-09-30), with H.264/AAC in mp4/m4a it is right (±0.03 s)
+            if self.is_audio:
+                return "ba[ext=m4a]/ba/b"
+            h = f"[height<=?{int(self.height)}]" if self.height else ""
+            return f"bv*[vcodec^=avc1]{h}+ba[ext=m4a]/b[ext=mp4]{h}/bv*{h}+ba/b"
         if self.kind == "video":
             if self.height:
                 h = int(self.height)
@@ -112,6 +124,16 @@ class DownloadSpec:
         if self.audio_format in ("flac", "wav"):
             q = "sin pérdida"
         return f"audio {self.audio_format} {q}"
+
+
+SECTIONS_RE = re.compile(r"^\*\d+(\.\d+)?-(\d+(\.\d+)?|inf)$")
+
+
+def section_template(template: str) -> str:
+    """The same name with the range, so that two ranges of one video never collide (``--no-overwrites``)."""
+    tail = ".%(ext)s"
+    base = template[: -len(tail)] if template.endswith(tail) else template
+    return base + " [%(section_start)d-%(section_end)d s]" + tail
 
 
 def output_args(out_dir: str, template: str = DEFAULT_TEMPLATE) -> list[str]:
@@ -167,6 +189,10 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
             args += ["--playlist-items", spec.playlist_items]
     else:
         args += ["--no-playlist"]
+    if spec.sections:
+        # cut at keyframes, no re-encode (like the local «Grabar»); needs ffmpeg, which is required anyway
+        args += ["--download-sections", spec.sections]
+        template = section_template(template)
     args += output_args(out_dir, template)
     args += progress_args()
     args += ["--", spec.url]

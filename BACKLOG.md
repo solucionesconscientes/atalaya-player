@@ -135,7 +135,7 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
       ese minuto (x-scheme-handler; sin sudo).
 
 ## H18 · Botón «Grabar» unificado
-- [ ] Botón ● en la barra con menú: captura (con/sin subtítulos), grabar vídeo desde ahora, grabar solo audio, recortar tramo; punto
+- [x] Botón ● en la barra con menú: captura (con/sin subtítulos), grabar vídeo desde ahora, grabar solo audio, recortar tramo; punto
       rojo y contador mientras graba. Directos/TV/radio: stream-record; vídeos de internet: yt-dlp --download-sections del tramo
       (verifica la opción); archivos locales: corte sin recodificar. Carpeta configurable. Tests.
 
