@@ -62,6 +62,34 @@ Chromecast con extra opcional), H28 (AppImage; Windows named pipe documentado).
 (3) Túnel de Compartir: bloqueado por permisos (NEEDS_HUMAN.md).
 
 ## Registro por iteración
+### Iteración 3 · 2026-09-30 · H27 · Enviar a la tele (DLNA) — hecho
+- mpvd `cast/` (`cast.discover/play/control/status/stop`): SSDP + UPnP AVTransport/RenderingControl; el archivo tal
+  cual con rangos de bytes (puerto 8792, token por elemento) o relé MPEG-TS de ffmpeg; URL directa para vídeos web con
+  MP4 progresivo (ADR-063). mu-cast (`alt+E`, *Herramientas*): teles de la red, enviar desde el minuto actual (aquí se
+  pausa), pausar, ±30 s, volumen, *Seguir viendo aquí*, parar.
+- Tests: test_cast.py (descripción, SSDP, SOAP, DIDL, relé; tele falsa en loopback que descarga el medio; mu-cast
+  headless). Sin tele real probada; Chromecast pendiente.
+- Probar a mano (tele encendida en la misma wifi; antes `sudo ufw allow from 192.168.1.0/24 to any port 8792 proto tcp`):
+  ```bash
+  bin/mpv-uos tests/fixtures/media/video30.mkv   # alt+E → tu tele → Seguir viendo aquí
+  .venv/bin/python -m mpvd call cast.discover
+  ```
+
+### Iteración 3 · 2026-09-30 · H23 · Menú «Suscripciones» y panel web de descargas — hecho (subagentes, fusionado)
+- mu-feeds (`alt+Y`, *Descargas y conversión › Suscripciones*): añadir por URL con detección, reglas, cadena tras
+  descargar, pendientes/descargados, pausar, borrar, ajustes (franja, límite, red medida) (ADR-059).
+- Panel `/downloads` en el servidor del mando: tareas en vivo, selección múltiple, pegar/arrastrar enlaces, disco,
+  aviso al terminar; `mpv-uos://download?url=…` → `python -m mpvd link` (cola sin abrir el reproductor); marcadores
+  (ADR-060). Tests: test_mu_feeds, test_downloads_panel, test_launcher.
+- Probar a mano:
+  ```bash
+  bin/mpv-uos   # alt+Y → Añadir suscripción… → https://www.youtube.com/@BlenderOfficial → Suscribirse
+  bin/mpv-uos   # alt+Z → Panel de descargas en el navegador → pega un enlace → Descargar
+  .venv/bin/python -m mpvd link 'mpv-uos://download?url=https%3A%2F%2Farchive.org%2Fdetails%2FCountdow1960&preset=audio_original'
+  ```
+- Falta: volver a «usar la cadena general» en una suscripción con cadena propia; notificaciones con la página cerrada
+  (sin HTTPS no hay push).
+
 ### Iteración 3 · 2026-09-30 · H27 · «¿Qué me he perdido?» — hecho
 - mpvd `recap.py` (`recap.summarize`): frases del propio diálogo del tramo (SRT/VTT/ASS externo, pista de texto
   incrustada extraída a la caché, o transcripción IA ya hecha); embeddings de `semantic` si están, si no palabras que

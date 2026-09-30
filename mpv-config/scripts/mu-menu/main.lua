@@ -377,6 +377,8 @@ views.tools = function()
     child('Mis notas', 'alt+B', 'sticky_note_2', 'mu_notes', 'notes-menu'),
     child('¿Qué me he perdido?', 'alt+R', 'history_edu', 'mu_recap', 'recap'),
     child('Mando desde el móvil', 'alt+Z', 'qr_code_2', 'mu_remote', 'remote-menu'),
+    cmd('Panel de descargas en el navegador', nil, 'open_in_browser',
+        { 'script-message-to', 'mu_remote', 'mu-remote-downloads' }),
     child('Compartir: ver juntos', 'alt+W', 'group', 'mu_share', 'share-menu'),
     child('Enviar a la tele', 'alt+E', 'cast', 'mu_cast', 'cast-menu', { separator = true }),
     bind('Capítulos', 'c', 'bookmark', 'uosc/chapters'),
@@ -547,6 +549,9 @@ local ACTIONS = {
   { title = 'Actualizar listas de TV y radio', icon = 'refresh', action = 'iptv.refresh' },
   { title = 'Buscar actualización de yt-dlp', icon = 'system_update_alt', action = 'ytdl.update.check' },
   { title = 'Ver descargas', icon = 'downloading', cmd = { 'script-binding', 'mu_ytdl/ytdl-downloads' } },
+  { title = 'Panel de descargas en el navegador', icon = 'open_in_browser',
+    cmd = { 'script-message-to', 'mu_remote', 'mu-remote-downloads' } },
+  { title = 'Suscripciones', icon = 'subscriptions', cmd = { 'script-binding', 'mu_feeds/feeds-menu' } },
   { title = 'Estado de mpvd', icon = 'monitor_heart', action = 'status' },
   { title = 'Relanzar mpvd', icon = 'restart_alt', cmd = { 'script-message-to', 'mu_core', 'mu-ensure' } },
 }

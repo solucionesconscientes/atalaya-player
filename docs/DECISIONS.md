@@ -405,3 +405,22 @@
   transporte (en Python 3.12 `wait()` no vuelve hasta EOF de la tubería). Chromecast queda fuera por ahora: su
   protocolo (CASTV2: TLS + protobuf + mDNS) pide `pychromecast` y un receptor real para probarlo; se añadiría como extra
   opcional con la misma interfaz `cast.*`.
+- ADR-059 · Menú «Suscripciones» (H23): script propio `mu_feeds` (binding feeds-menu, `alt+Y`) abierto también como
+  hijo de «Descargas y conversión» (⌫ vuelve allí). Vistas de un solo menú de uosc con mu/nav; los cambios se guardan
+  al momento en mpvd y el menú se refresca con los avisos `mu-event` (≤ 4 Hz). Al tocar la cadena de una suscripción se
+  envía la cadena completa (la general + el cambio): feeds.update parte de los valores por defecto, no de la general.
+  Consecuencia: una suscripción con cadena propia no puede volver a «usar la general» desde el menú (haría falta
+  `chain: null`, que `mp.utils.format_json` no escribe); se cambia fila a fila. Aviso OSD solo para comprobaciones
+  recientes (< 2 min) con episodios nuevos.
+- ADR-060 · Panel de descargas y «Enviar a MPV-UOS» (H23): el panel es otra página del servidor HTTP del mando
+  (`/downloads`, mismo puerto, token de un solo uso y cookie HMAC; nada de túnel), con API propia en
+  `mpvd/remote/downloads.py` sobre `tasks.list`, `ytdl.download.batch` y `ytdl.downloads.*`/`convert.*` (lista cerrada de
+  acciones; «play» solo abre un archivo que escribió una tarea terminada). Vivo por SSE que consulta cada 1 s y solo
+  emite si algo cambió. `remote.pair {path, local}` da el enlace al panel; `local` usa 127.0.0.1 porque es contexto
+  seguro y ahí el navegador permite notificaciones; por la LAN sin HTTPS no, así que el aviso es banner + vibración +
+  título (sin push con la página cerrada). Enlaces `mpv-uos://download?url=<url>[&preset=<id>]`: bin/mpv-uos los pasa a
+  `python -m mpvd link` sin abrir el reproductor (cola + notificación del escritorio); solo http/https, uno por enlace,
+  porque cualquier web puede disparar el esquema (el navegador pregunta antes). Para ver una página basta el enlace de
+  H17 `mpv-uos://open?path=<url>`. El marcador sin esquema abre `/downloads#add=<url>` y solo rellena el recuadro:
+  descargar exige pulsar «Descargar». Descartado Web Share Target («Compartir» de Android): exige PWA instalada, que
+  exige HTTPS.

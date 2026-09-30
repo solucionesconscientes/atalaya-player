@@ -48,6 +48,16 @@ fi
 export MPV_UOS_ROOT="$ROOT"
 export MPV_UOS_DATA_DIR="$DATA_DIR"
 
+# «Enviar a MPV-UOS» from the browser (H23): mpv-uos://download?url=<url>[&preset=<id>] queues the download in
+# mpvd (started if needed) and shows a desktop notification; no player window opens.
+dl_links=()
+for a in "$@"; do case "$a" in mpv-uos://download\?*) dl_links+=("$a") ;; esac; done
+if [ "${#dl_links[@]}" -gt 0 ]; then
+  PY="$ROOT/.venv/bin/python"; [ -x "$PY" ] || PY="$ROOT/.venv/Scripts/python.exe"; [ -x "$PY" ] || PY=python3
+  export MPV_UOS_ROOT="$ROOT" PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+  exec "$PY" -m mpvd link --root "$ROOT" "${dl_links[@]}"
+fi
+
 # Links from «Mis notas» (mpv-uos://open?path=<url-encoded>&t=<seconds>, registered by the desktop entry): open that
 # file at that minute with per-file options. The desktop entry passes them after `--`, where `--{` would be a file
 # name, so the groups go before the first `--`.

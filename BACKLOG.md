@@ -163,10 +163,10 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
 - [x] Subtítulos de internet por hash (OpenSubtitles, cuenta propia, desactivado por defecto) con resincronización automática.
 
 ## H23 · Suscripciones, panel web y automatismos
-- [ ] Suscripciones a canales, listas y podcasts (RSS) con reglas (calidad, solo audio, conservar N, borrar lo visto), horarios de
+- [x] Suscripciones a canales, listas y podcasts (RSS) con reglas (calidad, solo audio, conservar N, borrar lo visto), horarios de
       descarga, límite por franja y pausa con red medida.
 - [x] Cadena tras descargar (SponsorBlock, volumen igualado, subtítulos IA + traducción, renombrar y mover a la biblioteca).
-- [ ] Panel web de descargas servido por mpvd (misma base que la PWA del mando): tabla, selección múltiple, arrastrar enlaces,
+- [x] Panel web de descargas servido por mpvd (misma base que la PWA del mando): tabla, selección múltiple, arrastrar enlaces,
       historial, espacio en disco; «Enviar a MPV-UOS» desde el navegador (marcador + `mpv-uos://`); aviso al móvil al terminar.
 
 ## H24 · Escritorio y sonido
@@ -227,7 +227,7 @@ traducción en directo. Fuera también: imagen (mejoras de imagen, visor de foto
 ## H27 · Diferenciales
 - [x] Mini reproductor flotante, modo salón (letra grande, gamepad; HDMI-CEC no: necesita hardware y libcec), modo sencillo.
 - [x] «¿Qué me he perdido?» con modelo local (extractivo, ADR-062).
-- [ ] Enviar a la tele (Chromecast/DLNA).
+- [x] Enviar a la tele por DLNA (Chromecast fuera por ahora: ver ADR-063 y docs/PLATAFORMAS.md).
 
 ## H28 · Plataformas
 - [ ] Paquete Linux (AppImage y/o Flatpak), prueba en ARM64 (Raspberry Pi 5 / modo salón), Windows (named pipes en mpvd, lanzador,

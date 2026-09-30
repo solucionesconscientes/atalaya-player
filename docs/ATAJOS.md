@@ -66,6 +66,12 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 | `alt+C` | Convertir el archivo abierto o una carpeta entera: MP4 compatible, más pequeño (H.265), web (WebM), solo audio (MP3/M4A/Opus/FLAC/WAV) o GIF; resolución, calidad, tramo A-B y subtítulos |
 | `alt+T` | Tareas: descargas y conversiones juntas; Tab: cancelar, repetir, quitar, abrir la carpeta |
 
+## Suscripciones (mu-feeds)
+| Tecla | Acción |
+|---|---|
+| `alt+Y` | Suscripciones a canales, listas y podcasts: añadir pegando la dirección, comprobar ahora, reglas (calidad, solo audio, conservar N, borrar lo visto, tras descargar), pausar, borrar y ajustes (horario, límite, red medida) |
+| `Tab` (sobre una suscripción) | Acciones: comprobar ahora, pausar / reanudar, borrar |
+
 ## Teclas por defecto de mpv más útiles
 | Tecla | Acción |
 |---|---|

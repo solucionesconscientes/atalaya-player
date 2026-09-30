@@ -119,6 +119,20 @@ abre. Si un canal entrelazado se ve con "peines" (7TV), pulsa `d`. Detalles en d
   yt-dlp lee sus cookies para lo que ya puedes ver con tu cuenta; vale también al reproducir; nunca sirve para DRM).
   Si cierras el reproductor con descargas a medias, siguen al volver a abrirlo.
 
+## 3a. Suscripciones (canales, listas y podcasts)
+*Descargas y conversión › Suscripciones* (o `alt+Y`).
+- **Añadir suscripción…**: pega la dirección de un canal de YouTube, una lista o el RSS de un podcast. MPV-UOS dice qué es,
+  enseña lo más reciente y te deja cambiar el nombre y cuántos episodios bajar ya (por defecto los 3 últimos; en listas, todo).
+- Cada suscripción se comprueba sola cada 2 horas y descarga lo nuevo sin molestar a lo que estés haciendo.
+  **Tab** sobre una: comprobar ahora, pausar / reanudar, borrar (los archivos ya descargados se quedan).
+- **Reglas**: calidad, solo audio, saltar patrocinios (SponsorBlock), conservar solo los N más nuevos, borrar lo que ya
+  hayas visto y qué hacer tras descargar: igualar el volumen, subtítulos IA (y traducirlos), renombrar y mover a una
+  carpeta de la biblioteca.
+- **Pendientes y descargados**: lo que espera turno y lo ya bajado, con cómo va «tras descargar»; Enter lo reproduce.
+- **Ajustes de suscripciones**: cada cuánto comprobar, horario de descarga (p. ej. de 1:00 a 7:00), límite por franja
+  (descargas o MB), pausar con conexión medida (datos del móvil), seguir comprobando con el reproductor cerrado y lo
+  que se hace tras descargar por defecto.
+
 ## 3b. Convertir vídeo y audio
 - `alt+C` (o *Descargas y conversión → Convertir…*): con un archivo de tu equipo abierto, elige **MP4 compatible**
   (se abre en cualquier sitio), **Más pequeño (H.265)** (ocupa más o menos la mitad y tarda más), **Web (WebM)**,
@@ -245,6 +259,15 @@ también funcionan.
 ## 9. Mando a distancia desde el móvil
 `alt+z` muestra un QR; escanéalo con el móvil en la misma wifi y tendrás play/pausa, saltos, volumen, pistas, canales y búsqueda.
 El móvil queda emparejado hasta que lo olvides (`alt+Z`). Si no conecta, abre el puerto en el cortafuegos: docs/REMOTE.md.
+
+**Panel de descargas**: en *Mando a distancia* (`alt+Z`) → *Panel de descargas en el navegador* se abre en el navegador
+del ordenador una página con las descargas y conversiones en vivo; en el móvil emparejado está en *Más → Panel de
+descargas y conversiones*. Marca varias con las casillas para cancelarlas, reintentarlas o quitarlas; ▶ abre una terminada
+en el reproductor; pega o arrastra enlaces en el recuadro, elige formato y pulsa *Descargar*. Muestra el espacio libre del
+disco y avisa cuando termina cada una (notificación si la permites; en el móvil, aviso en la página y vibración, con la
+página abierta). Al final de la página, *«Enviar a MPV-UOS» desde el navegador*: arrastra a la barra de marcadores
+*Descargar con MPV-UOS* (la pone en cola en este ordenador sin abrir el reproductor), *Ver en MPV-UOS* o *Enviar al panel*
+(sirve en cualquier equipo de la red; rellena el enlace y tú confirmas). Más en docs/REMOTE.md.
 
 ## 9b. Compartir: ver juntos
 `alt+W` (o *Herramientas → Compartir: ver juntos*) → *Crear una sala para ver juntos*: sale un enlace y un QR. Quien lo
