@@ -279,6 +279,22 @@ abra en tu misma red (wifi de casa) pone su nombre y ve lo mismo que tú, a la v
 - El enlace caduca (24 h como mucho), se puede cambiar por uno nuevo y deja de valer al cerrar la sala.
 - Abrir la sala a internet (túnel) está pendiente de una decisión de Ser (ver NEEDS_HUMAN.md).
 
+**Sala pública (solo ver).** En *Compartir*, *Crear una sala pública (solo ver)*. Quien abra el enlace o escanee el QR
+entra sin escribir nada y solo puede mirar: no pausa, no salta, no hay chat. Caben hasta 20 personas a la vez (se cambia
+con `mu-share-max_viewers`). En el menú ves cuántos miran. Solo en tu red, como las salas privadas.
+
+**Chat y reacciones.** En una sala privada, los invitados escriben y mandan reacciones desde la página; en tu pantalla
+salen unos segundos abajo a la izquierda. Tú escribes desde *Compartir › Chat › Escribir un mensaje*, y ahí puedes
+quitar el chat de la pantalla. Cada invitado puede mandar 5 mensajes y 8 reacciones cada 10 segundos.
+
+**Emitir en directo.** En *Compartir › Emitir en directo…*:
+1. *Servidor*: YouTube, YouTube (cifrado) o Twitch, u *Otro servidor* con su dirección `rtmp://…` (PeerTube, Owncast).
+2. Copia tu clave de emisión (la da la web del servicio) y pulsa *Pegar la clave de emisión*. No se muestra nunca.
+3. *Emitir lo que estoy viendo* (desde este punto) o *Emitir desde el principio*. El menú muestra el tiempo y la
+   velocidad de emisión; *Parar la emisión* la corta.
+Emite solo lo que tengas derecho a compartir (lo tuyo, contenido libre o con permiso). Si cierras el reproductor, la
+emisión se para. La calidad es 720p, pensada para un portátil sin tarjeta gráfica dedicada.
+
 ## 9b-2. Enviar a la tele
 `alt+E` (o *Herramientas → Enviar a la tele*) busca en tu wifi las teles y altavoces que aceptan DLNA (casi todas las
 Samsung, LG, Sony, Philips, Kodi…; en algunas hay que activar «compartir contenido» o «DLNA» en sus ajustes). Elige una:

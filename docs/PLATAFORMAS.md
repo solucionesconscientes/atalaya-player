@@ -97,3 +97,10 @@ Hoy no funciona sin trabajo: falta el lanzador PowerShell y el transporte por na
   `ffmpeg`/`ffprobe` del PATH y `nice -n 10` si existe (en Windows no hay `nice`: se lanzan con prioridad normal).
 - `library-secrets.json` se crea con permisos 0600; en Windows esos bits no significan nada y la protección es la de la carpeta
   del perfil del usuario (`%APPDATA%\mpv-uos`), sin ACL propias (no probado).
+
+## Emitir en directo (H25)
+Probado solo en Linux (ffmpeg 8.0, Intel iHD con `-low_power 1`). En Windows y macOS no hay VA-API: se emite por CPU
+(libx264), sin probar. `live.json` se crea con modo 0600: en Windows los permisos POSIX no aplican (sin probar el acceso
+por ACL). La clave se lee de la propiedad `clipboard/text` de mpv, que depende del backend de portapapeles (win32, mac,
+wayland, x11); sin portapapeles nativo, configúrala con `live.configure {"key": "…"}` (MCP/CLI). En Linux la clave se ve
+en `/proc/<pid>/cmdline` mientras se emite.

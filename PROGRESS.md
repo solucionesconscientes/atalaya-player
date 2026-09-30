@@ -62,6 +62,23 @@ Chromecast con extra opcional), H28 (AppImage; Windows named pipe documentado).
 (3) Túnel de Compartir: bloqueado por permisos (NEEDS_HUMAN.md).
 
 ## Registro por iteración
+### Iteración 3 · 2026-09-30 · H25 · Sala pública, chat y «Emitir en directo» — hecho (subagente, fusionado)
+- Sala pública solo ver (LAN, `&v=1`, hasta 20 espectadores anónimos), chat y reacciones en salas privadas (límites,
+  texto nunca como HTML), `live.*` por RTMP/RTMPS con ffmpeg (clave 0600 leída del portapapeles por mpvd, 720p30,
+  VA-API con reintento por CPU) (ADR-061). Tests: test_share_live (emisiones reales a un receptor local), test_share_*.
+- Probar a mano:
+  ```bash
+  ffmpeg -listen 1 -timeout 120 -f flv -i rtmp://127.0.0.1:1935/live/prueba-1234 -c copy tmp/emision.flv &
+  bin/mpv-uos tests/fixtures/media/video30.mkv   # alt+W → Emitir en directo… → Otro servidor → rtmp://127.0.0.1:1935/live
+                                                 # copia «prueba-1234» → Pegar la clave → Emitir lo que estoy viendo → Parar
+  ffprobe -v error -show_entries stream=codec_name -of csv tmp/emision.flv   # h264 y aac
+  ```
+- Túnel a internet: [~] (NEEDS_HUMAN.md). Falta reconexión automática de la emisión.
+
+### Iteración 3 · 2026-09-30 · H28 · Transporte de mpvd para Windows — hecho (sin probar en Windows)
+- `mpvd/transport.py`: socket Unix o named pipe `\\.\pipe\mpv-uos-mpvd-<usuario>` (lazo Proactor) para el servidor
+  de mpvd, el cliente y la conexión IPC con mpv; `Settings.endpoint`. Test con un lazo simulado sobre sockets Unix.
+
 ### Iteración 3 · 2026-09-30 · H27 · Enviar a la tele (DLNA) — hecho
 - mpvd `cast/` (`cast.discover/play/control/status/stop`): SSDP + UPnP AVTransport/RenderingControl; el archivo tal
   cual con rangos de bytes (puerto 8792, token por elemento) o relé MPEG-TS de ffmpeg; URL directa para vídeos web con

@@ -176,9 +176,10 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
 - [x] Sala privada con enlace: «ver juntos» sincronizado (cada invitado reproduce la fuente en su navegador), permisos por invitado
       (solo ver / puede controlar, con aprobación en pantalla, revocable), quién está conectado, avisos «Ana ha pausado».
 - [x] Retransmisión de archivos locales a los invitados (HLS con subtítulos WebVTT, conversión al vuelo por VA-API si hace falta).
-- [~] (túnel: permiso denegado en la sesión nocturna, ver NEEDS_HUMAN.md) Túnel de Cloudflare (cloudflared en vendor/, sin cuenta) activo SOLO mientras la sala está abierta, con caducidad y límite de
-      intentos. Sala pública «solo ver» (cualquiera con el enlace, número máximo de espectadores, sin control ni chat).
-- [ ] «Emitir en directo» a una plataforma (YouTube Live, Twitch, PeerTube, Owncast) por RTMP con clave de emisión, para audiencias
+- [~] Túnel de Cloudflare (cloudflared en vendor/, sin cuenta) activo SOLO mientras la sala está abierta: permiso para abrir
+      un túnel de entrada denegado en la sesión nocturna (NEEDS_HUMAN.md).
+- [x] Sala pública «solo ver» (cualquiera con el enlace en la red local, número máximo de espectadores, sin control ni chat).
+- [x] «Emitir en directo» a una plataforma (YouTube Live, Twitch, PeerTube, Owncast) por RTMP con clave de emisión, para audiencias
       grandes. Chat y reacciones en salas privadas. Aviso legal: solo contenido que se puede compartir.
 
 ## Ampliación aprobada por Ser el 2026-09-30 (H29–H33, se hacen antes de H26–H28)

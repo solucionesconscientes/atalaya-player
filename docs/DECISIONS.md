@@ -424,3 +424,19 @@
   H17 `mpv-uos://open?path=<url>`. El marcador sin esquema abre `/downloads#add=<url>` y solo rellena el recuadro:
   descargar exige pulsar «Descargar». Descartado Web Share Target («Compartir» de Android): exige PWA instalada, que
   exige HTTPS.
+- ADR-061 · Compartir: sala pública, chat y «Emitir en directo» (H25, sin túnel). Sala pública «solo ver» (solo red
+  local): el enlace lleva `&v=1` y la página entra sola como «Espectador N», sin nombre, hasta un máximo configurable
+  (20 por defecto, tope 100); sin control ni chat; los espectadores solo ven cuántos miran y el anfitrión no recibe un
+  aviso por cada uno. Si está llena, el sitio de quien lleva más de 30 s desconectado pasa al nuevo. Caducidad y límite
+  de intentos iguales que en las privadas. Chat y reacciones solo en salas privadas, por el mismo SSE (evento `chat`):
+  200 caracteres, 5 mensajes y 8 reacciones cada 10 s por invitado (429), texto limpio de caracteres de control y bidi
+  que la página pinta siempre como texto (`textContent`) y mu-share escapa para ASS; en mpv, unas líneas abajo a la
+  izquierda durante `chat_seconds` (máximo 10 Hz), las reacciones con palabras porque libass no pinta emoji de color.
+  «Emitir en directo»: ffmpeg a RTMP/RTMPS con H.264 de hasta 720p y 30 fps a 2500 kb/s y un fotograma clave cada 2 s,
+  AAC 128k a 44,1 kHz, FLV; VA-API si hay (como convert) con reintento por CPU; `-re` y la posición del anfitrión para
+  archivos, directos tal cual; imagen negra o silencio si falta una pista. Desactivado hasta configurarlo; servidor y
+  clave en `<datos>/live.json` 0600. La clave nunca sale por la API, los registros ni el OSD y el menú no la ve: mpvd la
+  lee del portapapeles de mpv. Límite conocido: ffmpeg necesita la URL completa como argumento, así que mientras emite
+  la clave está en su línea de órdenes (`/proc/<pid>/cmdline`); ffmpeg 8 no carga de archivo opciones de protocolo como
+  `-rtmp_playpath` (comprobado). Parar mata solo su PID; también se para al cerrar el reproductor que la empezó o mpvd.
+  Sin reconexión automática si se corta.
