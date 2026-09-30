@@ -33,7 +33,8 @@ if [ -f "$SYS_MPV_DESKTOP" ]; then
   extra_mime="$(sed -n 's/^MimeType=//p' "$SYS_MPV_DESKTOP" | head -1)"
   MIME="$(printf '%s;%s' "$MIME" "$extra_mime" | tr ';' '\n' | awk 'NF && !seen[$0]++' | tr '\n' ';')"
 fi
-# «Mis notas» links: mpv-uos://open?path=…&t=… (bin/mpv-uos opens the video at that minute)
+# mpv-uos:// links: «Mis notas» (open?path=…&t=…, bin/mpv-uos opens the video at that minute) and the browser's
+# «Enviar a MPV-UOS» (download?url=…, bin/mpv-uos hands it to `mpvd link`)
 MIME="${MIME%;};x-scheme-handler/mpv-uos;"
 MIME_BACKUP="$DATA_HOME/mpv-uos/mime-defaults.bak"
 MIMEAPPS="${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
@@ -171,7 +172,7 @@ fi
 refresh_caches
 # our own scheme (no other application handles it): always registered, --uninstall removes it with the rest
 if command -v xdg-mime >/dev/null 2>&1; then
-  say "enlaces mpv-uos:// de las notas → MPV-UOS"
+  say "enlaces mpv-uos:// (Mis notas, «Enviar a MPV-UOS» del navegador) → MPV-UOS"
   run xdg-mime default mpv-uos.desktop x-scheme-handler/mpv-uos || true
 fi
 

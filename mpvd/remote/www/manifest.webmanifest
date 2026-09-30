@@ -9,6 +9,14 @@
   "background_color": "#0D1320",
   "theme_color": "#0D1320",
   "lang": "es",
+  "shortcuts": [
+    {
+      "name": "Descargas",
+      "short_name": "Descargas",
+      "description": "Panel de descargas y conversiones",
+      "url": "/downloads"
+    }
+  ],
   "icons": [
     {
       "src": "/icon.svg",

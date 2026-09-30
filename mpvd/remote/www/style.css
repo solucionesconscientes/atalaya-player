@@ -33,3 +33,4 @@ input[type=search], input[type=url] { width:100%; padding:12px; border-radius:12
 .item .t { font-weight:500; }
 .item .s { color:var(--muted); font-size:.82rem; }
 h3 { margin: 18px 0 8px; font-size:.95rem; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+a.button-link { display:block; background:var(--card); color:var(--fg); border-radius:12px; padding:12px; text-decoration:none; }

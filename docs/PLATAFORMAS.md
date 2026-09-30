@@ -87,6 +87,10 @@ Hoy no funciona sin trabajo: falta el lanzador PowerShell y el transporte por na
   (no probado). En Windows el primer arranque puede mostrar el diálogo del Firewall de Windows ("Permitir acceso" en redes privadas);
   en macOS, el aviso de "aceptar conexiones entrantes" para Python. En Linux con `ufw` hay que abrir el puerto (docs/REMOTE.md).
 - La PWA usa solo HTML/JS/CSS estándar y SSE; la API está probada con tests HTTP (urllib); la interfaz no se ha probado en un móvil real (Android/iOS).
+- Panel de descargas (H23): probado con Chrome headless en Linux. Abrirlo desde el menú usa `xdg-open` / `open` / `explorer`
+  (macOS y Windows sin probar). Los enlaces `mpv-uos://download?url=…` solo se registran en Linux (`.desktop` de
+  `tools/install.sh`); en macOS/Windows usa el marcador «Enviar al panel», que no necesita esquema. Las notificaciones del
+  navegador solo salen en `http://127.0.0.1` (contexto seguro); por la red local el aviso queda en la página (y vibración en Android).
 
 ## Biblioteca y subtítulos de internet (H22)
 - Escaneo con `os.walk` y rutas `pathlib`: igual en las tres plataformas (solo probado en Linux). Los fotogramas de carátula usan

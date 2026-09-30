@@ -26,6 +26,7 @@ from mpvd.brand import app_name
 from mpvd.control import pick_session
 from mpvd.mpvipc import MpvIpcError
 from mpvd.remote import qr
+from mpvd.remote.downloads import DownloadsPanel
 from mpvd.remote.http import HttpError, HttpServer, Request, Response, sse_event
 from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
 
@@ -43,8 +44,10 @@ STATE_PROPS = ("time-pos", "duration", "pause", "media-title", "path", "filename
                "fullscreen", "ab-loop-a", "ab-loop-b", "eof-reached")
 STATIC = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/style.css": "style.css",
           "/sw.js": "sw.js", "/manifest.webmanifest": "manifest.webmanifest", "/icon.svg": "icon.svg",
-          "/icon-192.png": "icon-192.png", "/icon-512.png": "icon-512.png"}
-BRANDED = {"index.html", "manifest.webmanifest", "app.js"}  # the literal app name in them follows brand.json
+          "/icon-192.png": "icon-192.png", "/icon-512.png": "icon-512.png",
+          "/downloads": "downloads.html", "/downloads.js": "downloads.js"}  # H23: downloads panel
+BRANDED = {"index.html", "manifest.webmanifest", "app.js", "downloads.html", "downloads.js"}
+PAGES = ("/", "/downloads")  # where a pairing link may land  # the literal app name in them follows brand.json
 MAX_PAIRED = 20
 
 
@@ -108,6 +111,7 @@ class RemoteService:
         self.paired: dict[str, dict[str, Any]] = {}
         self.clients = 0  # open SSE streams
         self._load()
+        self.downloads = DownloadsPanel(self)
         server.session_listeners.append(self._session_event)
 
     # -- persistence -------------------------------------------------------------------------------------
@@ -171,7 +175,11 @@ class RemoteService:
             with contextlib.suppress(Exception):
                 await self.start()
 
-    def base_url(self) -> str:
+    def base_url(self, local: bool = False) -> str:
+        """URL of the server for the phone (LAN address), or for a browser on this computer (``local``: loopback,
+        where browsers also allow notifications over plain HTTP)."""
+        if local and self.host in ("0.0.0.0", "", "127.0.0.1", "localhost"):
+            return f"http://127.0.0.1:{self.http.port}"
         host = self.public_host or (lan_ip() if self.host in ("0.0.0.0", "") else self.host)
         return f"http://{host}:{self.http.port}"
 
@@ -189,13 +197,16 @@ class RemoteService:
 
     # -- pairing -------------------------------------------------------------------------------------------
 
-    async def pair_token(self, session_id: str | None, ttl: float = TOKEN_TTL) -> dict[str, Any]:
+    async def pair_token(self, session_id: str | None, ttl: float = TOKEN_TTL, path: str = "/",
+                         local: bool = False) -> dict[str, Any]:
+        if path not in PAGES:
+            raise RpcError(INVALID_PARAMS, f"path must be one of {PAGES}")
         await self.start()
         now = time.time()
         self.tokens = {t: v for t, v in self.tokens.items() if v["expires"] > now}
         token = secrets.token_urlsafe(9)  # 12 chars, 72 bits: keeps the QR at version 3
         self.tokens[token] = {"expires": now + ttl, "session": session_id, "created": now}
-        url = f"{self.base_url()}/#t={token}"
+        url = f"{self.base_url(local)}{path}#t={token}"
         code = qr.encode(url, level="M")
         return {"token": token, "url": url, "expires_in": ttl, "session": session_id, "status": self.status(),
                 "qr": {"version": code.version, "size": code.size, "runs": code.runs(), "rows": code.rows()}}
@@ -266,7 +277,7 @@ class RemoteService:
             if STATIC[path] in BRANDED and app_name() != "MPV-UOS":
                 resp.body = resp.body.replace(b"MPV-UOS", app_name().encode("utf-8"))
             return resp
-        if not path.startswith("/api/") and path != "/events":
+        if not path.startswith("/api/") and path not in ("/events", "/events/tasks"):
             raise HttpError(404)
         if req.method == "POST":
             origin = req.headers.get("origin")
@@ -288,6 +299,9 @@ class RemoteService:
             return Response.json({"ok": True}, **{"Set-Cookie": f"{COOKIE}=; Path=/; Max-Age=0"})
         if path == "/events":
             return Response.sse(self._events(row))
+        panel = await self.downloads.handle(req, row)
+        if panel is not None:
+            return panel
         if path == "/api/state":
             return Response.json(await self.state(self._session_for(row)))
         if path == "/api/cmd" and req.method == "POST":
@@ -536,10 +550,14 @@ def register(server: MpvdServer, service: RemoteService) -> None:
         return service.status()
 
     @d.method("remote.pair")
-    async def pair(ctx: RpcContext, session: str | None = None, ttl: float = TOKEN_TTL) -> dict[str, Any]:
-        """New one-time pairing token: URL for the phone plus the QR modules to draw (starts the server if needed)."""
+    async def pair(ctx: RpcContext, session: str | None = None, ttl: float = TOKEN_TTL, path: str = "/",
+                   local: bool = False) -> dict[str, Any]:
+        """New one-time pairing token: URL for the phone plus the QR modules to draw (starts the server if needed).
+
+        ``path``: page the link opens (``/`` the remote, ``/downloads`` the downloads panel); ``local``: a loopback
+        URL for a browser on this computer."""
         sid = session or (ctx.session.id if ctx.session is not None else None)
-        return await service.pair_token(sid, ttl)
+        return await service.pair_token(sid, ttl, path, bool(local))
 
     @d.method("remote.forget")
     async def forget(ctx: RpcContext) -> dict[str, Any]:
