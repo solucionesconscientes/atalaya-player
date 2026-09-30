@@ -24,7 +24,7 @@ Subconjunto de la especificación 2025-06-18 que usan los clientes: `initialize`
 | `list_channels {query, limit, kind}` | `iptv.search` (TDT, iptv-org, Radio Browser, listas propias) | no |
 | `play_channel {id}` | `mu-iptv-play` con cabeceras correctas | sí |
 | `download {url, preset}` | `ytdl.download` (presets de docs/YTDLP.md) | sí |
-| `add_note {text, time_pos?}` | Markdown en `<data_dir>/notas/<clave>.md` con enlace `mpv://seek?t=` | no |
+| `add_note {text, time_pos?}` | Markdown en `<data_dir>/notas/<título del vídeo>.md` con enlace `mpv-uos://open?path=…&t=…` | no |
 | `subtitles_ai {action, language}` | start/stop/status de mu-subs | no |
 
 ## Resources

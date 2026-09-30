@@ -59,7 +59,7 @@ TOOLS: list[dict[str, Any]] = [
      "inputSchema": {"type": "object", "required": ["url"], "properties": {
          "url": {"type": "string"}, "preset": {"type": "string", "default": "video_best"}}}},
     {"name": "add_note", "description": "Guarda una nota en Markdown sobre lo que se está viendo, con enlace al minuto actual "
-                                        "(<datos>/notas/<clave>.md).",
+                                        "(<datos>/notas/<título del vídeo>.md).",
      "inputSchema": {"type": "object", "required": ["text"], "properties": {
          "text": {"type": "string"}, "time_pos": {"type": "number", "description": "segundos (por defecto la posición actual)"}}}},
     {"name": "subtitles_ai", "description": "Subtítulos IA en vivo (whisper) del archivo actual: start, stop o status.",

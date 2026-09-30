@@ -104,7 +104,8 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 | `alt+w` | Repetir la línea de subtítulo actual en bucle (A-B sobre el cue; `l` o de nuevo `alt+w` lo quita) |
 | `alt+LEFT` / `alt+RIGHT` | Pasar el bucle a la línea anterior / siguiente |
 | `alt+g` | Velocidad inteligente: ×2,5 (opción `mu-study-silence_speed`) en los silencios detectados por mpvd, velocidad normal cuando hay voz |
-| `alt+b` | Nota con enlace de tiempo (escribe en el cuadro y Enter; o guarda la cita del subtítulo) → `<datos>/notas/<clave>.md` |
+| `alt+b` | Nota con enlace de tiempo (escribe en el cuadro y Enter; o guarda la cita del subtítulo) → `<datos>/notas/<título del vídeo>.md` |
+| `alt+B` | **Mis notas**: las de este vídeo y las de todos; Enter salta al minuto, Tab edita o borra, exportar junto al vídeo o a una carpeta (Obsidian) |
 | `alt+u` | Exportar el bucle A-B (o la línea actual) como clip: formato por defecto mp4 (`mu-study-clip_format`); GIF/mp3/opus desde el menú |
 
 ## Mando a distancia (mu-remote)

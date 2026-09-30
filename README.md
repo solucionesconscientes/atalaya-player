@@ -162,7 +162,7 @@ uv sync --extra translate --extra semantic
 Menú **Estudio** (`alt+e`, entrada en el menú raíz; docs/ESTUDIO.md): `alt+w` repite en bucle la línea de subtítulo en pantalla
 (`alt+←`/`alt+→` pasan a la anterior/siguiente; `l` o `alt+w` lo quitan), `alt+g` activa la velocidad inteligente (×2,5 en los
 silencios que mpvd mapea con `silencedetect`, velocidad normal cuando hay voz), `alt+b` guarda una nota con enlace de tiempo y la
-cita del subtítulo en `<datos>/notas/<clave>.md` (Markdown, `mpv://seek?t=`), y `alt+u` exporta el bucle A-B (o la línea actual)
+cita del subtítulo en `<datos>/notas/<título del vídeo>.md` (Markdown con enlaces `mpv-uos://` que abren el vídeo en ese minuto; `alt+B` = Mis notas), y `alt+u` exporta el bucle A-B (o la línea actual)
 como clip: mp4 exacto, mp4/mkv sin recodificar, GIF, mp3, opus o wav a `<Vídeos|Música>/MPV-UOS/clips`, con progreso y aviso.
 ```bash
 .venv/bin/python -m mpvd call study.formats

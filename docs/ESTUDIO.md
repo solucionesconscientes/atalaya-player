@@ -61,6 +61,9 @@ Propuesta: servicio `study.silences(path, start, length)` en mpvd que, por delan
 
 ## 4. Notas en Markdown (ya implementado en H8: no duplicar)
 
+- (Actualizado en H17, ADR-043: `mpvd/notes.py`, un archivo por vídeo con el título como nombre y cabecera `titulo/video/clave`,
+  enlaces `mpv-uos://open?path=…&t=…`, métodos `notes.get/edit/delete/export` y menú «Mis notas» en `mu-notes`; los
+  archivos de la primera versión se migran solos. Lo que sigue describe la versión de H8.)
 - `mpvd/control.py` → `NotesStore` en `<data_dir>/notas/<clave>.md` (clave = `media_key(path)`, saneada a `[A-Za-z0-9_.-]`). Métodos JSON-RPC `notes.add(text, path?, time_pos?, title?, session?)`, `notes.list()`, `notes.read(key)`.
 - Formato: cabecera `# <título o ruta>` + línea `` `<ruta>` ``; cada nota es una línea `- [HH:MM:SS](mpv://seek?t=123.4) · 2026-09-29 12:00 — texto` (o sin enlace si no hay `time_pos`).
 - `docs/MCP.md`: tool `add_note {text, time_pos?}`, recurso `mpv://notes/<clave>`; `mpv://transcript/<id>` para el SRT.

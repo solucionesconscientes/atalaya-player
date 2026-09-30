@@ -364,6 +364,7 @@ views.tools = function()
     sub('Buscar comandos, canales y recientes…', 'alt+p', 'search', 'palette'),
     child('Saltar intro y créditos', 'alt+j', 'skip_next', 'mu_intro', 'intro-menu'),
     child('Estudio: repetir, velocidad, notas', 'alt+e', 'school', 'mu_study', 'study-menu'),
+    child('Mis notas', 'alt+B', 'sticky_note_2', 'mu_notes', 'notes-menu'),
     child('Mando desde el móvil', 'alt+Z', 'qr_code_2', 'mu_remote', 'remote-menu', { separator = true }),
     bind('Capítulos', 'c', 'bookmark', 'uosc/chapters'),
     cmd('Repetir este archivo', 'L', 'repeat_one', { 'cycle-values', 'loop-file', 'inf', 'no' }),

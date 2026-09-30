@@ -69,3 +69,19 @@ def test_launcher_migrates_data_only_for_the_default_location(project_root: Path
     subprocess.run([str(project_root / "bin" / "mpv-uos"), "x.mkv"], check=True, env=env, capture_output=True)
     explicit = tmp_path / "explicit"
     assert (explicit / "watch_later").is_dir() and not (explicit / "iptv.sqlite3").exists()
+
+
+def test_launcher_opens_mpv_uos_links_at_their_minute(project_root: Path, tmp_path: Path):
+    """«Mis notas» links (H17): the desktop entry passes them after `--`; they become per-file groups before it."""
+    from mpvd.notes import link
+
+    target = "/home/ser/Vídeos/Mi peli: parte 1 (2024) & más.mkv"
+    args = _launcher_args(project_root, tmp_path, "--player-operation-mode=pseudo-gui", "--",
+                          link(target, 83.4), "/otro.mkv", link("https://example.com/v?a=1&b=2"))
+    i = args.index("--{")
+    assert args[i:i + 5] == ["--{", "--start=83.4", target, "--}", "https://example.com/v?a=1&b=2"]
+    assert args.index("--") == i + 5 and args[-1] == "/otro.mkv"
+    assert not any(a.startswith("mpv-uos://") for a in args)
+    # a malformed time is dropped, the file still opens
+    args = _launcher_args(project_root, tmp_path, "mpv-uos://open?path=%2Fx.mkv&t=1%3Bquit")
+    assert args[-1] == "/x.mkv" and not any(a.startswith("--start") for a in args)

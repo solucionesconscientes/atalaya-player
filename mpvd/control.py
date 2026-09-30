@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from mpvd.hashing import file_hash
 from mpvd.mpvipc import MpvIpcError
+from mpvd.notes import NotesStore
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -76,43 +77,6 @@ def media_key(path: str | None) -> str | None:
 def hms(seconds: float) -> str:
     s = int(max(0.0, seconds))
     return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"
-
-
-class NotesStore:
-    def __init__(self, data_dir: Path):
-        self.dir = data_dir / "notas"
-
-    def path_for(self, key: str) -> Path:
-        return self.dir / (re.sub(r"[^A-Za-z0-9_.-]", "_", key) + ".md")
-
-    def add(self, key: str, title: str, media_path: str, text: str, time_pos: float | None) -> dict[str, Any]:
-        self.dir.mkdir(parents=True, exist_ok=True)
-        p = self.path_for(key)
-        new = not p.exists()
-        with p.open("a", encoding="utf-8") as fh:
-            if new:
-                fh.write(f"# {title or media_path}\n\n`{media_path}`\n\n")
-            stamp = time.strftime("%Y-%m-%d %H:%M")
-            if time_pos is not None:
-                link = f"[{hms(time_pos)}](mpv://seek?t={time_pos:.1f})"
-                fh.write(f"- {link} · {stamp} — {text.strip()}\n")
-            else:
-                fh.write(f"- {stamp} — {text.strip()}\n")
-        return {"file": str(p), "key": key, "new_file": new, "time_pos": time_pos}
-
-    def read(self, key: str) -> str | None:
-        p = self.path_for(key)
-        return p.read_text(encoding="utf-8") if p.exists() else None
-
-    def list(self) -> list[dict[str, Any]]:
-        if not self.dir.is_dir():
-            return []
-        out = []
-        for p in sorted(self.dir.glob("*.md"), key=lambda q: q.stat().st_mtime, reverse=True):
-            first = p.read_text(encoding="utf-8").splitlines()[:1]
-            out.append({"file": str(p), "key": p.stem, "title": first[0].lstrip("# ").strip() if first else p.stem,
-                        "notes": sum(1 for ln in p.read_text(encoding="utf-8").splitlines() if ln.startswith("- "))})
-        return out
 
 
 def register(server: MpvdServer) -> None:
@@ -205,3 +169,47 @@ def register(server: MpvdServer) -> None:
         if text is None:
             raise RpcError(NOT_FOUND, f"no notes for {key}")
         return {"key": key, "markdown": text}
+
+    async def _key(key: str | None, path: str | None) -> str:
+        if key:
+            return key
+        k = await asyncio.to_thread(media_key, path) if path else None
+        if not k:
+            raise RpcError(INVALID_PARAMS, "indica key o path")
+        return k
+
+    @d.method("notes.get")
+    async def notes_get(ctx: RpcContext, key: str | None = None, path: str | None = None) -> dict[str, Any]:
+        """The notes of one video (by key, or by path: the content key is computed), each with its index."""
+        k = await _key(key, path)
+        got = await asyncio.to_thread(notes.get, k)
+        return got if got is not None else {"key": k, "title": "", "path": path or "", "file": "", "notes": 0,
+                                            "items": []}
+
+    @d.method("notes.edit")
+    async def notes_edit(ctx: RpcContext, key: str, index: int, text: str) -> dict[str, Any]:
+        """Replace the text of a note."""
+        if not text or not text.strip():
+            raise RpcError(INVALID_PARAMS, "empty note")
+        try:
+            return await asyncio.to_thread(notes.edit, key, int(index), text)
+        except KeyError as exc:
+            raise RpcError(NOT_FOUND, str(exc)) from None
+
+    @d.method("notes.delete")
+    async def notes_delete(ctx: RpcContext, key: str, index: int) -> dict[str, Any]:
+        """Delete a note (the file goes with the last one)."""
+        try:
+            return await asyncio.to_thread(notes.delete, key, int(index))
+        except KeyError as exc:
+            raise RpcError(NOT_FOUND, str(exc)) from None
+
+    @d.method("notes.export")
+    async def notes_export(ctx: RpcContext, key: str, folder: str | None = None) -> dict[str, Any]:
+        """Copy the notes next to the video (no folder) or into a folder (e.g. an Obsidian vault)."""
+        try:
+            return await asyncio.to_thread(notes.export, key, folder)
+        except KeyError as exc:
+            raise RpcError(NOT_FOUND, str(exc)) from None
+        except (ValueError, OSError) as exc:
+            raise RpcError(INVALID_PARAMS, str(exc)) from None

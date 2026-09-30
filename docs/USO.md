@@ -151,6 +151,13 @@ para equipos modestos y diagnóstico de tirones con recomendaciones. Más en doc
 `alt+b` guarda una nota con la cita y un enlace de tiempo en Markdown, `alt+u` exporta el bucle A-B (tecla `l` de mpv) o la frase como
 clip mp4/GIF/mp3. Más en docs/ESTUDIO.md.
 
+**Mis notas** (`alt+B` o *Menú → Herramientas → Mis notas*): las notas de este vídeo y las de todos, cada archivo con el
+título del vídeo en `~/.local/share/mpv-uos/notas/`. Enter salta a ese minuto (abre el vídeo si es otro); Tab → *Editar*
+(escribe el texto nuevo y Enter) o *Borrar*. *Exportar junto al vídeo* deja `<vídeo>.notas.md` al lado; *Exportar a una
+carpeta* pide la ruta (por ejemplo tu bóveda de Obsidian) y la recuerda. Los enlaces de las notas (`mpv-uos://…`) abren el
+vídeo en ese minuto desde Obsidian o el navegador una vez instalado (`tools/install.sh`); pegados en MPV-UOS (`ctrl+v`)
+también funcionan.
+
 ## 9. Mando a distancia desde el móvil
 `alt+z` muestra un QR; escanéalo con el móvil en la misma wifi y tendrás play/pausa, saltos, volumen, pistas, canales y búsqueda.
 El móvil queda emparejado hasta que lo olvides (`alt+Z`). Si no conecta, abre el puerto en el cortafuegos: docs/REMOTE.md.

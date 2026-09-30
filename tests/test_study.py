@@ -143,7 +143,7 @@ def test_mu_study_repeat_note_clip_and_smart_speed(daemon_env, media_dir, tmp_pa
         h.command("script-message-to", "mu_study", "mu-study-note", "Ojo a esta frase")
         st = h.wait_property("user-data/mu/study", lambda v: bool(v) and v.get("notes", 0) == 1, timeout=15)
         md = Path(st["last_note"]["file"]).read_text(encoding="utf-8")
-        assert "Ojo a esta frase" in md and "Primera línea de prueba" in md and "mpv://seek?t=3." in md
+        assert "Ojo a esta frase" in md and "Primera línea de prueba" in md and "mpv-uos://open?path=" in md and "&t=3." in md
         assert d.call("notes.list")[0]["notes"] == 1
         # clip of the A-B loop (5–8 s) as mp3 into the test folder; done event reaches the script
         h.command("set", "ab-loop-a", "5")

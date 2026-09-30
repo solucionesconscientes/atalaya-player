@@ -130,7 +130,7 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
       (mín./máx. duración, caracteres por segundo, sin solaparse). Test con audio de tiempos conocidos (desfase medio < 150 ms).
 
 ## H17 · «Mis notas»
-- [ ] Menú Mis notas (por vídeo, saltar al minuto, editar, borrar), ficheros con el título legible en `<datos>/notas`, exportar junto
+- [x] Menú Mis notas (por vídeo, saltar al minuto, editar, borrar), ficheros con el título legible en `<datos>/notas`, exportar junto
       al vídeo o a una carpeta elegida (Obsidian), y enlaces `mpv-uos://` registrados en la entrada de escritorio que abren el vídeo en
       ese minuto (x-scheme-handler; sin sudo).
 

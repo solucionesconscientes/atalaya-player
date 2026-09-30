@@ -115,7 +115,7 @@ def test_mcp_handshake_tools_and_player_control(mcp_env, media_dir):
         n = c.tool("add_note", {"text": "Aquí empieza la escena buena"})
         assert not n["isError"] and n["data"]["file"].endswith(".md") and n["data"]["time_pos"] > 11
         md = Path(n["data"]["file"]).read_text(encoding="utf-8")
-        assert "video30.mkv" in md and "mpv://seek?t=1" in md and "escena buena" in md
+        assert "video30.mkv" in md and "mpv-uos://open?path=" in md and "&t=1" in md and "escena buena" in md
         res = c.request("resources/list")["result"]["resources"]
         note_uri = next(r["uri"] for r in res if r["uri"].startswith("mpv://notes/"))
         read = c.request("resources/read", {"uri": note_uri})["result"]["contents"][0]

@@ -48,6 +48,34 @@ fi
 export MPV_UOS_ROOT="$ROOT"
 export MPV_UOS_DATA_DIR="$DATA_DIR"
 
+# Links from «Mis notas» (mpv-uos://open?path=<url-encoded>&t=<seconds>, registered by the desktop entry): open that
+# file at that minute with per-file options. The desktop entry passes them after `--`, where `--{` would be a file
+# name, so the groups go before the first `--`.
+urldecode() { local s="${1//+/ }"; printf '%b' "${s//%/\\x}"; }
+plain=(); links=()
+for a in "$@"; do
+  case "$a" in
+    mpv-uos://open\?*)
+      p=""; t=""
+      IFS='&' read -r -a kv <<<"${a#*\?}"
+      for x in "${kv[@]}"; do
+        case "$x" in path=*) p="$(urldecode "${x#path=}")" ;; t=*) t="${x#t=}" ;; esac
+      done
+      [[ "$t" =~ ^[0-9]+(\.[0-9]+)?$ ]] || t=""
+      if [ -n "$p" ] && [ -n "$t" ]; then links+=(--\{ "--start=$t" "$p" --\}); elif [ -n "$p" ]; then links+=("$p"); fi ;;
+    *) plain+=("$a") ;;
+  esac
+done
+if [ "${#links[@]}" -gt 0 ]; then
+  rebuilt=(); placed=0
+  for a in "${plain[@]}"; do
+    if [ "$a" = "--" ] && [ "$placed" = 0 ]; then rebuilt+=("${links[@]}"); placed=1; fi
+    rebuilt+=("$a")
+  done
+  [ "$placed" = 0 ] && rebuilt+=("${links[@]}")
+  set -- "${rebuilt[@]}"
+fi
+
 # Always stay open when idle: with idle=no (or pseudo-gui's idle=once) a file that fails to load closes the
 # player without a word; idle keeps the window, shows the error and the home screen. Without files/URLs, open
 # the window like the desktop entry does, unless the caller chose --idle or an operation mode.

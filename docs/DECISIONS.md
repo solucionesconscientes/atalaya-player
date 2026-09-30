@@ -206,4 +206,16 @@
   y la VAD de energía. Descartado usar solo DTW sin VAD por defecto: más lento, alucina en silencios y no mejora los bordes
   frente a Silero. Cortes y reglas de lectura en `mpvd/asr/timing.py` (docs/WHISPER.md). La caché de transcripciones
   pasa a la versión 2: lo transcrito antes se rehace al volver a abrirlo (los SRT guardados no cambian).
+- ADR-043 · «Mis notas» (H17): un Markdown por vídeo en `<datos>/notas` con el título como nombre (caracteres prohibidos en
+  Windows/macOS/Linux fuera, «(2)» si se repite) y una cabecera YAML mínima (`titulo`, `video`, `clave`) que lo ata al
+  contenido (misma clave que «continuar viendo»: mover o renombrar el vídeo no pierde las notas; la siguiente nota
+  actualiza la ruta de todos los enlaces). Notas ordenadas por tiempo; editar y borrar por índice; el archivo se va con su
+  última nota. Exportar = copia (junto al vídeo como `<vídeo>.notas.md` o a una carpeta recordada, p. ej. una bóveda de
+  Obsidian); no se sincroniza después. Enlaces `mpv-uos://open?path=<ruta codificada>&t=<s>`: el `.desktop` declara
+  `x-scheme-handler/mpv-uos` y el instalador lo registra siempre con `xdg-mime` (esquema propio, sin sudo; `--uninstall`
+  lo quita); bin/mpv-uos los convierte en grupos por archivo `--{ --start=T ruta --}` antes del primer `--` (el `.desktop`
+  pasa las URL tras `--`) y descarta un `t` que no sea numérico; dentro de mpv (pegar, lista) un hook `on_load` de
+  mu-notes (prioridad 5, antes de ytdl_hook) hace `loadfile … replace -1 start=T`. Menú en un script propio (`mu-notes`,
+  pila de vistas y migas de ADR-041); las notas se siguen tomando con `alt+b` en mu-study. Los archivos de la primera
+  versión (`<clave>.md`, enlaces `mpv://seek`) se migran al leer la carpeta.
 

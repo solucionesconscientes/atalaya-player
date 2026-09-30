@@ -49,10 +49,11 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-H17 · «Mis notas»: menú por vídeo (saltar, editar, borrar) sobre el módulo de notas de mu-study/mpvd `study.*` (mirar
-`mpvd/study/` y `docs/ESTUDIO.md`), ficheros con título legible en `<datos>/notas`, exportar junto al vídeo o a otra
-carpeta y enlaces `mpv-uos://` (x-scheme-handler en la entrada de escritorio de tools/install.sh, sin sudo; verificar con
-`xdg-mime`/`update-desktop-database` en ~/.local). H16 cerrado (ADR-042). H15 cerrado (2026-09-30, ADR-041). H14 cerrado (2026-09-30). Pendiente de Ser: abrir el puerto del mando en ufw y probar el desentrelazado con 7TV (NEEDS_HUMAN.md).
+H18 · Botón «Grabar» unificado: hoy el botón ● (mu-menu `record`) abre la categoría Grabar del menú principal. Falta un
+script (p. ej. `mu-record`) con captura con/sin subtítulos, grabar desde ahora (directos: `stream-record` como mu-iptv;
+vídeos de internet: yt-dlp `--download-sections` — verificar la opción con `vendor/bin/yt-dlp --help`; locales: corte sin
+recodificar con ffmpeg `-c copy` en mpvd), solo audio, recortar tramo A-B, punto rojo + contador mientras graba y
+carpeta configurable. H17 cerrado (ADR-043). H16 cerrado (ADR-042). H15 cerrado (2026-09-30, ADR-041). H14 cerrado (2026-09-30). Pendiente de Ser: abrir el puerto del mando en ufw y probar el desentrelazado con 7TV (NEEDS_HUMAN.md).
 Siguiente tanda posible: B11 «¿qué me he perdido?», B6 OCR de subtítulos, C2–C3 diccionario/Anki, E4 MPRIS, I1/I5.
 Backlog completo. Si se reanuda: (1) Ser abre el puerto del mando y autoriza Notion (NEEDS_HUMAN.md) y ejecuta `/registrar`;
 (2) nuevos hitos a partir del TOP 10 de docs/VISION.md, empezando por B11 "¿qué me he perdido?" (resumen extractivo de la
@@ -60,6 +61,22 @@ transcripción entre dos tiempos con los embeddings de H10) y E4 MPRIS (script m
 named pipe en mpvd (`server.py`, `client.py`, `mpvipc.py`) + `bin/mpv-uos.ps1`.
 
 ## Registro por iteración
+### Iteración nocturna 2026-09-30 · H17 · «Mis notas» — hecho
+- `mpvd/notes.py` (ADR-043): un Markdown por vídeo con el título como nombre y cabecera `titulo/video/clave` (la clave de
+  contenido de «continuar viendo»), notas por tiempo, `notes.get/edit/delete/export`, migración de los archivos de H8.
+- `mu-notes` (script nuevo, `alt+B`, *Herramientas › Mis notas*): notas de este vídeo y de todos, Enter salta al minuto
+  (abre el vídeo si es otro), Tab edita (cuadro de texto) o borra, exportar junto al vídeo o a una carpeta recordada.
+- Enlaces `mpv-uos://open?path=…&t=…`: bin/mpv-uos los abre en su minuto (grupos `--{ --start=T … --}`), un hook
+  `on_load` los resuelve dentro de mpv y `tools/install.sh` registra `x-scheme-handler/mpv-uos` (sin sudo).
+- Tests: test_notes (5), test_mu_notes (menú, saltar, editar, exportar ×2, borrar, ⌫ hasta el principal, enlace dentro de
+  mpv), test_launcher y test_install (enlaces). `tools/check.sh`: 320 sin red + 8 con red en verde.
+- Probar a mano (para los enlaces fuera de MPV-UOS hay que reinstalar una vez: `tools/install.sh --no-sync --no-vendor`):
+  ```bash
+  bin/mpv-uos tests/fixtures/media/video30.mkv   # alt+b «hola» Enter · alt+B → Notas de este vídeo → Enter / Tab
+  ls ~/.local/share/mpv-uos/notas/               # «video30.md» con enlaces mpv-uos://
+  xdg-open 'mpv-uos://open?path='"$PWD"'/tests/fixtures/media/video30.mkv&t=12'   # tras reinstalar: abre en 0:12
+  ```
+
 ### Iteración nocturna 2026-09-30 · H16 · Sincronía de los subtítulos IA — hecho
 - Verificado (subagente + pruebas propias, docs/WHISPER.md): `-ojf` da tiempos por token; `--dtw` solo funciona con `-nfa`;
   con `--vad` los tokens quedan en tiempo «solo voz» y el log (sin `-np`) trae la tabla para devolverlos.

@@ -122,3 +122,16 @@ def test_default_player_is_restored_on_uninstall(prefix):
     run(env, "--uninstall")
     text = mimeapps.read_text(encoding="utf-8")
     assert "video/mp4=vlc.desktop" in text and "mpv-uos.desktop" not in text
+
+
+def test_mpv_uos_links_are_registered(prefix):
+    """«Mis notas» links (H17): the desktop entry declares x-scheme-handler/mpv-uos and it becomes the handler."""
+    base, env = prefix
+    run(env, "--no-sync", "--no-vendor")
+    desktop = (base / "share" / "applications" / "mpv-uos.desktop").read_text(encoding="utf-8")
+    assert "x-scheme-handler/mpv-uos;" in desktop and ";;" not in desktop
+    if shutil.which("xdg-mime"):
+        mimeapps = base / "config" / "mimeapps.list"
+        assert "x-scheme-handler/mpv-uos=mpv-uos.desktop" in mimeapps.read_text(encoding="utf-8")
+        run(env, "--uninstall")
+        assert "x-scheme-handler/mpv-uos" not in mimeapps.read_text(encoding="utf-8")
