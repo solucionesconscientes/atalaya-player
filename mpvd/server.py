@@ -72,6 +72,8 @@ class MpvdServer:
         from mpvd.intro.service import IntroService  # noqa: PLC0415
         from mpvd.intro.service import register as register_intro  # noqa: PLC0415
         from mpvd.iptv.service import IptvService  # noqa: PLC0415
+        from mpvd.library.service import LibraryService  # noqa: PLC0415
+        from mpvd.library.service import register as register_library  # noqa: PLC0415
         from mpvd.semantic.service import SemanticService  # noqa: PLC0415
         from mpvd.semantic.service import register as register_semantic  # noqa: PLC0415
         from mpvd.study.service import StudyService  # noqa: PLC0415
@@ -110,6 +112,8 @@ class MpvdServer:
         record.register(self)
         self.remote = RemoteService(self)
         register_remote(self, self.remote)
+        self.library = LibraryService(self)
+        register_library(self, self.library)
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -161,6 +165,7 @@ class MpvdServer:
             await self._server.wait_closed()
         self.cache.close()
         self.iptv.close()
+        self.library.close()
         self.watch.close()
         with contextlib.suppress(OSError):
             if self.settings.pid_path.exists() and self.settings.pid_path.read_text().strip() == str(os.getpid()):

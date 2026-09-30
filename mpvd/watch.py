@@ -95,6 +95,17 @@ class WatchStore:
         with self._lock:
             return self._row(self._conn.execute("SELECT * FROM watch WHERE key=?", (key,)).fetchone())
 
+    def get_many(self, keys: list[str]) -> dict[str, dict[str, Any]]:
+        """Entries for several keys at once (the library shows progress per episode)."""
+        out: dict[str, dict[str, Any]] = {}
+        with self._lock:
+            for i in range(0, len(keys), 500):
+                chunk = keys[i:i + 500]
+                q = "SELECT * FROM watch WHERE key IN (%s)" % ",".join("?" * len(chunk))
+                for r in self._conn.execute(q, chunk).fetchall():
+                    out[r["key"]] = self._row(r)  # type: ignore[assignment]
+        return out
+
     def update(self, key: str, path: str, title: str = "", duration: float = 0.0, position: float = 0.0,
                kind: str | None = None, finished: bool | None = None, new_play: bool = False) -> dict[str, Any]:
         now = time.time()
