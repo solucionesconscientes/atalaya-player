@@ -171,7 +171,8 @@ abre. Si un canal entrelazado se ve con "peines" (7TV), pulsa `d`. Detalles en d
 4. Menú → *Traducir la pista seleccionada a…* (offline, requiere `--extras`). Arriba eliges el motor:
    - **Rápido (Argos)**: todos los idiomas (≈90 MB por par, pivota por inglés). Traduce literal: "No me tomes el pelo" → "Don't take
      my hair".
-   - **Calidad (OPUS-MT, 234 MB, se descarga una vez)**: español/catalán ↔ inglés con OPUS-MT *tc-big* (Helsinki-NLP, CC-BY 4.0).
+   - **Máxima calidad (OPUS-MT donde llegue)**, que es la opción por defecto desde H36: español/catalán/francés ↔ inglés (y
+     español↔francés por inglés) con OPUS-MT *tc-big* (Helsinki-NLP, CC-BY 4.0), 234 MB por par; los demás idiomas, con Argos.
      Acierta muchas más expresiones coloquiales ("Don't tease me"). La primera vez descarga ≈860 MB, los convierte a 234 MB y
      borra el resto; después funciona sin red. Tarda más (beam 4, en segundo plano) y usa ≈430 MB de RAM solo mientras traduce.
    - **Automático** (por defecto): OPUS-MT donde ya esté descargado y Argos para lo demás (p. ej. francés → español = Argos

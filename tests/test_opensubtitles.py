@@ -103,6 +103,16 @@ class FakeApi(BaseHTTPRequestHandler):
             fid = u.path.rsplit("/", 1)[-1].split(".")[0]
             self._send(200, SRT.format(id=fid).encode())
             return
+        if u.path == "/api/v1/infos/user":
+            # C4: el cupo que queda hoy; solo con sesión (Bearer), que es de quien es la cuenta
+            if not self.headers.get("Authorization", "").startswith("Bearer "):
+                self._send(401, {"message": "You need to be logged in"})
+                return
+            st["user_infos"] = st.get("user_infos", 0) + 1
+            self._send(200, {"data": {"allowed_downloads": 100, "allowed_translations": 5, "level": "Sub leecher",
+                                      "user_id": 66, "ext_installed": False, "vip": False,
+                                      "downloads_count": 3, "remaining_downloads": 97}})
+            return
         if u.path == "/api/v1/subtitles":
             q = {k: v[0] for k, v in parse_qs(u.query).items()}
             st["searches"].append((u.query, q))
@@ -157,7 +167,7 @@ class FakeApi(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def fake_api():
-    FakeApi.state = {"requests": [], "searches": [], "downloads": [], "logins": 0}
+    FakeApi.state = {"requests": [], "searches": [], "downloads": [], "logins": 0, "user_infos": 0}
     srv = ThreadingHTTPServer(("127.0.0.1", 0), FakeApi)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
@@ -308,3 +318,68 @@ def test_library_subs_off_by_default_hash_then_name_cache_and_resync(tmp_path, m
         return True
 
     assert run(settings, go, setup)
+
+
+def test_alta_guiada_pegar_la_clave_y_el_cupo_que_queda(tmp_path, media_dir, fake_api, monkeypatch):
+    """H36/C4: la clave se pega del portapapeles (la lee mpvd, no el script) y el cupo se dice con su procedencia."""
+    base, st = fake_api
+    monkeypatch.setenv("MPVD_LIBRARY_CLIPBOARD_PROP", "user-data/prueba/clip")
+    settings = Settings(runtime_dir=tmp_path / "rt", cache_dir=tmp_path / "cache", data_dir=tmp_path / "data",
+                        idle_timeout=0, workers=1)
+
+    def setup(server):
+        server.library.osub_url = base
+
+    async def go(c, server):
+        # 1. lo que hace falta, dicho antes de buscar nada: sin clave no está «activo», y hay una página donde sacarla
+        h = await c.call("library.subs.help")
+        assert h["active"] is False and h["has_key"] is False and h["enabled"] is False
+        assert h["key_url"].startswith("https://www.opensubtitles.com/") and "consumers" in h["key_url"]
+
+        # 2. pegar sin reproductor conectado no puede inventarse un portapapeles
+        with pytest.raises(RpcError) as e:
+            await c.call("library.settings.paste", {"field": "osub_api_key"})
+        assert "reproductor" in e.value.message
+
+        # 3. con un reproductor falso: mpvd lee la propiedad y guarda la clave, y responde con su longitud, no con ella
+        class FakeClient:
+            def __init__(self, value):
+                self.value = value
+                self.asked = []
+
+            async def get_property(self, name, timeout=5):
+                self.asked.append(name)
+                return self.value
+
+        class FakeSession:
+            def __init__(self, value):
+                self.client = FakeClient(value)
+
+        ses = FakeSession("  clave-os  ")
+        out = await server.library.paste_secret(ses, "osub_api_key")
+        assert ses.client.asked == ["user-data/prueba/clip"]
+        assert out["length"] == len("clave-os") and "clave" not in json.dumps(out).replace("osub_api_key", "")
+        # pegar la clave es decir «quiero esto»: el interruptor se enciende solo
+        assert out["settings"]["has_osub_key"] is True and out["settings"]["osub_enabled"] is True
+        assert (await c.call("library.subs.help"))["active"] is True
+
+        # 4. un campo que no es un secreto no se pega, y un portapapeles vacío o con un texto largo tampoco
+        for field, value, trozo in (("osub_languages", "es", "no se puede pegar"),
+                                    ("osub_api_key", "   ", "vacío"),
+                                    ("osub_api_key", "x" * 501, "no parece una clave"),
+                                    ("osub_api_key", "clave\notra", "no parece una clave")):
+            with pytest.raises(RpcError) as e:
+                await server.library.paste_secret(FakeSession(value), field)
+            assert trozo in e.value.message
+
+        # 5. cupo sin cuenta: solo se sabe lo que dijo la última descarga, y se dice de dónde sale
+        q = await c.call("library.subs.quota")
+        assert q["remaining"] is None and q["source"] == "sin datos" and st["user_infos"] == 0
+
+        # 6. con cuenta: se lo pregunta a OpenSubtitles
+        await c.call("library.settings.set", {"osub_username": "ana", "osub_password": "secreto"})
+        q = await c.call("library.subs.quota")
+        assert q["remaining"] == 97 and q["allowed"] == 100 and q["used"] == 3
+        assert q["source"] == "cuenta" and q["level"] == "Sub leecher" and st["user_infos"] == 1
+
+    run(settings, go, setup)

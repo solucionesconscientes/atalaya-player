@@ -72,7 +72,9 @@ def test_subs_translate_job_cache_and_errors(daemon_env, media_dir, tmp_path):
     assert engines["argos"]["name"] == "Rápido (Argos)" and "es_en" in engines["argos"]["present"]
     big = engines["opus-big"]
     assert big["size_mb"] == 234 and big["present"] == [] and "CC-BY" in big["license"]
-    assert {(p["source"], p["target"]) for p in big["pairs"]} == {("es", "en"), ("en", "es"), ("ca", "en"), ("en", "ca")}
+    # H36/C6: con los modelos de francés, el triángulo es/en/fr es OPUS-MT entero (es↔fr pivotando por inglés)
+    assert {(p["source"], p["target"]) for p in big["pairs"]} == {("es", "en"), ("en", "es"), ("ca", "en"),
+                                                                 ("en", "ca"), ("fr", "en"), ("en", "fr")}
 
     srt = tmp_path / "pelicula.srt"
     srt.write_text(render_srt([Segment(0.0, 2.0, "Bienvenido a MPV-UOS,"), Segment(2.0, 4.0, "el reproductor del futuro."),
@@ -93,7 +95,8 @@ def test_subs_translate_job_cache_and_errors(daemon_env, media_dir, tmp_path):
         d.call("subs.translate", {"srt": str(srt), "target": "en", "source": "es", "engine": "deepl"})
     assert exc.value.code == INVALID_PARAMS
     with pytest.raises(RpcError) as exc:
-        d.call("subs.translate.download", {"source": "fr", "target": "en", "engine": "opus-big"})
+        # un par que OPUS-MT no cubre (sí cubre es/ca/fr ↔ en): no se puede pedir ese modelo
+        d.call("subs.translate.download", {"source": "de", "target": "en", "engine": "opus-big"})
     assert exc.value.code == INVALID_PARAMS and "OPUS-MT" in exc.value.message
 
     # 1. job → done → English SRT with the same timing

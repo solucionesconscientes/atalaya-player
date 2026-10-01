@@ -25,6 +25,11 @@ from mpvd.jobs import Job, Priority, Status
 from mpvd.library import tmdb as tmdb_mod
 from mpvd.library.opensubtitles import API_URL as OSUB_URL
 from mpvd.library.opensubtitles import MIN_HASH_SIZE, OpenSubtitles, OpenSubtitlesError, rank
+
+# C4 · dónde se saca la clave y qué campos se pueden pegar del portapapeles sin que pasen por el script.
+OSUB_KEY_URL = "https://www.opensubtitles.com/es/consumers"
+CLIPBOARD_PROP = "clipboard/text"
+PASTEABLE = ("osub_api_key", "osub_password", "tmdb_key")
 from mpvd.library.parse import norm, parse_path
 from mpvd.library.settings import LibrarySettings, normalize_languages
 from mpvd.library.store import LibraryStore
@@ -503,6 +508,51 @@ class LibraryService:
                                             notify, session_id))
         return out
 
+    async def subs_quota(self) -> dict[str, Any]:
+        """Cuánto cupo queda hoy (C4). Con cuenta, se lo pregunta a OpenSubtitles (``/infos/user``); sin cuenta solo se
+        sabe lo que dijo la última descarga, y se dice de dónde sale el número para no dar por bueno un dato viejo."""
+        client = self._osub_client()
+        if self.settings.secret("osub_username") and self.settings.secret("osub_password"):
+            try:
+                info = await self._osub_call(client.user_info)
+            except RpcError:
+                info = None
+            if isinstance(info, dict):
+                return {"source": "cuenta", "remaining": info.get("remaining_downloads"),
+                        "allowed": info.get("allowed_downloads"), "used": info.get("downloads_count"),
+                        "level": info.get("level") or "", "vip": bool(info.get("vip")),
+                        "reset_time": info.get("reset_time") or ""}
+        last = dict(client.last_quota or {})
+        return {"source": "última descarga" if last.get("remaining") is not None else "sin datos",
+                "remaining": last.get("remaining"), "allowed": None, "used": last.get("requests"),
+                "level": "", "vip": False, "reset_time": last.get("reset_time") or ""}
+
+    async def paste_secret(self, session: Any, field: str) -> dict[str, Any]:
+        """Guarda en ``field`` lo que haya en el portapapeles del reproductor, leyéndolo mpvd por su propia conexión IPC
+        (ADR-061 hace lo mismo con la clave de emisión): la clave no pasa por el script Lua ni por el OSD, así que no
+        acaba en un log ni en la pantalla. Devuelve solo la longitud y los ajustes públicos."""
+        if field not in PASTEABLE:
+            raise RpcError(INVALID_PARAMS, f"no se puede pegar en {field!r}")
+        if session is None:
+            raise RpcError(UNAVAILABLE, "hace falta un reproductor conectado para leer su portapapeles")
+        # la propiedad se lee en cada llamada (no al importar): los tests apuntan a un user-data propio
+        prop = os.environ.get("MPVD_LIBRARY_CLIPBOARD_PROP") or CLIPBOARD_PROP
+        try:
+            value = await session.client.get_property(prop, timeout=5)
+        except Exception:  # noqa: BLE001 - nunca repetir lo que hubiera en el portapapeles
+            raise RpcError(UNAVAILABLE, "no se pudo leer el portapapeles del reproductor") from None
+        value = str(value or "").strip()
+        if not value:
+            raise RpcError(INVALID_PARAMS, "el portapapeles está vacío")
+        if len(value) > 500 or "\n" in value:
+            raise RpcError(INVALID_PARAMS, "eso no parece una clave: copia solo la clave")
+        changes: dict[str, Any] = {field: value}
+        if field == "osub_api_key" and not self.settings.get("osub_enabled"):
+            changes["osub_enabled"] = True       # pegar la clave es decir «quiero esto»
+        out = await asyncio.to_thread(self.settings.update, changes)
+        self._osub = None
+        return {"length": len(value), "settings": out}
+
     async def _maybe_resync(self, path: str, srt: Path, lang: str, hash_match: bool, resync: bool | None,
                             audio_lang: str | None, notify: str, session_id: str | None) -> dict[str, Any]:
         """ADR-050: a hash match is timed for this very file → no resync unless asked; a subtitle found by name is
@@ -716,6 +766,26 @@ def register(server: MpvdServer, service: LibraryService) -> None:  # noqa: C901
         if not path:
             raise RpcError(INVALID_PARAMS, "path required")
         return await service.subs_search(path, languages, title)
+
+    @d.method("library.subs.quota")
+    async def subs_quota(ctx: RpcContext) -> dict[str, Any]:
+        """Cupo de descargas que queda hoy en OpenSubtitles, y de dónde sale el dato (cuenta o última descarga)."""
+        return await service.subs_quota()
+
+    @d.method("library.settings.paste")
+    async def settings_paste(ctx: RpcContext, field: str) -> dict[str, Any]:
+        """Guarda en ``field`` (osub_api_key, osub_password, tmdb_key) lo que haya en el portapapeles del reproductor,
+        leído por mpvd: la clave no pasa por el script ni por la pantalla. Devuelve su longitud, no su valor."""
+        return await service.paste_secret(ctx.session, field)
+
+    @d.method("library.subs.help")
+    async def subs_help(ctx: RpcContext) -> dict[str, Any]:
+        """Lo que hace falta para buscar subtítulos en internet y la página donde se saca la clave (gratis)."""
+        s = service.settings
+        return {"key_url": OSUB_KEY_URL, "has_key": bool(s.secret("osub_api_key")),
+                "enabled": bool(s.get("osub_enabled")), "active": s.osub_active,
+                "has_account": bool(s.secret("osub_username") and s.secret("osub_password")),
+                "languages": s.get("osub_languages")}
 
     @d.method("library.subs.download")
     async def subs_download(ctx: RpcContext, path: str, file_id: int | None = None, languages: str | None = None,

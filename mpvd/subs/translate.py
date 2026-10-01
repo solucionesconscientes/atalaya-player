@@ -1,5 +1,5 @@
 """Offline subtitle translation on CTranslate2 + sentencepiece: Argos Translate packages (every pair, pivot through
-English; no ``argostranslate``: it drags stanza/torch, see docs/TRADUCCION.md and ADR-025) and, for es/ca↔en, the
+English; no ``argostranslate``: it drags stanza/torch, see docs/TRADUCCION.md and ADR-025) and, for es/ca/fr ↔ en, the
 OPUS-MT "tc-big" models (``mpvd/subs/opus.py``), chosen per leg by :class:`TranslationRouter`.
 
 A package is a zip (``.argosmodel``) holding ``model/`` (CTranslate2), ``sentencepiece.model`` and ``metadata.json``.
@@ -544,7 +544,7 @@ class ArgosEngine:
         self._loaded.clear()
 
 
-# -- engines: Argos (fast, every pair) and OPUS-MT big (quality, es/ca↔en) ------------------------------------------
+# -- engines: Argos (fast, every pair) and OPUS-MT big (quality, es/ca/fr ↔ en) -------------------------------------
 
 ENGINES = ("auto", "argos", "opus-big")
 ENGINE_NAMES = {"argos": "Rápido (Argos)", "opus-big": "Calidad (OPUS-MT)"}

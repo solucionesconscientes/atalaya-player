@@ -308,12 +308,12 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
 - [x] C3 El aviso de tiempo se calcula con el ritmo medido (AsrTask.rtf, que ya existe) y sobre lo que queda: «listos en 4 min
       y no te alcanzará» si el ritmo < 1, o el total más la alternativa con su número si el ritmo ≥ 1. Se recalcula si la
       máquina se carga.
-- [ ] C4 Alta guiada de OpenSubtitles en dos pasos (abrir la página de la clave · pegarla del portapapeles) cuando un archivo
+- [x] C4 Alta guiada de OpenSubtitles en dos pasos (abrir la página de la clave · pegarla del portapapeles) cuando un archivo
       no trae subtítulos, y mostrar la cuota que queda.
 - [ ] C5 Cascada de proveedores: incrustados → canal/web → OpenSubtitles → Subdl → Podnapisi, mezclados y ordenados por
       fiabilidad (hash antes que título). Verificar las dos APIs nuevas contra el servicio real antes de ofrecerlas.
-- [ ] C6 Traducir cualquier pista (incrustada, descargada, de la web) a español, inglés y francés, con OPUS-MT por defecto.
-- [ ] C7 Revisar lo que dependía de los subtítulos en vivo (modo estudio).
+- [x] C6 Traducir cualquier pista (incrustada, descargada, de la web) a español, inglés y francés, con OPUS-MT por defecto.
+- [x] C7 Revisar lo que dependía de los subtítulos en vivo (modo estudio).
 - [x] C8 Al cerrar un vídeo, preguntar qué hacer con lo que quede trabajando **de ese archivo** (subtítulos, intro, índice,
       traducción), diciendo que lo hecho se guarda y continuará. Nunca se pregunta ni se para una grabación programada. Los
       subtítulos preguntan siempre; descargas y conversiones admiten «no volver a preguntar». Sin ventana, aviso de escritorio

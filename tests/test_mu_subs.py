@@ -1,6 +1,8 @@
 """mu-subs.lua end to end (headless mpv + real mpvd + vendored whisper.cpp): start from the menu/binding, the incremental
-SRT is added as an external track and reloaded on push events, the look-ahead cursor follows seeks, the next playlist
-item is pre-subtitled and adopted from cache when it starts, and the menu views (root, language, models, status)."""
+SRT is added as an external track and reloaded on push events, the next playlist item is pre-subtitled and adopted from
+cache when it starts, and the menu views (root, language, models, status).
+
+H36 (ADR-070): el archivo se prepara entero y en orden desde el segundo 0; ya no hay cursor que persiga la posición."""
 
 from __future__ import annotations
 
@@ -19,7 +21,7 @@ pytestmark = pytest.mark.skipif(not whisper_available(), reason="whisper.cpp not
 def subs_mpv(daemon_env, media_dir):
     h = start_mpv(daemon_env.runtime_dir, [
         "--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5,"
-        f"mu-subs-model={asr_model()},mu-subs-seek_interval=1,mu-subs-reload_min_interval=0.2,mu-subs-chunk_seconds=6",
+        f"mu-subs-model={asr_model()},mu-subs-reload_min_interval=0.2,mu-subs-chunk_seconds=6",
         "--keep-open=yes", "--pause=yes",
     ], env=daemon_env.env)
     try:
@@ -45,7 +47,7 @@ def external_sub(h, srt: str):
     return None
 
 
-def test_live_subtitles_track_seek_precompute_and_menu(subs_mpv, media_dir, tmp_path):
+def test_subtitulos_preparados_pista_precompute_y_menu(subs_mpv, media_dir, tmp_path):
     h, d = subs_mpv
     h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
     st = h.get("user-data/mu/subs")

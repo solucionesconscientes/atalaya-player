@@ -216,8 +216,15 @@ def fake_opus(root: Path, model_id: str) -> None:
 
 def test_opus_catalogue_tokens_and_store(tmp_path):
     assert opus.model_for("es", "en")[1] is None and opus.model_for("en", "es")[1] == ">>spa<<"
-    assert opus.model_for("en", "ca")[1] == ">>cat<<" and opus.model_for("fr", "en") is None
-    assert opus.supported_pairs() == [("ca", "en"), ("en", "ca"), ("en", "es"), ("es", "en")]
+    assert opus.model_for("en", "ca")[1] == ">>cat<<"
+    # H36/C6: francés ↔ inglés, modelos de un solo idioma a cada lado → sin token >>lang<<
+    assert opus.model_for("fr", "en")[1] is None and opus.model_for("en", "fr")[1] is None
+    assert opus.supported_pairs() == [("ca", "en"), ("en", "ca"), ("en", "es"), ("en", "fr"), ("es", "en"),
+                                      ("fr", "en")]
+    # el triángulo es/en/fr se cubre entero con OPUS-MT (es↔fr por inglés: no existe ningún tc-big spa-fra)
+    for par in (("es", "en"), ("en", "es"), ("fr", "en"), ("en", "fr")):
+        assert opus.model_for(*par) is not None, par
+    assert opus.model_for("es", "fr") is None and opus.model_for("fr", "es") is None
     for m in opus.MODELS.values():
         assert m.url.startswith("https://object.pouta.csc.fi/Tatoeba-MT-models/") and len(m.sha256) == 64
         assert m.zip_bytes > 800_000_000 and m.size_mb == 234
@@ -230,7 +237,7 @@ def test_opus_catalogue_tokens_and_store(tmp_path):
     cat = {(r["source"], r["target"]): r for r in store.catalogue()}
     assert cat[("es", "en")]["present"] and not cat[("en", "es")]["present"] and cat[("en", "es")]["download_mb"] == 863
     with pytest.raises(opus.OpusError):
-        asyncio.run(store.download("fr", "en"))
+        asyncio.run(store.download("es", "fr"))      # OPUS-MT no tiene ese par directo: hay que pivotar
 
 
 def test_router_picks_engine_per_leg(tmp_path):
@@ -254,6 +261,12 @@ def test_router_picks_engine_per_leg(tmp_path):
     assert router.plan("fr", "es") == [Leg("argos", "fr", "en"), Leg("opus-big", "en", "es")]
     assert router.missing_for("fr", "es", "argos") == [Leg("argos", "en", "es")]
     assert router.missing_for("fr", "de") == [Leg("argos", "en", "de")]
+    # C6 · con «máxima calidad», es→fr pide los dos modelos OPUS-MT del pivote, no los de Argos
+    assert router.missing_for("es", "fr", "opus-big") == [Leg("opus-big", "en", "fr")]
+    fake_opus(tmp_path / "opus", "tc-big-eng-fra-2022-03-09")
+    assert router.plan("es", "fr", "opus-big") == [Leg("opus-big", "es", "en"), Leg("opus-big", "en", "fr")]
+    # y un idioma que OPUS-MT no cubre sigue yendo por Argos aunque se pida «máxima calidad»
+    assert router.missing_for("es", "de", "opus-big") == [Leg("argos", "en", "de")]
     assert router.beams([Leg("opus-big", "en", "es"), Leg("argos", "fr", "en")]) == {"opus-big": 4, "argos": 2}
     with pytest.raises(Exception):
         router.plan("es", "en", "deepl")

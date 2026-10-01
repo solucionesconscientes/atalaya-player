@@ -17,13 +17,15 @@ from tests.test_nav import wait_nav
 from tests.test_opensubtitles import fake_api  # noqa: F401 - fixture
 
 MU_OPTS = ("--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5,"
-           "mu-library-countdown_seconds=2")
+           "mu-library-countdown_seconds=2,mu-library-open_command=true")
 
 
 @pytest.fixture
 def lib_mpv(daemon_env, media_dir, fake_api):  # noqa: F811
     base, st = fake_api
     daemon_env.extra_env["MPV_UOS_OSUB_URL"] = base
+    # C4: mpvd lee «el portapapeles» de una propiedad propia, así el test no toca el portapapeles de verdad
+    daemon_env.extra_env["MPVD_LIBRARY_CLIPBOARD_PROP"] = "user-data/prueba/clip"
     h = start_mpv(daemon_env.runtime_dir, [MU_OPTS], env=daemon_env.env)
     try:
         h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected" and v.get("uosc"),
@@ -171,4 +173,48 @@ def test_library_menu_play_next_episode_countdown_home_and_subtitles(lib_mpv, me
     sub = next(t for t in tracks if t.get("title") == "OpenSubtitles · es")
     assert sub["selected"] is True and sub["lang"] == "es"
     lib_state(h, lambda v: v.get("subs_status") == "added" and v.get("last_subs", "").endswith("2000002.es.srt"))
+    assert h.script_errors() == [], h.script_errors()
+
+
+def test_alta_guiada_de_opensubtitles_desde_el_menu(lib_mpv, media_dir, tmp_path):
+    """H36/C4: sin clave, «Buscar subtítulos en internet» no es un callejón sin salida: guía el alta en dos pasos."""
+    h, d, st = lib_mpv
+    video = tmp_path / "Mi.Serie.S01E01.720p.mkv"
+    shutil.copyfile(media_dir / "serie" / "ep01.mkv", video)
+    st["hash"] = file_hash(video).opensubtitles
+    h.command("loadfile", str(video))
+    h.wait_property("path", lambda v: v == str(video), timeout=15)
+
+    # 1. sin clave: los dos pasos, no un error
+    h.command("script-binding", "mu_library/library-subs")
+    s = lib_state(h, lambda v: v.get("view") == "subs"
+                  and any(t.startswith("Paso 1") for t in titles(v)), timeout=30)
+    paso1 = next(i for i in s["items"] if i["title"].startswith("Paso 1"))
+    paso2 = next(i for i in s["items"] if i["title"].startswith("Paso 2"))
+    assert "consumers" in paso1["hint"] or "Consumers" in paso1["hint"]
+    assert any(t == "…o escribirla a mano" for t in titles(s))
+
+    # 2. Paso 1 abre la página (open_command=true en los tests: no se abre ningún navegador de verdad)
+    ev(h, "mu-library-event", {"type": "activate", "index": 3, "value": paso1["value"]})
+
+    # 3. Paso 2 pega la clave del portapapeles: la lee mpvd, no el script
+    h.command("set_property", "user-data/prueba/clip", "clave-os")
+    ev(h, "mu-library-event", {"type": "activate", "index": 4, "value": paso2["value"]})
+    s = lib_state(h, lambda v: v.get("view") == "subs" and any(t == "Descargar el mejor" for t in titles(v)),
+                  timeout=30)
+    ajustes = d.call("library.settings.get")
+    assert ajustes["has_osub_key"] is True and ajustes["osub_enabled"] is True
+    assert d.call("library.subs.help")["active"] is True
+
+    # 4. y en Ajustes ya no se ofrecen los pasos, sino la clave guardada y el cupo
+    h.command("script-message-to", "uosc", "close-menu", "mu-library")
+    h.command("script-binding", "mu_library/library-menu")
+    s = lib_state(h, lambda v: v.get("view") == "root" and "Ajustes" in titles(v))
+    ev(h, "mu-library-event", {"type": "activate", "index": 7, "value": item(s, "Ajustes")["value"]})
+    s = lib_state(h, lambda v: v.get("view") == "settings"
+                  and any(t == "Api-Key de OpenSubtitles" for t in titles(v)), timeout=30)
+    assert item(s, "Api-Key de OpenSubtitles")["hint"] == "guardada"
+    assert not any(t.startswith("Paso ") for t in titles(s))
+    s = lib_state(h, lambda v: v.get("quota", "") not in ("", "consultando…"), timeout=20)
+    assert "se sabrá al descargar" in s["quota"] or "descargas" in s["quota"]
     assert h.script_errors() == [], h.script_errors()

@@ -206,6 +206,18 @@ class OpenSubtitles:
             pass
         self.token = ""
 
+    def user_info(self) -> dict[str, Any]:
+        """``GET /infos/user``: downloads used, allowed and when the counter resets (needs Api-Key + a logged-in
+        account). Without a username/password there is nothing to ask for: the quota belongs to the account."""
+        if not (self.username and self.password):
+            raise OpenSubtitlesError(401, "el cupo es de la cuenta: hace falta usuario y contraseña")
+        self.ensure_login()      # ``auth=True`` solo pone la cabecera: el token hay que tenerlo
+        res = self._request("GET", "/infos/user", auth=True)
+        data = res.get("data") if isinstance(res, dict) else None
+        if not isinstance(data, dict):
+            raise OpenSubtitlesError(0, "respuesta no válida de OpenSubtitles")
+        return data
+
     def search(self, moviehash: str | None = None, query: str | None = None, languages: str = "",
                season: int | None = None, episode: int | None = None, year: int | None = None,
                kind: str | None = None) -> list[dict[str, Any]]:

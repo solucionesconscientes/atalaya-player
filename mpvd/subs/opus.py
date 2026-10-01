@@ -54,7 +54,8 @@ class OpusModel:
         return f"opus-mt-{self.id}.zip"
 
 
-# Verified on 2026-09-30 (HEAD + full download): sizes are the Content-Length of the object storage.
+# Verified on 2026-09-30 and, for the French pair, on 2026-10-01 (HEAD + full download + sha256sum here):
+# sizes are the Content-Length of the object storage and the sums are of the files downloaded and used here.
 MODELS: dict[str, OpusModel] = {m.id: m for m in (
     OpusModel("tc-big-cat_oci_spa-eng-2022-03-13",
               "cat+oci+spa-eng/opusTCv20210807+bt_transformer-big_2022-03-13.zip",
@@ -64,6 +65,17 @@ MODELS: dict[str, OpusModel] = {m.id: m for m in (
               "eng-cat+oci+spa/opusTCv20210807+bt_transformer-big_2022-03-13.zip",
               "a5f01f26b1f22cc840b9f94e98a4fe2b517fca85296f7f802771272fbfcd659e", 862895279, 234,
               {("en", "es"): ">>spa<<", ("en", "ca"): ">>cat<<"}),
+    # H36/C6: con estos dos, el triángulo es/en/fr es OPUS-MT de punta a punta (es→fr pivota por inglés: no existe
+    # ningún tc-big spa-fra ni fra-spa en el repositorio, comprobado listando el bucket el 2026-10-01).
+    # Un solo idioma de origen y uno de destino → sin token >>lang<< (README y preprocess.sh del propio zip).
+    OpusModel("tc-big-fra-eng-2022-03-09",
+              "fra-eng/opusTCv20210807+bt_transformer-big_2022-03-09.zip",
+              "61f0684da189ef6cacbf4202284a390648312f13c87a37cde079f2c18829bac2", 856639098, 234,
+              {("fr", "en"): None}),
+    OpusModel("tc-big-eng-fra-2022-03-09",
+              "eng-fra/opusTCv20210807+bt_transformer-big_2022-03-09.zip",
+              "65218bc83ae8983c0c78eb10a810f7d83756d62decb7144c2f5efaae6d4fae7f", 856664877, 234,
+              {("en", "fr"): None}),
 )}
 
 # Members of the release zip needed for the conversion (the rest are logs and scripts).

@@ -28,14 +28,15 @@ local opts = {
   model = 'auto',           -- whisper model name or auto (mpvd picks by hardware tier)
   auto_start = false,       -- start transcribing every local file as soon as it loads
   precompute_next = true,   -- transcribe the next playlist item at low priority while this one plays
-  seek_interval = 5,        -- seconds between look-ahead cursor updates while playing
   reload_min_interval = 1,  -- seconds between two sub-reload of the same track
   notify_done = true,       -- OSD when a transcription finishes or fails
   osd_seconds = 3,
   chunk_seconds = 0,        -- 0 = mpvd default (28.5 s: one 30 s whisper window, ADR-024)
   chapter_min_seconds = 180, -- minimum length of an AI chapter (semantic.chapters)
   chapter_window = 45,      -- seconds per topic window (semantic.chapters)
-  translate_engine = 'auto', -- auto (OPUS-MT when downloaded for the pair, else Argos) | argos | opus-big
+  -- H36/C6: por defecto la máxima calidad. `opus-big` NO significa «solo OPUS-MT»: significa «OPUS-MT donde llegue»
+  -- (es/ca/fr ↔ inglés, y es↔fr por inglés), y Argos para el resto de los idiomas. auto = OPUS-MT solo si ya está.
+  translate_engine = 'opus-big',  -- opus-big | auto | argos
   save_dir = '',            -- folder for "Guardar subtítulos"; empty = next to the video (fallback ~/Vídeos/MPV-UOS/…)
 }
 options.read_options(opts, 'mu-subs')
@@ -345,29 +346,10 @@ mp.observe_property('sid', 'native', function(_, sid)
 end)
 
 -- ---------------------------------------------------------------------------------------------
--- Cursor de look-ahead: EN DESUSO desde H36. Mientras se transcribía «en vivo» persiguiendo la reproducción, tenía
--- sentido mover el cursor a donde estabas; ahora el archivo se prepara entero y en orden desde el principio, así que
--- perseguir la posición solo rompería ese orden (y dejaría huecos detrás). Se conserva `asr.seek` en mpvd por si algún
--- día se ofrece «transcribe desde aquí» a mano.
-local SEGUIR_POSICION = false
-
-local function send_seek()
-  if not state.task or not task_running() then return end
-  local pos = mp.get_property_number('time-pos')
-  if pos == nil then return end
-  rpc.call('asr.seek', { id = state.task.id, time_pos = pos }, function(err)
-    if err then msg.debug('asr.seek: ' .. (err.message or '')) end
-  end)
-end
-
-local seek_timer = mp.add_periodic_timer(math.max(1, opts.seek_interval), function()
-  if task_running() and not mp.get_property_bool('pause', false) then send_seek() end
-end)
-seek_timer:kill()
-
-local function update_timers()
-  if SEGUIR_POSICION and task_running() then seek_timer:resume() else seek_timer:kill() end
-end
+-- El cursor de look-ahead se quitó en H36 (ADR-070): mientras se transcribía «en vivo» persiguiendo la reproducción
+-- tenía sentido mover el cursor a donde estabas; ahora el archivo se prepara entero y en orden desde el segundo 0, así
+-- que perseguir la posición solo rompería ese orden y dejaría huecos detrás. `asr.seek` sigue en mpvd por si algún día
+-- se ofrece «transcribe desde aquí» a mano, pero mu-subs ya no lo llama ni mira `time-pos`.
 
 -- ---------------------------------------------------------------------------------------------
 -- start / stop / precompute
@@ -395,7 +377,6 @@ local function apply_task(t, from_event)
     state.last_event = { id = t.id, status = t.status, progress = t.progress, seq = t.seq }
     notify_wait(t)
   end
-  update_timers()
   publish()
 end
 
@@ -463,7 +444,6 @@ local function stop()
   end
   state.task = state.task and { id = id, status = 'cancelled', progress = state.task.progress, cues = state.task.cues,
     model = state.task.model, language = state.task.language, detected = state.task.detected, seq = state.task.seq } or nil
-  update_timers()
   publish()
   set_button_state()
 end
@@ -1025,8 +1005,7 @@ mp.register_event('file-loaded', function()
     state.ai_chapters = 0
     state.chapters_status = ''
     state.orig_chapters = nil
-    update_timers()
-    publish()
+      publish()
     set_button_state()
   end
   if state.auto_start and is_local(mp.get_property('path')) then
@@ -1041,10 +1020,6 @@ mp.register_event('file-loaded', function()
       end)
     end
   end
-end)
-
-mp.register_event('seek', function()
-  if task_running() then send_seek() end
 end)
 
 mp.register_event('end-file', function()
@@ -1063,7 +1038,6 @@ mp.register_event('end-file', function()
   state.ai_chapters = 0
   state.chapters_status = ''
   state.orig_chapters = nil
-  update_timers()
   publish()
   set_button_state()
 end)
@@ -1370,14 +1344,14 @@ local function translate_items(res)
   for k in pairs(opus_present) do table.insert(listo, (k:gsub('_', '→'))) end
   table.sort(listo)
   local items = {
-    { title = 'Automático', hint = 'OPUS-MT donde ya esté descargado; si no, Argos', icon = 'auto_awesome',
-      active = eng == 'auto', value = { engine = 'auto' } },
-    { title = 'Rápido (Argos)', hint = 'todos los idiomas · ~90 MB por par', icon = 'bolt', active = eng == 'argos',
-      value = { engine = 'argos' } },
-    { title = 'Calidad (OPUS-MT, ' .. tostring(opus.size_mb or 234) .. ' MB, se descarga una vez)',
+    { title = 'Máxima calidad (OPUS-MT donde llegue)',
       hint = #listo > 0 and ('listo: ' .. table.concat(listo, ', '))
-        or ('español/catalán ↔ inglés · descarga de ' .. tostring(opus.download_mb or 863) .. ' MB'),
-      icon = 'workspace_premium', active = eng == 'opus-big', value = { engine = 'opus-big' }, separator = true },
+        or ('español/catalán/francés ↔ inglés · ' .. tostring(opus.size_mb or 234) .. ' MB por par, se descarga una vez'),
+      icon = 'workspace_premium', active = eng == 'opus-big', value = { engine = 'opus-big' } },
+    { title = 'Solo lo que ya esté descargado', hint = 'OPUS-MT si está; si no, Argos, sin descargar nada grande',
+      icon = 'auto_awesome', active = eng == 'auto', value = { engine = 'auto' } },
+    { title = 'Rápido (Argos)', hint = 'todos los idiomas · ~90 MB por par', icon = 'bolt', active = eng == 'argos',
+      value = { engine = 'argos' }, separator = true },
   }
   local ext, emb = selected_sub_file()
   local track = ext or emb

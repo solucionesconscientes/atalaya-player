@@ -122,6 +122,16 @@ y un LLM local (lento en CPU) se descartaron.
 |---|---|---|---|
 | `cat+oci+spa-eng` (es/ca→en) | `https://object.pouta.csc.fi/Tatoeba-MT-models/cat+oci+spa-eng/opusTCv20210807+bt_transformer-big_2022-03-13.zip` (863 152 463 B) | `a2d13b90c2d59fdd6b5db723fea7aaf32f1a5ef25d7119806c94df753e70f17f` | 234 MB |
 | `eng-cat+oci+spa` (en→es/ca, token `>>spa<<`/`>>cat<<`) | `…/eng-cat+oci+spa/opusTCv20210807+bt_transformer-big_2022-03-13.zip` (862 895 279 B) | `a5f01f26b1f22cc840b9f94e98a4fe2b517fca85296f7f802771272fbfcd659e` | 234 MB |
+| `fra-eng` (fr→en, sin token) | `…/fra-eng/opusTCv20210807+bt_transformer-big_2022-03-09.zip` (856 639 098 B) | `61f0684da189ef6cacbf4202284a390648312f13c87a37cde079f2c18829bac2` | 234 MB |
+| `eng-fra` (en→fr, sin token) | `…/eng-fra/opusTCv20210807+bt_transformer-big_2022-03-09.zip` (856 664 877 B) | `65218bc83ae8983c0c78eb10a810f7d83756d62decb7144c2f5efaae6d4fae7f` | 234 MB |
+
+### Francés (2026-10-01, H36/C6)
+Con esos dos modelos el triángulo **es/en/fr** es OPUS-MT de punta a punta. No hay par directo es↔fr: listando el bucket
+(`?delimiter=/&prefix=fra` y `prefix=spa-f`) solo existen `fra-eng`, `fra-cat` y `fra-ita`, así que es→fr pivota por inglés con
+**dos tramos OPUS-MT** (antes uno de los dos tramos lo hacía Argos). Los dos son de un solo idioma a cada lado, así que **no**
+llevan token `>>lang<<` (README y `preprocess.sh` del propio zip). Comprobado aquí descargando los zips, verificando el SHA-256,
+convirtiendo y traduciendo: «The meeting starts at nine and nobody knows why.» → «La réunion commence à neuf heures et personne
+ne sait pourquoi.», y de vuelta → «The meeting begins at 9 a.m. and no one knows why.».
 
 - El zip trae el modelo Marian en fp32 (`.npz` de 930 MB, casi incompresible), `decoder.yml`, vocabulario YAML y `source.spm`/`target.spm`.
   `mpvd/subs/opus.py` lo descarga (progreso), verifica el SHA-256, extrae solo esos miembros, borra el zip, convierte con
@@ -133,7 +143,9 @@ y un LLM local (lento en CPU) se descartaron.
   (`MPV_UOS_TRANSLATE_BEAM_OPUS`), `target.spm` para decodificar; normalización ligera del `preprocess.sh` oficial (comillas
   tipográficas, `…`, caracteres de control). ≈430 MB de RAM por modelo: se descarga de memoria al terminar cada trabajo.
 - `subs.translate {…, engine: auto|argos|opus-big}`: el `TranslationRouter` elige motor por tramo — `opus-big` donde OPUS-MT cubre el
-  par (con `auto`, solo si ya está descargado), Argos para el resto y para pivotar (fr→es = Argos fr→en + OPUS-MT en→es). Si falta
+  par (con `auto`, solo si ya está descargado), Argos para el resto y para pivotar. **Desde H36/C6 el motor por defecto es
+  `opus-big`** (el de más calidad, que es lo que se pidió): no significa «solo OPUS-MT», significa «OPUS-MT donde llegue» y Argos
+  para los demás idiomas; `auto` queda como «no descargues nada grande». Si falta
   un modelo, error `-32002` con `data.missing = [[origen, destino, motor], …]`; mu-subs llama a
   `subs.translate.download {source, target, engine}` (trabajo con progreso, eventos `subs-translate-model`) y reintenta al acabar.
   `subs.translate.models` devuelve además `engines` (id, nombre, tamaño, pares y cuáles están descargados).

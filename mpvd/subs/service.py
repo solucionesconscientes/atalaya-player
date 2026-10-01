@@ -201,12 +201,12 @@ class SubsService:
              "beam_size": self.opus_engine.beam_size, "size_mb": first.get("size_mb", 234),
              "download_mb": first.get("download_mb", 863), "license": opus_mod.LICENSE,
              "present": [f"{p['source']}_{p['target']}" for p in opus_pairs if p["present"]], "pairs": opus_pairs,
-             "note": "OPUS-MT tc-big (Helsinki-NLP): es/ca↔en; se descarga y convierte una vez"},
+             "note": "OPUS-MT tc-big (Helsinki-NLP): es/ca/fr ↔ en; se descarga y convierte una vez"},
         ]
 
     def translate_status(self) -> dict[str, Any]:
         return {"engine": self.translator.status(), "packages": [p.to_dict() for p in self.argos.catalogue()],
-                "engines": self.engines_status(), "default_engine": "auto"}
+                "engines": self.engines_status(), "default_engine": "opus-big"}
 
     async def _source_language(self, path: str | None, srt: str, source: str) -> str:
         if source and source != "auto":
@@ -646,7 +646,7 @@ def register(server: MpvdServer, service: SubsService) -> None:  # noqa: C901 - 
         if engine not in ("argos", "opus-big"):
             raise RpcError(INVALID_PARAMS, "motor: argos u opus-big")
         if engine == "opus-big" and opus_mod.model_for(source, target) is None:
-            raise RpcError(INVALID_PARAMS, f"OPUS-MT no cubre {source}→{target} (solo es/ca↔en)")
+            raise RpcError(INVALID_PARAMS, f"OPUS-MT no cubre {source}→{target} (solo es/ca/fr ↔ en)")
         return service.download_package(source, target, notify, _sid(ctx), engine).to_dict()
 
     @d.method("subs.translate.remove")

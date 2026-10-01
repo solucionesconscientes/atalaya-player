@@ -31,6 +31,7 @@ local opts = {
   countdown_seconds = 5,     -- 0 = at once
   home_rows = 6,             -- «seguir viendo» / «siguiente episodio» rows for the start screen
   osd_seconds = 3,
+  open_command = '',         -- program that opens a URL ('' = xdg-open / open / explorer); tests use `true`
 }
 options.read_options(opts, 'mu-library')
 local P = prefs.ns('mu-library', { auto_next = opts.auto_next })
@@ -40,6 +41,7 @@ local state = {
   view = '', stack = {}, items = {}, last_error = '', force_open = false, input = nil,
   home = {}, home_raw = {}, counts = {}, settings = {}, scanning = false, scan_progress = 0,
   path = '', next = nil, current = nil, subs = nil, last_subs = '', last_lang = '', subs_status = '',
+  quota = nil,   -- C4: cupo de OpenSubtitles que queda hoy, tal como lo cuenta mpvd
 }
 local cd = nil   -- running countdown { left=, last=, next=, timer= }
 
@@ -47,6 +49,7 @@ local function publish()
   mp.set_property_native('user-data/mu/library', {
     view = state.view, depth = #state.stack, items = state.items, last_error = state.last_error,
     input = state.input and state.input.mode or '', home = state.home, auto_next = opts.auto_next,
+    quota = state.quota and state.quota.text or '',
     countdown = cd and math.max(0, math.ceil(cd.left)) or 0,
     next_path = state.next and state.next.path or '', next_title = state.next and (state.next.full_title or '') or '',
     next_source = state.next and state.next.source or '',
@@ -318,6 +321,64 @@ end
 local RESYNC_LABEL = { auto = 'si no es exacto', always = 'siempre', never = 'nunca' }
 local RESYNC_NEXT = { auto = 'always', always = 'never', never = 'auto' }
 
+-- C4 · alta guiada de OpenSubtitles. Hace falta una Api-Key (gratis) y escribirla a mano desde el mando de un sofá es
+-- absurdo: paso 1 abre la página en el navegador, paso 2 la pega del portapapeles. La clave la lee mpvd por su propia
+-- conexión IPC (como la clave de emisión, ADR-061): no pasa por este script ni por el OSD, así que no acaba en un log.
+local function open_in_browser(url)
+  local platform = mp.get_property_native('platform') or ''
+  local cmd = opts.open_command
+  if cmd == '' then cmd = platform == 'windows' and 'explorer' or (platform == 'darwin' and 'open' or 'xdg-open') end
+  mp.command_native_async({ name = 'subprocess', args = { cmd, url }, detach = true,
+                            playback_only = false, capture_stdout = false }, function() end)
+end
+
+local function paste_secret(field, what)
+  rpc.call('library.settings.paste', { field = field }, function(err, res)
+    if err then osd(what .. ': ' .. fail(err, 'library.settings.paste')); return end
+    if type(res) == 'table' and type(res.settings) == 'table' then state.settings = res.settings end
+    osd(string.format('%s guardada (%d caracteres)', what, (res and res.length) or 0))
+    state.quota = nil
+    publish()
+    reopen_current()
+  end, 10)
+end
+
+-- Cupo que queda hoy: lo dice mpvd (de la cuenta si la hay, o de la última descarga; y dice de dónde sale el dato,
+-- porque un número viejo mal presentado es peor que no decir nada).
+local function ask_quota()
+  state.quota = { text = 'consultando…' }
+  rpc.call('library.subs.quota', nil, function(err, q)
+    if err or type(q) ~= 'table' then
+      state.quota = { text = 'no se pudo consultar' }
+    elseif q.remaining == nil then
+      state.quota = { text = (q.allowed and (tostring(q.allowed) .. ' al día') or 'se sabrá al descargar el primero') }
+    else
+      local txt = tostring(q.remaining) .. ' descargas'
+      if q.allowed then txt = txt .. ' de ' .. tostring(q.allowed) end
+      if q.source and q.source ~= '' then txt = txt .. ' · ' .. q.source end
+      state.quota = { text = txt, remaining = q.remaining }
+    end
+    publish()
+    if state.view == 'settings' then reopen_current() end
+  end, 15)
+end
+
+local function osub_rows(s, out)
+  if not s.has_osub_key then
+    out[#out + 1] = { title = 'Paso 1 · Abrir la página de la clave (es gratis)', icon = 'open_in_new',
+                      hint = 'opensubtitles.com › API › Consumers', value = { osub_help = true } }
+    out[#out + 1] = { title = 'Paso 2 · Pegar la clave del portapapeles', icon = 'content_paste',
+                      hint = 'cópiala en el navegador y pulsa aquí', value = { paste = 'osub_api_key' } }
+    out[#out + 1] = { title = '…o escribirla a mano', icon = 'keyboard', value = { input = 'osub_api_key' } }
+  else
+    out[#out + 1] = { title = 'Api-Key de OpenSubtitles', hint = 'guardada', icon = 'key',
+                      value = { input = 'osub_api_key' } }
+    local q = state.quota
+    out[#out + 1] = { title = 'Cupo de hoy', icon = 'speed', selectable = false, muted = true,
+                      hint = q and q.text or 'consultando…' }
+  end
+end
+
 views.settings = function()
   if not require_mpvd('Ajustes') then return end
   rpc.call('library.settings.get', nil, function(err, s)
@@ -325,7 +386,7 @@ views.settings = function()
     if err then show('Ajustes', uosc.message_items(fail(err, 'library.settings.get'), 'error')) return end
     state.settings = s
     local function onoff(v) return v and 'sí' or 'no' end
-    show('Ajustes', {
+    local items = {
       { title = 'Siguiente episodio automático', hint = onoff(opts.auto_next), icon = 'skip_next',
         active = opts.auto_next, value = { toggle = 'auto_next' }, separator = true },
       { title = 'Carátulas y datos de internet (TMDB)', hint = onoff(s.tmdb_enabled), icon = 'image',
@@ -334,8 +395,9 @@ views.settings = function()
         value = { input = 'tmdb_key' }, separator = true },
       { title = 'Subtítulos de internet (OpenSubtitles)', hint = onoff(s.osub_enabled), icon = 'subtitles',
         active = s.osub_enabled, value = { set = 'osub_enabled', to = not s.osub_enabled } },
-      { title = 'Api-Key de OpenSubtitles…', hint = s.has_osub_key and 'guardada' or 'sin clave', icon = 'key',
-        value = { input = 'osub_api_key' } },
+    }
+    osub_rows(s, items)
+    for _, it in ipairs({
       { title = 'Usuario de OpenSubtitles…', hint = s.osub_username ~= '' and s.osub_username or 'sin cuenta',
         icon = 'person', value = { input = 'osub_username' } },
       { title = 'Contraseña de OpenSubtitles…', hint = s.has_osub_password and 'guardada' or '', icon = 'password',
@@ -344,7 +406,9 @@ views.settings = function()
         value = { input = 'osub_languages' } },
       { title = 'Resincronizar con la voz', hint = RESYNC_LABEL[s.osub_resync] or s.osub_resync, icon = 'sync',
         value = { set = 'osub_resync', to = RESYNC_NEXT[s.osub_resync] or 'auto' } },
-    }, { footnote = 'Las claves se guardan solo en tu equipo · ⌫ atrás' })
+    }) do items[#items + 1] = it end
+    show('Ajustes', items, { footnote = 'Las claves se guardan solo en tu equipo · ⌫ atrás' })
+    if s.has_osub_key and state.quota == nil then ask_quota() end
   end, 15)
 end
 
@@ -386,12 +450,50 @@ local function download_subs(file_id)
     end, 90)
 end
 
+-- C4 · si todavía no hay clave, aquí no se busca nada: se enseñan los dos pasos del alta. Un «falta la Api-Key» y
+-- nada más es un callejón sin salida justo cuando alguien quiere ver una película.
+local function subs_setup_items(h)
+  local items = {
+    { title = 'Para buscar subtítulos hace falta una clave de OpenSubtitles', icon = 'info', selectable = false,
+      muted = true },
+    { title = 'Es gratis y se saca en dos minutos', icon = 'info', selectable = false, muted = true,
+      separator = true },
+    { title = 'Paso 1 · Abrir la página de la clave', icon = 'open_in_new',
+      hint = 'opensubtitles.com › API › Consumers', value = { osub_help = true } },
+    { title = 'Paso 2 · Pegar la clave del portapapeles', icon = 'content_paste',
+      hint = 'cópiala en el navegador y pulsa aquí', value = { paste = 'osub_api_key' } },
+    { title = '…o escribirla a mano', icon = 'keyboard', value = { input = 'osub_api_key' }, separator = true },
+    { title = 'Ajustes de la biblioteca', icon = 'settings', value = { view = 'settings' } },
+  }
+  if h and h.has_key and not h.enabled then
+    table.insert(items, 1, { title = 'La clave está guardada, pero los subtítulos de internet están apagados',
+                             icon = 'toggle_off', hint = 'encenderlos', value = { set = 'osub_enabled', to = true } })
+  end
+  return items
+end
+
+local search_subs_now   -- definido justo debajo: no es una vista navegable, es el cuerpo de `subs`
+
 views.subs = function()
   local title = 'Subtítulos de internet'
   if not require_mpvd(title) then return end
   local path = current_path()
   if not is_local(path) then show(title, uosc.message_items('Abre un archivo de tu equipo', 'info')) return end
   show(title, uosc.loading_items('Buscando en OpenSubtitles…'))
+  rpc.call('library.subs.help', nil, function(herr, h)
+    if not still('subs') then return end
+    if not herr and type(h) == 'table' and not h.active then
+      state.subs_status = 'sin clave'
+      state.osub_help = h
+      publish()
+      show(title, subs_setup_items(h))
+      return
+    end
+    search_subs_now(path, title)
+  end, 10)
+end
+
+search_subs_now = function(path, title)
   state.subs_status = 'searching'
   publish()
   rpc.call('library.subs.search', { path = path }, function(err, res)
@@ -702,6 +804,14 @@ mp.register_script_message(EVENT, function(json)
     elseif v.view then
       if v.view == 'subs' then forget_view('subs') end
       open_view({ name = v.view, args = v })
+    elseif v.osub_help then
+      rpc.call('library.subs.help', nil, function(err, h)
+        local url = (not err and type(h) == 'table' and h.key_url) or 'https://www.opensubtitles.com/es/consumers'
+        open_in_browser(url)
+        osd('Abierta la página de la clave. Cópiala y vuelve al Paso 2.')
+      end, 10)
+    elseif v.paste then
+      paste_secret(v.paste, v.paste == 'osub_api_key' and 'Api-Key' or 'Clave')
     elseif v.input then
       open_input(v.input, v.input == 'osub_languages' and (state.settings.osub_languages or '')
         or v.input == 'osub_username' and (state.settings.osub_username or '') or '')
