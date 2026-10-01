@@ -363,6 +363,13 @@ Necesita palabras: subtítulos de texto del vídeo (incluidos los de la web o de
 subtítulos IA (`alt+c`). Con el modelo de búsqueda semántica instalado elige mejor; sin él cuenta las palabras que más
 se repiten. No inventa nada: son frases que se dijeron.
 
+### Índice del vídeo (`alt+I`)
+Lo mismo, pero del vídeo entero: **secciones** (cortes donde cambia el tema, si está el modelo de búsqueda semántica;
+si no, tramos de 5 min), cada una con su título y, dentro, sus frases clave. Cada línea salta a su minuto exacto. Es
+instantáneo porque no lo escribe ningún modelo: los títulos y las frases son del propio diálogo, así que los minutos
+son los de verdad. Hace falta un subtítulo de texto (los de YouTube valen, y son gratis); **nunca** se lanza una
+transcripción para hacer un índice, porque eso serían horas en un portátil normal.
+
 ## 9d-2. Música
 `alt+M` (o *Abrir → Música*) abre tu música. La primera vez añade tu carpeta Música y la lee en segundo plano (solo
 cambia lo nuevo en las siguientes); en *Carpetas* puedes añadir otras. Navega por *Artistas › Álbumes › Pistas*,

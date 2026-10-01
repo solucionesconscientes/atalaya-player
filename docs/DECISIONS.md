@@ -594,3 +594,16 @@
   los tests comprueban la orden exacta de cada plataforma sin tocar el equipo. Las dos opciones («despertar 5 min antes»,
   «al terminar: nada/suspender/apagar») las guarda **mpvd**, no el reproductor, porque tienen que valer con el reproductor
   cerrado, y se heredan en cada grabación nueva.
+- ADR-075 · Índice del vídeo: secciones y frases clave con su minuto, sin IA generativa (H38, nivel 1). **Amplía**
+  ADR-062 (el «¿qué me he perdido?» extractivo) de un tramo al vídeo entero, y prepara el nivel 2. `recap.outline` parte
+  del subtítulo que ya hay —el de la web, el descargado, una pista interna o la transcripción que mpvd ya tenga— y
+  **nunca lanza una transcripción**: hacerlo para un índice son horas en el portátil objetivo, así que cuando no hay
+  palabras se dice, en vez de poner a la gente a esperar. Los cortes entre secciones salen del mismo detector de cambio
+  de tema que los capítulos (`semantic.index.chapters`, embeddings multilingües) y, cuando ese modelo no está o el vídeo
+  no cambia de tema, de tramos de 5 minutos: una respuesta peor pero honesta y al instante. Dentro de cada sección, las
+  frases clave se eligen con la centralidad + MMR que ya usaba el recap. Los títulos **son** frases del diálogo
+  recortadas, no texto escrito por un modelo, así que los minutos no hay que validarlos: son los del subtítulo.
+  Para el nivel 2 (prosa escrita por un modelo local) queda `recap.marks`, que comprueba cada `[mm:ss]` contra el
+  subtítulo y lo mueve a la frase más cercana (±30 s) o **lo quita**: una marca que lleva a un sitio donde no pasa nada
+  es peor que no tener marca, porque parece que el programa miente. En el reproductor es un menú (`alt+I`): cada sección
+  es un submenú y cada línea salta a su minuto.

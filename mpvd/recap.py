@@ -130,6 +130,127 @@ def summarize(cues: list[dict[str, Any]], start: float, end: float, embed: Any =
                            "text": sentences[i].text} for i in idx]}
 
 
+# -- H38 · el índice del vídeo: secciones por significado y frases clave con su minuto ---------------
+
+MARK_RE = re.compile(r"\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]")
+SECTION_SECONDS = 300.0      # cuando no hay modelo de embeddings, secciones de ~5 min: honesto y sigue sirviendo
+TITLE_CHARS = 60
+
+
+def _title_from(text: str, limit: int = TITLE_CHARS) -> str:
+    """Una frase convertida en título: sin comillas ni guion de diálogo y cortada por una palabra entera."""
+    t = " ".join(str(text or "").split()).lstrip("-–—¡¿ ").strip('"\u201c\u201d')
+    if len(t) <= limit:
+        return t
+    cut = t[:limit].rsplit(" ", 1)[0]
+    return (cut or t[:limit]).rstrip(",;:.") + "…"
+
+
+def time_sections(sentences: list[Sentence], seconds: float, duration: float | None = None) -> list[tuple[float, float]]:
+    """Cortes cada ``seconds`` cuando no se puede medir el significado. Nunca deja una sección de menos de la mitad."""
+    if not sentences:
+        return []
+    start = sentences[0].start
+    end = float(duration) if duration else sentences[-1].end
+    if end - start <= seconds * 1.5:
+        return [(start, end)]
+    bounds = []
+    t = start
+    while t < end:
+        bounds.append(t)
+        t += seconds
+    if end - bounds[-1] < seconds / 2 and len(bounds) > 1:
+        bounds.pop()
+    return list(zip(bounds, [*bounds[1:], end], strict=True))
+
+
+def outline(cues: list[dict[str, Any]], duration: float | None = None, embed: Any = None,
+            per_section: int = 2) -> dict[str, Any]:
+    """Índice del vídeo entero: secciones con su título y, dentro, las frases clave **con su minuto exacto**.
+
+    Nada de esto lo escribe un modelo: los títulos y las frases son del propio diálogo, así que los minutos son los de
+    verdad y no hay nada que validar. Instantáneo (bastante por debajo de un segundo para una hora de diálogo).
+    """
+    sentences = sentences_from_segments([c for c in cues if str(c.get("text", "")).strip()])
+    if not sentences:
+        return {"sections": [], "method": "empty", "sentences": 0, "duration": duration or 0.0}
+    vectors = None
+    method = "words"
+    if embed is not None and len(sentences) >= 4:
+        try:
+            import numpy as np  # noqa: PLC0415
+
+            vectors = np.asarray(embed([s.text for s in sentences]), dtype=np.float32)
+            method = "embeddings"
+        except Exception:  # noqa: BLE001 - sin modelo o sin memoria: se sigue con palabras
+            vectors = None
+    bounds: list[tuple[float, float]] = []
+    if vectors is not None:
+        from mpvd.semantic.index import chapters as topic_chapters  # noqa: PLC0415
+
+        res = topic_chapters(vectors, sentences, duration, 45.0, 0.5, 3, 85.0, max(60.0, SECTION_SECONDS / 2))
+        chaps = res.get("chapters") or []
+        bounds = [(float(c["start"]), float(c["end"])) for c in chaps]
+    if not bounds:
+        bounds = time_sections(sentences, SECTION_SECONDS, duration)
+        if method == "embeddings":
+            method = "embeddings+tiempo"      # había modelo, pero el vídeo no cambia de tema: se corta por tiempo
+    sections = []
+    for a, b in bounds:
+        idx = [i for i, sen in enumerate(sentences) if a <= sen.start < b]
+        if not idx:
+            continue
+        k = min(per_section, len(idx))
+        if vectors is not None:
+            local = select_by_vectors(vectors[idx], k)
+        else:
+            local = select_by_words([sentences[i] for i in idx], k)
+        picked = [idx[i] for i in local]
+        sections.append({
+            "start": round(sentences[idx[0]].start, 2), "end": round(b, 2),
+            "title": _title_from(sentences[picked[0]].text),
+            "points": [{"start": round(sentences[i].start, 2), "text": sentences[i].text} for i in sorted(picked)],
+        })
+    return {"sections": sections, "method": method, "sentences": len(sentences),
+            "duration": round(float(duration), 2) if duration else round(sentences[-1].end, 2)}
+
+
+def validate_marks(text: str, cues: list[dict[str, Any]], tolerance: float = 30.0) -> dict[str, Any]:
+    """H38/G4 · cada ``[mm:ss]`` de un texto escrito por un modelo se comprueba contra el subtítulo.
+
+    Si no hay diálogo en ese minuto (±``tolerance``), la marca se mueve al comienzo de la frase más cercana que sí
+    exista; si no hay ninguna lo bastante cerca, **se quita**. Una marca que lleva a un sitio donde no pasa nada es
+    peor que no tener marca: parece que el programa te está mintiendo.
+    """
+    starts = sorted(float(c["start"]) for c in cues if str(c.get("text", "")).strip())
+    out: list[dict[str, Any]] = []
+
+    def fix(m: re.Match[str]) -> str:
+        h, mi, se = m.group(1), m.group(2), m.group(3)
+        seconds = (int(h) * 3600 + int(mi) * 60 + int(se)) if se else (int(h) * 60 + int(mi))
+        if not starts:
+            out.append({"mark": m.group(0), "seconds": seconds, "action": "removed", "to": None})
+            return ""
+        nearest = min(starts, key=lambda t: abs(t - seconds))
+        if abs(nearest - seconds) <= 1.0:
+            out.append({"mark": m.group(0), "seconds": seconds, "action": "kept", "to": round(nearest, 2)})
+            return m.group(0)
+        if abs(nearest - seconds) <= tolerance:
+            fixed = f"[{int(nearest) // 60:d}:{int(nearest) % 60:02d}]"
+            out.append({"mark": m.group(0), "seconds": seconds, "action": "moved", "to": round(nearest, 2)})
+            return fixed
+        out.append({"mark": m.group(0), "seconds": seconds, "action": "removed", "to": None})
+        return ""
+
+    fixed_text = MARK_RE.sub(fix, text or "")
+    fixed_text = re.sub(r"[ \t]{2,}", " ", fixed_text)
+    fixed_text = re.sub(r" +([,.;:])", r"\1", fixed_text)
+    return {"text": fixed_text.strip(), "marks": out,
+            "kept": sum(1 for m in out if m["action"] == "kept"),
+            "moved": sum(1 for m in out if m["action"] == "moved"),
+            "removed": sum(1 for m in out if m["action"] == "removed")}
+
+
 class RecapService:
     def __init__(self, server: MpvdServer):
         self.server = server
@@ -185,6 +306,32 @@ class RecapService:
                 raise RpcError(NOT_FOUND, f"no se pudo leer la pista de subtítulos: {exc}") from exc
         return dest
 
+    async def outline(self, params: dict[str, Any]) -> dict[str, Any]:
+        """H38/G1-G2: el índice del vídeo, de las fuentes que ya existen. **Nunca** lanza una transcripción."""
+        cues, source = await self._cues(params)
+        duration = params.get("duration")
+        try:
+            duration = float(duration) if duration else None
+        except (TypeError, ValueError):
+            duration = None
+        embed = None if params.get("method") == "words" else await self._embed()
+        per_section = max(1, min(5, int(params.get("per_section") or 2)))
+        out = await asyncio.to_thread(outline, cues, duration, embed, per_section)
+        out["source"] = source
+        out["cues"] = len(cues)
+        return out
+
+    async def marks(self, params: dict[str, Any]) -> dict[str, Any]:
+        """H38/G4: comprueba los ``[mm:ss]`` de un texto contra el subtítulo y los mueve o los quita."""
+        text = params.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise RpcError(INVALID_PARAMS, "text required")
+        cues, source = await self._cues(params)
+        tol = float(params.get("tolerance") or 30.0)
+        out = await asyncio.to_thread(validate_marks, text, cues, tol)
+        out["source"] = source
+        return out
+
     async def summarize(self, params: dict[str, Any]) -> dict[str, Any]:
         try:
             start, end = float(params.get("start", 0.0)), float(params["end"])
@@ -201,6 +348,25 @@ class RecapService:
 
 def register(server: MpvdServer, service: RecapService) -> None:
     d = server.dispatcher
+
+    @d.method("recap.outline")
+    async def recap_outline(ctx: RpcContext, cues: list | None = None, sub_path: str = "", path: str = "",
+                            ff_index: int | None = None, duration: float | None = None, method: str = "",
+                            per_section: int = 2) -> dict[str, Any]:
+        """H38 · índice del vídeo: secciones por significado con su título y, dentro, las frases clave con su minuto
+        exacto. Todo sale del propio diálogo (nada escrito por un modelo), así que es instantáneo y los minutos son los
+        de verdad. Fuentes, en este orden: ``cues`` | ``sub_path`` | ``path`` + ``ff_index`` | la transcripción que ya
+        haya de ``path``. **Nunca** se lanza una transcripción nueva para esto."""
+        return await service.outline({"cues": cues, "sub_path": sub_path, "path": path, "ff_index": ff_index,
+                                      "duration": duration, "method": method, "per_section": per_section})
+
+    @d.method("recap.marks")
+    async def recap_marks(ctx: RpcContext, text: str, cues: list | None = None, sub_path: str = "", path: str = "",
+                          ff_index: int | None = None, tolerance: float = 30.0) -> dict[str, Any]:
+        """Comprueba cada ``[mm:ss]`` de ``text`` contra el subtítulo: lo deja, lo mueve a la frase más cercana (hasta
+        ``tolerance`` segundos) o lo quita. Para los resúmenes escritos por un modelo (H38/G4)."""
+        return await service.marks({"text": text, "cues": cues, "sub_path": sub_path, "path": path,
+                                   "ff_index": ff_index, "tolerance": tolerance})
 
     @d.method("recap.summarize")
     async def recap_summarize(ctx: RpcContext, end: float, start: float = 0.0, cues: list | None = None,

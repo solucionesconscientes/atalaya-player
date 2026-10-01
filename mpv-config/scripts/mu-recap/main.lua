@@ -183,9 +183,58 @@ local function recap()
     else
       items[#items].separator = true
       items[#items + 1] = { title = 'Volver a verlo desde ' .. clock(from), icon = 'replay', value = { seek = from } }
+      items[#items + 1] = { title = 'Índice del vídeo entero', icon = 'list', hint = 'secciones y frases clave',
+                            value = { outline = true } }
     end
     show(items, title)
   end, 30)
+end
+
+-- H38/G2-G5 · el índice del vídeo: secciones con su título y, dentro, las frases clave con su minuto. Lo compone mpvd
+-- a partir del subtítulo que ya hay (`recap.outline`), sin escribir nada con un modelo y sin lanzar ninguna
+-- transcripción: si no hay subtítulo, se dice, porque transcribir una película para hacer un índice son horas.
+local function outline()
+  if mp.get_property_native('idle-active') then osd('Abre un vídeo primero') return end
+  local title = 'Índice del vídeo'
+  local src = source_params()
+  if not src then
+    state.status, state.last_error = 'error', 'no-source'
+    publish()
+    show(uosc.message_items('Para el índice hace falta un subtítulo de texto: pon uno o créalo con IA (alt+c)', 'info'),
+         title, true)
+    return
+  end
+  if not rpc.connected() then
+    show(uosc.message_items('mpvd no está conectado: espera unos segundos', 'error'), title, true)
+    return
+  end
+  src.duration = mp.get_property_number('duration')
+  state.status, state.last_error = 'working', ''
+  show(uosc.loading_items('Leyendo todo lo que se dice…'), title, true)
+  rpc.call('recap.outline', src, function(err, res)
+    if uosc.open_type() ~= MENU then state.status = 'idle'; publish(); return end
+    if err then
+      state.status, state.last_error = 'error', err.message or tostring(err)
+      show(uosc.message_items(state.last_error, 'error'), title)
+      return
+    end
+    local secs = res.sections or {}
+    state.status = 'done'
+    state.result = { method = res.method, source = res.source, count = #secs, outline = true }
+    local items = {}
+    for i, sec in ipairs(secs) do
+      local sub = { { title = 'Ir a ' .. clock(sec.start), icon = 'play_arrow', value = { seek = sec.start } } }
+      for _, pt in ipairs(sec.points or {}) do
+        sub[#sub + 1] = { title = pt.text, hint = clock(pt.start), value = { seek = pt.start } }
+      end
+      items[#items + 1] = { title = string.format('%d. %s', i, sec.title or ''), hint = clock(sec.start),
+                            icon = 'bookmark', items = sub }
+    end
+    if #items == 0 then
+      items = uosc.message_items('No hay suficiente diálogo para hacer un índice', 'info')
+    end
+    show(items, title)
+  end, 60)
 end
 
 mp.register_script_message(EVENT, function(json)
@@ -194,6 +243,8 @@ mp.register_script_message(EVENT, function(json)
   if handled then return end
   if back or ev.type == 'back' then
     if not N:leave() then uosc.close(MENU) end
+  elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.outline then
+    outline()
   elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.seek then
     mp.commandv('seek', tostring(ev.value.seek), 'absolute+exact')
     state.missed = nil
@@ -203,5 +254,6 @@ mp.register_script_message(EVENT, function(json)
 end)
 
 N:binding('recap', recap)
+N:binding('outline', outline)
 publish()
 msg.info('mu-recap loaded')
