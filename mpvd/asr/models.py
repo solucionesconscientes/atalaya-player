@@ -40,16 +40,35 @@ CATALOG: dict[str, tuple[int, bool, str]] = {
     "large-v3": (3100, True, "calidad máxima, GPU necesaria"),
 }
 
-# Ordered from cheapest to best; ``pick_model`` walks it with the hardware tier.
-LIVE_ORDER = ["tiny-q5_1", "tiny", "base-q5_1", "base", "small-q5_1", "small-q8_0", "small", "medium-q5_0", "medium",
-              "large-v3-turbo-q5_0", "large-v3-turbo", "large-v3"]
+# Ordered from cheapest to best; ``pick`` walks it with the hardware tier. The English-only variants are not ranked.
+QUALITY_ORDER = ["tiny-q5_1", "tiny", "base-q5_1", "base", "small-q5_1", "small-q8_0", "small", "medium-q5_0", "medium",
+                 "large-v3-turbo-q5_0", "large-v3-turbo", "large-v3"]
 
-# Live captions need RTF <= 0.5 while mpv keeps decoding; precompute tolerates RTF < 1 (docs/BENCHMARKS.md, 4-core i5).
-# With 28.5 s chunks one whisper call covers a full 30 s window, so small-q8_0 (RTF ~1.0 with 12 s of audio) gets
-# close to 0.4-0.5: good enough to pre-subtitle on a 4-core laptop, while base transcribes badly and with almost no
-# punctuation (which is what ruins the translations). Live stays on base there: mpv needs the spare CPU.
-TIER_LIVE = {"small": "base", "medium": "base", "large": "small-q8_0"}
-TIER_PRECOMPUTE = {"small": "small-q8_0", "medium": "small-q8_0", "large": "small"}
+# There is no live ASR any more (ADR-070: it never kept up and the half-done subtitles were worse than none), so the
+# only question left is how good a model this machine can run without the wait becoming absurd. Measured on a 4-core
+# i5 with 28.5 s chunks (docs/BENCHMARKS.md): small-q8_0 RTF ~0.45, medium-q5_0 4.03, large-v3-turbo-q5_0 5.22. The
+# RTF falls roughly with the number of cores, so the good models only become the default where there are cores to
+# spare. ``prepare`` is what the viewer is waiting for; ``precompute`` runs in the background for the next episode and
+# must not eat the machine.
+TIER_PREPARE = {"small": "small-q8_0", "medium": "medium-q5_0", "large": "large-v3-turbo-q5_0"}
+TIER_PRECOMPUTE = {"small": "small-q8_0", "medium": "small-q8_0", "large": "medium-q5_0"}
+# «Máxima calidad» explícita del menú: se ofrece en cualquier equipo, con el tiempo calculado delante (mu-subs).
+BEST_MODEL = "large-v3-turbo-q5_0"
+# Modelos que, por lentos, solo se usan si alguien los pide a sabiendas o el equipo da de sí.
+SLOW_MODELS = ("medium-q5_0", "medium", "large-v3-turbo-q5_0", "large-v3-turbo", "large-v3")
+# El bueno que sí va más rápido que el vídeo: la alternativa que se ofrece cuando hay que esperar demasiado.
+FAST_MODEL = "small-q8_0"
+
+# Coste relativo de cada modelo. Los marcados «medido» salen de docs/BENCHMARKS.md (4 núcleos, i5-6200U, trozos de
+# 28,5 s); los demás están interpolados por tamaño de pesos y se señalan como tales. NO sirve para prometer tiempos:
+# solo para comparar modelos ENTRE SÍ, escalando con el ritmo real que mide cada tarea en esta máquina.
+REFERENCE_RTF = {
+    "tiny-q5_1": 0.12, "tiny": 0.14, "tiny.en": 0.14,            # interpolados
+    "base-q5_1": 0.32, "base": 0.34, "base.en": 0.34,            # base: medido (0,34 con trozos de 28,5 s)
+    "small-q5_1": 0.70, "small-q8_0": 0.45, "small": 0.58, "small.en": 0.58,   # small-q8_0: medido (0,45)
+    "medium-q5_0": 4.03, "medium": 4.60,                          # medium-q5_0: medido (4,03)
+    "large-v3-turbo-q5_0": 5.22, "large-v3-turbo": 5.60, "large-v3": 9.00,     # turbo-q5_0: medido (5,22)
+}
 
 
 class ModelError(RuntimeError):
@@ -124,10 +143,10 @@ class ModelStore:
     def present(self) -> list[str]:
         return [m.name for m in self.list() if m.present and not m.is_vad]
 
-    def pick(self, tier: str, purpose: str = "live", prefer_present: bool = True) -> str:
-        """Model name for the hardware tier (``live`` or ``precompute``); prefers what is already on disk."""
-        table = TIER_LIVE if purpose == "live" else TIER_PRECOMPUTE
-        wanted = table.get(tier, "base")
+    def pick(self, tier: str, purpose: str = "prepare", prefer_present: bool = True) -> str:
+        """Model name for the hardware tier (``prepare`` or ``precompute``); prefers what is already on disk."""
+        table = TIER_PRECOMPUTE if purpose == "precompute" else TIER_PREPARE
+        wanted = table.get(tier, "small-q8_0")
         if not prefer_present:
             return wanted
         present = set(self.present())
@@ -135,11 +154,11 @@ class ModelStore:
             return wanted
         # quantized/base variants of the same family, then anything cheaper that exists
         family = wanted.split("-")[0].split(".")[0]
-        for cand in LIVE_ORDER:
+        for cand in QUALITY_ORDER:
             if cand.startswith(family) and cand in present:
                 return cand
-        idx = LIVE_ORDER.index(wanted) if wanted in LIVE_ORDER else len(LIVE_ORDER)
-        for cand in reversed(LIVE_ORDER[:idx]):
+        idx = QUALITY_ORDER.index(wanted) if wanted in QUALITY_ORDER else len(QUALITY_ORDER)
+        for cand in reversed(QUALITY_ORDER[:idx]):
             if cand in present:
                 return cand
         return wanted

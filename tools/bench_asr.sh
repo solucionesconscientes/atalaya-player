@@ -79,16 +79,17 @@ done
 {
   echo
   echo "## Lectura"
-  echo "- En vivo (mientras mpv decodifica) se exige RTF ≤ 0,5 con trozos de 20 s; para pre-subtitular (baja prioridad) basta RTF < 1."
+  echo "- Ya no se transcribe en vivo (ADR-070): se prepara el archivo entero antes de verlo, así que lo que importa es"
+  echo "  si el RTF baja de 1 (más rápido que el vídeo) y, si no baja, cuánto hay que esperar en total."
   echo "- Con voz sintética el modelo tiny confunde el idioma en modo \`auto\`; con el idioma fijado acierta. base ya reconoce casi todas las"
-  echo "  palabras clave; small es claramente mejor pero solo cabe en vivo con más núcleos o GPU."
+  echo "  palabras clave; small es claramente mejor y es el que cabe en un portátil de 4 núcleos."
   echo "- El FLAC leído directamente por whisper-cli (miniaudio) devolvió vacío en esta versión: mpvd siempre pasa WAV 16 kHz mono extraído con ffmpeg."
   echo "- Los cuantizados q5_1 son MÁS lentos que q8_0 y que el modelo completo en esta CPU (sin AVX-512); solo ahorran disco."
   # Generada desde el código, no escrita a mano: así no puede volver a desviarse de mpvd/asr/models.py.
   tiers="$(.venv/bin/python -c "
-from mpvd.asr.models import TIER_LIVE, TIER_PRECOMPUTE
+from mpvd.asr.models import TIER_PRECOMPUTE, TIER_PREPARE
 etiq = {'small': 'small (≤4 núcleos)', 'medium': 'medium', 'large': 'large'}
-print(' · '.join(f\"{etiq[t]} → en vivo {TIER_LIVE[t]}, pre-cálculo {TIER_PRECOMPUTE[t]}\" for t in ('small', 'medium', 'large')))
+print(' · '.join(f\"{etiq[t]} → {TIER_PREPARE[t]}, en segundo plano {TIER_PRECOMPUTE[t]}\" for t in ('small', 'medium', 'large')))
 " 2>/dev/null)"
   echo "- Tabla de elección por tier (mpvd/asr/models.py): ${tiers:-no se pudo leer de mpvd/asr/models.py}."
   echo "  El usuario puede forzar otro modelo desde el menú Subtítulos IA → Modelo."

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from mpvd.asr.service import AsrTask, _live_rank
+from mpvd.asr.service import AsrTask, _quality_rank
 from mpvd.config import Settings
 from mpvd.server import MpvdServer
 
@@ -44,9 +44,9 @@ def test_the_srt_and_the_cache_entry_differ_per_audio_track(asr):
 
 
 def test_choosing_the_model_automatically_survives_english_only_models():
-    # CATALOG offers base.en / small.en; LIVE_ORDER does not rank them, and index() used to raise ValueError
-    assert _live_rank("base.en") == -1 and _live_rank("small.en") == -1
-    assert _live_rank("small") > _live_rank("base") > _live_rank("base.en")
+    # CATALOG offers base.en / small.en; QUALITY_ORDER does not rank them, and index() used to raise ValueError
+    assert _quality_rank("base.en") == -1 and _quality_rank("small.en") == -1
+    assert _quality_rank("small") > _quality_rank("base") > _quality_rank("base.en")
 
 
 def test_adopt_model_does_not_raise_with_an_english_only_finished_task(asr):

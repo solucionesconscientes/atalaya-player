@@ -56,6 +56,8 @@ local state = {
   session = '',
   error = '',
   attempts = 0,
+  work = '',              -- C8: qué se está haciendo por detrás, tal como lo cuenta mpvd (pending.status)
+  work_subs = 0,          -- cuántas transcripciones hay sin terminar
 }
 
 local function publish()
@@ -247,12 +249,26 @@ mp.register_script_message('mu-ensure', ensure)
 
 -- Events pushed by mpvd (job progress for jobs submitted with notify=mu_core): kept for tests/diagnostics.
 local event_count = 0
+-- C8 · lo que sigue trabajando por detrás. mpvd lo manda al abrir (recordatorio) y cada vez que cambia, así que el
+-- menú puede decirlo siempre sin preguntar cada dos por tres.
+local function apply_pending(p)
+  if type(p) ~= 'table' then return end
+  local antes = state.work
+  state.work = p.text or ''
+  state.work_subs = type(p.subs) == 'table' and #p.subs or 0
+  publish()
+  if state.work ~= '' and antes == '' then
+    mp.commandv('show-text', 'Sigue en marcha: ' .. state.work, 5000)
+  end
+end
+
 mp.register_script_message('mu-event', function(payload)
   local ev = utils.parse_json(payload or '')
   if type(ev) ~= 'table' then return end
   event_count = event_count + 1
   ev.seq = event_count
   mp.set_property_native('user-data/mu/last_event', ev)
+  if ev.event == 'pending' then apply_pending(ev.pending) end
 end)
 
 -- ---------------------------------------------------------------------------------------------
@@ -407,29 +423,19 @@ local function mmss(seconds)
   return string.format('%d s', n)
 end
 
--- Lo que queda por hacer DE ESTE ARCHIVO (los subtítulos IA) y lo que queda en general (descargas y conversiones).
+-- Lo que queda por hacer: se lo pregunta a mpvd de una vez (`pending.status`), que es quien lo sabe. De eso, los
+-- subtítulos de ESTE archivo son lo que se pregunta siempre; el resto (descargas, conversiones) admite «no volver a
+-- preguntar»; las grabaciones programadas no se preguntan ni se paran.
 local function pending_work(cb)
   local path = mp.get_property('path') or ''
-  rpc('asr.status', nil, function(err, st)
+  rpc('pending.status', nil, function(err, p)
+    if err or type(p) ~= 'table' then cb(nil, 0); return end
     local subs
-    if not err and type(st) == 'table' and type(st.tasks) == 'table' then
-      for _, t in ipairs(st.tasks) do
-        if t.path == path and t.complete ~= true and (t.status == 'running' or t.status == 'queued') then subs = t end
-      end
+    for _, t in ipairs(p.subs or {}) do
+      if t.path == path then subs = t end
     end
-    rpc('ytdl.downloads.list', { include_finished = false }, function(_, rows)
-      local jobs = 0
-      if type(rows) == 'table' then jobs = #rows end
-      rpc('convert.list', nil, function(_, crows)
-        if type(crows) == 'table' then
-          for _, r in ipairs(crows) do
-            if r.status == 'running' or r.status == 'queued' then jobs = jobs + 1 end
-          end
-        end
-        cb(subs, jobs)
-      end, 4)
-    end, 4)
-  end, 4)
+    cb(subs, (p.downloads or 0) + (p.converts or 0))
+  end, 5)
 end
 
 local quitting = false
@@ -441,10 +447,8 @@ local function quit_asking()
   pending_work(function(subs, jobs)
     if subs then
       local pct = math.floor((subs.progress or 0) * 100 + 0.5)
-      local falta = ''
-      if subs.rtf and subs.duration and subs.progress then
-        falta = ', unos ' .. mmss((1 - subs.progress) * subs.duration * subs.rtf)
-      end
+      -- el tiempo que falta ya lo calcula mpvd con el ritmo medido (C3): aquí solo se dice
+      local falta = subs.remaining and (', unos ' .. mmss(subs.remaining)) or ''
       ask(string.format('Quedan subtítulos por hacer de esto (%d %%%s).\nLo hecho se guarda y seguirá cuando lo abras.',
                         pct, falta),
           'Seguir en segundo plano', 'Dejarlo', function(answer)

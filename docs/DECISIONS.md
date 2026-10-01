@@ -80,7 +80,8 @@
   llamada es el encoder sobre la ventana de 30 s (tiny 1,3 s · base 3,0 s · small-q5_1 12 s con 3 hilos, incluso con 1 s de audio) y no
   la carga del modelo, así que un servidor no ahorraría nada relevante y añadiría un puerto y un proceso que vigilar. Consecuencias:
   trozos de 20 s por defecto (MPV_UOS_ASR_CHUNK), un solo proceso whisper a la vez (cerrojo global), hilos = núcleos-1 (máx. 8) y
-  modelo por tier de hardware según docs/BENCHMARKS.md: en vivo se exige RTF ≤ 0,5 dejando CPU libre para mpv.
+  modelo por tier de hardware según docs/BENCHMARKS.md. (La parte de «en vivo se exige RTF ≤ 0,5» quedó sin efecto:
+  ADR-070 quitó la transcripción en vivo y ahora el modelo se elige por calidad.)
 - ADR-025 · Traducción offline con paquetes Argos Translate ejecutados directamente sobre CTranslate2 + sentencepiece (extra opcional
   `translate` del pyproject, ≈190 MB en el .venv), sin `argostranslate` (arrastra stanza → torch + CUDA, varios GB). Paquetes 1.0
   es↔en fijados por SHA-256 en vendor.lock (el es→en 1.9 usa BPE y devuelve basura en int8: issue #504); el resto del índice oficial se
@@ -482,7 +483,7 @@
   de arranque con `msvcrt.locking` (acotado a 30 s). Como no hay Windows aquí, se prueba en Linux con un pwsh 7 portátil
   (`.cache/pwsh`, bajado por el test @network): parser real, `-DryRun` idéntico a `bin/mpv-uos`, descargas contra un servidor
   local e instalar/desinstalar en una carpeta temporal. La prueba en un Windows real queda en NEEDS_HUMAN.md.
-- ADR-067 · Reparto de CPU entre descargas, transcripción y traducción (H34). El problema: un trabajo de la cola de mpvd
+- ADR-069 · Reparto de CPU entre descargas, transcripción y traducción (H34). El problema: un trabajo de la cola de mpvd
   dura todo lo que dure su tarea, y la cola tiene un worker por núcleo menos uno (tres en este portátil). Las descargas,
   que duran minutos, llenaban la cola y los trabajos urgentes (subtítulos IA en vivo, traducir, clips) no arrancaban: el
   sistema de prioridades quedaba anulado. Decisión: las descargas esperan en una cola propia del gestor
@@ -509,3 +510,22 @@
   dice por qué. Ventaja añadida: con túnel no hace falta tocar el cortafuegos, así que el aviso de `ufw` desaparece.
   Alternativas descartadas: UPnP/abrir puertos en el router (frágil y expone la casa), un relé propio (necesitaría un
   servidor y rompería el «local-first»), ngrok y similares (requieren cuenta).
+- ADR-070 · Fuera los subtítulos IA «en vivo»: se prepara el archivo entero antes de verlo (H36). **Sustituye** a la
+  parte de ADR-024 y ADR-042 que daba por bueno transcribir mientras mpv decodifica (el resto de los dos sigue en pie:
+  un proceso por trozo y los tiempos por token). El problema: el modo en vivo
+  obligaba a elegir el modelo por la velocidad y no por la calidad (en un portátil de 4 núcleos, `base`), y `base`
+  transcribe con faltas y casi sin puntuación, que es justo lo que estropea después la traducción; además, con el
+  look-ahead persiguiendo la posición, el texto aparecía a trozos y cualquier salto adelante dejaba hueco. Medido
+  (docs/BENCHMARKS.md, 2026-10-01): `small-q8_0` da RTF ≈0,45 con trozos de 28,5 s, o sea que transcribe más del doble
+  de rápido que el vídeo; `medium-q5_0` 4,03 y `large-v3-turbo-q5_0` 5,22. Decisión: un solo modo, `prepare`, que
+  arranca en el segundo 0 y recorre el archivo en orden con el mejor modelo que aguante el equipo
+  (`TIER_PREPARE` en mpvd/asr/models.py: small-q8_0 en ≤4 núcleos, medium-q5_0 de 5 a 8, large-v3-turbo-q5_0 por
+  encima), y `precompute` para el siguiente de la lista. Desaparecen el propósito `live`, el cursor de look-ahead y el
+  troceado según la posición de reproducción. Consecuencia incómoda y asumida: hay que esperar. Para que la espera no
+  sea a ciegas, mpvd publica en cada tarea `rtf_recent` (ritmo de los últimos trozos), `remaining` (lo que queda, a ese
+  ritmo) y `alt` (lo que tardaría con `small-q8_0`), y mu-subs lo dice con palabras: «listos en 7 min · va más rápido
+  que el vídeo, no te alcanzará», o con un modelo lento, «listos en 1 h 10 min · con small-q8_0, 9 min». Se recalcula
+  solo: si la máquina se carga, el ritmo sube y el aviso sube con él. En TV y radio no hay subtítulos IA: solo los que
+  manda el canal (las pistas de ADR-055). Alternativas descartadas: seguir en vivo con `base` (mala calidad y el peor de los dos
+  mundos); transcribir en vivo solo el trozo que se está viendo (es lo que ya hacía y es lo que falla al saltar);
+  esperar sin decir cuánto (es lo que convierte una espera razonable en un programa roto).

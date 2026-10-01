@@ -94,6 +94,7 @@ local state = {
   reload_pending = false,
   force_open = false,
   notified = {},
+  wait_said = nil,        -- último «listos en …» dicho por OSD, para no repetirlo en cada trozo (C3)
   resync = nil,           -- {srt=, task=, status=, stats=, out=} last resync request
   translate = nil,        -- {srt=, source=, target=, status=, out=, job=, progress=} last translation request
   packages = nil,         -- subs.translate.models result (present pairs)
@@ -120,6 +121,7 @@ local function task_running()
   return state.task ~= nil and (state.task.status == 'queued' or state.task.status == 'running')
 end
 
+local wait_text   -- se define más abajo (necesita task_running/duracion_larga); publish() ya lo usa
 local function publish()
   local t = state.task
   mp.set_property_native('user-data/mu/subs', {
@@ -129,6 +131,7 @@ local function publish()
     task_id = t and t.id or '', status = t and t.status or '', progress = t and t.progress or 0,
     ahead = t and t.ahead or 0, cues = t and t.cues or 0, detected = t and t.detected or '',
     task_model = t and t.model or '', rtf = t and t.rtf or 0, seq = t and t.seq or -1, error = t and t.error or '',
+    rtf_recent = t and t.rtf_recent or 0, remaining = t and t.remaining or 0, wait = wait_text(t) or '',
     precompute_id = state.precompute and state.precompute.id or '',
     precompute_status = state.precompute and state.precompute.status or '',
     view = state.view, depth = #state.stack, items = state.items, last_event = state.last_event or '',
@@ -209,6 +212,36 @@ local function find_track(srt)
     if t.type == 'sub' and t.external and t['external-filename'] == srt then return t end
   end
   return nil
+end
+
+-- C3 · el aviso de espera. Se calcula con el ritmo que mide la propia tarea (`rtf_recent`, los últimos trozos) sobre
+-- lo que queda por transcribir, que es lo que publica mpvd en `remaining`. No se promete nada por modelo: si la
+-- máquina se carga, el ritmo sube y el número sube con él en el siguiente aviso.
+local function duracion_larga(seconds)
+  local n = math.max(0, math.floor(tonumber(seconds) or 0))
+  if n < 60 then return n .. ' s' end
+  if n < 3600 then return math.floor(n / 60 + 0.5) .. ' min' end
+  local h = math.floor(n / 3600)
+  local m = math.floor((n % 3600) / 60 + 0.5)
+  return m > 0 and string.format('%d h %d min', h, m) or string.format('%d h', h)
+end
+
+-- Devuelve el texto del aviso, o nil si todavía no hay ninguna medida (nunca inventar un número).
+wait_text = function(t)
+  if not t or t.complete or t.status == 'done' then return nil end
+  local queda = tonumber(t.remaining)
+  local ritmo = tonumber(t.rtf_recent) or tonumber(t.rtf)
+  if not queda or queda <= 0 or not ritmo or ritmo <= 0 then return nil end
+  local txt = 'listos en ' .. duracion_larga(queda)
+  if ritmo < 1 then
+    -- va más rápido que el vídeo: en cuanto termine el primer tramo se puede empezar a ver sin que te alcance
+    return txt .. ' · va más rápido que el vídeo, no te alcanzará'
+  end
+  local alt = t.alt
+  if type(alt) == 'table' and alt.model and tonumber(alt.remaining) then
+    txt = txt .. string.format(' · con %s, %s', alt.model, duracion_larga(alt.remaining))
+  end
+  return txt .. string.format(' (va %.1f veces más lento que el vídeo)', ritmo)
 end
 
 local function task_label(t)
@@ -341,10 +374,27 @@ end
 
 local precompute_next -- forward
 
+-- C3 · se avisa por OSD la primera vez que hay una estimación y cuando cambia de verdad (±40 % o media hora), no en
+-- cada trozo: si no, el aviso se convierte en ruido.
+local function notify_wait(t)
+  local queda = tonumber(t and t.remaining)
+  if not queda or queda <= 0 or t.complete or t.status ~= 'running' then return end
+  local antes = state.wait_said
+  local salto = antes and math.abs(queda - antes) or math.huge
+  if antes and salto < math.max(0.4 * antes, 20) then return end
+  local txt = wait_text(t)
+  if not txt then return end
+  state.wait_said = queda
+  osd('Subtítulos IA: ' .. txt)
+end
+
 local function apply_task(t, from_event)
   state.task = t
   if t.srt and t.srt ~= '' then state.srt = t.srt end
-  if from_event then state.last_event = { id = t.id, status = t.status, progress = t.progress, seq = t.seq } end
+  if from_event then
+    state.last_event = { id = t.id, status = t.status, progress = t.progress, seq = t.seq }
+    notify_wait(t)
+  end
   update_timers()
   publish()
 end
@@ -368,6 +418,7 @@ local function start(quiet)
   state.starting = true
   state.path = path
   state.notified = {}
+  state.wait_said = nil
   publish()
   -- H36: ya no se transcribe «en vivo» persiguiendo la reproducción con un modelo flojo. Se prepara el archivo entero
   -- con el modelo bueno desde el principio (`prepare`), que es más rápido que el vídeo, así que basta esperar unos
@@ -969,6 +1020,7 @@ mp.register_event('file-loaded', function()
     state.save = nil
     state.extract = nil
     state.web = nil          -- the web subtitles belonged to the video we just left
+    state.wait_said = nil
     state.adopted = ''
     state.ai_chapters = 0
     state.chapters_status = ''
@@ -1006,6 +1058,7 @@ mp.register_event('end-file', function()
   state.sid = nil
   state.path = ''
   state.web = nil
+  state.wait_said = nil
   state.adopted = ''
   state.ai_chapters = 0
   state.chapters_status = ''
@@ -1124,6 +1177,9 @@ views.root = function()
     table.insert(items, { title = 'Detener subtítulos IA', icon = 'stop',
       hint = state.starting and 'iniciando…' or string.format('%d%% · %d cues · %s', done_pct, t.cues or 0, task_label(t)),
       value = { toggle = true } })
+    local espera = wait_text(t)
+    table.insert(items, { title = espera or 'Calculando cuánto va a tardar…', icon = 'hourglass_top',
+      selectable = false, muted = true })
   elseif path == '' then
     table.insert(items, { title = 'Abre un archivo local para subtitularlo', icon = 'info', selectable = false, muted = true })
   elseif not is_local(path) then
@@ -1246,7 +1302,7 @@ local function models_items(res)
   local items = {}
   local rec = res.recommended or {}
   table.insert(items, { title = 'Automático según el hardware',
-    hint = (rec.live or '?') .. ' (tier ' .. (res.tier or '?') .. ')', icon = 'auto_awesome', active = state.model == 'auto',
+    hint = (rec.prepare or '?') .. ' (tier ' .. (res.tier or '?') .. ')', icon = 'auto_awesome', active = state.model == 'auto',
     value = { model = 'auto' } })
   for _, m in ipairs(res.models or {}) do
     if not m.vad then
@@ -1263,10 +1319,11 @@ local function models_items(res)
         icon = 'cloud_download'
         value = { download = m.name }
       end
-      if m.name == rec.live then hint = hint .. ' · recomendado en vivo' end
-      if m.name == rec.precompute and rec.precompute ~= rec.live then
-        hint = hint .. ' · recomendado para pre-calcular'
+      if m.name == rec.prepare then hint = hint .. ' · recomendado para este equipo' end
+      if m.name == rec.precompute and rec.precompute ~= rec.prepare then
+        hint = hint .. ' · recomendado en segundo plano'
       end
+      if m.name == rec.best and m.name ~= rec.prepare then hint = hint .. ' · máxima calidad (lento)' end
       local item = { title = m.name, hint = hint, icon = icon, active = state.model == m.name, value = value }
       if m.present then item.actions = { { name = 'remove', icon = 'delete', label = 'Borrar modelo' } } end
       table.insert(items, item)
@@ -1422,16 +1479,17 @@ views.status = function()
       { title = 'Hilos', hint = tostring(e.threads or '?'), icon = 'memory', selectable = false },
       { title = 'VAD Silero', hint = yesno(e.vad), icon = 'graphic_eq', selectable = false },
       { title = 'Hardware', hint = 'tier ' .. tostring(st.tier or '?'), icon = 'computer', selectable = false },
-      { title = 'Recomendado en vivo / pre-cálculo', icon = 'auto_awesome', selectable = false,
-        hint = ((st.recommended or {}).live or '?') .. ' / ' .. ((st.recommended or {}).precompute or '?') },
+      { title = 'Recomendado aquí / en segundo plano', icon = 'auto_awesome', selectable = false,
+        hint = ((st.recommended or {}).prepare or '?') .. ' / ' .. ((st.recommended or {}).precompute or '?') },
       { title = 'Modelos presentes', hint = table.concat(st.models_present or {}, ', '), icon = 'storage', selectable = false },
       { title = 'RTF medio del motor', hint = e.rtf and string.format('%.2f', e.rtf) or '—', icon = 'speed',
         selectable = false, separator = true },
     }
     for _, t in ipairs(st.tasks or {}) do
       table.insert(items, { title = (t.path or ''):match('[^/\\]+$') or t.path or '', icon = 'subtitles',
-        hint = string.format('%s · %d%% · %d cues · %s%s', t.status, math.floor((t.progress or 0) * 100 + 0.5),
-          t.cues or 0, task_label(t), t.rtf and string.format(' · RTF %.2f', t.rtf) or ''), selectable = false })
+        hint = string.format('%s · %d%% · %d cues · %s%s%s', t.status, math.floor((t.progress or 0) * 100 + 0.5),
+          t.cues or 0, task_label(t), t.rtf and string.format(' · RTF %.2f', t.rtf) or '',
+          wait_text(t) and (' · ' .. wait_text(t)) or ''), selectable = false })
     end
     if state.view == 'status' then show('Estado del motor', items) end
   end)

@@ -32,14 +32,18 @@ def test_model_store_catalogue_and_pick(tmp_path):
     (d / model_filename("base")).write_bytes(b"xxxx" + b"\0" * 2048)   # wrong magic → ignored
     store = ModelStore([d])
     assert store.find("tiny") is not None and store.find("base") is None and store.present() == ["tiny"]
-    assert store.pick("small", "live") == "tiny"
-    assert store.pick("medium", "live") == "tiny"            # base wanted but only tiny present → cheaper present one
-    assert store.pick("medium", "live", prefer_present=False) == "base"
-    assert store.pick("large", "precompute", prefer_present=False) == "small"
-    # 4-core laptop: live stays on base, pre-subtitling uses small-q8_0 (28.5 s chunks, docs/BENCHMARKS.md)
-    assert store.pick("small", "live", prefer_present=False) == "base"
+    # H36: ya no hay ASR en vivo; los propósitos son «prepare» (lo espera quien mira) y «precompute» (fondo).
+    assert store.pick("small", "prepare") == "tiny"          # small-q8_0 wanted but only tiny present
+    assert store.pick("medium", "prepare") == "tiny"         # idem: cae al único que hay en disco
+    assert store.pick("medium", "prepare", prefer_present=False) == "medium-q5_0"
+    assert store.pick("large", "prepare", prefer_present=False) == "large-v3-turbo-q5_0"
+    assert store.pick("large", "precompute", prefer_present=False) == "medium-q5_0"
+    # portátil de 4 núcleos: small-q8_0 en los dos casos (el único bueno más rápido que el vídeo, docs/BENCHMARKS.md)
+    assert store.pick("small", "prepare", prefer_present=False) == "small-q8_0"
     assert store.pick("small", "precompute", prefer_present=False) == "small-q8_0"
     assert store.pick("small", "precompute") == "tiny"      # small-q8_0 absent → cheaper model on disk
+    # un propósito desconocido no elige a ciegas: se trata como «prepare»
+    assert store.pick("small", "vete-a-saber", prefer_present=False) == "small-q8_0"
     assert model_url("tiny").endswith("/ggml-tiny.bin") and "whisper-vad" in model_url(VAD_MODEL)
     names = [m.name for m in store.list()]
     assert names[:-1] == list(CATALOG) and names[-1] == VAD_MODEL and store.list()[-1].is_vad

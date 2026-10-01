@@ -141,6 +141,9 @@ class MpvdServer:
         lyrics.register(self, self.lyrics)
         self.songid = songid.SongIdService(self, self.lyrics.settings)
         songid.register(self, self.songid)
+        from mpvd import pending  # noqa: PLC0415 - H36/C8: lo que sigue trabajando al cerrar la ventana
+        self.pending = pending.PendingService(self)
+        pending.register(self, self.pending)
 
     # -- lifecycle -------------------------------------------------------------
 

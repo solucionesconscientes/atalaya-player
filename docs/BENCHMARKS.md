@@ -14,13 +14,15 @@ El coste por llamada tiene una parte fija (encoder sobre la ventana de 30 s), po
 | base | 142 MB | 4.11 s (RTF 0.35) | 4.56 s (RTF 0.39) | 8.83 s (RTF 0.26) | 6/7 | en |
 
 ## Lectura
-- En vivo (mientras mpv decodifica) se exige RTF ≤ 0,5 con trozos de 20 s; para pre-subtitular (baja prioridad) basta RTF < 1.
+- Ya no se transcribe en vivo (ADR-070): se prepara el archivo entero antes de verlo, así que lo que importa es
+  si el RTF baja de 1 (más rápido que el vídeo) y, si no baja, cuánto hay que esperar en total.
 - Con voz sintética el modelo tiny confunde el idioma en modo `auto`; con el idioma fijado acierta. base ya reconoce casi todas las
-  palabras clave; small es claramente mejor pero solo cabe en vivo con más núcleos o GPU.
+  palabras clave; small es claramente mejor y es el que cabe en un portátil de 4 núcleos.
 - El FLAC leído directamente por whisper-cli (miniaudio) devolvió vacío en esta versión: mpvd siempre pasa WAV 16 kHz mono extraído con ffmpeg.
 - Los cuantizados q5_1 son MÁS lentos que q8_0 y que el modelo completo en esta CPU (sin AVX-512); solo ahorran disco.
-- Tabla de elección por tier (mpvd/asr/models.py): small (≤4 núcleos) → en vivo base, pre-cálculo base · medium → base / small-q8_0 ·
-  large → small-q8_0 / small. El usuario puede forzar otro modelo desde el menú Subtítulos IA → Modelo.
+- Tabla de elección por tier (mpvd/asr/models.py): small (≤4 núcleos) → small-q8_0, en segundo plano small-q8_0 · medium → medium-q5_0,
+  en segundo plano small-q8_0 · large → large-v3-turbo-q5_0, en segundo plano medium-q5_0.
+  El usuario puede forzar otro modelo desde el menú Subtítulos IA → Modelo.
 
 <!-- escrito a mano: se conserva al regenerar -->
 ## Trozos de 28,5 s (2026-09-30, medida corta, no regenerada por bench_asr.sh)

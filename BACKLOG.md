@@ -301,11 +301,11 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
 - [x] H1 La página del invitado dice «Preparando la retransmisión… N s listos» y el anfitrión ve ese mismo progreso.
 
 ## H36 · Subtítulos: sencillos, buenos y sin esperas en vivo
-- [ ] C1 Quitar los subtítulos IA en vivo: pasada por lotes con ventaja (ADR nuevo que sustituye a los de ASR en vivo). En TV
+- [x] C1 Quitar los subtítulos IA en vivo: pasada por lotes con ventaja (ADR nuevo que sustituye a los de ASR en vivo). En TV
       y radio, solo los del canal. Desaparecen el look-ahead y el troceado según la posición.
-- [ ] C2 Por defecto small-q8_0 (medido: ritmo 0,45; único bueno más rápido que el vídeo). medium-q5_0 (4,03) y
+- [x] C2 Por defecto small-q8_0 (medido: ritmo 0,45; único bueno más rápido que el vídeo). medium-q5_0 (4,03) y
       large-v3-turbo-q5_0 (5,22) como «máxima calidad» explícita. Elección por tier: en equipos con más núcleos, los buenos.
-- [ ] C3 El aviso de tiempo se calcula con el ritmo medido (AsrTask.rtf, que ya existe) y sobre lo que queda: «listos en 4 min
+- [x] C3 El aviso de tiempo se calcula con el ritmo medido (AsrTask.rtf, que ya existe) y sobre lo que queda: «listos en 4 min
       y no te alcanzará» si el ritmo < 1, o el total más la alternativa con su número si el ritmo ≥ 1. Se recalcula si la
       máquina se carga.
 - [ ] C4 Alta guiada de OpenSubtitles en dos pasos (abrir la página de la clave · pegarla del portapapeles) cuando un archivo
@@ -314,7 +314,7 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
       fiabilidad (hash antes que título). Verificar las dos APIs nuevas contra el servicio real antes de ofrecerlas.
 - [ ] C6 Traducir cualquier pista (incrustada, descargada, de la web) a español, inglés y francés, con OPUS-MT por defecto.
 - [ ] C7 Revisar lo que dependía de los subtítulos en vivo (modo estudio).
-- [ ] C8 Al cerrar un vídeo, preguntar qué hacer con lo que quede trabajando **de ese archivo** (subtítulos, intro, índice,
+- [x] C8 Al cerrar un vídeo, preguntar qué hacer con lo que quede trabajando **de ese archivo** (subtítulos, intro, índice,
       traducción), diciendo que lo hecho se guarda y continuará. Nunca se pregunta ni se para una grabación programada. Los
       subtítulos preguntan siempre; descargas y conversiones admiten «no volver a preguntar». Sin ventana, aviso de escritorio
       con «Parar» y recordatorio al abrir. Y una línea en el menú que diga siempre qué se está haciendo por detrás.

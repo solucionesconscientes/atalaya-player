@@ -36,7 +36,7 @@ def test_asr_service_end_to_end(daemon_env, media_dir):
     models = d.call("asr.models")
     present = [m["name"] for m in models["models"] if m["present"] and not m["vad"]]
     model = asr_model()
-    assert model in present and models["recommended"]["live"] in present
+    assert model in present and models["recommended"]["prepare"] in present
 
     # local-only guard (ADR-023), unknown model, bad language code, missing file
     for params, code in (({"path": "https://example.com/a.mp4"}, UNAVAILABLE),
@@ -99,7 +99,7 @@ def test_asr_service_end_to_end(daemon_env, media_dir):
     jobs = d.call("jobs.list")
     assert any(j["name"].startswith("asr.") for j in jobs)
     p = d.call("asr.precompute", {"path": src_es, "language": "es", "model": model})
-    assert p["status"] == "done" or p["purpose"] in ("precompute", "live")
+    assert p["status"] == "done" or p["purpose"] == "precompute"
 
 
 def test_asr_srt_paths_are_safe(daemon_env, media_dir, tmp_path):

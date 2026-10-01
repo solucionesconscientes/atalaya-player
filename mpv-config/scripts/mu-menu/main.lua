@@ -297,6 +297,16 @@ local CATEGORIES = {
 local SIMPLE = { ['Abrir'] = true, ['TV y radio'] = true, ['Subtítulos'] = true, ['Preferencias'] = true }
 local modes = {}
 
+-- C8 · una línea que diga siempre qué se está haciendo por detrás. El texto lo compone mpvd (pending.status) y lo
+-- reparte mu-core en `user-data/mu/core`; aquí solo se pinta, y lleva al panel de subtítulos, que es donde se para.
+local work_text = ''
+
+local function work_row()
+  if work_text == '' then return nil end
+  return { title = 'Trabajando por detrás', hint = work_text, icon = 'hourglass_top',
+           value = { child = { script = 'mu_subs', entry = 'subs-menu' } } }
+end
+
 local function root_items()
   local items = {}
   if modes.simple then
@@ -306,6 +316,8 @@ local function root_items()
         else table.insert(items, child(c.title, c.hint, c.icon, c.child[1], c.child[2])) end
       end
     end
+    local w = work_row()
+    if w then table.insert(items, w) end
     items[#items].separator = true
     table.insert(items, cmd('Menú completo', 'quita el modo sencillo', 'unfold_more',
                             { 'script-message-to', 'mu_modes', 'mu-modes-set', 'simple', 'no' }))
@@ -316,6 +328,8 @@ local function root_items()
     if c.view then table.insert(items, sub(c.title, c.hint, c.icon, c.view))
     else table.insert(items, child(c.title, c.hint, c.icon, c.child[1], c.child[2])) end
   end
+  local w = work_row()
+  if w then table.insert(items, w) end
   items[#items].separator = true
   table.insert(items, { title = 'Buscar comandos, canales y recientes…', hint = 'alt+p', icon = 'search',
                         value = { view = 'palette' } })
@@ -958,6 +972,12 @@ end
 mp.register_script_message('uosc-version', set_button)
 mp.observe_property('user-data/mu/core', 'native', function(_, core)
   if core and core.uosc then set_button() end
+  local w = (core and core.work) or ''
+  if w ~= work_text then
+    work_text = w
+    -- si el menú principal está abierto, que la línea aparezca o desaparezca sin tener que volver a entrar
+    if state.view == 'root' and uosc.open_type() == MENU then open_view({ name = 'root' }, false) end
+  end
 end)
 
 local function maybe_start_screen()

@@ -202,7 +202,7 @@ Además, dos guardianes nuevos contra este tipo de deriva:
   llamadas comprobadas contra los 244 métodos registrados). Habría cazado el fallo de «Instalar yt-dlp».
 - `tests/test_flujos_e2e.py`: saltar de un módulo a otro con su tecla sin pasar por «Atrás» (que la pila de navegación no
   se acumule) y que nota + preferencia + posición sigan ahí tras reiniciar mpv contra el mismo daemon.
-- ADR-067: por qué las descargas esperan en su propia cola y por qué NO se pone un semáforo de trabajos «heavy».
+- ADR-069: por qué las descargas esperan en su propia cola y por qué NO se pone un semáforo de trabajos «heavy».
 
 ### Iteración 4 · 2026-09-30 · H28 · Windows (punto 4) — hecho (rama de subagente de la iteración 3, fusionada)
 - `bin/mpv-uos.ps1` (+ `bin/mpv-uos.cmd`): mismas opciones que `bin/mpv-uos`, pipe `\\.\pipe\mpv-uos-<pid>-<azar>` por instancia,

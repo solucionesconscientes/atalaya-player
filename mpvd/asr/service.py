@@ -22,7 +22,8 @@ from typing import TYPE_CHECKING, Any
 
 from mpvd.asr.audio import AudioError, extract_wav, probe_duration, wav_duration
 from mpvd.asr.engine import EngineError, WhisperEngine
-from mpvd.asr.models import CATALOG, LIVE_ORDER, VAD_MODEL, ModelError, ModelStore, default_model_dirs
+from mpvd.asr.models import (BEST_MODEL, CATALOG, FAST_MODEL, QUALITY_ORDER, REFERENCE_RTF, SLOW_MODELS,
+                             VAD_MODEL, ModelError, ModelStore, default_model_dirs)
 from mpvd.asr.srt import Segment, merge_segments, render_srt
 from mpvd.hardware import hardware_info
 from mpvd.hashing import file_hash
@@ -44,14 +45,16 @@ LEGACY_CHUNKS = (20.0,)   # earlier default: finished chunks cached with it are 
 PRE_ROLL = 0.8     # seconds of audio before the chunk start handed to whisper (context; cues there are dropped)
 TAIL = 0.4         # seconds after the chunk end
 MIN_CHUNK = 2.0
+RTF_WINDOW = 3     # chunks kept to work out the recent rate (C3: the wait notice follows the load)
 PROMPT_CHARS = 200  # end of the previous chunk's text handed to whisper as --prompt (style, names, punctuation)
 FINAL = ("done", "failed", "cancelled")
 LANG_RE = re.compile(r"^[a-z]{2,3}$")
 
 
-def _live_rank(model: str) -> int:
-    """How good a model is for live subtitles. -1 for the ones LIVE_ORDER does not rank (the English-only ones)."""
-    return LIVE_ORDER.index(model) if model in LIVE_ORDER else -1
+def _quality_rank(model: str) -> int:
+    """How good a model is. -1 for the ones QUALITY_ORDER does not rank (the English-only ones)."""
+    return QUALITY_ORDER.index(model) if model in QUALITY_ORDER else -1
+
 
 
 def plan_chunks(duration: float, chunk_seconds: float) -> list[tuple[float, float]]:
@@ -83,7 +86,7 @@ class AsrTask:
     duration: float
     model: str
     language: str                       # requested: "auto" or ISO code
-    purpose: str = "live"               # prepare (lo pide el usuario) | precompute (fondo) | live (en desuso, H36)
+    purpose: str = "prepare"            # prepare (lo pide quien mira) | precompute (fondo, para el siguiente)
     audio_track: int | None = None
     translate: bool = False
     chunk_seconds: float = DEFAULT_CHUNK
@@ -101,6 +104,9 @@ class AsrTask:
     error: str | None = None
     rtf_elapsed: float = 0.0
     rtf_audio: float = 0.0
+    # últimos trozos (segundos de CPU, segundos de audio): el ritmo reciente sube en seguida si la máquina se carga,
+    # mientras que la media de toda la tarea tarda en enterarse. El aviso de espera usa el reciente (C3).
+    rtf_last: list[tuple[float, float]] = field(default_factory=list)
     last_chunk: tuple[float, float] | None = None
     saved: list[dict[str, Any]] = field(default_factory=list)   # SRT files saved from this task (subs.save)
     created_at: float = field(default_factory=time.time)
@@ -158,6 +164,22 @@ class AsrTask:
     def rtf(self) -> float | None:
         return round(self.rtf_elapsed / self.rtf_audio, 3) if self.rtf_audio > 0 else None
 
+    @property
+    def rtf_recent(self) -> float | None:
+        """Rate over the last few chunks; falls back to the whole-task average while there are not enough."""
+        audio = sum(a for _, a in self.rtf_last)
+        if audio <= 0:
+            return self.rtf
+        return round(sum(e for e, _ in self.rtf_last) / audio, 3)
+
+    def remaining_seconds(self) -> float | None:
+        """How long the rest of this transcription should take at the measured rate. ``None`` until there is a rate."""
+        rate = self.rtf_recent
+        if not rate or rate <= 0 or self.duration <= 0 or self.complete:
+            return None
+        left = sum(end - start for i, (start, end) in enumerate(self.chunks) if i not in self.done)
+        return round(left * rate, 1)
+
     def to_dict(self, with_segments: bool = False) -> dict[str, Any]:
         d = {
             "id": self.id, "key": self.key, "path": self.path, "duration": self.duration, "model": self.model,
@@ -165,6 +187,7 @@ class AsrTask:
             "status": self.status, "error": self.error, "progress": round(self.progress, 4),
             "done": len(self.done), "failed": len(self.failed), "total": len(self.chunks), "complete": self.complete,
             "pos": round(self.pos, 2), "ahead": round(self.covered_ahead(), 1), "rtf": self.rtf,
+            "rtf_recent": self.rtf_recent, "remaining": self.remaining_seconds(),
             "srt": str(self.srt_path) if self.srt_path else None, "cues": len(self.segments),
             "chunk_seconds": self.chunk_seconds, "last_chunk": list(self.last_chunk) if self.last_chunk else None,
             "job": self.job.id if self.job else None, "updated_at": self.updated_at, "seq": self.seq,
@@ -229,15 +252,37 @@ class AsrService:
 
     # -- helpers --------------------------------------------------------------------
 
-    def recommended(self, purpose: str = "live") -> str:
+    def recommended(self, purpose: str = "prepare") -> str:
         return self.models.pick(self.tier, purpose)
+
+    def task_dict(self, task: AsrTask, with_segments: bool = False) -> dict[str, Any]:
+        """The task as the clients see it, plus the faster alternative when waiting for this one is unreasonable."""
+        d = task.to_dict(with_segments)
+        d["alt"] = self._alternative(task)
+        return d
+
+    def _alternative(self, task: AsrTask) -> dict[str, Any] | None:
+        """How long the rest would take with the fast model: the rate measured HERE scaled by the relative cost of the
+        two models (REFERENCE_RTF). Only offered when the fast model is already on disk and really is faster."""
+        left = task.remaining_seconds()
+        mine, fast = REFERENCE_RTF.get(task.model), REFERENCE_RTF.get(FAST_MODEL)
+        if left is None or task.model == FAST_MODEL or not mine or not fast or fast >= mine:
+            return None
+        if self.models.find(FAST_MODEL) is None:
+            return None
+        return {"model": FAST_MODEL, "remaining": round(left * fast / mine, 1)}
+
+    def recommendations(self) -> dict[str, str]:
+        """What each purpose gets on this machine, plus the explicit «máxima calidad» the menu always offers."""
+        return {"prepare": self.recommended("prepare"), "precompute": self.recommended("precompute"),
+                "best": BEST_MODEL}
 
     def status(self) -> dict[str, Any]:
         return {
             "engine": self.engine.status(), "tier": self.tier,
-            "recommended": {"live": self.recommended("live"), "precompute": self.recommended("precompute")},
+            "recommended": self.recommendations(),
             "models_present": self.models.present(),
-            "tasks": [t.to_dict() for t in self.tasks.values()],
+            "tasks": [self.task_dict(t) for t in self.tasks.values()],
         }
 
     def find_task(self, key: str, model: str, language: str, translate: bool,
@@ -278,7 +323,7 @@ class AsrService:
                               params=self._cache_params(task), data=task.state())
 
     def _push(self, task: AsrTask, final: bool = False) -> None:
-        payload = {"event": "asr", "task": task.to_dict()}
+        payload = {"event": "asr", "task": self.task_dict(task)}
         for sid in list(task.sessions):
             session = self.server.sessions.get(sid)
             if session is None or not session.connected:
@@ -304,14 +349,14 @@ class AsrService:
 
     # -- tasks ----------------------------------------------------------------------
 
-    async def start(self, path: str, language: str = "auto", model: str | None = None, purpose: str = "live",
+    async def start(self, path: str, language: str = "auto", model: str | None = None, purpose: str = "prepare",
                     time_pos: float = 0.0, audio_track: int | None = None, translate: bool = False,
                     chunk_seconds: float | None = None, notify: str = DEFAULT_NOTIFY,
                     session_id: str | None = None) -> AsrTask:
         language = (language or "auto").lower()
         if language != "auto" and not LANG_RE.match(language):
             raise RpcError(INVALID_PARAMS, f"bad language {language!r}")
-        purpose = purpose if purpose in ("live", "prepare", "precompute") else "prepare"
+        purpose = purpose if purpose in ("prepare", "precompute") else "prepare"
         auto = not model or model == "auto"
         if auto:
             model = self.recommended(purpose)
@@ -330,16 +375,16 @@ class AsrService:
             if session_id:
                 task.sessions.add(session_id)
             task.pos = max(0.0, float(time_pos))
-            if purpose in ("live", "prepare") and task.purpose == "precompute" and not task.complete:
+            if purpose == "prepare" and task.purpose == "precompute" and not task.complete:
                 # the viewer now needs it: restart as an interactive job
                 self._cancel_job(task)
                 task.purpose = purpose
                 task.notify = notify
-                self._submit(task, session_id if purpose == "live" else None)
+                self._submit(task, session_id if purpose == "prepare" else None)
             elif task.status in ("failed", "cancelled") and not task.complete:
                 task.failed.clear()
                 task.purpose = purpose
-                self._submit(task, session_id if purpose == "live" else None)
+                self._submit(task, session_id if purpose == "prepare" else None)
             return task
         task = AsrTask(id=uuid.uuid4().hex[:12], key=key, path=str(Path(path.removeprefix("file://"))),
                        duration=duration, model=model, language=language, purpose=purpose, audio_track=audio_track,
@@ -364,25 +409,25 @@ class AsrService:
         if task.complete:
             task.status = "done"
         else:
-            self._submit(task, session_id if purpose == "live" else None)
+            self._submit(task, session_id if purpose == "prepare" else None)
         self._prune_tasks()
         return task
 
     async def _adopt_model(self, key: str, language: str, translate: bool, chunk: float,
                            audio_track: int | None = None) -> str | None:
-        """With ``model=auto``, reuse a finished transcription of this file made with another model (typically the
-        pre-subtitling one, small-q8_0, while live uses base) instead of starting a worse one from scratch."""
+        """With ``model=auto``, reuse a finished transcription of this file made with another model (a better one left
+        by a precompute pass, say) instead of starting a worse one from scratch."""
         best: AsrTask | None = None
         for t in self.tasks.values():
             if (t.key == key and t.language == language and t.translate == translate and t.complete
                     and t.audio_track == audio_track
                     and t.model in CATALOG and self.models.find(t.model) is not None):
-                # CATALOG holds English-only models (base.en…) that LIVE_ORDER does not rank: never index() blindly
-                if best is None or _live_rank(t.model) > _live_rank(best.model):
+                # CATALOG holds English-only models (base.en…) that QUALITY_ORDER does not rank: never index() blindly
+                if best is None or _quality_rank(t.model) > _quality_rank(best.model):
                     best = t
         if best is not None:
             return best.model
-        for name in reversed(LIVE_ORDER):
+        for name in reversed(QUALITY_ORDER):
             if self.models.find(name) is None:
                 continue
             probe = AsrTask(id="", key=key, path="", duration=0.0, model=name, language=language, translate=translate,
@@ -431,7 +476,7 @@ class AsrService:
                 if i is None:
                     break
                 guardian = self.server.guardian
-                while guardian.throttled and task.purpose != "live":
+                while guardian.throttled and task.purpose != "prepare":
                     await asyncio.sleep(min(2.0, max(0.2, guardian.throttle_remaining)))
                 start, end = task.chunks[i]
                 ext_start = max(0.0, start - PRE_ROLL)
@@ -459,6 +504,8 @@ class AsrService:
                 task.last_chunk = (start, end)
                 task.rtf_elapsed += result.elapsed
                 task.rtf_audio += result.audio_seconds
+                task.rtf_last.append((result.elapsed, result.audio_seconds))
+                del task.rtf_last[:-RTF_WINDOW]
                 await asyncio.to_thread(self._write, task)
                 job.report(task.progress, f"{len(task.done)}/{len(task.chunks)} · {end:.0f}s")
                 self._push(task)
@@ -490,9 +537,11 @@ class AsrService:
         task = self.tasks.get(task_id)
         if task is None:
             raise RpcError(NOT_FOUND, f"no task {task_id}")
-        if task.job is not None and task.status in ("queued", "running"):
-            self._cancel_job(task)
-            if task.status == "queued":
+        if task.status in ("queued", "running"):
+            if task.job is not None:
+                self._cancel_job(task)
+            if task.status == "queued" or task.job is None:
+                # sin trabajo detrás no hay nada que cancelar: la tarea estaba «en marcha» solo en los libros
                 task.status = "cancelled"
                 self._push(task, final=True)
         return task
@@ -575,14 +624,14 @@ def register(server: MpvdServer, service: AsrService) -> None:  # noqa: C901 - f
             t = service.tasks.get(id)
             if t is None:
                 raise RpcError(NOT_FOUND, f"no task {id}")
-            return t.to_dict()
+            return service.task_dict(t)
         return service.status()
 
     @d.method("asr.models")
     async def models(ctx: RpcContext) -> dict[str, Any]:
         """Catalogue of whisper models: present/downloadable, recommended per purpose, hardware tier."""
         return {"models": [m.to_dict() for m in service.models.list()], "tier": service.tier,
-                "recommended": {"live": service.recommended("live"), "precompute": service.recommended("precompute")},
+                "recommended": service.recommendations(),
                 "download_dir": str(service.models.download_dir()), "engine": service.engine.status()}
 
     @d.method("asr.models.download")
@@ -598,12 +647,12 @@ def register(server: MpvdServer, service: AsrService) -> None:  # noqa: C901 - f
     @d.method("asr.start")
     async def start(ctx: RpcContext, path: str, language: str = "auto", model: str | None = None,
                     time_pos: float = 0.0, audio_track: int | None = None, translate: bool = False,
-                    chunk_seconds: float | None = None, purpose: str = "live",
+                    chunk_seconds: float | None = None, purpose: str = "prepare",
                     notify: str = DEFAULT_NOTIFY) -> dict[str, Any]:
-        """Start (or resume) live transcription of a local file; returns the task with its SRT path."""
+        """Start (or resume) the transcription of a local file; returns the task with its SRT path."""
         t = await service.start(path, language, model, purpose, time_pos, audio_track, translate, chunk_seconds,
                                 notify, _sid(ctx))
-        return t.to_dict()
+        return service.task_dict(t)
 
     @d.method("asr.precompute")
     async def precompute(ctx: RpcContext, path: str, language: str = "auto", model: str | None = None,
@@ -612,17 +661,17 @@ def register(server: MpvdServer, service: AsrService) -> None:  # noqa: C901 - f
         """Transcribe a file at low priority (next playlist item); survives the session that asked."""
         t = await service.start(path, language, model, "precompute", 0.0, audio_track, translate, chunk_seconds, notify,
                                 _sid(ctx))
-        return t.to_dict()
+        return service.task_dict(t)
 
     @d.method("asr.seek")
     async def seek(ctx: RpcContext, id: str, time_pos: float) -> dict[str, Any]:  # noqa: A002
         """Move the look-ahead cursor (call on seeks and periodically during playback)."""
-        return service.seek(id, time_pos).to_dict()
+        return service.task_dict(service.seek(id, time_pos))
 
     @d.method("asr.stop")
     async def stop(ctx: RpcContext, id: str) -> dict[str, Any]:  # noqa: A002
         """Cancel a task's job (partial results stay cached)."""
-        return service.stop(id).to_dict()
+        return service.task_dict(service.stop(id))
 
     @d.method("asr.inject")
     async def inject(ctx: RpcContext, path: str, segments: list[dict[str, Any]], duration: float | None = None,
@@ -640,7 +689,7 @@ def register(server: MpvdServer, service: AsrService) -> None:  # noqa: C901 - f
         task.detected = language
         task.updated_at = time.time()
         service.tasks[task.id] = task
-        return task.to_dict()
+        return service.task_dict(task)
 
     @d.method("asr.search")
     async def search(ctx: RpcContext, q: str, path: str | None = None, id: str | None = None,  # noqa: A002
