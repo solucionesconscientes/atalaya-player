@@ -495,3 +495,17 @@
   (Argos y Opus) usa la mitad de los núcleos en vez de todos menos uno, que era el caso que se junta de verdad con la
   transcripción (el menú de subtítulos invita a hacer las dos cosas, y la cadena hace las dos). Si algún día se quiere el
   semáforo, antes hay que sacar la orquestación de la cadena de un trabajo `heavy`.
+- ADR-068 · Entrar en una sala desde internet con un túnel rápido de Cloudflare (H25). Problema: una sala de «ver juntos»
+  solo servía dentro de casa; para que entre alguien de fuera habría que abrir un puerto en el router (ni se puede hacer
+  desde aquí ni se le va a pedir a Ser). Decisión: `cloudflared tunnel --url http://127.0.0.1:<puerto>`, el túnel rápido
+  que no necesita cuenta ni configuración y que devuelve una dirección `https://<palabras-al-azar>.trycloudflare.com`
+  viva solo mientras vive el proceso. Se arranca al abrir la sala y se mata al cerrarla, así que nada del reproductor es
+  alcanzable desde internet ni un segundo más que la sala; la dirección es nueva cada vez y el enlace sigue llevando el
+  token de invitación, que es lo único que deja entrar. Está **apagado** salvo que Ser lo encienda en *Compartir → Que se
+  pueda entrar desde internet* (se recuerda en mu-prefs), y el binario **no** se instala con el resto: solo con
+  `MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh`, fijado y verificado por SHA-256 en vendor.lock (Cloudflare no publica
+  ficheros de sumas, así que la suma es la del binario verificado aquí el 2026-10-01: protege de cambios posteriores, no
+  es una firma del fabricante). Si falta el binario o el túnel falla, la sala se abre igual en la red local y el menú
+  dice por qué. Ventaja añadida: con túnel no hace falta tocar el cortafuegos, así que el aviso de `ufw` desaparece.
+  Alternativas descartadas: UPnP/abrir puertos en el router (frágil y expone la casa), un relé propio (necesitaría un
+  servidor y rompería el «local-first»), ngrok y similares (requieren cuenta).

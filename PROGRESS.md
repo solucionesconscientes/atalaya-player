@@ -7,10 +7,10 @@ Todos los hitos de BACKLOG.md (H0–H34) están [x] o [~]. **H34 era la revisió
 registro). Los que más te iban a molestar: el `.md` de «Mis notas» perdía lo que escribieras en él, los subtítulos IA
 repetían la frase de cada frontera, cancelar una descarga que aún no había empezado no hacía nada, «Instalar yt-dlp» nunca
 funcionaba, el punto rojo de grabar se quedaba pegado, y una grabación local de más de 10 minutos fallaba siempre.
-Quedan [~] solo dos cosas, ambas por decisión o permiso tuyo:
-el **túnel de internet** de las salas (H25: la sesión nocturna no tiene permiso para abrir un túnel de entrada) y los
-**torrents** (H26: fuera por tu decisión). Lo que no se puede probar sin hardware (Windows, Mac, Raspberry Pi, tele DLNA real)
-está hecho y probado aquí por simulación, con los pasos exactos para ti en NEEDS_HUMAN.md.
+Queda [~] una sola cosa, y por decisión tuya: los **torrents** (H26, fuera desde el 2026-09-30). El **túnel de internet
+de las salas** (H25), que esperaba tu permiso, ya está hecho y probado con un túnel real.
+Lo que no se puede probar sin hardware (Windows, Mac, Raspberry Pi, tele DLNA real) está hecho y probado aquí por
+simulación, con los pasos exactos para ti en NEEDS_HUMAN.md.
 
 ### Qué funciona
 - **Reproductor**: mpv 0.41 + uosc 5.13, config portable, un único menú con migas y «‹ Atrás» (`alt+m`), paleta (`alt+p`),
@@ -49,7 +49,8 @@ graba un canal de TV desde `alt+t` y párala con `alt+r` (el punto rojo se va); 
 Cada hito tiene sus pasos a mano en «Registro por iteración».
 
 ### Qué quedó pendiente o bloqueado (y por qué)
-- **Túnel de internet de las salas** (H25 [~]): necesita tu permiso para abrir un túnel de entrada con cloudflared (NEEDS_HUMAN.md).
+- ~~Túnel de internet de las salas~~ (H25): **hecho** el 2026-10-01 (ADR-068). Apagado por defecto: se enciende en
+  *Compartir → Que se pueda entrar desde internet*.
 - **Torrents** (H26 [~]): fuera por tu decisión del 2026-09-30.
 - **Probar en hardware que no hay aquí**: Windows, macOS, Raspberry Pi 5, tele DLNA real (pasos en NEEDS_HUMAN.md).
 - **Cortafuegos**: `ufw` bloquea la entrada; mando (8790), salas (8791) y DLNA (8792) necesitan un `sudo ufw allow …` (NEEDS_HUMAN.md).
@@ -109,15 +110,37 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-Iteración 5 (2026-10-01): H34 (revisión de calidad) hecho: siete revisiones por áreas, 42 fallos reales corregidos con su
-test, y dos guardianes nuevos (integración Lua↔mpvd y flujos entre módulos). Todo el BACKLOG está [x] o [~].
-Si hay otra iteración: (1) nada del BACKLOG está pendiente; los [~] esperan a Ser (túnel H25, torrents H26, nombre de la
-app). (2) Siguiente trabajo útil sin Ser, por orden: añadir hitos nuevos desde el TOP 10 de docs/VISION.md que sigan la
+Iteración 5 (2026-10-01): H34 (revisión de calidad) hecho —siete revisiones por áreas, 42 fallos reales corregidos con su
+test y dos guardianes nuevos (integración Lua↔mpvd y flujos entre módulos)— y H25 cerrado con el túnel de internet de las
+salas (ADR-068). **No queda ningún `[ ]` en BACKLOG.md.**
+Si hay otra iteración: (1) lo único [~] son los torrents (H26, fuera por decisión de Ser) y el nombre de la app, que decide
+él. (2) Siguiente trabajo útil sin Ser, por orden: añadir hitos nuevos desde el TOP 10 de docs/VISION.md que sigan la
 regla «nada con retraso» (OCR de subtítulos PGS B6, diccionario/Anki C2–C3, handoff entre dispositivos E5), cada uno con su
 criterio de aceptación en BACKLOG.md y su ADR. (3) Antes de empezar, `tools/check.sh` **con la máquina libre** para partir
 de verde: ver «Qué quedó pendiente» sobre los tests de Whisper, que fallan por tiempo bajo carga.
 
 ## Registro por iteración
+### Iteración 5 · 2026-10-01 · H25 · Túnel de internet para las salas — hecho (ADR-068)
+Era lo único que quedaba `[ ]` en todo el BACKLOG, y ya tenía tu permiso. Ahora una sala de «ver juntos» se puede abrir
+desde fuera de casa:
+- `mpvd/share/tunnel.py`: túnel rápido de Cloudflare (`cloudflared tunnel --url …`), sin cuenta ni configuración. Se
+  arranca al abrir la sala y **el proceso muere al cerrarla**, así que nada del reproductor es alcanzable desde internet
+  ni un segundo más que la sala; la dirección es nueva cada vez y para entrar sigue haciendo falta el enlace con su token.
+- **Apagado por defecto**: *Compartir → Que se pueda entrar desde internet* (se recuerda en mu-prefs). Si está apagado,
+  todo sigue exactamente como antes, solo en tu red.
+- El binario **no** viene de serie: `MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh` (ya ejecutado aquí), fijado y verificado por
+  SHA-256 en `vendor.lock`. Si falta o el túnel falla, la sala se abre igual en la red local y el menú dice por qué.
+- Con túnel no hace falta tocar el cortafuegos ni el router: desaparece el aviso de `ufw` de las salas.
+- Probado con un `cloudflared` falso (9 tests en `tests/test_share_tunnel.py`: la dirección se lee de su salida, el enlace
+  de la sala la usa, el proceso muere con la sala, y los errores se cuentan con sus propias palabras) **y con un túnel
+  real**: la dirección pública devolvió lo que servía el servidor local y el proceso murió al cerrar. Ese test real está
+  en la suite pero apagado (`MPV_UOS_TEST_TUNNEL=1`), para que `check.sh` no publique nada en cada pasada.
+- Probar a mano:
+  ```bash
+  mpv-uos tests/fixtures/media/video30.mkv      # alt+W → «Que se pueda entrar desde internet» → crear la sala
+  MPV_UOS_TEST_TUNNEL=1 uv run pytest tests/test_share_tunnel.py -q -m network   # el túnel de verdad
+  ```
+
 ### Iteración 5 · 2026-10-01 · H34 · Cribado de los 4 fallos de check.sh — hecho
 La última pasada completa dio 706 pasan, 4 fallan. Cribados uno a uno (con tu `llama-server` ocupando ~3,5 de los 4
 núcleos, que es justo lo que hace inestables a los que miden tiempos):

@@ -25,6 +25,15 @@ DENO_SHA256_x86_64_darwin=95daaff11c116a52ad54785e7914c8e9c9cdcaba793c5ed929c74c
 DENO_SHA256_aarch64_darwin=5cd46d6268f6f78f5d88bdc7159d20bd44cdaa4b3303474839f87ec6fe7ae25c
 DENO_SHA256_x86_64_windows=a0c3101b4158d1dfb7d6a78a7bf0f3de80c96bb423c152beec8beb22786f2238
 
+# cloudflared: túnel rápido de Cloudflare para que se pueda entrar en una sala de Compartir desde fuera de casa (H25,
+# ADR-068). NO se instala por defecto: solo con MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh, porque la sala funciona en la red
+# local sin él y esto es lo único que saca algo a internet. Cloudflare no publica ficheros de sumas en sus releases, así
+# que esta suma es la del binario que se descargó y se verificó aquí el 2026-10-01 (protege de cambios posteriores, no es
+# una firma del fabricante). Para otras plataformas: descarga, comprueba y añade su suma.
+CLOUDFLARED_VERSION=2026.9.3
+CLOUDFLARED_BASE_URL=https://github.com/cloudflare/cloudflared/releases/download/2026.9.3
+CLOUDFLARED_SHA256_x86_64_linux=77e26d8d900e0b8469f416239d14b5f296525fdf79fee6f511ef55609e3fbac2
+
 # Argos Translate packages (docs/TRADUCCION.md): CTranslate2 model + sentencepiece, CC-BY 4.0 (OPUS-MT). Downloaded on demand by
 # mpvd (mpvd/subs/translate.py::PINNED) into vendor/dl and unpacked into vendor/models/argos/<from>_<to>/.
 ARGOS_ES_EN_URL=https://argos-net.com/v1/translate-es_en-1_0.argosmodel

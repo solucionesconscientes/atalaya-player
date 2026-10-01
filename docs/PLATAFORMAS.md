@@ -18,6 +18,7 @@ Desarrollado y probado en Linux (Ubuntu, Wayland/KDE, mpv 0.41). Lo siguiente NO
 | Traducción / semántica (extras) | ✅ | wheels oficiales (no probado) | wheels oficiales (no probado) |
 | Intro/créditos (`fpcalc`) | ✅ | `brew install chromaprint` | binario de acoustid.org en PATH |
 | Mando QR/PWA | ✅ (abrir puerto en `ufw`) | aviso de conexiones entrantes | diálogo del Firewall de Windows |
+| Salas desde internet (túnel de Cloudflare, H25) | ✅ probado con un túnel real (`cloudflared-linux-amd64` fijado en vendor.lock) | debería ir: falta añadir a vendor.lock la suma de `cloudflared-darwin-{amd64,arm64}.tgz` | debería ir: falta la suma de `cloudflared-windows-amd64.exe` y que `install.ps1` lo instale |
 | MCP (stdio) | ✅ | debería ir | debería ir (mpvd por named pipe; sin probar) |
 | Decodificación por hardware (etiquetas y preferencia de códec) | ✅ `vainfo` | ❌ sin comprobar (VideoToolbox: H.264/HEVC siempre; AV1 desde M3) | ❌ sin comprobar (D3D11VA/DXVA2; `dxdiag`) |
 | Convertir (ffmpeg) | ✅ VA-API (H.264; HEVC si el driver lo codifica) o CPU | CPU (sin probar); abrir carpeta con `open` | CPU (sin probar); abrir carpeta con `explorer`; sin `nice` |
@@ -77,6 +78,9 @@ pwsh 7.6 en Linux (`tests/test_windows_scripts.py`, con un servidor HTTP local e
 
 ## Rutas
 - Config: siempre `<proyecto>/mpv-config` vía `--config-dir` (ADR-002). Caché de mpvd: `.cache/` en desarrollo; XDG/platformdirs en producción.
+- cloudflared (túnel de las salas): nunca se instala solo; `MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh` lo pone en
+  `vendor/bin/cloudflared` (en Linux x86_64/arm64, que son las sumas que hay fijadas) y mpvd también lo acepta en
+  `$MPV_UOS_CLOUDFLARED` o en el PATH. Sin él, las salas funcionan dentro de la red local.
 - Grabaciones (TV, radio y tramos): `<Vídeos>/<marca>/Grabaciones`, o `MPV_UOS_RECORD_DIR`; la reserva cuando mpvd no está
   conectado es `~~desktop/<marca>` (placeholder de mpv, válido en las tres plataformas). Copiar URL usa wl-copy/xclip/xsel
   en Linux, `pbcopy` en macOS y `clip` en Windows (no probado fuera de Linux).

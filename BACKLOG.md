@@ -176,8 +176,11 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
 - [x] Sala privada con enlace: «ver juntos» sincronizado (cada invitado reproduce la fuente en su navegador), permisos por invitado
       (solo ver / puede controlar, con aprobación en pantalla, revocable), quién está conectado, avisos «Ana ha pausado».
 - [x] Retransmisión de archivos locales a los invitados (HLS con subtítulos WebVTT, conversión al vuelo por VA-API si hace falta).
-- [ ] (PERMISO CONCEDIDO por Ser el 2026-09-30: regla en .claude/settings.json para vendor/bin/cloudflared) Túnel de Cloudflare (cloudflared en vendor/, sin cuenta) activo SOLO mientras la sala está abierta: permiso para abrir
-      un túnel de entrada denegado en la sesión nocturna (NEEDS_HUMAN.md).
+- [x] Túnel de Cloudflare (cloudflared en vendor/, sin cuenta) activo SOLO mientras la sala está abierta (ADR-068):
+      `mpvd/share/tunnel.py`, opción *Compartir → Que se pueda entrar desde internet* (apagada por defecto, se recuerda),
+      binario opcional (`MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh`, fijado por SHA-256). Probado con un cloudflared falso
+      (tests/test_share_tunnel.py) y con un túnel real: la dirección pública sirve lo que sirve el servidor local y el
+      proceso muere con la sala. Con túnel no hace falta tocar el cortafuegos.
 - [x] Sala pública «solo ver» (cualquiera con el enlace en la red local, número máximo de espectadores, sin control ni chat).
 - [x] «Emitir en directo» a una plataforma (YouTube Live, Twitch, PeerTube, Owncast) por RTMP con clave de emisión, para audiencias
       grandes. Chat y reacciones en salas privadas. Aviso legal: solo contenido que se puede compartir.

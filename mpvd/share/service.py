@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from mpvd import __version__
 from mpvd.brand import app_name
+from mpvd.share import tunnel as tunnel_mod
 from mpvd.control import pick_session
 from mpvd.convert import hw as hw_mod
 from mpvd.mpvipc import MpvIpcError
@@ -129,8 +130,9 @@ class ShareService:
         self.limiter = AttemptLimiter()
         self.min_ttl = float(os.environ.get("MPVD_SHARE_MIN_TTL") or MIN_TTL)  # tests: rooms that expire in seconds
         self.rt: RoomRuntime | None = None
-        self.tunnel: Tunnel | None = None       # H25 point 3 plugs the Cloudflare tunnel in here
+        self.tunnel: Tunnel | None = None       # a Cloudflare quick tunnel while a room asked for the internet
         self.public_url: str | None = None      # base URL given by the tunnel while a room is open
+        self.tunnel_error = ""                  # why there is no tunnel, for the menu to say it
         self.root = server.settings.cache_dir / "share"
         self.firewall: dict[str, Any] | None = None
         self._seq = 0
@@ -139,6 +141,16 @@ class ShareService:
         self.live = LiveService(server, self)
 
     # -- life of the room --------------------------------------------------------------------------------
+
+    def _make_tunnel(self) -> Tunnel | None:
+        """A Cloudflare quick tunnel, or None when cloudflared is not installed (the room still works in the LAN)."""
+        binary = tunnel_mod.find_cloudflared(self.server.root)
+        if binary is None:
+            self.tunnel_error = ("falta cloudflared: ejecuta MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh "
+                                 "(la sala sigue funcionando en tu red)")
+            log.warning("tunnel requested but cloudflared is not installed")
+            return None
+        return tunnel_mod.CloudflaredTunnel(binary)
 
     def base_url(self) -> str:
         if self.public_url:
@@ -152,7 +164,7 @@ class ShareService:
         return self.rt
 
     async def create(self, session_id: str | None, ttl: float = ROOM_TTL, mode: str = MODE_PRIVATE,
-                     max_viewers: int = DEFAULT_VIEWERS) -> dict[str, Any]:
+                     max_viewers: int = DEFAULT_VIEWERS, internet: bool = False) -> dict[str, Any]:
         if mode not in MODES:
             raise RpcError(INVALID_PARAMS, f"mode debe ser {' o '.join(MODES)}")
         if self.rt is not None and self.rt.room.alive():
@@ -177,11 +189,14 @@ class ShareService:
         room = Room.new(session.id, ttl, min_ttl=self.min_ttl, mode=mode, max_viewers=max_viewers)
         rt = RoomRuntime(room=room, session_id=session.id, dir=self.root / room.id)
         self.rt = rt
+        self.tunnel = self._make_tunnel() if internet else None
+        self.tunnel_error = ""
         if self.tunnel is not None:
             try:
                 self.public_url = await self.tunnel.start(self.http.port)
             except Exception as exc:  # noqa: BLE001 - the room still works in the LAN
                 log.warning("tunnel %s failed: %s", getattr(self.tunnel, "name", "?"), exc)
+                self.tunnel_error = str(exc)
                 self.public_url = None
         if self.host in ("0.0.0.0", "") and not self.public_url:
             self.firewall = await asyncio.to_thread(firewall_hint, self.http.port, lan_ip(), "compartir")
@@ -257,6 +272,9 @@ class ShareService:
             "url": None, "room": None, "guests": [], "pending": [], "media": None, "notices": [],
             "firewall": self.firewall if open_ else None, "tunnel": getattr(self.tunnel, "name", None),
             "public_url": self.public_url, "lan_only": self.public_url is None,
+            "tunnel_error": self.tunnel_error,
+            # whether «se puede entrar desde internet» can even be offered (cloudflared installed)
+            "tunnel_available": tunnel_mod.find_cloudflared(self.server.root) is not None,
             "mode": None, "viewers": 0, "max_viewers": 0, "chat": [],
         }
         if open_ and rt is not None:
@@ -946,16 +964,19 @@ def register(server: MpvdServer, service: ShareService) -> None:
 
     @d.method("share.create")
     async def create(ctx: RpcContext, ttl_hours: float = ROOM_TTL / 3600, session: str | None = None,
-                     mode: str = MODE_PRIVATE, max_viewers: int = DEFAULT_VIEWERS) -> dict[str, Any]:
+                     mode: str = MODE_PRIVATE, max_viewers: int = DEFAULT_VIEWERS,
+                     internet: bool = False) -> dict[str, Any]:
         """Open a room for the caller's player (or return the one already open): link + QR modules.
         mode=private (named guests, control on request, chat) or public («solo ver»: anyone with the link,
-        anonymous, at most max_viewers, no control and no chat)."""
+        anonymous, at most max_viewers, no control and no chat).
+        internet=True also opens a Cloudflare quick tunnel (no account), alive only while the room is: without it the
+        link only works inside the house."""
         sid = session or (ctx.session.id if ctx.session is not None else None)
         try:
             viewers = int(max_viewers)
         except (TypeError, ValueError):
             raise RpcError(INVALID_PARAMS, "max_viewers debe ser un número") from None
-        return await service.create(sid, float(ttl_hours) * 3600, str(mode), viewers)
+        return await service.create(sid, float(ttl_hours) * 3600, str(mode), viewers, bool(internet))
 
     @d.method("share.link")
     async def link(ctx: RpcContext) -> dict[str, Any]:

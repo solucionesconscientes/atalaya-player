@@ -93,6 +93,34 @@ else
   echo "deno: no necesario (hay deno o node >= 22 en PATH)"
 fi
 
+# cloudflared (H25): solo a petición. Es lo único que saca algo a internet, así que nunca se instala por defecto.
+if [ -x vendor/bin/cloudflared ]; then
+  echo "cloudflared: presente (vendor/bin/cloudflared)"
+elif [ "${MU_VENDOR_CLOUDFLARED:-0}" = "1" ]; then
+  arch="$(uname -m)"; os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  case "$arch" in x86_64|amd64) arch=x86_64 ;; aarch64|arm64) arch=aarch64 ;; esac
+  case "$os/$arch" in
+    linux/x86_64) asset="cloudflared-linux-amd64" ;;
+    linux/aarch64) asset="cloudflared-linux-arm64" ;;
+    *) asset="" ;;
+  esac
+  sha_var="CLOUDFLARED_SHA256_${arch}_${os}"
+  sha="${!sha_var:-}"
+  if [ -n "$asset" ] && [ -n "$sha" ]; then
+    echo "cloudflared $CLOUDFLARED_VERSION ($asset)"
+    if fetch "$CLOUDFLARED_BASE_URL/$asset" "$sha" "$DL/$asset-$CLOUDFLARED_VERSION"; then
+      install -m 0755 "$DL/$asset-$CLOUDFLARED_VERSION" vendor/bin/cloudflared \
+        && echo "  instalado en vendor/bin/cloudflared" || status=1
+    else
+      status=1
+    fi
+  else
+    echo "cloudflared: sin suma fijada para $os/$arch en vendor.lock (descárgalo, compruébalo y añádela)"
+  fi
+else
+  echo "cloudflared: no instalado (las salas funcionan en tu red; MU_VENDOR_CLOUDFLARED=1 para el acceso desde internet)"
+fi
+
 # Sanity: the committed sources must match the pinned version.
 if [ -f mpv-config/scripts/uosc/main.lua ]; then
   grep -q "uosc_version = '$UOSC_VERSION'" mpv-config/scripts/uosc/main.lua \

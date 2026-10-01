@@ -40,11 +40,15 @@
   `mpv-uos --deinterlace=yes --msg-level=autofilters=v,vf=v --log-file=/tmp/deint.log <URL del canal>`
 
 ## 2026-09-30 · Compartir (H25)
-- **Túnel a internet (H25 punto 3) — [~] bloqueado**: el modo de permisos de la sesión nocturna denegó arrancar un túnel
-  de entrada (Cloudflare quick tunnel), aunque sea solo con la sala abierta. Necesita tu permiso explícito. Si lo quieres:
-  en una sesión interactiva di «implementa el túnel de H25 con cloudflared» (o añade una regla de permiso para
-  `vendor/bin/cloudflared tunnel --url http://127.0.0.1:8791`). Hasta entonces las salas son solo de tu red local.
-- **Puerto de las salas**: como el mando, `ufw` bloquea la entrada; para que otros equipos de tu wifi entren en una sala:
+- **Túnel a internet (H25 punto 3) — HECHO el 2026-10-01** (ADR-068), ya no necesita nada de ti salvo encenderlo:
+  *Compartir → Que se pueda entrar desde internet* (apagado por defecto, se recuerda). El binario no viene instalado;
+  una vez:
+  ```bash
+  cd ~/Documentos/PROJECTES/MPV-UOS && MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh   # ya ejecutado aquí
+  ```
+  Probado con un túnel real: la dirección pública sirve lo que sirve el reproductor y el proceso muere con la sala.
+- **Puerto de las salas**: solo hace falta si NO usas el túnel (dentro de tu wifi). `ufw` bloquea la entrada; para que
+  otros equipos de tu red entren en una sala:
   `sudo ufw allow from 192.168.1.0/24 to any port 8791 proto tcp comment 'mpv-uos compartir'`
 
 ## 2026-09-30 · Plataformas (H28, no bloquea)

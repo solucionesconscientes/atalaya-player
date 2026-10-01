@@ -277,17 +277,29 @@ página abierta). Al final de la página, *«Enviar a MPV-UOS» desde el navegad
 
 ## 9b. Compartir: ver juntos
 `alt+W` (o *Herramientas → Compartir: ver juntos*) → *Crear una sala para ver juntos*: sale un enlace y un QR. Quien lo
-abra en tu misma red (wifi de casa) pone su nombre y ve lo mismo que tú, a la vez, en su navegador (móvil u ordenador).
+abra pone su nombre y ve lo mismo que tú, a la vez, en su navegador (móvil u ordenador). Por defecto el enlace solo vale
+dentro de tu red (wifi de casa); para que entren desde fuera, enciende *Que se pueda entrar desde internet* (abajo).
 - Los invitados entran en *solo ver*. Si uno pide el control, te sale un sí/no en pantalla; en *Invitados* puedes
   darlo, quitarlo o sacar a alguien. Verás avisos como «Ana ha pausado».
 - Vídeos de internet: el navegador del invitado los abre directamente si puede; archivos de tu equipo: MPV-UOS los
   retransmite (con los subtítulos de texto activos).
 - El enlace caduca (24 h como mucho), se puede cambiar por uno nuevo y deja de valer al cerrar la sala.
-- Abrir la sala a internet (túnel) está pendiente de una decisión de Ser (ver NEEDS_HUMAN.md).
+- **Que se pueda entrar desde internet.** En *Compartir* hay un interruptor con ese nombre, **apagado** por defecto y que
+  se recuerda. Encendido, al crear la sala MPV-UOS abre un *túnel rápido de Cloudflare* (sin cuenta ni configuración) y el
+  enlace pasa a ser una dirección `https://…trycloudflare.com` que funciona desde cualquier sitio. El túnel vive
+  exactamente lo que vive la sala: al cerrarla, la dirección deja de existir, y la próxima sala tendrá otra distinta. Con
+  túnel no hace falta tocar el cortafuegos ni el router.
+  La primera vez hay que instalar el programa del túnel (no viene de serie, porque es lo único que saca algo a internet):
+  ```bash
+  cd ~/Documentos/PROJECTES/MPV-UOS && MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh
+  ```
+  Si falta, la sala se abre igual en tu red y el menú te lo dice. Para entrar sigue haciendo falta el enlace con su
+  token: la dirección sola no deja pasar.
 
 **Sala pública (solo ver).** En *Compartir*, *Crear una sala pública (solo ver)*. Quien abra el enlace o escanee el QR
 entra sin escribir nada y solo puede mirar: no pausa, no salta, no hay chat. Caben hasta 20 personas a la vez (se cambia
-con `mu-share-max_viewers`). En el menú ves cuántos miran. Solo en tu red, como las salas privadas.
+con `mu-share-max_viewers`). En el menú ves cuántos miran. Como las privadas: en tu red, o desde internet si enciendes
+el túnel.
 
 **Chat y reacciones.** En una sala privada, los invitados escriben y mandan reacciones desde la página; en tu pantalla
 salen unos segundos abajo a la izquierda. Tú escribes desde *Compartir › Chat › Escribir un mensaje*, y ahí puedes

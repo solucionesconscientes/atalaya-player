@@ -18,6 +18,7 @@ package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local nav = require('mu.nav')
+local prefs = require('mu.prefs')
 local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
@@ -41,6 +42,10 @@ local opts = {
   chat_lines = 5,        -- lines on screen at most
 }
 options.read_options(opts, 'mu-share')
+
+-- «Que se pueda entrar desde internet» (H25): apagado por defecto. Es lo único que saca la sala de casa, así que se
+-- pregunta una vez y se recuerda; el túnel solo vive mientras la sala está abierta.
+local P = prefs.ns('mu-share', { internet = false })
 
 local state = {
   status = nil, view = '', stack = {}, items = {}, force_open = false,
@@ -349,8 +354,17 @@ views.root = function()
                           hint = string.format('sin nombres ni chat · hasta %d', opts.max_viewers) }
     items[#items + 1] = { title = 'Tus invitados verán lo mismo que tú, a la vez, en su navegador', icon = 'info',
                           muted = true, selectable = false }
-    items[#items + 1] = { title = 'De momento, solo en tu misma red (wifi de casa)', icon = 'wifi', muted = true,
-                          selectable = false }
+    local internet = P:get('internet') == true
+    local can = st.tunnel_available ~= false
+    items[#items + 1] = { title = 'Que se pueda entrar desde internet', icon = internet and 'public' or 'wifi',
+                          value = { action = 'toggle_internet' }, active = internet,
+                          hint = (not can and 'falta cloudflared')
+                            or (internet and 'túnel de Cloudflare mientras la sala esté abierta')
+                            or 'ahora solo desde tu wifi' }
+    if internet and not can then
+      items[#items + 1] = { title = 'Instálalo con: MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh', icon = 'info',
+                            muted = true, selectable = false }
+    end
   else
     local public = st.mode == 'public'
     items[#items + 1] = { title = 'Mostrar el enlace y el código QR', icon = 'qr_code_2', value = { action = 'qr' } }
@@ -578,7 +592,7 @@ end
 
 local function create_room(then_menu, mode)
   if not rpc.connected() then osd('Compartir: mpvd no está conectado'); return end
-  local params = { ttl_hours = opts.ttl_hours }
+  local params = { ttl_hours = opts.ttl_hours, internet = P:get('internet') == true }
   if mode == 'public' then params.mode = 'public'; params.max_viewers = opts.max_viewers end
   rpc.call('share.create', params, function(err, res)
     if err then fail(err, 'no se pudo crear la sala'); return end
@@ -715,6 +729,12 @@ local function menu_action(v)
   elseif v.action == 'create' then
     uosc.close(MENU)
     create_room(false, v.mode)
+  elseif v.action == 'toggle_internet' then
+    local on = P:get('internet') ~= true
+    P:set('internet', on)
+    osd(on and 'Compartir: la próxima sala también se podrá abrir desde internet'
+          or 'Compartir: las salas solo se abrirán en tu red')
+    reopen_current()
   elseif v.action == 'chat-write' then
     open_input('chat')
   elseif v.action == 'server-write' then
