@@ -258,6 +258,15 @@ class IntroService:
             used.append(sib.name)
             head_runs.append(hr)
             tail_runs.append(tr)
+            # H39/E4: parar en cuanto la coincidencia es clara. Dos vecinos de acuerdo es lo que ya se exige para dar
+            # un tramo por bueno (ver más abajo con `same_video`), así que un tercer vecino solo cuesta otra huella de
+            # cabecera y cola. Si los dos tramos ya tienen dos apoyos, no se sigue.
+            if len(used) >= 2:
+                _, n_h = self._consensus(head_runs, MIN_INTRO, pick_last=False)
+                _, n_t = self._consensus(tail_runs, MIN_CREDITS, pick_last=True)
+                if n_h >= 2 and n_t >= 2:
+                    result["early_stop"] = len(used)
+                    break
         result["siblings"] = used
         if skipped:
             result["skipped"] = skipped

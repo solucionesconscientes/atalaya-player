@@ -31,18 +31,24 @@ local opts = {
   min_remaining = 1.0,      -- do not offer a skip when the segment is about to end anyway
   credits_tail = 15,        -- credits ending this close to the end of the file lead to the next episode
   watchdog_seconds = 20,    -- re-ask mpvd while an analysis is pending (restarted daemon, lost event)
+  sponsorblock = true,      -- H39/E3: tramos marcados en SponsorBlock de los vídeos de YouTube
+  auto_skip_sponsor = true, -- los patrocinios se saltan solos: es lo que espera quien los activa
 }
 local on_options -- forward: script-opts changed at runtime (e.g. by a preferences system)
 options.read_options(opts, 'mu-intro', function() if on_options then on_options() end end)
 -- remembered choices (menu alt+j): detection on/off and automatic skipping
-local PREF_KEYS = { 'enabled', 'auto_skip_intro', 'auto_skip_credits' }
+local PREF_KEYS = { 'enabled', 'auto_skip_intro', 'auto_skip_credits', 'sponsorblock', 'auto_skip_sponsor' }
 local P = prefs.ns('mu-intro', { enabled = opts.enabled, auto_skip_intro = opts.auto_skip_intro,
-  auto_skip_credits = opts.auto_skip_credits })
+  auto_skip_credits = opts.auto_skip_credits, sponsorblock = opts.sponsorblock,
+  auto_skip_sponsor = opts.auto_skip_sponsor })
 P:apply_opts(opts, 'mu-intro', PREF_KEYS)
 
 local state = {
   path = '',
   local_video = false,      -- a local file with a real video track: the only thing mpvd can analyse
+  web_url = '',             -- H39/E3: URL del vídeo de internet que suena (para SponsorBlock)
+  sponsor_status = '',      -- '' | off | asking | unsupported | done | error
+  sponsor = {},             -- tramos de SponsorBlock del vídeo actual
   status = '',              -- '', analyzing, done, unknown, error
   segments = {},            -- { {type='intro', start=, ['end']=, source=}, ... }
   current = nil,            -- type of the segment time-pos is in, or nil
@@ -88,9 +94,35 @@ local function fmt_time(t)
   return string.format('%d:%02d', t / 60, t % 60)
 end
 
+-- H39/E3 · un tramo ya no es solo «intro» o «créditos»: también puede ser un patrocinio marcado en SponsorBlock, y
+-- cada uno se llama por su nombre en los avisos y en el botón.
+local SEG_LABELS = { intro = 'intro', credits = 'créditos' }
+
+local function seg_label(seg)
+  if type(seg) == 'table' then return seg.label or SEG_LABELS[seg.type] or seg.type end
+  return SEG_LABELS[seg] or seg or ''
+end
+
+local function upper1(text)
+  text = tostring(text or '')
+  return text:sub(1, 1):upper() .. text:sub(2)
+end
+
+local function is_sponsor(seg)
+  return type(seg) == 'table' and seg.source == 'sponsorblock'
+end
+
 -- Why nothing can be skipped right now (Spanish, short).
 local function why()
-  if not state.local_video then return 'solo en vídeos locales' end
+  if not state.local_video then
+    if state.web_url ~= '' then
+      if state.sponsor_status == 'asking' then return 'preguntando a SponsorBlock…' end
+      if state.sponsor_status == 'off' then return 'SponsorBlock está apagado' end
+      if state.sponsor_status == 'unsupported' then return 'SponsorBlock solo tiene vídeos de YouTube' end
+      return 'nadie ha marcado tramos de este vídeo'
+    end
+    return 'la intro solo se busca en vídeos de tu equipo'
+  end
   if state.status == 'analyzing' then return string.format('analizando… %d %%', pct()) end
   if state.status == 'error' then
     local r = state.reason ~= '' and state.reason or state.last_error
@@ -104,6 +136,8 @@ local function publish()
   mp.set_property_native('user-data/mu/intro', {
     enabled = opts.enabled, path = state.path, local_video = state.local_video, status = state.status,
     segments = state.segments, current = state.current or '', siblings = state.siblings, episodes = state.episodes,
+    sponsorblock = opts.sponsorblock, auto_skip_sponsor = opts.auto_skip_sponsor,
+    sponsor_status = state.sponsor_status, sponsors = #state.sponsor, web_url = state.web_url,
     reason = state.reason, last_error = state.last_error, progress = state.progress, next = state.next,
     auto_skip_intro = opts.auto_skip_intro, auto_skip_credits = opts.auto_skip_credits,
     countdown = cd and math.max(0, math.ceil(cd.left)) or 0, countdown_kind = cd and cd.kind or '',
@@ -150,7 +184,7 @@ local function skip(kind)
       end
       return false
     end
-    if kind ~= nil then osd('No hay ' .. (kind == 'intro' and 'intro' or 'créditos') .. ' detectados') return false end
+    if kind ~= nil then osd('No hay ' .. seg_label(kind) .. ' detectados') return false end
     -- outside any segment: jump to the end of the next one ahead (manual key press)
     local pos = mp.get_property_number('time-pos') or 0
     for _, s in ipairs(state.segments) do
@@ -175,7 +209,7 @@ local function skip(kind)
     end
   else
     mp.commandv('seek', tostring(seg['end']), 'absolute')
-    osd(seg.type == 'intro' and '⏭ Intro saltada' or '⏭ Segmento saltado')
+    osd('⏭ ' .. upper1(seg_label(seg)) .. ' saltad' .. (seg.type == 'credits' and 'os' or 'o'))
   end
   state.skipped[seg.type] = true
   return true
@@ -249,8 +283,8 @@ local function ind_set(kind, text)
 end
 
 local function countdown_text()
-  return string.format('Saltando %s en %d s · Esc cancela', cd.kind == 'intro' and 'intro' or 'créditos',
-    math.max(1, math.ceil(cd.left)))
+  return string.format('Saltando %s en %d s · Esc cancela', seg_label(segment_of(cd.kind)) ~= '' and
+    seg_label(segment_of(cd.kind)) or seg_label(cd.kind), math.max(1, math.ceil(cd.left)))
 end
 
 update_indicator = function()
@@ -260,7 +294,7 @@ update_indicator = function()
     return
   end
   if opts.indicator and opts.enabled and state.current then
-    ind_set(state.current, state.current == 'intro' and 'Saltar intro ▸' or 'Saltar créditos ▸')
+    ind_set(state.current, 'Saltar ' .. seg_label(segment_of(state.current)) .. ' ▸')
   else
     ind_set(nil, '')
   end
@@ -319,10 +353,11 @@ local function tick()
   if seg and not state.hinted[kind] and seg['end'] - pos > opts.min_remaining then
     state.hinted[kind] = true
     local auto = (kind == 'intro' and opts.auto_skip_intro) or (kind == 'credits' and opts.auto_skip_credits)
+      or (is_sponsor(seg) and opts.auto_skip_sponsor)
     if auto and not state.skipped[kind] then
       start_countdown(kind)
     elseif not opts.indicator then
-      osd((kind == 'intro' and 'Intro' or 'Créditos') .. ' · alt+k para saltar')
+      osd(upper1(seg_label(seg)) .. ' · alt+k para saltar')
     end
   end
   update_indicator()
@@ -378,6 +413,66 @@ local function apply(res, quiet)
   set_button()
   refresh_menu()
   if not quiet and state.status ~= 'analyzing' and #state.segments == 0 then notice() end
+end
+
+-- H39/E3 · los tramos marcados en SponsorBlock del vídeo de internet que suena. mpvd los pide por un prefijo del hash
+-- del id, así que no se dice qué se está viendo (mpvd/sponsorblock.py). Van a la misma lista que la intro y los
+-- créditos: el mismo botón, la misma tecla y el mismo salto automático.
+local function apply_sponsor(segs)
+  state.sponsor = {}
+  for _, s2 in ipairs(segs or {}) do
+    if s2.start and s2['end'] then
+      table.insert(state.sponsor, { type = s2.category or 'sponsor', start = s2.start, ['end'] = s2['end'],
+                                    label = s2.label or s2.category, source = 'sponsorblock' })
+    end
+  end
+  -- los de SponsorBlock no sustituyen a los de mpvd: se añaden (un vídeo local no tiene ninguno y al revés)
+  local keep = {}
+  for _, seg in ipairs(state.segments) do if not is_sponsor(seg) then table.insert(keep, seg) end end
+  for _, seg in ipairs(state.sponsor) do table.insert(keep, seg) end
+  state.segments = keep
+  if #state.segments > 0 then timer:resume() else timer:kill() end
+  tick()
+  update_indicator()
+  publish()
+  set_button()
+  refresh_menu()
+end
+
+local function request_sponsor()
+  if state.web_url == '' then return end
+  if not opts.enabled or not opts.sponsorblock then
+    state.sponsor_status = 'off'
+    publish()
+    set_button()
+    return
+  end
+  if not rpc.connected() then return end
+  local url = state.web_url
+  state.sponsor_status = 'asking'
+  publish()
+  set_button()
+  rpc.call('sponsorblock.segments', { url = url }, function(err, res)
+    if state.web_url ~= url then return end
+    if err or type(res) ~= 'table' then
+      state.sponsor_status = 'error'
+      state.last_error = err and (err.message or tostring(err)) or 'respuesta vacía'
+    elseif res.supported == false then
+      state.sponsor_status = 'unsupported'
+      state.reason = res.reason or ''
+    else
+      state.sponsor_status = 'done'
+      apply_sponsor(res.segments)
+      if #state.sponsor > 0 then
+        osd(string.format('SponsorBlock: %d tramo%s marcado%s en este vídeo', #state.sponsor,
+          #state.sponsor == 1 and '' or 's', #state.sponsor == 1 and '' or 's'))
+      end
+      return
+    end
+    publish()
+    set_button()
+    refresh_menu()
+  end, 20)
 end
 
 request = function(quiet)
@@ -439,6 +534,9 @@ mp.register_event('file-loaded', function()
   if cancel_countdown then cancel_countdown(false) end
   state.path = path
   state.local_video = is_local(path) and has_video()
+  state.web_url = (not is_local(path)) and path or ''
+  state.sponsor_status = ''
+  state.sponsor = {}
   state.status = ''
   state.segments = {}
   state.current = nil
@@ -459,6 +557,7 @@ mp.register_event('file-loaded', function()
   publish()
   set_button()
   if opts.enabled then request(true) end
+  request_sponsor()
 end)
 
 mp.register_event('end-file', function()
@@ -469,6 +568,9 @@ mp.register_event('end-file', function()
   state.current = nil
   state.path = ''
   state.local_video = false
+  state.web_url = ''
+  state.sponsor = {}
+  state.sponsor_status = ''
   update_indicator()
   publish()
   set_button()
@@ -477,22 +579,39 @@ end)
 mp.observe_property('user-data/mu/core', 'native', function(_, core)
   if core and core.uosc then state.button_sig = '' set_button() end
   if core and core.mpvd == 'connected' and state.status == '' and state.local_video then request(true) end
+  if core and core.mpvd == 'connected' and state.web_url ~= '' and state.sponsor_status == '' then request_sponsor() end
 end)
+
+-- H39/E4 · el botón tiene tres estados que se ven: **buscando** (reloj de arena), **saltar** (resaltado, con la
+-- etiqueta del tramo) y **no hay** (apagado, y el tooltip dice por qué). Antes se escondía salvo dentro de un tramo, y
+-- entonces no había manera de saber si estaba buscando, si no había encontrado nada o si la función estaba apagada.
+local BADGES = { intro = 'intro', credits = 'fin', outro = 'fin', sponsor = 'anuncio', selfpromo = 'promo',
+                 interaction = 'suscr.', music_offtopic = 'sin música', preview = 'resumen', filler = 'relleno' }
 
 set_button = function()
   if not uosc.available() then return end
+  local applies = opts.enabled and (state.local_video or state.web_url ~= '')
   local inside = state.current ~= nil
+  local searching = state.status == 'analyzing' or state.sponsor_status == 'asking'
+  local seg = inside and segment_of(state.current) or nil
+  local icon, badge = 'skip_next', nil
   local tooltip
   if inside then
-    tooltip = (state.current == 'intro' and 'Saltar intro' or 'Saltar créditos') .. ' (alt+k)'
+    tooltip = 'Saltar ' .. seg_label(seg) .. ' (alt+k)'
+    badge = BADGES[state.current] or seg_label(seg)
+  elseif searching then
+    icon = 'hourglass_top'
+    badge = state.status == 'analyzing' and (tostring(pct()) .. '%') or nil
+    tooltip = state.status == 'analyzing' and string.format('Buscando la intro… %d %%', pct())
+      or 'Preguntando a SponsorBlock…'
   elseif #state.segments > 0 then
-    tooltip = 'Saltar intro/créditos (alt+k)'
+    badge = tostring(#state.segments)
+    tooltip = 'Saltar lo que no quieres ver (alt+k) · ' .. #state.segments .. ' tramos en este vídeo'
   else
-    tooltip = 'Saltar intro: ' .. why() .. ' · alt+j para marcarla a mano'
+    tooltip = 'No hay nada que saltar: ' .. why() .. ' · alt+j'
   end
   local spec = {
-    icon = 'skip_next', active = inside, hide = not opts.enabled or not state.local_video or not inside, tooltip = tooltip,
-    badge = inside and (state.current == 'intro' and 'intro' or 'fin') or nil,
+    icon = icon, active = inside, hide = not applies, tooltip = tooltip, badge = badge,
     command = { 'script-binding', SCRIPT .. '/skip' },
   }
   local sig = utils.format_json(spec)
@@ -568,7 +687,15 @@ end
 local function menu_items()
   local items = {}
   local pos = mp.get_property_number('time-pos') or 0
-  if not state.local_video then
+  if not state.local_video and state.web_url ~= '' then
+    local txt
+    if state.sponsor_status == 'asking' then txt = 'Preguntando a SponsorBlock…'
+    elseif #state.sponsor > 0 then txt = string.format('SponsorBlock: %d tramo%s marcado%s', #state.sponsor,
+      #state.sponsor == 1 and '' or 's', #state.sponsor == 1 and '' or 's')
+    else txt = 'SponsorBlock: ' .. why() end
+    table.insert(items, { title = txt, icon = #state.sponsor > 0 and 'playlist_remove' or 'info', selectable = false,
+      muted = #state.sponsor == 0 })
+  elseif not state.local_video then
     table.insert(items, { title = 'Abre un episodio de una serie (vídeo local)', icon = 'info', selectable = false,
       muted = true })
   elseif state.status == 'analyzing' then
@@ -585,9 +712,10 @@ local function menu_items()
       state.season.total or 0), icon = 'spinner', selectable = false, muted = true })
   end
   for _, s in ipairs(state.segments) do
-    table.insert(items, { title = (s.type == 'intro' and 'Intro' or 'Créditos') .. ' · ' .. fmt_time(s.start) .. ' → '
-      .. fmt_time(s['end']), hint = string.format('%d s%s', math.floor(s['end'] - s.start + 0.5),
-      s.source == 'manual' and ' · manual' or ''), icon = s.type == 'intro' and 'play_circle' or 'movie',
+    table.insert(items, { title = upper1(seg_label(s)) .. ' · ' .. fmt_time(s.start) .. ' → ' .. fmt_time(s['end']),
+      hint = string.format('%d s%s', math.floor(s['end'] - s.start + 0.5),
+        s.source == 'manual' and ' · manual' or (is_sponsor(s) and ' · SponsorBlock' or '')),
+      icon = is_sponsor(s) and 'playlist_remove' or (s.type == 'intro' and 'play_circle' or 'movie'),
       active = state.current == s.type, value = { seek = s.start } })
   end
   if #state.segments > 0 then
@@ -616,7 +744,13 @@ local function menu_items()
   table.insert(items, { title = 'Saltar los créditos automáticamente', hint = yesno(opts.auto_skip_credits),
     icon = 'skip_next', active = opts.auto_skip_credits, value = { toggle = 'auto_skip_credits' } })
   table.insert(items, { title = 'Detección activada', hint = yesno(opts.enabled), icon = 'radar', active = opts.enabled,
-    value = { toggle = 'enabled' } })
+    value = { toggle = 'enabled' }, separator = true })
+  -- H39/E3: en vídeos de internet, los tramos los marca la gente en SponsorBlock. Se pide por un prefijo del hash del
+  -- id del vídeo, así que no se dice qué estás viendo.
+  table.insert(items, { title = 'SponsorBlock en vídeos de internet', hint = yesno(opts.sponsorblock),
+    icon = 'playlist_remove', active = opts.sponsorblock, value = { toggle = 'sponsorblock' } })
+  table.insert(items, { title = 'Saltar los patrocinios automáticamente', hint = yesno(opts.auto_skip_sponsor),
+    icon = 'fast_forward', active = opts.auto_skip_sponsor, value = { toggle = 'auto_skip_sponsor' } })
   if state.local_video then
     items[#items].separator = true
     table.insert(items, { title = 'Analizar temporada', hint = state.episodes > 0 and ((state.episodes + 1) .. ' episodios')
@@ -695,7 +829,7 @@ local function set_opt(key, value)
   if key == 'countdown_seconds' then
     opts.countdown_seconds = tonumber(value) or opts.countdown_seconds
   elseif key == 'auto_skip_intro' or key == 'auto_skip_credits' or key == 'enabled' or key == 'indicator'
-      or key == 'notify_missing' then
+      or key == 'notify_missing' or key == 'sponsorblock' or key == 'auto_skip_sponsor' then
     if type(value) == 'boolean' then opts[key] = value else opts[key] = (value == 'yes' or value == 'true') end
   else
     return
@@ -703,6 +837,7 @@ local function set_opt(key, value)
   if key == 'enabled' then
     if opts.enabled then request(true) else timer:kill() cancel_countdown(false) state.current = nil end
   end
+  if key == 'enabled' or key == 'sponsorblock' then request_sponsor() end
   update_indicator()
   publish()
   set_button()

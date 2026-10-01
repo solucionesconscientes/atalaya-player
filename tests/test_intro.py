@@ -78,6 +78,8 @@ def test_intro_service_analysis_cache_and_export(daemon_env, media_dir, tmp_path
     assert r["intro"] and abs(r["intro"][0] - 1.5) < 1.0 and abs(r["intro"][1] - 9.5) < 1.0, r["intro"]
     assert r["credits"] and abs(r["credits"][0] - 32.0) < 1.5 and r["credits"][1] > 37.5, r["credits"]
     assert r["matches"]["intro"] == 2 and r["sources"] == {"intro": "auto", "credits": "auto"}
+    # H39/E4: en cuanto dos vecinos están de acuerdo en los dos tramos se para (no se calcula una huella de más)
+    assert r.get("early_stop") == 2, r
     assert r["next"] == str(serie / "ep02.mkv")
     # nothing is written next to the videos until the user asks for it
     assert not (serie / ".mpv-uos").exists() and not (serie / "segments.json").exists()

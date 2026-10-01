@@ -562,3 +562,19 @@
   extractor —comprobado el 2026-10-01 preguntando a los extractores del binario instalado— así que se rechazan con su
   alternativa; el perfil de Instagram se ofrece con el aviso de que yt-dlp lo marca roto; y los avisos de «esto es
   privado: hace falta tu sesión del navegador» salen solos para perfiles y colecciones.
+- ADR-073 · SponsorBlock al reproducir, sin decir qué estás viendo, y el espejo que no suena (H39). **SponsorBlock**: los
+  tramos marcados por la gente ya se usaban al descargar (`--sponsorblock-remove`) pero no al ver, que es cuando molestan.
+  `mpvd/sponsorblock.py` los pide por un **prefijo de 4 caracteres del sha256 del id** del vídeo
+  (`GET /api/skipSegments/<prefijo>`), que devuelve los de todos los vídeos con ese prefijo —106 en la prueba del
+  2026-10-01— y el filtrado por vídeo se hace aquí: lo único que sale del equipo son 4 caracteres hexadecimales, que valen
+  para 1 de cada 65 536 vídeos. Descartado el endpoint directo por id (le dice al servicio qué estás viendo) y descartado
+  bajar la base entera (gigabytes). Se saltan por defecto patrocinio, autopromoción, «suscríbete» y partes sin música;
+  cabecera y despedida **no**, porque hay quien las quiere. Los tramos van a la misma lista que la intro y los créditos de
+  mu-intro: mismo botón, misma tecla, mismo salto automático con cuenta atrás, y `actionType` distinto de `skip` (mute,
+  poi) se ignora en vez de inventarle un comportamiento. **El espejo que no suena**: el salto a la copia siguiente de un
+  canal se disparaba solo con `end-file reason=error`, y las radios caídas no dan error: se quedan conectando. Ahora, si a
+  los 8 s (`mu-iptv-stall_seconds`) el reloj no ha avanzado y mpv sigue en espera, se pasa a la siguiente copia igual que
+  si hubiera fallado. **Y la lista dice lo que se sabe**: el resultado de la comprobación se enseña con palabras («✕ no
+  responde», «prohibido: suele ser geobloqueo») y, en un canal repetido, cuántas de sus copias respondieron, en vez de un
+  «✕» que no decía si merecía la pena intentarlo. **Intro**: el análisis para en cuanto **dos** vecinos coinciden en los
+  dos tramos (dos es lo que ya se exigía para dar un tramo por bueno), así que se ahorra la huella del tercero.

@@ -54,7 +54,10 @@ falta, avisa con la orden para instalarlo. Los subtítulos IA y los modelos se d
    | `720p50 · 2,7 Mb` | mejor calidad que da la fuente (resolución, imágenes por segundo, megabits por segundo) |
    | `bitrate bajo` | es HD pero con menos de 1,6 Mb/s: se verá borroso aunque diga 720p/1080p |
    | `con anuncios` | copia FAST del canal, con cortes publicitarios insertados |
-   | `+2 fuentes` | la lista trae el canal varias veces: se abre la oficial y, si falla, se prueba sola la siguiente ("Probando otra fuente de «La 1»…") |
+   | `+2 fuentes` | la lista trae el canal varias veces: se abre la oficial y, si falla **o no empieza a sonar en 8 s**, se prueba sola la siguiente ("Probando otra fuente de «La 1»…"). Era el problema de las radios españolas: los primeros espejos no dan error, simplemente se quedan conectando |
+   | `2 comprobadas OK` | de las copias de ese canal, cuántas respondieron en la última comprobación |
+   | `✕ no responde` | lo que dijo la comprobación de ese canal, con el motivo (`no responde`, `prohibido: suele ser geobloqueo`, `ya no existe`, `responde, pero no es un vídeo`…) |
+   | `✓ comprobado` | se comprobó y respondió |
    | `geobloqueado` | la fuente avisa de que solo funciona desde su país |
    | `ahora: Telediario` | lo que está emitiendo el canal según la guía |
 6. **Guía y grabaciones programadas.** En las listas de TDTChannels cada canal dice qué emite (`ahora: …`). `Tab` sobre un
@@ -80,9 +83,14 @@ no se puede mejorar desde el reproductor. Tampoco los canales caídos o geobloqu
 posición ni pistas de los directos (siempre entran en su mejor calidad y desde "ahora"), abre cada petición HLS con
 una conexión nueva (evita que canales como 101TV se congelen a los pocos segundos), se presenta como un navegador si la
 lista no dice otra cosa (Canal Sur oficial rechaza a mpv) y cambia solo a otra fuente del mismo canal si la primera no
-abre. Si un canal entrelazado se ve con "peines" (7TV), pulsa `d`. Detalles en docs/FUENTES_IPTV.md §7.
+abre **o no suena** (8 s; `mu-iptv-stall_seconds`). Si un canal entrelazado se ve con "peines" (7TV), pulsa `d`. Detalles en docs/FUENTES_IPTV.md §7.
 
 ## 3. YouTube y otras webs (yt-dlp)
+- **Saltar los patrocinios al VER** (no solo al descargar): en un vídeo de YouTube, MPV-UOS pregunta a SponsorBlock qué
+  tramos ha marcado la gente (patrocinio, autopromoción, «suscríbete», partes sin música) y los salta solos; `alt+k` los
+  salta a mano y `alt+j` lo apaga. **No se le dice a nadie qué estás viendo**: se piden por un prefijo de 4 caracteres
+  del hash del id del vídeo, que vale para 1 de cada 65 536 vídeos, y el filtrado se hace en tu equipo.
+
 - `mpv-uos 'https://www.youtube.com/watch?v=…'` reproduce con el yt-dlp vendorizado (se actualiza solo a diario).
 - **Abrir URL** (`ctrl+u`, o `alt+y` → *Abrir URL…*): si el portapapeles tiene un enlace, la primera entrada es *Pegar: …*;
   también puedes escribir o pegar (`ctrl+v`) una URL (YouTube, Twitch, archive.org, una radio, `rtsp://`…; vale `youtu.be/…` sin

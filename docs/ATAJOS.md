@@ -110,11 +110,11 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 | `Esc` / `Enter` | Solo durante la cuenta atrás «Siguiente episodio en 5 s»: cancelar / reproducir ya |
 | (menú `ctrl+b`) | `mu_library/library-next` (siguiente episodio ahora), `mu_library/library-subs` (subtítulos de internet), `mu_library/auto-next-toggle` |
 
-## Saltar intro y créditos (mu-intro)
+## Saltar lo que no quieres ver: intro, créditos y patrocinios (mu-intro)
 | Tecla | Acción |
 |---|---|
-| `alt+k` | Saltar la intro o los créditos (huellas de audio con los episodios de la temporada, en la misma carpeta o en carpetas hermanas); en los créditos, siguiente de la lista o siguiente episodio detectado; durante el análisis dice «Analizando… NN %» |
-| `alt+j` | Menú **Saltar intro y créditos**: segmentos, saltar ahora, marcar inicio/final de intro y créditos, salto automático, analizar temporada, volver a analizar, exportar segmentos (Jellyfin) |
+| `alt+k` | Saltar la intro o los créditos (huellas de audio con los episodios de la temporada, en la misma carpeta o en carpetas hermanas) y, en vídeos de internet, los tramos marcados en **SponsorBlock** (patrocinio, autopromoción, «suscríbete», partes sin música); en los créditos, siguiente de la lista o siguiente episodio detectado. El icono de la barra tiene tres estados: **buscando** (reloj de arena, con el % del análisis), **saltar** (resaltado, con la etiqueta del tramo) y **no hay** (el tooltip dice por qué) |
+| `alt+j` | Menú: segmentos, saltar ahora, marcar inicio/final de intro y créditos, salto automático, **SponsorBlock en vídeos de internet** y **saltar los patrocinios automáticamente** (los dos activados), analizar temporada, volver a analizar, exportar segmentos (Jellyfin) |
 | `Esc` | Solo durante la cuenta atrás del salto automático («Saltando intro en 3 s · Esc cancela»): lo cancela |
 | (menú `alt+j`) | Marcar a mano (`mu_intro/intro-mark-start`, `intro-mark-end`, `credits-mark-start`, `credits-mark-end`): se aplica al resto de la temporada |
 

@@ -66,6 +66,13 @@
   debería abrir la pantalla de inicio; `alt+t` la TV, un vídeo de YouTube con `ctrl+u`. Si falla, guarda la salida del
   instalador y `.cache\mpvd.log` del checkout (y la salida de `.venv\Scripts\python -m mpvd status`).
 
+## 2026-10-01 · Tu llama-server sigue pausado (hazlo tú si yo no he llegado)
+Me pediste pausarlo para dejar CPU libre (`kill -STOP 130081`). **Si al volver lo ves parado**, con esto sigue:
+```bash
+kill -CONT 130081      # el llama-server del puerto 18766 (Qwen3.5-4B)
+```
+Lo reanudo yo antes de terminar; esta nota está aquí por si me quedo sin contexto antes.
+
 ## 2026-10-01 · Subtítulos de internet (H36/C5, no bloquea)
 - **Clave gratuita de Subdl** (el único segundo proveedor que sigue vivo). No se ha implementado su cliente porque sin
   clave la API devuelve `403 {"error":"not_authorized"}` y la regla de este proyecto es no escribir contra una API que

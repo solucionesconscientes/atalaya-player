@@ -209,3 +209,37 @@ def has_ads(url: str) -> bool:
 def duplicate_key(ch: Any) -> tuple[str, str, str, str]:
     """Same channel listed several times (mirrors, FAST copies): same source, kind, normalized name and group."""
     return (ch.source, ch.kind, normalize(ch.name), ch.group or "")
+
+
+# -- por qué un canal no responde (H39/E2) ----------------------------------------------------------
+
+# El detalle que guarda la comprobación es la salida de ffprobe, que no se le puede poner delante a nadie. Esto la
+# traduce a algo que se entienda, y lo que no se reconoce se queda en «no se pudo abrir» (nunca inventar una causa).
+HEALTH_REASONS: tuple[tuple[str, str], ...] = (
+    ("timeout", "no responde"),
+    ("403", "prohibido: suele ser geobloqueo"),
+    ("401", "pide identificarse"),
+    ("404", "ya no existe"),
+    ("410", "ya no existe"),
+    ("5xx", "el servidor falla"),
+    ("503", "el servidor falla"),
+    ("502", "el servidor falla"),
+    ("500", "el servidor falla"),
+    ("connection refused", "no acepta la conexión"),
+    ("name or service not known", "no se encuentra el servidor"),
+    ("temporary failure in name resolution", "no se encuentra el servidor"),
+    ("no route to host", "no se llega al servidor"),
+    ("ffprobe not found", "falta ffprobe"),
+    ("invalid data found", "responde, pero no es un vídeo"),
+    ("end of file", "corta en seguida"),
+    ("ssl", "problema de certificado"),
+    ("tls", "problema de certificado"),
+)
+
+
+def health_reason(detail: str) -> str:
+    low = (detail or "").lower()
+    for needle, text in HEALTH_REASONS:
+        if needle in low:
+            return text
+    return "no se pudo abrir"

@@ -349,12 +349,12 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
       como respuesta instantánea.
 
 ## H39 · TV, radio e intro
-- [ ] E1 Radio: salto automático al siguiente espejo que suene (la lista trae «Cadena SER ×6» y los primeros suelen estar
+- [x] E1 Radio: salto automático al siguiente espejo que suene (la lista trae «Cadena SER ×6» y los primeros suelen estar
       caídos); el mecanismo ya existe para TV.
-- [ ] E2 La lista muestra lo que dijo la comprobación de canales, en vez de dejar probar a ciegas.
-- [ ] E3 SponsorBlock al reproducir (hoy solo al descargar), con la API que no envía el id del vídeo sino un prefijo de su
+- [x] E2 La lista muestra lo que dijo la comprobación de canales, en vez de dejar probar a ciegas.
+- [x] E3 SponsorBlock al reproducir (hoy solo al descargar), con la API que no envía el id del vídeo sino un prefijo de su
       hash, y con interruptor.
-- [ ] E4 Intro: calcular las huellas de los siguientes episodios en el momento correcto, parar en cuanto haya coincidencia
+- [x] E4 Intro: calcular las huellas de los siguientes episodios en el momento correcto, parar en cuanto haya coincidencia
       clara y tres estados visibles en el icono (buscando / saltar / no hay). La ventana de 10 min ya está bien.
 
 ## H40 · Despertar para grabar y apagar al terminar

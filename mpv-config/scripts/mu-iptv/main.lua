@@ -31,6 +31,7 @@ local opts = {
   epg_margin_after = 180,            -- ...and after its end (programmes rarely run on time)
   now_hint_chars = 34,               -- «ahora: …» in the channel lists, cut to this length
   schedule_dir = '',                 -- folder of scheduled recordings ('' = mpvd's <Vídeos>/MPV-UOS/Grabaciones)
+  stall_seconds = 8,                 -- H39/E1: segundos sin sonar antes de pasar al siguiente espejo (0 = nunca)
 }
 options.read_options(opts, 'mu-iptv')
 
@@ -87,6 +88,7 @@ end
 
 -- Live streams have no position to resume: forget any watch_later entry of the URL before loading it (the
 -- per-file option save-position-on-quit=no from mpvd keeps a new one from being written).
+local watch_stall   -- H39/E1: definido más abajo; load_url lo arranca en cada carga de canal
 local function load_url(url, file_options)
   mp.commandv('delete-watch-later-config', url)
   if url:find('^file://') then  -- mpv keys local files by their plain path, not by the file:// URL
@@ -98,6 +100,7 @@ local function load_url(url, file_options)
   local res = mp.command_native({ 'loadfile', url, 'replace', -1, file_options or {} })
   if res == nil then msg.warn('loadfile failed for ' .. url) end
   state.entry_id = type(res) == 'table' and res.playlist_entry_id or nil
+  if watch_stall then watch_stall(url) end
   publish()
 end
 
@@ -112,20 +115,50 @@ local function apply_play_info(info)
 end
 
 -- The list repeats some channels (mirrors, FAST copies): when the preferred URL fails to open, try the next one.
-mp.register_event('end-file', function(ev)
-  if ev.reason ~= 'error' or not state.entry_id or ev.playlist_entry_id ~= state.entry_id then return end
-  state.entry_id = nil
+local function try_next_alternative(why)
   local alt = table.remove(state.alternatives, 1)
-  if not alt or type(state.current) ~= 'table' then publish() return end
+  if not alt or type(state.current) ~= 'table' then publish() return false end
   state.fallbacks = state.fallbacks + 1
   local text = 'Probando otra fuente de «' .. (state.current.name or alt.name or '') .. '»…'
-  msg.info(text .. ' (' .. alt.url .. ')')
+  msg.info((why or '') .. ' ' .. text .. ' (' .. alt.url .. ')')
   state.playing_id = alt.id
   load_url(alt.url, alt.options)
   osd(text)
   -- mu-core explains the failed load on the OSD at the same moment; keep ours on top
   mp.add_timeout(0.3, function() if state.current_url == alt.url then osd(text) end end)
+  return true
+end
+
+mp.register_event('end-file', function(ev)
+  if ev.reason ~= 'error' or not state.entry_id or ev.playlist_entry_id ~= state.entry_id then return end
+  state.entry_id = nil
+  try_next_alternative('error de carga:')
 end)
+
+-- H39/E1 · Lo que le pasó a Ser con las radios españolas: la lista trae «Cadena SER ×6» y los primeros espejos no dan
+-- error, simplemente no suenan (se quedan conectando). El error de carga nunca llega, así que nadie pasaba al
+-- siguiente. Esto vigila que el reloj avance de verdad; si no avanza, es como si hubiera fallado.
+local stall_timer = nil
+
+local function cancel_stall()
+  if stall_timer then stall_timer:kill(); stall_timer = nil end
+end
+
+watch_stall = function(url)
+  cancel_stall()
+  if opts.stall_seconds <= 0 or #state.alternatives == 0 then return end
+  local started = mp.get_property_number('time-pos')
+  stall_timer = mp.add_timeout(opts.stall_seconds, function()
+    stall_timer = nil
+    if state.current_url ~= url or #state.alternatives == 0 then return end
+    if mp.get_property_bool('pause', false) then return end          -- en pausa no se espera que avance
+    local now = mp.get_property_number('time-pos')
+    local moving = now ~= nil and (started == nil or now > started + 0.3)
+    if moving and not mp.get_property_bool('core-idle', false) then return end
+    state.entry_id = nil
+    try_next_alternative('no empieza a sonar en ' .. opts.stall_seconds .. ' s:')
+  end)
+end
 
 local function play(channel_id, cb)
   rpc.call('iptv.play', { id = channel_id }, function(err, info)
@@ -310,7 +343,17 @@ local function channel_hint(ch)
   if ch.geo_blocked then table.insert(hints, 'geobloqueado') end
   local alts = tonumber(ch.alternatives) or 0
   if alts > 0 then table.insert(hints, '+' .. alts .. (alts == 1 and ' fuente' or ' fuentes')) end
-  if ch.health == false then table.insert(hints, '✕') end
+  -- H39/E2: lo que dijo la comprobación, con palabras. Un «✕» a secas no decía si merecía la pena intentarlo, y con
+  -- varias copias lo que importa es cuántas respondieron.
+  local vivas = tonumber(ch.health_alive)
+  if alts > 0 and vivas then
+    table.insert(hints, vivas > 0 and (vivas .. ' comprobada' .. (vivas == 1 and '' or 's') .. ' OK')
+      or 'ninguna respondió')
+  elseif ch.health == false then
+    table.insert(hints, '✕ ' .. (ch.health_detail or 'no se pudo abrir'))
+  elseif ch.health == true then
+    table.insert(hints, '✓ comprobado')
+  end
   return #hints > 0 and table.concat(hints, ' · ') or nil
 end
 
@@ -320,7 +363,7 @@ local function channel_item(ch)
     hint = channel_hint(ch),
     icon = ch.kind == 'radio' and 'radio' or 'live_tv',
     value = { play = ch.id, name = ch.name },
-    muted = ch.health == false or nil,
+    muted = (ch.health == false and (tonumber(ch.health_alive) or 0) == 0) or nil,
     bold = ch.favorite or nil,
   }
 end

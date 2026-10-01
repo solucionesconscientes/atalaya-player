@@ -152,7 +152,10 @@ def dump_json(url: str, opts: dict[str, list[str]], flags: set[str]) -> int:
     if "fail" in url and not (nightly and "fail-extract" in url):
         sys.stderr.write("ERROR: [fake] Unsupported URL: " + url + "\n")
         return 1
-    if url.startswith("https://fake.test/"):
+    # H39/E3: con FAKE_YTDLP_FAKE_YOUTUBE=1 una URL de YouTube también se resuelve a los medios locales, para los tests
+    # que necesitan un id de vídeo de YouTube de verdad (SponsorBlock) y además poder reproducir algo.
+    if url.startswith("https://fake.test/") or (os.environ.get("FAKE_YTDLP_FAKE_YOUTUBE") == "1"
+                                                and "youtube.com/watch" in url):
         info = fake_info(url, fmt)
         subs_base = os.environ.get("FAKE_YTDLP_SUBS_URL")
         if subs_base and "websubs" in url:

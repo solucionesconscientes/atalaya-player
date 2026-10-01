@@ -242,6 +242,17 @@ class IptvService:
             return True
         return own["ok"] if own else None
 
+    def _health_counts(self, ch: Channel, health: dict[str, Any]) -> tuple[int, int]:
+        """(copias comprobadas, copias que respondieron) del canal y sus espejos. H39/E2: la lista tiene que decir lo
+        que ya se sabe en vez de dejar probar a ciegas."""
+        comprobadas = respondieron = 0
+        for c in (ch, *self.alternatives_of(ch.id)):
+            h = health.get(c.id)
+            if h is not None:
+                comprobadas += 1
+                respondieron += 1 if h["ok"] else 0
+        return comprobadas, respondieron
+
     def _badges(self, ch: Channel, tracks: dict[str, Any]) -> list[str]:
         """CC / VO / AD of a channel (mpvd/iptv/tracks): its own tracks, else those of another copy of it."""
         for c in (ch, *self.alternatives_of(ch.id)):
@@ -277,6 +288,17 @@ class IptvService:
         health = health if health is not None else self.store.health()
         h = health.get(ch.id)
         d["health"] = self._merged_health(ch, health) if alternatives else (h["ok"] if h else None)
+        # H39/E2: con el resultado de la comprobación va POR QUÉ y de cuándo es, y en un canal repetido cuántas de sus
+        # copias respondieron: «+5 fuentes» sin más no dice si merece la pena probar.
+        if h is not None:
+            d["health_at"] = h.get("checked_at")
+            if not h["ok"]:
+                d["health_detail"] = labels.health_reason(h.get("detail") or "")
+        if alternatives:
+            comprobadas, respondieron = self._health_counts(ch, health)
+            if comprobadas:
+                d["health_checked"] = comprobadas
+                d["health_alive"] = respondieron
         quality = h.get("quality") if h else None
         if quality:
             d["quality_label"] = labels.quality_label(quality)
