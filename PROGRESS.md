@@ -55,8 +55,10 @@ Cada hito tiene sus pasos a mano en «Registro por iteración».
 - **Probar en hardware que no hay aquí**: Windows, macOS, Raspberry Pi 5, tele DLNA real (pasos en NEEDS_HUMAN.md).
 - **Cortafuegos**: `ufw` bloquea la entrada; mando (8790), salas (8791) y DLNA (8792) necesitan un `sudo ufw allow …` (NEEDS_HUMAN.md).
 - **Nombre de la app**: pendiente de tu decisión (centralizado en `brand.json`, que leen `mpvd/brand.py` y `mu/brand.lua`).
-- **Tests sensibles a la carga**: los de Whisper (`test_asr_engine`, `test_mu_subs`) fallan por tiempo si el portátil está
-  ocupado; aislados y con la máquina libre pasan.
+- **Tests sensibles a la carga**: los de Whisper (`test_asr_engine`, `test_mu_subs`) y, cuando la carga es alta, también
+  `test_nav` (maneja menús de uosc con pulsaciones de tecla) fallan por tiempo si el portátil está ocupado; aislados y con
+  la máquina libre pasan. Última pasada completa (2026-10-01, con tu `llama-server` en ~3,5 de 4 núcleos): **716 pasan, 3
+  fallan**, y los tres son esos; `test_nav` repetido aislado pasa sus 16.
   El 2026-10-01 tu `llama-server` ocupaba ~3,5 de los 4 núcleos (whisper medido a `rtf 2.1`, cuando libre va a ~0,3), así
   que la última pasada completa de `tools/check.sh` no es concluyente para ellos: repítela con el portátil libre.
 - ~~`test_mpris`~~: **arreglado** (era el test, no el reproductor): su ayudante tiraba a la basura justo la señal que
