@@ -370,3 +370,55 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
 ## H41 · Nombre (lo decide Ser)
 - [ ] Elegir entre Lince, Cauce, Lumbre, Mirador, Compás, Querencia (o Sintonía, que quedó descartado) y cambiarlo en
       brand.json, que es el único sitio donde vive.
+
+## H42 · Una sola puerta para abrir y descargar (análisis: docs/ANALISIS-SALA-E-INTERFAZ.md §B.2.3)
+- [ ] A1 Una entrada «Abrir o descargar» que acepte cualquier cosa: un enlace, varios enlaces pegados, una lista de
+      reproducción, un canal entero, una ruta local o lo que haya en el portapapeles, sin que el usuario tenga que
+      saber de antemano qué es.
+- [ ] A2 Después de reconocerlo, una sola pregunta: reproducir o descargar. La pantalla de descarga actual se queda
+      como está (parámetros para todos, con la posibilidad de cambiar algunos vídeos uno a uno).
+- [ ] A3 Retirar las otras cinco puertas (Abrir archivo, Abrir URL…, Pegar URL, Buscar en YouTube, Suscripciones)
+      del primer nivel; siguen existiendo como atajos de teclado y dentro de la nueva entrada.
+- [ ] A4 Botón de copiar en todo enlace que haya que llevarse a otro aparato: sala, mando desde el móvil, panel de
+      descargas. Con aviso en el OSD de que se ha copiado.
+
+## H43 · Grabar: formato, programación visible y radio (§B.2.4-6)
+- [ ] B1 Fila «Formato» en el menú de grabar, que se recuerda: igual que el original (sin recodificar) / MP4 /
+      solo audio en Opus 128. Hoy no se puede elegir: `KIND_HINT` solo informa.
+- [ ] B2 «Programar una grabación» visible en el primer nivel de TV y radio y también en Grabar, no solo con Tab
+      dentro de la lista de un canal.
+- [ ] B3 La radio se puede programar: quitar `ch.kind ~= 'radio'` de mu-iptv:449 y :1042. mpvd ya graba audio bien.
+- [ ] B4 Al volver a pulsar el botón de grabar, termina sin preguntar nada (ya hecho en H35; comprobar que sigue así
+      con la fila de formato nueva).
+
+## H44 · La sala: fichero original y el reproductor del invitado (§A)
+- [ ] C1 Handler Range que lea por trozos en vez de `path.read_bytes()`: hoy una película de 4 GB se cargaría entera
+      en RAM por petición. Prototipo medido: 2 MB de RSS sirviendo un fichero de 428 MB.
+- [ ] C2 Ruta `GET /s/<sala>/file` que sirva el fichero original. Medido como invitado: primer fotograma en 0,36 s y
+      salto al minuto 98 en 0,07 s, sin recodificar nada.
+- [ ] C3 Bloque «Abrir en mi reproductor» en la página del invitado: copiar el enlace, descargar un `.m3u` (doble clic
+      lo abre en VLC o mpv) y la línea `mpv "<enlace>"`. Con la posición del anfitrión en vivo y un botón para copiarla.
+- [ ] C4 Decidir el camino según el origen, sin preguntar: fichero local con códecs de navegador → el original;
+      con otros códecs → las dos cosas a la vez (tu reproductor, y remux `-c copy` a fMP4 o WebM para el navegador,
+      9,64 s para 115 min); TV, radio, YouTube o grabación en curso → relay.
+- [ ] C5 El relay empieza donde está el anfitrión, no en el segundo 0, y se lo dice al invitado. Es la causa de los
+      ~18 min de espera al entrar en el minuto 40.
+- [ ] C6 Unirse a la sala desde MPV-UOS (no solo desde el navegador): el mpv del invitado sigue pausa, saltos y
+      velocidad por el SSE que ya existe. Es la única forma de «ver juntos» exacto a calidad original.
+- [ ] C7 ADR: WebTorrent como no-objetivo, con los números (subida medida de 167 Mb/s = 15 a 60 invitados; no resuelve
+      los códecs del navegador, ni la sincronía, ni el directo, y añade tracker, WebRTC y a veces TURN).
+
+## H45 · El resumen en los vídeos de internet (§B.2.1-2)
+- [ ] D1 Para una URL, pedir los subtítulos automáticos antes de transcribir: medido en 5,41 s para un vídeo de 15 min
+      (23 KB, 3.678 palabras) frente a los ~8 min de whisper.
+- [ ] D2 Pedir solo los idiomas nativos del vídeo: pedir una traducción automática de YouTube devuelve HTTP 429.
+      El castellano se consigue traduciendo el SRT con OPUS-MT, que además queda mejor.
+- [ ] D3 «Resumen e índice» en la raíz del menú y como fila dentro del panel de subtítulos. Hoy «¿Qué me he perdido?»
+      está en el tercer nivel y «Índice del vídeo» no está en el menú principal.
+
+## H46 · Un solo menú (§B.1, §B.3)
+- [ ] E1 Retirar el árbol `#!` de input.conf (119 entradas, 40 en el primer nivel) y dejar `input.conf` solo para las
+      teclas. mu-menu pasa a ser el único menú.
+- [ ] E2 Quitar las cuatro duplicaciones (Biblioteca, Música, Audiolibros, Saltar intro aparecen dos veces).
+- [ ] E3 Raíz de ocho filas o menos, nombradas por lo que quieres hacer. Lo que solo sirve para el archivo que estás
+      viendo va a la pantalla o al panel de su función, no a la raíz.

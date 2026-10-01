@@ -124,7 +124,19 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
 
 ## SIGUIENTE PASO
 Iteración 6 (2026-10-01): Ser probó el reproductor de verdad y de ahí salieron **H35-H41**. Están hechos **H35, H36,
-H37, H38, H39 y H40** (cada uno con su ADR: 070-076). **Lo único que queda es H41: el nombre, que decides tú.**
+H37, H38, H39 y H40** (cada uno con su ADR: 070-076). De H41 (el nombre) decides tú.
+
+Después Ser volvió a probar y pidió dos análisis, que están escritos en **docs/ANALISIS-SALA-E-INTERFAZ.md** con todo
+medido en este equipo: la sala para ver juntos (seis opciones comparadas, WebTorrent incluido) y la interfaz entera.
+De ahí salen **H42-H46**, ya en BACKLOG.md y sin empezar. El orden recomendado es ese: H42 (una sola puerta para abrir
+y descargar, y botones de copiar) es el que más se nota al usar el programa; H44 (la sala) arregla además un fallo real
+de memoria en `mpvd/share/service.py::_file()`, que carga el fichero entero en RAM; H45 son cinco segundos de trabajo
+para que el resumen funcione en los vídeos de internet, que es lo que Ser esperaba encontrar y no estaba.
+
+Lo más importante que salió de medir, para no repetirlo: **la subida de esta casa es de ~167 Mb/s**, así que el
+problema de la sala no es la red sino que el relay empieza en el segundo 0 y recodifica a 2,2× tiempo real. Servir el
+fichero original y dejar que el invitado lo abra en su propio mpv o VLC arranca en 0,36 s y salta en 0,07 s, sin gastar
+CPU ni perder calidad.
 
 Para elegirlo: la lista está en BACKLOG.md (Lince, Cauce, Lumbre, Mirador, Compás, Querencia) y el nombre vive en un
 solo sitio, `brand.json`. Cambiarlo ahí lo cambia en todas partes (menús, carpeta de usuario, icono, PWA, instalador).
