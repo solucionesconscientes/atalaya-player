@@ -138,7 +138,8 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 ## Compartir: ver juntos (mu-share)
 | Tecla | Acción |
 |---|---|
-| `alt+W` | Menú **Compartir**: crear una sala con enlace y QR (solo en tu red), invitados (dar o quitar el control, sacar), enlace nuevo, cerrar la sala. Si un invitado pide el control, aparece un sí/no en pantalla |
+| `alt+W` | Menú **Compartir**: crear una sala con enlace y QR (en tu red, o desde internet si enciendes el túnel), invitados (dar o quitar el control, sacar), enlace nuevo, cerrar la sala. Si un invitado pide el control, aparece un sí/no en pantalla |
+| `alt+Q` | Muestra u **oculta el código QR** de la sala sobre el vídeo (también desde el menú Compartir) |
 
 ## Enviar a la tele (mu-cast)
 | Tecla | Acción |

@@ -57,8 +57,20 @@ step "medios de prueba"
 step "lint Lua"
 if command -v luacheck >/dev/null; then
   luacheck . || fail=1
+fi
+# SIEMPRE con luajit además de luacheck: mpv lleva LuaJIT (5.1) y luacheck valida un Lua más moderno, así que da por
+# bueno lo que mpv rechaza. Un `//` (división entera, de Lua 5.3) pasa luacheck y rompe el script al cargarlo.
+if command -v luajit >/dev/null; then
+  lua_err=0
+  while IFS= read -r f; do
+    luajit -bl "$f" >/dev/null 2>&1 || { echo "ERROR de sintaxis para LuaJIT: $f" >&2; luajit -bl "$f" >/dev/null; lua_err=1; }
+  done < <(find mpv-config/scripts mpv-config/script-modules tests/fixtures/lua -name '*.lua' -not -path '*/uosc/*' 2>/dev/null)
+  [ "$lua_err" = 0 ] && echo "LuaJIT 5.1: sintaxis OK en todos los scripts propios" || fail=1
 else
-  for f in mpv-config/scripts/mu-*.lua; do luajit -bl "$f" >/dev/null && echo "sintaxis OK $f" || fail=1; done
+  echo "AVISO: sin luajit no se comprueba la compatibilidad con el Lua de mpv" >&2
+fi
+if ! command -v luacheck >/dev/null && ! command -v luajit >/dev/null; then
+  echo "ERROR: ni luacheck ni luajit: no se puede comprobar el Lua" >&2; fail=1
 fi
 
 step "lint shell"

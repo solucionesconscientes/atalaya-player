@@ -1445,6 +1445,12 @@ end)
 -- ---------------------------------------------------------------------------------------------
 -- bindings and controls button
 
+-- ¿Está sonando solo el audio? En internet lo dice el formato recargado; en un archivo local, que el vídeo esté apagado.
+local function audio_only()
+  if state.active then return state.mode == 'audio' end
+  return mp.get_property('vid') == 'no'
+end
+
 set_button_state = function()
   if not uosc.available() then return end
   local n = count_active()
@@ -1452,6 +1458,13 @@ set_button_state = function()
     icon = 'download', tooltip = 'yt-dlp: calidad y descargas (alt+y)', active = n > 0,
     badge = n > 0 and tostring(n) or nil,
     command = { 'script-binding', SCRIPT .. '/ytdl-menu' },
+  })
+  -- B1: quitar el vídeo y dejar solo el audio, a un clic (la función ya estaba, pero solo en alt+a)
+  local solo = audio_only()
+  uosc.set_button('mu-audio', {
+    icon = solo and 'music_note' or 'videocam_off', active = solo,
+    tooltip = solo and 'Volver al vídeo (alt+a)' or 'Solo audio: no decodificar el vídeo (alt+a)',
+    command = { 'script-binding', SCRIPT .. '/ytdl-toggle-audio' },
   })
 end
 
@@ -1485,6 +1498,9 @@ mp.register_script_message('mu-ytdl-open-url', function(text) open_palette('open
 mp.register_script_message('mu-ytdl-search', function(query) open_palette('yt_search', query) end)
 
 mp.register_script_message('uosc-version', set_button_state)
+-- el botón de «solo audio» tiene que reflejar el estado real, también cuando se cambia por tecla o por otro script
+mp.observe_property('vid', 'string', function() set_button_state() end)
+
 mp.observe_property('user-data/mu/core', 'native', function(_, core)
   if core and core.uosc then set_button_state() end
   if core and core.mpvd == 'connected' then sync_hook_with_mpvd() end

@@ -19,6 +19,8 @@ if [ $# -gt 0 ]; then models=("$@"); else
 fi
 vad="$MODELS_DIR/ggml-silero-v5.1.2.bin"
 TMP="$ROOT/tmp/bench"; mkdir -p "$TMP"
+# Todo lo que haya en docs/BENCHMARKS.md a partir de esta línea se conserva al regenerar el fichero.
+KEEP_MARK="<!-- escrito a mano: se conserva al regenerar -->"
 # 12 s sample (one chunk) and a ~34 s sample (es+en+es, longer than whisper's 30 s window)
 ffmpeg -v error -y -i tests/fixtures/media/voz_es.flac -ac 1 -ar 16000 -c:a pcm_s16le "$TMP/es12.wav"
 ffmpeg -v error -y -i tests/fixtures/media/voz_es.flac -i tests/fixtures/media/voz_en.flac -i tests/fixtures/media/voz_es.flac \
@@ -82,8 +84,19 @@ done
   echo "  palabras clave; small es claramente mejor pero solo cabe en vivo con más núcleos o GPU."
   echo "- El FLAC leído directamente por whisper-cli (miniaudio) devolvió vacío en esta versión: mpvd siempre pasa WAV 16 kHz mono extraído con ffmpeg."
   echo "- Los cuantizados q5_1 son MÁS lentos que q8_0 y que el modelo completo en esta CPU (sin AVX-512); solo ahorran disco."
-  echo "- Tabla de elección por tier (mpvd/asr/models.py): small (≤4 núcleos) → en vivo base, pre-cálculo base · medium → base / small-q8_0 ·"
-  echo "  large → small-q8_0 / small. El usuario puede forzar otro modelo desde el menú Subtítulos IA → Modelo."
+  # Generada desde el código, no escrita a mano: así no puede volver a desviarse de mpvd/asr/models.py.
+  tiers="$(.venv/bin/python -c "
+from mpvd.asr.models import TIER_LIVE, TIER_PRECOMPUTE
+etiq = {'small': 'small (≤4 núcleos)', 'medium': 'medium', 'large': 'large'}
+print(' · '.join(f\"{etiq[t]} → en vivo {TIER_LIVE[t]}, pre-cálculo {TIER_PRECOMPUTE[t]}\" for t in ('small', 'medium', 'large')))
+" 2>/dev/null)"
+  echo "- Tabla de elección por tier (mpvd/asr/models.py): ${tiers:-no se pudo leer de mpvd/asr/models.py}."
+  echo "  El usuario puede forzar otro modelo desde el menú Subtítulos IA → Modelo."
+  # Lo escrito a mano debajo del marcador se conserva entre regeneraciones (antes se perdía al sobrescribir).
+  if [ -f "$OUT" ] && grep -q "^$KEEP_MARK" "$OUT"; then
+    echo
+    sed -n "/^$KEEP_MARK/,\$p" "$OUT"
+  fi
 } >> "$OUT.tmp"
 mv "$OUT.tmp" "$OUT"
 echo "→ $OUT"

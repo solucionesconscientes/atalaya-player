@@ -309,7 +309,7 @@ local function root_items()
     items[#items].separator = true
     table.insert(items, cmd('Menú completo', 'quita el modo sencillo', 'unfold_more',
                             { 'script-message-to', 'mu_modes', 'mu-modes-set', 'simple', 'no' }))
-    table.insert(items, cmd('Salir', 'q', 'logout', { 'quit' }))
+    table.insert(items, bind('Salir', 'q', 'logout', 'mu_core/quit-ask'))
     return items
   end
   for _, c in ipairs(CATEGORIES) do
@@ -320,7 +320,7 @@ local function root_items()
   table.insert(items, { title = 'Buscar comandos, canales y recientes…', hint = 'alt+p', icon = 'search',
                         value = { view = 'palette' } })
   table.insert(items, bind('Ayuda: teclas principales', '?', 'help_outline', SCRIPT .. '/help'))
-  table.insert(items, cmd('Salir', 'q', 'logout', { 'quit' }))
+  table.insert(items, bind('Salir', 'q', 'logout', 'mu_core/quit-ask'))
   return items
 end
 
@@ -1002,7 +1002,9 @@ local function confirm_answer(token, answer)
   if uosc.open_type() == CONFIRM_MENU then uosc.close(CONFIRM_MENU) end
 end
 
-mp.register_script_message('mu-confirm', function(token, text, seconds)
+-- ``si``/``no``: etiquetas propias (opcionales). Una pregunta como «¿sigo con los subtítulos o lo dejo?» no se contesta
+-- con «Sí, adelante»; que cada quien ponga las palabras de su decisión.
+mp.register_script_message('mu-confirm', function(token, text, seconds, si, no)
   token = token or ''
   confirm_state.token = token
   mp.set_property_native('user-data/mu/confirm_request', { token = token, text = text or '', at = mp.get_time() })
@@ -1014,8 +1016,9 @@ mp.register_script_message('mu-confirm', function(token, text, seconds)
   uosc.open({
     type = CONFIRM_MENU, title = text or '¿Confirmar?', callback = { SCRIPT, 'mu-menu-confirm-event' }, on_close = 'callback',
     items = {
-      { title = 'Sí, adelante', icon = 'check', value = { token = token, answer = 'yes' } },
-      { title = 'No', icon = 'close', value = { token = token, answer = 'no' } },
+      { title = (si and si ~= '') and si or 'Sí, adelante', icon = 'check',
+        value = { token = token, answer = 'yes' } },
+      { title = (no and no ~= '') and no or 'No', icon = 'close', value = { token = token, answer = 'no' } },
     },
   })
   local wait = tonumber(seconds) or 15

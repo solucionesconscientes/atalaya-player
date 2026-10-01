@@ -312,7 +312,11 @@ mp.observe_property('sid', 'native', function(_, sid)
 end)
 
 -- ---------------------------------------------------------------------------------------------
--- look-ahead cursor
+-- Cursor de look-ahead: EN DESUSO desde H36. Mientras se transcribía «en vivo» persiguiendo la reproducción, tenía
+-- sentido mover el cursor a donde estabas; ahora el archivo se prepara entero y en orden desde el principio, así que
+-- perseguir la posición solo rompería ese orden (y dejaría huecos detrás). Se conserva `asr.seek` en mpvd por si algún
+-- día se ofrece «transcribe desde aquí» a mano.
+local SEGUIR_POSICION = false
 
 local function send_seek()
   if not state.task or not task_running() then return end
@@ -329,7 +333,7 @@ end)
 seek_timer:kill()
 
 local function update_timers()
-  if task_running() then seek_timer:resume() else seek_timer:kill() end
+  if SEGUIR_POSICION and task_running() then seek_timer:resume() else seek_timer:kill() end
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -365,9 +369,12 @@ local function start(quiet)
   state.path = path
   state.notified = {}
   publish()
+  -- H36: ya no se transcribe «en vivo» persiguiendo la reproducción con un modelo flojo. Se prepara el archivo entero
+  -- con el modelo bueno desde el principio (`prepare`), que es más rápido que el vídeo, así que basta esperar unos
+  -- minutos y luego ya no te alcanza. time_pos = 0 para que vaya en orden desde el inicio.
   local params = {
     path = path, language = state.language, model = state.model ~= 'auto' and state.model or nil,
-    time_pos = mp.get_property_number('time-pos') or 0, audio_track = current_audio_index(), notify = SCRIPT,
+    purpose = 'prepare', time_pos = 0, audio_track = current_audio_index(), notify = SCRIPT,
   }
   if opts.chunk_seconds > 0 then params.chunk_seconds = opts.chunk_seconds end
   rpc.call('asr.start', params, function(err, t)

@@ -175,11 +175,14 @@ set_button = function()
   if not uosc.available() then return end
   local rec = state.rec
   local live_other = not rec and (mp.get_property('stream-record') or '') ~= ''  -- alt+r of mu-iptv
+  -- Grabando, el clic PARA; parado, abre el menú (que es donde se elige vídeo o solo audio). Antes abría el menú en
+  -- los dos casos, así que para detener había que contestar otra pregunta con la grabación en marcha.
+  local stopping = rec ~= nil or live_other
   uosc.set_button('mu-record', {
-    icon = (rec or live_other) and 'stop_circle' or 'fiber_manual_record',
-    active = rec ~= nil or live_other, badge = rec and hms(elapsed()) or (live_other and 'REC' or nil),
-    tooltip = rec and 'Grabando: clic para el menú (detener)' or 'Grabar',
-    command = { 'script-binding', SCRIPT .. '/record-menu' },
+    icon = stopping and 'stop_circle' or 'fiber_manual_record',
+    active = stopping, badge = rec and hms(elapsed()) or (live_other and 'REC' or nil),
+    tooltip = stopping and 'Detener la grabación' or 'Grabar',
+    command = { 'script-binding', SCRIPT .. (stopping and '/record-toggle' or '/record-menu') },
   })
 end
 
@@ -567,7 +570,13 @@ end
 
 N:binding('record-menu', open_root)
 mp.add_key_binding(nil, 'record-toggle', function()
-  if state.rec then stop_recording('user') else start_recording(false) end
+  if state.rec then
+    stop_recording('user')
+  elseif (mp.get_property('stream-record') or '') ~= '' then
+    mp.set_property('stream-record', '')   -- la empezó otro sitio: parar es cerrar el fichero, no abrir otra
+  else
+    start_recording(false)
+  end
 end)
 mp.add_key_binding(nil, 'record-audio-toggle', function()
   if state.rec then stop_recording('user') else start_recording(true) end

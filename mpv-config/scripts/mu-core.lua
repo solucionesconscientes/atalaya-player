@@ -12,6 +12,8 @@ local mp = require('mp')
 local msg = require('mp.msg')
 local utils = require('mp.utils')
 local options = require('mp.options')
+package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
+local prefs = require('mu.prefs')   -- lee el fichero por su cuenta: se puede usar desde aquí sin esperar a mu-prefs
 
 local VERSION = '0.3.0'
 
@@ -371,6 +373,104 @@ if opts.load_errors then
     end)
   end)
 end
+
+-- ---------------------------------------------------------------------------------------------
+-- Al salir: decidir qué pasa con lo que quede trabajando (H36/C8)
+--
+-- mpvd sigue vivo cuando se cierra mpv, lo cual es bueno (una transcripción a medias se termina), pero hasta ahora no
+-- se avisaba ni se podía decidir: Ser cerraba el reproductor y su portátil seguía una hora transcribiendo sin saberlo.
+-- Reglas: los subtítulos de ESTE archivo se preguntan siempre; las descargas y conversiones se preguntan pero admiten
+-- «no volver a preguntar»; las grabaciones programadas no se preguntan ni se paran nunca (son una cita con una hora).
+-- Parar no pierde nada: la transcripción va por trozos y continúa donde iba la próxima vez que se abra el archivo.
+
+local PQ = prefs.ns('mu-core', { ask_jobs = true })
+local confirm_seq = 0
+
+local function ask(text, si, no, cb)
+  confirm_seq = confirm_seq + 1
+  local token = 'core-' .. confirm_seq
+  local obs
+  obs = function(_, v)
+    if type(v) ~= 'table' or v.token ~= token then return end
+    mp.unobserve_property(obs)
+    cb(v.answer)
+  end
+  mp.observe_property('user-data/mu/confirm', 'native', obs)
+  mp.commandv('script-message-to', 'mu_menu', 'mu-confirm', token, text, '30', si, no)
+end
+
+local function mmss(seconds)
+  local n = math.max(0, math.floor(tonumber(seconds) or 0))
+  -- LuaJIT (5.1) no tiene división entera `//`: math.floor
+  if n >= 3600 then return string.format('%d h %d min', math.floor(n / 3600), math.floor(n % 3600 / 60)) end
+  if n >= 60 then return string.format('%d min', math.max(1, math.floor(n / 60))) end
+  return string.format('%d s', n)
+end
+
+-- Lo que queda por hacer DE ESTE ARCHIVO (los subtítulos IA) y lo que queda en general (descargas y conversiones).
+local function pending_work(cb)
+  local path = mp.get_property('path') or ''
+  rpc('asr.status', nil, function(err, st)
+    local subs
+    if not err and type(st) == 'table' and type(st.tasks) == 'table' then
+      for _, t in ipairs(st.tasks) do
+        if t.path == path and t.complete ~= true and (t.status == 'running' or t.status == 'queued') then subs = t end
+      end
+    end
+    rpc('ytdl.downloads.list', { include_finished = false }, function(_, rows)
+      local jobs = 0
+      if type(rows) == 'table' then jobs = #rows end
+      rpc('convert.list', nil, function(_, crows)
+        if type(crows) == 'table' then
+          for _, r in ipairs(crows) do
+            if r.status == 'running' or r.status == 'queued' then jobs = jobs + 1 end
+          end
+        end
+        cb(subs, jobs)
+      end, 4)
+    end, 4)
+  end, 4)
+end
+
+local quitting = false
+
+local function quit_asking()
+  if quitting then return end
+  quitting = true
+  local function salir() mp.command('quit') end
+  pending_work(function(subs, jobs)
+    if subs then
+      local pct = math.floor((subs.progress or 0) * 100 + 0.5)
+      local falta = ''
+      if subs.rtf and subs.duration and subs.progress then
+        falta = ', unos ' .. mmss((1 - subs.progress) * subs.duration * subs.rtf)
+      end
+      ask(string.format('Quedan subtítulos por hacer de esto (%d %%%s).\nLo hecho se guarda y seguirá cuando lo abras.',
+                        pct, falta),
+          'Seguir en segundo plano', 'Dejarlo', function(answer)
+        if answer == 'no' then
+          rpc('asr.stop', { id = subs.id }, function() salir() end, 4)
+          mp.add_timeout(2, salir)
+        else
+          salir()
+        end
+      end)
+    elseif jobs > 0 and PQ:get('ask_jobs') ~= false then
+      ask(string.format('Siguen %d descarga(s) o conversión(es) en marcha.\nmpvd las termina aunque cierres.', jobs),
+          'Vale, seguir', 'No volver a preguntar', function(answer)
+        if answer == 'no' then PQ:set('ask_jobs', false) end
+        salir()
+      end)
+    else
+      salir()
+    end
+  end)
+  -- si mpvd no contesta (o no está), no secuestrar la salida
+  mp.add_timeout(6, function() if quitting then mp.command('quit') end end)
+end
+
+mp.add_key_binding(nil, 'quit-ask', quit_asking)
+mp.register_script_message('mu-quit-ask', quit_asking)
 
 -- ---------------------------------------------------------------------------------------------
 

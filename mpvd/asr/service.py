@@ -83,7 +83,7 @@ class AsrTask:
     duration: float
     model: str
     language: str                       # requested: "auto" or ISO code
-    purpose: str = "live"               # live | precompute
+    purpose: str = "live"               # prepare (lo pide el usuario) | precompute (fondo) | live (en desuso, H36)
     audio_track: int | None = None
     translate: bool = False
     chunk_seconds: float = DEFAULT_CHUNK
@@ -311,7 +311,7 @@ class AsrService:
         language = (language or "auto").lower()
         if language != "auto" and not LANG_RE.match(language):
             raise RpcError(INVALID_PARAMS, f"bad language {language!r}")
-        purpose = purpose if purpose in ("live", "precompute") else "live"
+        purpose = purpose if purpose in ("live", "prepare", "precompute") else "prepare"
         auto = not model or model == "auto"
         if auto:
             model = self.recommended(purpose)
@@ -330,12 +330,12 @@ class AsrService:
             if session_id:
                 task.sessions.add(session_id)
             task.pos = max(0.0, float(time_pos))
-            if purpose == "live" and task.purpose == "precompute" and not task.complete:
+            if purpose in ("live", "prepare") and task.purpose == "precompute" and not task.complete:
                 # the viewer now needs it: restart as an interactive job
                 self._cancel_job(task)
-                task.purpose = "live"
+                task.purpose = purpose
                 task.notify = notify
-                self._submit(task, session_id)
+                self._submit(task, session_id if purpose == "live" else None)
             elif task.status in ("failed", "cancelled") and not task.complete:
                 task.failed.clear()
                 task.purpose = purpose
@@ -400,7 +400,9 @@ class AsrService:
         task.srt_path.write_text(render_srt(task.segments), encoding="utf-8")
 
     def _submit(self, task: AsrTask, session_id: str | None) -> None:
-        priority = Priority.INTERACTIVE if task.purpose == "live" else Priority.PRECOMPUTE
+        # «prepare» es lo que pide el usuario y espera mirando: modelo bueno (como precompute) pero prioridad de usuario.
+        # «precompute» es el trabajo de fondo (el episodio siguiente) y cede el paso a todo lo demás.
+        priority = Priority.PRECOMPUTE if task.purpose == "precompute" else Priority.INTERACTIVE
         task.status = "queued"
         task.error = None
         task.job = self.server.jobs.submit(f"asr.{task.purpose}", lambda job: self._run(task, job), priority=priority,

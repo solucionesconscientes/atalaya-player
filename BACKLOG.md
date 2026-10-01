@@ -282,3 +282,85 @@ un vigilante relanzará el runner en xhigh. En xhigh, borra esa línea de PROGRE
       (la máquina de Ser no estaba libre: su llama-server ocupaba ~2,5 de los 4 núcleos).
 - [x] Documentación final al día (README, USO, ATAJOS, PLATAFORMAS) y resumen para Ser en PROGRESS.md: qué probar a mano y cómo.
 Solo cuando H34 esté hecho: `ESTADO_GLOBAL: COMPLETADO`.
+
+## Ampliación aprobada por Ser el 2026-10-01 (H35–H40), a partir de su uso real
+Decisiones de Ser que mandan sobre lo escrito antes: **fuera los subtítulos IA en vivo** (solo los del canal en TV y radio);
+**resúmenes solo donde la transcripción es gratis** (YouTube y webs, o un archivo local ya transcrito); **por defecto el mejor
+modelo que vaya más rápido que el vídeo**, y los más lentos como «máxima calidad» con el tiempo calculado delante; **al cerrar
+un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabaciones programadas. Cada hito cierra con
+`tools/check.sh` en verde y su ADR cuando cambia una decisión anterior.
+
+## H35 · Arreglos de uso y la barra como mando
+- [x] A1 El botón ● de grabar para la grabación en el segundo clic, sin abrir el menú (hoy abre el menú siempre, mu-record:178).
+- [x] A2 El QR de la sala se puede quitar: no rearmar el temporizador de 120 s en cada refresco, fila del menú que alterna de
+      verdad y tecla asignada (mu-share:759 y :749, input.conf:103).
+- [x] A3 Recuperar en docs/BENCHMARKS.md la sección de los trozos de 28,5 s que se perdió al regenerar el fichero.
+- [x] A4 Cuadrar la recomendación por tier que imprime tools/bench_asr.sh con la de mpvd/asr/models.py (hoy discrepan).
+- [x] B1 Botón «solo audio» en la barra de uosc (la función ya existe en alt+a y cubre internet y archivos locales).
+- [x] B2 El icono de subtítulos de la barra abre el panel de mu-subs, no la lista de pistas de uosc.
+- [x] H1 La página del invitado dice «Preparando la retransmisión… N s listos» y el anfitrión ve ese mismo progreso.
+
+## H36 · Subtítulos: sencillos, buenos y sin esperas en vivo
+- [ ] C1 Quitar los subtítulos IA en vivo: pasada por lotes con ventaja (ADR nuevo que sustituye a los de ASR en vivo). En TV
+      y radio, solo los del canal. Desaparecen el look-ahead y el troceado según la posición.
+- [ ] C2 Por defecto small-q8_0 (medido: ritmo 0,45; único bueno más rápido que el vídeo). medium-q5_0 (4,03) y
+      large-v3-turbo-q5_0 (5,22) como «máxima calidad» explícita. Elección por tier: en equipos con más núcleos, los buenos.
+- [ ] C3 El aviso de tiempo se calcula con el ritmo medido (AsrTask.rtf, que ya existe) y sobre lo que queda: «listos en 4 min
+      y no te alcanzará» si el ritmo < 1, o el total más la alternativa con su número si el ritmo ≥ 1. Se recalcula si la
+      máquina se carga.
+- [ ] C4 Alta guiada de OpenSubtitles en dos pasos (abrir la página de la clave · pegarla del portapapeles) cuando un archivo
+      no trae subtítulos, y mostrar la cuota que queda.
+- [ ] C5 Cascada de proveedores: incrustados → canal/web → OpenSubtitles → Subdl → Podnapisi, mezclados y ordenados por
+      fiabilidad (hash antes que título). Verificar las dos APIs nuevas contra el servicio real antes de ofrecerlas.
+- [ ] C6 Traducir cualquier pista (incrustada, descargada, de la web) a español, inglés y francés, con OPUS-MT por defecto.
+- [ ] C7 Revisar lo que dependía de los subtítulos en vivo (modo estudio).
+- [ ] C8 Al cerrar un vídeo, preguntar qué hacer con lo que quede trabajando **de ese archivo** (subtítulos, intro, índice,
+      traducción), diciendo que lo hecho se guarda y continuará. Nunca se pregunta ni se para una grabación programada. Los
+      subtítulos preguntan siempre; descargas y conversiones admiten «no volver a preguntar». Sin ventana, aviso de escritorio
+      con «Parar» y recordatorio al abrir. Y una línea en el menú que diga siempre qué se está haciendo por detrás.
+- [ ] B3 Panel de subtítulos en tres bloques: lo que ya hay · buscar en internet · crear con IA (al final), con tamaño y
+      retraso siempre a mano.
+
+## H37 · Descargar: una sola puerta
+- [ ] D1 Un único «Descargar…»: una caja donde pegar un enlace o veinte, un canal o una lista de reproducción.
+- [ ] D2 Lista con casillas; la primera fila fija el formato común («Para todos: Audio · Opus 128») y cada fila puede
+      sobrescribirlo con Tab.
+- [ ] D3 Casilla SRT global y por fila.
+- [ ] D4 Guardados de Instagram y TikTok (perfil/colección) con la opción de cookies del navegador, que ya existe desactivada.
+      Verificar antes contra yt-dlp que el extractor lo soporta; si no, decirlo en el menú en vez de fallar.
+
+## H38 · Resumen con enlaces al minuto
+- [ ] G1 Solo donde la transcripción es gratis: YouTube y webs con subtítulos, o un archivo local que ya esté transcrito.
+      Nunca se lanza una transcripción para resumir.
+- [ ] G2 Nivel 1 sin IA generativa: secciones por significado y frases clave con su minuto exacto, instantáneo (amplía recap).
+- [ ] G3 Nivel 2 con modelo local: prosa corta o larga en español, inglés o francés, escrita a partir del nivel 1.
+- [ ] G4 Cada marca [mm:ss] se valida contra el SRT; si no existe se ajusta a la frase más parecida y, si nada encaja, se
+      quita antes que mentir.
+- [ ] G5 El resumen es un menú: cada viñeta salta a su minuto.
+- [ ] G6 Modelo descargado al pedirlo (fijado por SHA-256) y binario de llama.cpp vendorizado como whisper.cpp, con casilla
+      opcional en el instalador. Modelo concreto: el que gane el banco de pruebas del 2026-10-01.
+- [ ] ADR nuevo que sustituye al ADR-062 (que dejaba fuera el LLM a propósito): Ser acepta el coste y el nivel 1 se queda
+      como respuesta instantánea.
+
+## H39 · TV, radio e intro
+- [ ] E1 Radio: salto automático al siguiente espejo que suene (la lista trae «Cadena SER ×6» y los primeros suelen estar
+      caídos); el mecanismo ya existe para TV.
+- [ ] E2 La lista muestra lo que dijo la comprobación de canales, en vez de dejar probar a ciegas.
+- [ ] E3 SponsorBlock al reproducir (hoy solo al descargar), con la API que no envía el id del vídeo sino un prefijo de su
+      hash, y con interruptor.
+- [ ] E4 Intro: calcular las huellas de los siguientes episodios en el momento correcto, parar en cuanto haya coincidencia
+      clara y tres estados visibles en el icono (buscando / saltar / no hay). La ventana de 10 min ya está bien.
+
+## H40 · Despertar para grabar y apagar al terminar
+- [ ] F1 Al programar una grabación: «despertar 5 min antes» y «al terminar: nada / suspender / apagar». Solo desde
+      suspensión, no desde apagado.
+- [ ] F2 Inhibir el sueño mientras graba (systemd-inhibit / caffeinate / SetThreadExecutionState).
+- [ ] F3 Tres seguros antes de suspender o apagar: nadie usando el equipo, ninguna grabación cerca, nada descargando o
+      convirtiendo; y aviso de 60 s cancelable.
+- [ ] F4 Linux y macOS: una instalación con sudo, una sola vez, limitada a rtcwake / pmset schedule → NEEDS_HUMAN.
+- [ ] F5 Windows: tarea programada con WakeToRun sin administrador, comprobando que el plan de energía permite los
+      temporizadores de activación y avisando si no. Sin Windows aquí: queda sin probar en real.
+
+## H41 · Nombre (lo decide Ser)
+- [ ] Elegir entre Lince, Cauce, Lumbre, Mirador, Compás, Querencia (o Sintonía, que quedó descartado) y cambiarlo en
+      brand.json, que es el único sitio donde vive.

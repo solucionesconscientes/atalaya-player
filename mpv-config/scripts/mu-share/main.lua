@@ -167,6 +167,14 @@ local function draw_qr()
   overlay:update()
 end
 
+-- segundos → «12:34» o «1:02:03», para los avisos de progreso
+local function reloj(seconds)
+  local n = math.max(0, math.floor(tonumber(seconds) or 0))
+  -- LuaJIT (5.1) no tiene división entera `//`: math.floor
+  if n >= 3600 then return string.format('%d:%02d:%02d', math.floor(n / 3600), math.floor(n % 3600 / 60), n % 60) end
+  return string.format('%d:%02d', math.floor(n / 60), n % 60)
+end
+
 local function hide_qr()
   if hide_timer then hide_timer:kill(); hide_timer = nil end
   if overlay then overlay:remove(); overlay = nil end
@@ -174,15 +182,19 @@ local function hide_qr()
   publish()
 end
 
-local function show_qr(result)
+-- ``refresco``: el estado de la sala cambia a menudo (entra un invitado, llega un chat) y el QR se redibuja con los datos
+-- nuevos. En ese caso NO se rearma el temporizador de ocultado: si se rearmaba, con una sala viva el QR no se iba nunca.
+local function show_qr(result, refresco)
   state.url = result.url or ''
   state.qr = result.qr
   if type(result.status) == 'table' then state.status = result.status end
   state.qr_visible = true
   if not overlay then overlay = mp.create_osd_overlay('ass-events') end
   draw_qr()
-  if hide_timer then hide_timer:kill() end
-  if opts.qr_seconds > 0 then hide_timer = mp.add_timeout(opts.qr_seconds, hide_qr) end
+  if not refresco then
+    if hide_timer then hide_timer:kill() end
+    if opts.qr_seconds > 0 then hide_timer = mp.add_timeout(opts.qr_seconds, hide_qr) end
+  end
   publish()
 end
 
@@ -367,7 +379,9 @@ views.root = function()
     end
   else
     local public = st.mode == 'public'
-    items[#items + 1] = { title = 'Mostrar el enlace y el código QR', icon = 'qr_code_2', value = { action = 'qr' } }
+    items[#items + 1] = { title = state.qr_visible and 'Ocultar el código QR' or 'Mostrar el enlace y el código QR',
+                          icon = state.qr_visible and 'qr_code_scanner' or 'qr_code_2', active = state.qr_visible,
+                          hint = state.qr_visible and 'también con alt+Q' or nil, value = { action = 'qr' } }
     items[#items + 1] = { title = 'Copiar el enlace', icon = 'content_copy', value = { action = 'copy' } }
     if public then
       items[#items + 1] = { title = 'Sala pública (solo ver)', icon = 'public', muted = true, selectable = false,
@@ -390,7 +404,26 @@ views.root = function()
     local mt = MEDIA_TEXT[media.kind or 'none'] or ''
     if media.kind == 'hls' and media.mode == 'vaapi' then mt = mt .. ' (tarjeta gráfica)'
     elseif media.kind == 'hls' and media.mode == 'cpu' then mt = mt .. ' (convirtiendo)' end
+    -- H1: un archivo tuyo hay que empaquetarlo para el navegador del invitado, y eso tarda. Decirlo aquí, porque si no
+    -- el invitado ve «preparando» y tú no tienes forma de saber si va, cuánto le queda o si se ha roto.
+    local prep = nil
+    for _, pre in ipairs({ '', 'relay_' }) do
+      local estado, listos = media[pre .. 'status'], media[pre .. 'ready']
+      if estado == 'failed' then
+        prep = { 'La retransmisión ha fallado', media[pre .. 'error'] or '', 'error' }
+      elseif estado and estado ~= 'done' and not media[pre .. 'complete'] then
+        local total = mp.get_property_number('duration')
+        prep = { 'Preparando la retransmisión…',
+                 (listos and listos > 0)
+                   and (reloj(listos) .. ' listos' .. (total and (' de ' .. reloj(total)) or ''))
+                   or 'empezando',
+                 'hourglass_top' }
+      end
+    end
     items[#items + 1] = { title = 'Ven: ' .. mt, icon = 'live_tv', muted = true, selectable = false }
+    if prep then
+      items[#items + 1] = { title = prep[1], hint = prep[2], icon = prep[3], muted = true, selectable = false }
+    end
     if type(st.firewall) == 'table' and st.firewall.command then
       items[#items + 1] = { title = 'El cortafuegos (' .. st.firewall.tool .. ') puede bloquear a los invitados',
                             hint = 'copiar la orden', icon = 'shield', value = { action = 'copy-fw' } }
@@ -746,7 +779,7 @@ local function menu_action(v)
     reopen_current()
   elseif v.action == 'qr' then
     uosc.close(MENU)
-    if not state.qr_visible then toggle_qr() end
+    toggle_qr()        -- alterna: si está puesto, lo quita (antes solo lo mostraba y no había forma de sacarlo)
   elseif v.action == 'copy' then
     copy_text(state.status and state.status.url or '')
   elseif v.action == 'copy-fw' then
@@ -756,7 +789,7 @@ local function menu_action(v)
     rpc.call('share.rotate', nil, function(err, res)
       if err then fail(err, 'enlace nuevo'); return end
       state.status = res.status
-      if state.qr_visible then show_qr(res) end
+      if state.qr_visible then show_qr(res, true) end
       osd('Enlace nuevo creado: el anterior ya no vale')
       publish()
       reopen_current()

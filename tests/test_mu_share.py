@@ -64,7 +64,14 @@ def test_menu_create_guests_permissions_close(mu_share):
 
     h.command("script-binding", "mu_share/share-menu")
     v = share(h, lambda v: "Cerrar la sala" in titles(v) and "Copiar el enlace" in titles(v))
-    assert "Mostrar el enlace y el código QR" in titles(v) and "Invitados" in titles(v)
+    # H35 · la fila del QR es un interruptor de verdad: con el QR puesto ofrece quitarlo (antes solo ofrecía mostrarlo,
+    # y no había ninguna forma de sacarlo de la pantalla)
+    assert "Ocultar el código QR" in titles(v) and "Invitados" in titles(v)
+    fila = next(i for i, t in enumerate(titles(v), start=1) if t == "Ocultar el código QR")
+    ev(h, {"type": "activate", "index": fila, "value": {"action": "qr"}})
+    share(h, lambda v: v["qr_visible"] is False)
+    h.command("script-binding", "mu_share/share-menu")
+    v = share(h, lambda v: "Mostrar el enlace y el código QR" in titles(v))
 
     # a guest joins from «the browser»: notice on the OSD, the guests list
     base, rest = url.split("/s/", 1)

@@ -320,7 +320,10 @@
     var url = '';
     if (m.kind === 'hls') url = m.url;
     else if (m.kind === 'direct') url = useRelay ? (m.relay_url || '') : m.url;
-    else if (m.kind === 'preparing') overlay('Preparando…');
+    // Un archivo del anfitrión hay que empaquetarlo para este navegador, y en un equipo modesto eso tarda: decir qué
+    // está pasando, porque un «Preparando…» mudo no distingue «va» de «se ha roto».
+    else if (m.kind === 'preparing') overlay('Preparando la retransmisión de «' + (m.title || 'lo que está viendo') +
+                                             '»… puede tardar un minuto');
     else if (m.kind === 'none') overlay(m.reason ? 'No se puede compartir esto: ' + m.reason : 'Nada en reproducción');
     if (m.kind === 'hls' && m.status === 'failed') overlay('La retransmisión ha fallado: ' + (m.error || ''));
     if (url && url !== source) attach(url);
