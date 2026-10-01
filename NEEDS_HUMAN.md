@@ -84,12 +84,9 @@ igual (si el equipo está encendido graba) y la grabación anota «sin despertad
 Aviso de lo que el despertador NO hace: solo despierta de la **suspensión**. Un equipo apagado del todo no se puede
 encender desde el programa (eso es cosa de la BIOS/UEFI: «Wake on RTC alarm»).
 
-## 2026-10-01 · Tu llama-server sigue pausado (hazlo tú si yo no he llegado)
-Me pediste pausarlo para dejar CPU libre (`kill -STOP 130081`). **Si al volver lo ves parado**, con esto sigue:
-```bash
-kill -CONT 130081      # el llama-server del puerto 18766 (Qwen3.5-4B)
-```
-Lo reanudo yo antes de terminar; esta nota está aquí por si me quedo sin contexto antes.
+## 2026-10-01 · Tu llama-server (resuelto, nada que hacer)
+Me pediste pausarlo para dejar CPU libre y lo pausé (`kill -STOP`). A las 13:39 ya estaba otra vez en marcha (no lo
+reanudé yo), así que no hay nada pendiente aquí. Si alguna vez lo ves parado: `kill -CONT <pid>`.
 
 ## 2026-10-01 · Subtítulos de internet (H36/C5, no bloquea)
 - **Clave gratuita de Subdl** (el único segundo proveedor que sigue vivo). No se ha implementado su cliente porque sin

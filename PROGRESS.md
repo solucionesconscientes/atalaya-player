@@ -1,14 +1,25 @@
 # PROGRESS
 ESTADO_GLOBAL: COMPLETADO
 
-## Resumen final para Ser (2026-10-01, iteración 5)
-Todos los hitos de BACKLOG.md (H0–H34) están [x] o [~]. **H34 era la revisión de calidad**: siete revisiones de código por
-áreas encontraron 42 fallos reales, todos corregidos con su test (el detalle, y qué comprobar a mano, en «Iteración 5» del
-registro). Los que más te iban a molestar: el `.md` de «Mis notas» perdía lo que escribieras en él, los subtítulos IA
-repetían la frase de cada frontera, cancelar una descarga que aún no había empezado no hacía nada, «Instalar yt-dlp» nunca
-funcionaba, el punto rojo de grabar se quedaba pegado, y una grabación local de más de 10 minutos fallaba siempre.
-Queda [~] una sola cosa, y por decisión tuya: los **torrents** (H26, fuera desde el 2026-09-30). El **túnel de internet
-de las salas** (H25), que esperaba tu permiso, ya está hecho y probado con un túnel real.
+## Resumen final para Ser (2026-10-01, iteración 6)
+Todo el BACKLOG está hecho salvo **el nombre, que decides tú** (H41). De tu prueba real salieron siete hitos nuevos y
+están los seis que no dependían de ti:
+- **H35**: el botón ● para la grabación en el segundo clic, el QR de la sala se puede quitar (y `alt+Q` lo pone y lo
+  saca), el anfitrión ve cómo va la retransmisión, y la barra de abajo tiene botón de subtítulos y de «solo audio».
+- **H36**: fuera los subtítulos IA en vivo. Se prepara el archivo entero con el modelo bueno y **se te dice cuánto va a
+  tardar con números medidos** («listos en 7 min · no te alcanzará»). Al cerrar, se te pregunta qué hacer con lo que
+  quede trabajando. Buscar subtítulos ya no es un callejón sin salida: te guía para la clave en dos pasos. Traducir pasa
+  a máxima calidad (OPUS-MT, con francés añadido). Y el panel va en tres bloques, con el tamaño y el retraso a mano.
+- **H37**: una sola puerta para descargar. Pegas un enlace, veinte, una lista, un canal o un `.txt` y sale una lista con
+  casillas, formato para todos y formato por fila. Lo que yt-dlp **no puede** (los guardados de Instagram) se te dice
+  antes de intentarlo, con la alternativa.
+- **H38**: `alt+I` da el **índice del vídeo** (secciones y frases clave, cada una a su minuto, al instante) y, al final,
+  un **resumen en prosa** escrito por un modelo que corre en tu equipo, con el tiempo dicho antes de empezar.
+- **H39**: las radios que no suenan pasan solas al siguiente espejo (era tu caso), la lista dice lo que dijo la
+  comprobación, y **SponsorBlock funciona al ver**, no solo al descargar, sin decirle a nadie qué estás viendo.
+- **H40**: despertar el equipo para grabar y suspender o apagar al terminar, con tres seguros y un aviso cancelable.
+Lo que necesita algo de ti está en NEEDS_HUMAN.md (y es poco): una orden con `sudo` para el despertador, tu cuenta de
+OpenSubtitles para poder **descargar** subtítulos, y —si quieres— una clave gratuita de Subdl.
 Lo que no se puede probar sin hardware (Windows, Mac, Raspberry Pi, tele DLNA real) está hecho y probado aquí por
 simulación, con los pasos exactos para ti en NEEDS_HUMAN.md.
 
@@ -112,21 +123,55 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-Iteración 6 (2026-10-01, en marcha): Ser probó el reproductor de verdad y de ahí salieron **H35–H41** en BACKLOG.md.
-Hechos: **H35** (arreglos de uso y la barra como mando) y la mayor parte de **H36** (subtítulos). Lo que queda, por orden:
-1. **H36**: nada; está cerrado (C1–C8 y B3).
-2. **H37** · Descargar: una sola puerta (una caja donde pegar un enlace o veinte, lista con casillas, formato común y por
-   fila, SRT, y los guardados de Instagram/TikTok con la sesión del navegador).
-3. **H38** · Resumen con enlaces al minuto (solo vídeos de internet: extraer el SRT de un archivo local tarda demasiado).
-   Antes de implementar hay que **elegir el modelo con un banco de pruebas**: el diseño anterior se descartó porque el
-   modelo no sabe poner los minutos; los minutos salen de las secciones del nivel 1 (recap.py), no del modelo.
-4. **H39** · TV, radio e intro (listas que no suenan, icono de saltar intro, SponsorBlock en reproducción).
-5. **H40** · Apagar/suspender y despertar (Linux con rtcwake, macOS con pmset, Windows con el Programador de tareas).
-6. **H41** · El nombre, que decide Ser (hay una lista de propuestas en BACKLOG.md).
-Antes de empezar, `tools/check.sh` **con la máquina libre**: con carga alta (otros programas de Ser) fallan por tiempo los
-tests de Whisper y, a veces, los de navegación por teclas.
+Iteración 6 (2026-10-01): Ser probó el reproductor de verdad y de ahí salieron **H35-H41**. Están hechos **H35, H36,
+H37, H38, H39 y H40** (cada uno con su ADR: 070-076). **Lo único que queda es H41: el nombre, que decides tú.**
+
+Para elegirlo: la lista está en BACKLOG.md (Lince, Cauce, Lumbre, Mirador, Compás, Querencia) y el nombre vive en un
+solo sitio, `brand.json`. Cambiarlo ahí lo cambia en todas partes (menús, carpeta de usuario, icono, PWA, instalador).
+
+Lo que haría falta de ti, por orden de lo que más desbloquea (todo está en NEEDS_HUMAN.md):
+1. **Una orden con sudo, una vez**, para que el reproductor pueda despertar el equipo antes de una grabación programada.
+2. **Usuario y contraseña de OpenSubtitles** (la Api-Key sola basta para buscar, pero no para descargar).
+3. **Una clave gratuita de Subdl** si quieres un tercer sitio de subtítulos (Podnapisi ya no existe: lo comprobé).
+Antes de empezar otra iteración, `tools/check.sh` **con el portátil libre**: con carga alta fallan por tiempo los tests
+de Whisper y, a veces, los de navegación por teclas.
 
 ## Registro por iteración
+### Iteración 6 · 2026-10-01 · H37-H40 · Descargas, TV, resumen y energía — hecho
+- **H37 · Descargar por una sola puerta** (ADR-072). Antes había que saber de antemano si lo tuyo era «varias URL» o «una
+  lista o canal»; ahora hay una fila, *Descargar…*, y pegas lo que sea: un enlace, veinte, una lista, un canal o un
+  `.txt`. Todo acaba en la **misma lista con casillas**: la primera fila fija el formato de todos, cada fila puede llevar
+  el suyo (Tab sobre la fila) y hay casilla de SRT global y por fila. Se baja solo lo marcado, y las filas que comparten
+  formato van en un solo lote. **Lo de Instagram/TikTok, comprobado contra tu yt-dlp**: los *guardados* de Instagram y
+  los favoritos de TikTok **no tienen extractor** (no es que falle: no existe), así que el menú lo dice con la
+  alternativa —pegar los enlaces— en vez de fallar; el perfil de Instagram se ofrece avisando de que yt-dlp lo marca
+  roto, y perfiles y colecciones de TikTok sí funcionan.
+- **H39 · TV, radio y lo que no quieres ver** (ADR-073). **Las radios españolas**: el salto a otro espejo solo se
+  disparaba con un error de carga, y las que no suenan no dan error (se quedan conectando). Ahora, si a los 8 s el reloj
+  no ha avanzado, se pasa sola a la siguiente copia. La lista además **dice lo que dijo la comprobación** con palabras
+  («✕ no responde», «prohibido: suele ser geobloqueo») y, en un canal repetido, cuántas de sus copias respondieron.
+  **SponsorBlock al VER** (no solo al descargar): los tramos marcados por la gente se saltan solos, y se piden por un
+  prefijo de 4 caracteres del hash del id del vídeo, así que **no se dice a nadie qué estás viendo**. El icono de saltar
+  tiene tres estados que se ven: buscando, saltar y no hay.
+- **H40 · Despertar para grabar y apagar al terminar** (ADR-074). En *Grabaciones programadas*: «despertar el equipo
+  5 min antes» y «al terminar: nada / suspender / apagar». Mientras graba, el equipo no se duerme. Antes de suspender o
+  apagar se comprueban tres cosas (que no estés usando el reproductor, que no haya otra grabación a menos de 15 min, que
+  no quede nada descargando o transcribiendo) y sale un aviso de 60 s con **Cancelar**. Suspender y apagar ya funcionan
+  sin contraseña; el **despertador** necesita una orden con `sudo` una sola vez, y está en NEEDS_HUMAN.md con cómo
+  comprobarla y cómo quitarla. Sin ella no se pierde ninguna grabación: se programa igual y avisa.
+- **H38 · Índice del vídeo y resumen** (ADR-075 y ADR-076). `alt+I`: **índice** con secciones, su título y sus frases
+  clave, cada línea a su minuto, **al instante** y sin IA generativa (los títulos son frases del propio diálogo). Al
+  final del índice, **resumen en prosa** escrito por un modelo que corre en tu equipo: corto (unos 40 s) o largo (sobre
+  un minuto), con el tiempo dicho antes de empezar. El modelo se eligió **midiendo** tres candidatos con 15 min de una
+  charla real (docs/BENCHMARKS_LLM.md): gana gemma-3-1b (806 MB); qwen2.5-3b queda como «escribe mejor, el doble de
+  tiempo» y qwen2.5-1.5b se descartó por repetirse. Los minutos **no los pone el modelo**: salen del subtítulo y lo que
+  invente se quita antes de que lo veas. Nunca se lanza una transcripción para resumir: si no hay subtítulos, se dice.
+
+Cómo probarlo a mano: `alt+y` → *Descargar…* y pega dos enlaces de YouTube (uno en audio Opus, el otro en 480p con SRT:
+Tab sobre la primera fila). `alt+t` → una radio con «+N fuentes» (si la primera no suena, verás «Probando otra fuente»).
+En un vídeo de YouTube con patrocinios, `alt+j` para ver los tramos y `alt+k` para saltarlos. Con una peli con
+subtítulos, `alt+I` → el índice y, al final, *Resumen en prosa (corto)*.
+
 ### Iteración 6 · 2026-10-01 · H35 · Arreglos de uso y la barra como mando — hecho
 Los nueve apuntes de tu prueba real, por orden de lo que molestaba:
 - **El botón ● de grabar**: el primer clic pregunta (vídeo o audio), el segundo **para** la grabación sin preguntar nada.

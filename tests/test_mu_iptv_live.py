@@ -306,10 +306,13 @@ def test_duplicates_fallback_quality_and_spanish_labels(live):
     menu = wait_menu(h, "España · TV")
     groups = {g["title"]: g for g in menu["items"] if g.get("items")}
     hints = {c["title"]: c["hint"] for c in groups["Directos"]["items"]}
-    assert hints == {"Canal HLS": "720p50 · 1,2 Mb · bitrate bajo", "Canal Lista": "180p25 · 0,5 Mb"}
-    # the preferred copy of Canal Doble is dead but the other one works: no ✕ on the merged entry
-    assert [(c["title"], c["hint"]) for c in groups["Dobles"]["items"]] == [("Canal Doble", "+1 fuente"),
-                                                                             ("Otro Canal", "360p25")]
+    # H39/E2: tras la comprobación, cada canal dice además lo que dijo («✓ comprobado» o el motivo del fallo)
+    assert hints == {"Canal HLS": "720p50 · 1,2 Mb · bitrate bajo · ✓ comprobado",
+                     "Canal Lista": "180p25 · 0,5 Mb · ✓ comprobado"}
+    # the preferred copy of Canal Doble is dead but the other one works: no ✕ on the merged entry, and H39/E2 says
+    # how many of its copies answered (que es lo que de verdad te dice si merece la pena intentarlo)
+    assert [(c["title"], c["hint"]) for c in groups["Dobles"]["items"]] == [
+        ("Canal Doble", "+1 fuente · 1 comprobada OK"), ("Otro Canal", "360p25 · ✓ comprobado")]
     assert chans["Canal Doble"]["health"] is True
 
     send_event(h, {"type": "back"})

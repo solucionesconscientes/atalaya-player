@@ -1289,6 +1289,14 @@ views.root = function()
   -- 2. buscar en internet
   items[#items + 1] = { title = 'Buscar subtítulos en internet', icon = 'travel_explore',
     hint = 'la web del vídeo y OpenSubtitles, de más fiable a menos', value = { view = 'find' } }
+  -- En un vídeo de internet, los suyos propios siguen a un clic: son los más fiables y además se pueden traducir desde
+  -- ahí mismo. (La búsqueda general los incluye, pero esconderlos detrás de ella era peor.)
+  if web_video() then
+    local w = state.web
+    items[#items + 1] = { title = 'Subtítulos de la web', icon = 'language',
+      hint = (w and w.status == 'done') and (language_name_for(w.lang) .. (w.kind == 'auto' and ' · automáticos' or ''))
+        or 'los que da esta web, y traducidos sin conexión', value = { view = 'web' } }
+  end
   local sel, sel_emb = selected_sub_file()
   local tr = state.translate
   local tr_hint = 'selecciona antes una pista'

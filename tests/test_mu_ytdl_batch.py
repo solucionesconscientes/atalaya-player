@@ -142,8 +142,9 @@ def test_formato_comun_formato_por_fila_srt_y_lo_que_no_se_puede_bajar(ytdl_mpv)
     send_event(h, {"type": "activate", "index": 1, "value": {"pick_fmt": "all"}})
     st = ytdl_state(h, lambda v: v.get("view") == "pickfmt" and "Vídeo · 480p" in titles(v), timeout=30)
     send_event(h, {"type": "activate", "index": 4, "value": {"pick_choose": {"target": "all", "preset": "video_480"}}})
-    st = ytdl_state(h, lambda v: v.get("view") == "picklist" and v["pick"]["common"] == "video_480", timeout=20)
-    assert titles(st)[0] == "Para todos: Vídeo · 480p"
+    # el estado publica la vista y las filas en dos pasos: se espera a que la PRIMERA fila ya lo diga
+    st = ytdl_state(h, lambda v: v.get("view") == "picklist" and v["pick"]["common"] == "video_480"
+                    and (titles(v) or [""])[0] == "Para todos: Vídeo · 480p", timeout=20)
 
     # formato solo para la primera fila → audio Opus 128
     send_event(h, {"type": "activate", "index": 5, "value": {"pick_toggle": 1}, "action": "formato"})
