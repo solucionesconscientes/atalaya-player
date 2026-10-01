@@ -23,7 +23,8 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 | Tecla | Acción |
 |---|---|
 | `SPACE` | Reproducir / pausa (también el botón ▶ de la barra) |
-| `o` | Abrir archivo |
+| `ctrl+o` | **Abrir o descargar**: un campo para todo (un enlace, varios, una lista, un canal, un archivo, una carpeta o, en blanco, el portapapeles) y después una sola pregunta, reproducir o descargar |
+| `o` | Abrir archivo (el selector de uosc) |
 | `ctrl+v` | Abrir la URL o ruta copiada (portapapeles) |
 | `ctrl+u` | Abrir URL: pega o escribe un enlace («Pegar: …» con el del portapapeles); con texto, busca en YouTube |
 | `ctrl+f` | Buscar en YouTube: Enter busca y Enter reproduce; Tab: añadir a la lista o descargar |
@@ -36,7 +37,7 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 | `e` | Ediciones |
 | `ctrl+q` | Calidad del stream (uosc) |
 | `ctrl+s` | Captura de pantalla |
-| `ctrl+o` | Abrir la carpeta de configuración |
+| `ctrl+alt+o` | Abrir la carpeta de configuración |
 | `alt+o` | Mostrar el archivo en su carpeta |
 | `q` | Salir (la posición se guarda: `save-position-on-quit` + historial por contenido de mpvd) |
 

@@ -30,8 +30,8 @@ MODULES = {
     "mu_lyrics": ("lyrics-menu", "mu-lyrics", "Letra"),
     "mu_music": ("music-menu", "mu-music", "Música"),
 }
-CATEGORIES = ["Abrir", "TV y radio", "Descargas y conversión", "Subtítulos", "Imagen y sonido", "Grabar", "Herramientas",
-              "Preferencias"]
+CATEGORIES = ["Abrir o descargar", "TV y radio", "Descargas y conversión", "Subtítulos", "Imagen y sonido",
+              "Grabar", "Herramientas", "Preferencias"]
 
 
 @pytest.fixture

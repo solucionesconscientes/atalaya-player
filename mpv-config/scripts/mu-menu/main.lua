@@ -211,7 +211,12 @@ local function still(view)
   return state.view == view
 end
 
+-- uosc dice que no hay ningún menú: hasta que se abra uno a propósito (open_view), una respuesta de mpvd que llegue
+-- con retraso no debe volver a pintar lo que el espectador acaba de cerrar. Lo pone el observador del final.
+local closing = false
+
 local function show(title, items, extra)
+  if closing then return end
   remember(items)
   publish()
   if uosc.open_type() == MENU and not state.force_open then
@@ -225,6 +230,7 @@ end
 local views = {}
 
 local function open_view(spec, push)
+  closing = false
   if push ~= false then table.insert(state.stack, spec) end
   state.view = spec.name
   publish()
@@ -283,7 +289,7 @@ end
 -- The main menu: eight categories (H15). TV y radio and Descargas open their module directly; the others are views
 -- here that lead into the modules one level down (their "Atrás" comes back to the category).
 local CATEGORIES = {
-  { title = 'Abrir', icon = 'folder_open', hint = 'biblioteca, archivo, URL, YouTube', view = 'open' },
+  { title = 'Abrir o descargar', icon = 'folder_open', hint = 'enlace, archivo, lista, biblioteca', view = 'open' },
   { title = 'TV y radio', icon = 'live_tv', hint = 'alt+t', child = { 'mu_iptv', 'tv-menu' } },
   { title = 'Descargas y conversión', icon = 'download', hint = 'alt+y', child = { 'mu_ytdl', 'ytdl-menu' } },
   { title = 'Subtítulos', icon = 'subtitles', view = 'subs' },
@@ -294,7 +300,8 @@ local CATEGORIES = {
 }
 
 -- Modo sencillo (mu-modes, H27): only what a first-time user needs, plus a way back to the full menu.
-local SIMPLE = { ['Abrir'] = true, ['TV y radio'] = true, ['Subtítulos'] = true, ['Preferencias'] = true }
+local SIMPLE = { ['Abrir o descargar'] = true, ['TV y radio'] = true, ['Subtítulos'] = true,
+                 ['Preferencias'] = true }
 local modes = {}
 
 -- C8 · una línea que diga siempre qué se está haciendo por detrás. El texto lo compone mpvd (pending.status) y lo
@@ -352,14 +359,16 @@ views.root = function()
   end)
 end
 
+-- H42/A1-A3 · una sola puerta para lo que se pega o se escribe. Las cinco de antes (abrir archivo, abrir URL,
+-- pegar, buscar en YouTube, suscripciones) ya no son filas de este menú: viven dentro de la caja y en el teclado
+-- (`o`, `ctrl+u`, `ctrl+f`, `ctrl+v`). Lo que queda aquí no son puertas, son sitios donde mirar.
 views.open = function()
-  show('Abrir', {
+  show('Abrir o descargar', {
+    child('Abrir o descargar…', 'un enlace, varios, una lista, un archivo', 'add_link', 'mu_ytdl', 'ytdl-gate',
+          { separator = true }),
     child('Biblioteca', 'ctrl+b', 'video_library', 'mu_library', 'library-menu'),
     child('Música', 'alt+M', 'library_music', 'mu_music', 'music-menu'),
-    bind('Abrir archivo', 'o', 'folder_open', 'uosc/open-file'),
-    bind('Abrir URL (YouTube y otras webs)…', 'ctrl+u', 'link', 'mu_ytdl/open-url'),
-    bind('Buscar en YouTube', 'ctrl+f', 'travel_explore', 'mu_ytdl/yt-search'),
-    cmd('Pegar URL o ruta copiada', 'ctrl+v', 'content_paste', { 'loadfile', '${clipboard/text}', 'replace' }),
+    child('Suscripciones', 'canales, listas y podcasts', 'subscriptions', 'mu_feeds', 'feeds-menu'),
     sub('Recientes', 'alt+h', 'history', 'recents', { separator = true }),
     bind('Lista de reproducción', 'p', 'playlist_play', 'uosc/playlist'),
   })
@@ -481,10 +490,8 @@ end
 
 views.start = function(args)
   local items = {
+    child('Abrir o descargar…', 'un enlace, varios, una lista, un archivo', 'add_link', 'mu_ytdl', 'ytdl-gate'),
     child('Biblioteca', 'ctrl+b', 'video_library', 'mu_library', 'library-menu'),
-    bind('Abrir archivo', 'o', 'folder_open', 'uosc/open-file'),
-    bind('Abrir URL (YouTube y otras webs)…', 'ctrl+u', 'link', 'mu_ytdl/open-url'),
-    bind('Buscar en YouTube', 'ctrl+f', 'travel_explore', 'mu_ytdl/yt-search'),
     child('TV y radio', 'alt+t', 'live_tv', 'mu_iptv', 'tv-menu'),
     sub('Buscar comandos, canales y recientes…', 'alt+p', 'search', 'palette'),
     sub('Menú principal', 'alt+m', 'apps', 'root', { separator = true }),
@@ -892,10 +899,13 @@ end
 
 mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
   if reset_timer then reset_timer:kill(); reset_timer = nil end
-  if t == MENU or t == PALETTE then return end
-  -- no menu at all: forget the view right away, so an answer from mpvd that arrives in the next few milliseconds does
-  -- not reopen what the viewer just closed. A legitimate reopen always goes through open_view, which sets it again.
-  if t == nil or t == '' then reset_state() return end
+  if t == MENU or t == PALETTE then closing = false return end
+  -- Sin menú: se bloquea en el acto cualquier reapertura (una respuesta de mpvd que llegue unos milisegundos
+  -- después no debe volver a pintar lo que se acaba de cerrar), pero la PILA espera los 0,2 s de siempre.
+  -- Cuando uosc sustituye un menú por otro —volver de un módulo al nuestro— destruye el viejo ANTES de crear el
+  -- nuevo, y con la máquina cargada ese `nil` intermedio sí se observa: borrar la pila ahí dejaba el menú abierto
+  -- sin camino de vuelta y el siguiente ⌫ lo cerraba todo en vez de subir un nivel.
+  if t == nil or t == '' then closing = true end
   reset_timer = mp.add_timeout(0.2, function()
     reset_timer = nil
     local open = uosc.open_type()

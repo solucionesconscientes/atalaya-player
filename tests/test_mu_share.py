@@ -205,3 +205,30 @@ def test_menu_public_room_and_chat(mu_share_chat):
     d.call("share.close")
     ana.close()
     assert not h.script_errors(), h.script_errors()
+
+
+def test_copiar_el_enlace_escribe_en_el_portapapeles(mu_share):
+    """H42/A4 · «Copiar el enlace» pasa por mu.clip y acaba en el `clipboard/text` de mpv, que es de donde lo toma el
+    sistema. Antes cada script llevaba su propia copia de este código (mu-iptv, mu-remote y mu-share); ahora la sala
+    hereda además el respaldo de wl-copy/xclip que solo tenía mu-iptv.
+    En una sesión sin pantalla mpv no tiene backend de portapapeles y no hay nada que comprobar."""
+    h, _d = mu_share
+    try:
+        h.command("set_property", "clipboard/text", "sonda")
+        assert h.get("clipboard/text") == "sonda"
+    except Exception:  # noqa: BLE001 - mpv sin backend de portapapeles
+        pytest.skip("este mpv no tiene backend de portapapeles (sesión sin pantalla)")
+
+    h.command("script-binding", "mu_share/share-menu")
+    share(h, lambda v: "Crear una sala para ver juntos" in titles(v))
+    ev(h, {"type": "activate", "index": 1, "value": {"action": "create"}})
+    v = share(h, lambda v: v["open"] and v["url"] != "")
+    url = v["url"]
+
+    h.command("script-binding", "mu_share/share-menu")
+    v = share(h, lambda v: "Copiar el enlace" in titles(v))
+    fila = next(i for i, t in enumerate(titles(v), start=1) if t == "Copiar el enlace")
+    ev(h, {"type": "activate", "index": fila, "value": {"action": "copy"}})
+    share(h, lambda v: v.get("copied") == url)
+    assert h.get("clipboard/text") == url
+    assert h.script_errors() == [], h.script_errors()

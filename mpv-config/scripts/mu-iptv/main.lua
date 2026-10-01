@@ -13,6 +13,7 @@ package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local nav = require('mu.nav')
+local clip = require('mu.clip')
 local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
@@ -275,31 +276,8 @@ end
 -- ---------------------------------------------------------------------------------------------
 -- clipboard
 
-local function copy_to_clipboard(text)
-  -- mpv 0.41 native clipboard (Wayland/X11/Windows/macOS) first; the helpers below are the fallback
-  if mp.set_property('clipboard/text', text) then
-    osd('URL copiada')
-    return
-  end
-  local platform = mp.get_property_native('platform')
-  local candidates
-  if platform == 'windows' then
-    candidates = { { 'cmd', '/c', 'clip' } }
-  elseif platform == 'darwin' then
-    candidates = { { 'pbcopy' } }
-  else
-    candidates = { { 'wl-copy' }, { 'xclip', '-selection', 'clipboard' }, { 'xsel', '--clipboard', '--input' } }
-  end
-  local function try(i)
-    local args = candidates[i]
-    if not args then osd('Sin portapapeles; URL: ' .. text) return end
-    mp.command_native_async({ name = 'subprocess', args = args, stdin_data = text, playback_only = false,
-                              capture_stdout = true, capture_stderr = true }, function(ok, res)
-      if ok and res and res.status == 0 then osd('URL copiada') else try(i + 1) end
-    end)
-  end
-  try(1)
-end
+-- H42/A4: el portapapeles vive en mu.clip (antes había tres copias de este código)
+local function copy_to_clipboard(text) clip.copy_osd(text, osd, 'la URL del canal') end
 
 -- ---------------------------------------------------------------------------------------------
 -- menu building

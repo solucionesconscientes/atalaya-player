@@ -186,10 +186,11 @@ def test_open_url_palette(pal_mpv):
 def test_youtube_search_palette(pal_mpv):
     h, d, arglog = pal_mpv
 
-    # root of the yt-dlp menu offers both palettes
+    # H42: la raíz tiene UNA puerta; las dos paletas siguen existiendo (teclas y dentro de la caja)
     h.command("script-binding", "mu_ytdl/ytdl-menu")
     v = st(h, lambda v: v.get("view") == "root" and bool(v.get("items")))
-    assert titles(v)[:2] == ["Abrir URL…", "Buscar en YouTube…"]
+    assert titles(v)[0] == "Abrir o descargar…"
+    assert "Abrir URL…" not in titles(v) and "Buscar en YouTube…" not in titles(v)
     send(h, "mu-ytdl-event", {"type": "activate", "index": 2, "value": {"view": "yt_search"}})
     menu_type(h, "mu-ytdl-search")
     v = st(h, lambda v: v.get("view") == "yt_search")

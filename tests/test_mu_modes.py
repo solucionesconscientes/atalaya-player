@@ -83,7 +83,8 @@ def test_modes_apply_and_restore(modes_mpv):
     h.command("script-binding", "mu_menu/root")
     st = h.wait_property("user-data/mu/menu", lambda v: bool(v) and v.get("view") == "root", timeout=10)
     titles = [i["title"] for i in st["items"]]
-    assert [t for t in titles if t != "Continuar viendo"] == ["Abrir", "TV y radio", "Subtítulos", "Preferencias",
+    assert [t for t in titles if t != "Continuar viendo"] == ["Abrir o descargar", "TV y radio", "Subtítulos",
+                                                          "Preferencias",
                                                               "Menú completo", "Salir"]
     # «Menú completo» turns the mode off and the open main menu grows back to its eight categories
     h.command("script-message-to", "mu_modes", "mu-modes-set", "simple", "no")

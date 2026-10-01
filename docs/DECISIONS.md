@@ -623,3 +623,40 @@
   `tools/install.sh --resumen` para quien lo quiera desde el principio. Aviso para quien actualice llama.cpp: su
   interfaz de chat mezcla en la misma salida el cartel, el eco **recortado** del prompt y las estadísticas, así que
   `mpvd.llm.clean_output` corta por ahí y hay un test que fija ese contrato.
+- ADR-077 · Una sola puerta para abrir y descargar, y un único ayudante de portapapeles (H42). **Amplía** ADR-072, que
+  ya había unificado las dos puertas de *descargar*; ahora se unifican también las de *abrir*. Antes había seis filas
+  para lo mismo —*Abrir archivo*, *Abrir URL…*, *Pegar URL o ruta copiada*, *Buscar en YouTube*, *Descargar…* y
+  *Suscripciones*— y había que saber de antemano qué ibas a pegar para elegir la correcta. Ahora hay **una caja**
+  (`mu-ytdl`, vista `gate`, tecla `ctrl+o`, primera fila de *Abrir o descargar* en el menú principal) que clasifica lo
+  que se escribe o se pega: varios enlaces, un enlace, un enlace sin esquema (`youtu.be/…`), una ruta de archivo, una
+  carpeta, un `.txt`/`.list`/`.urls`/`.csv` con enlaces, o —con la caja vacía— el portapapeles entero, no solo su
+  primera línea. Detrás hay **una sola pregunta**, reproducir o descargar, que dice cuántos elementos hay; descargar
+  cae en la pantalla de casillas de ADR-072 sin cambiarla. Decisiones que no son obvias: (1) **a mpvd solo se le
+  pregunta cuántos elementos trae si la URL huele a lista o a canal** (`list=`, `/playlist`, `/@algo`, `/channel/`,
+  `/c/`, `/user/`, `/videos`, `/streams`, `/podcasts`): un vídeo suelto no necesita una llamada de red para decir «1
+  elemento», y así *Reproducir* no espera a nada; si se equivoca, la pantalla de descarga lo resuelve igual porque ya
+  preguntaba. (2) La respuesta de `ytdl.playlist` **se guarda** y se le pasa a la lista con casillas, así que una
+  lista se resuelve una vez, no dos. (3) **La extensión y el tamaño se miran antes de leer el archivo**: el código
+  anterior le pasaba cualquier ruta existente a `read_links`, que leía el fichero entero buscando `https://` — con una
+  película de 4 GB eso eran 4 GB en memoria. Ahora solo se leen listas de texto y hasta 4 MB. (4) Para un archivo que
+  ya está en el equipo, *Descargar* no se esconde: lleva a **convertir**, que es lo mismo dicho bien. (5) *Abrir
+  archivo* (`o`, el selector de uosc), `ctrl+u`, `ctrl+f` y `ctrl+v` **siguen existiendo como teclas**: se retiran del
+  menú, no del programa. (6) `ctrl+o` pasa a ser *Abrir o descargar* —la tecla que todo el mundo espera para «abrir»—
+  y la carpeta de configuración se va a `ctrl+alt+o`. Lo que queda en *Abrir o descargar* además de la caja no son
+  puertas, son sitios donde mirar: Biblioteca, Música, Suscripciones (que sale de la raíz de las descargas),
+  Recientes y la lista de reproducción. **Portapapeles**: el mismo ayudante estaba escrito **tres veces**
+  (`mu-iptv:278`, `mu-remote:236`, `mu-share:648`), y solo la copia de mu-iptv tenía el respaldo de
+  `wl-copy`/`xclip`/`xsel`/`pbcopy` cuando mpv no trae backend; ahora hay un único `mu/clip.lua`
+  (`clipboard/text` de mpv 0.41 primero, respaldo asíncrono después) que usan los cuatro sitios donde hay un enlace
+  que llevarse a otro aparato: la sala, el mando del móvil, la orden del cortafuegos y el panel web de descargas
+  (Tab sobre su fila lo copia, con la URL de la red local, no la de `127.0.0.1`).
+- ADR-078 · La pila del menú no se borra cuando uosc *sustituye* un menú por otro (arreglo encontrado al hacer H42).
+  `mu-menu` observaba `user-data/uosc/menu/type` y, al verlo en `nil`, olvidaba su pila **en el acto** para que una
+  respuesta de mpvd que llegara con retraso no reabriera lo que el espectador acababa de cerrar. Pero uosc, al cambiar
+  de menú, **destruye el viejo antes de crear el nuevo** (`Menu:destroy` pone la propiedad en `nil` y el
+  `Menu:init` siguiente la vuelve a poner), y con la máquina cargada ese `nil` intermedio sí se observa. Consecuencia
+  real: al volver de un módulo al menú principal la pila quedaba vacía con el menú abierto, y el siguiente `⌫`
+  **cerraba todo en vez de subir un nivel**. Ahora el `nil` solo levanta una bandera (`closing`) que impide reabrir
+  nada hasta que se abra a propósito, y el borrado de la pila espera los mismos 0,2 s que usan los demás módulos,
+  comprobando al vencer si uosc tiene un menú puesto. Se veía como un test intermitente (`test_nav`), no como un
+  fallo, y por eso llevaba tiempo apuntado como «sensible a la carga».

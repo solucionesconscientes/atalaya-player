@@ -10,6 +10,7 @@ package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local nav = require('mu.nav')
+local clip = require('mu.clip')
 local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
@@ -160,20 +161,34 @@ local function open_downloads()
   end)
 end
 
+-- H42/A4: el mismo enlace del panel, pero copiado para llevárselo a otro aparato en vez de abierto aquí
+local function copy_downloads_link()
+  rpc.call('remote.pair', { path = '/downloads', ['local'] = false }, function(err, result)
+    if err then fail(err, 'panel de descargas'); return end
+    if type(result.status) == 'table' then state.status = result.status end
+    state.downloads_url = result.url or ''
+    publish()
+    clip.copy_osd(state.downloads_url, osd, 'el enlace del panel de descargas')
+  end)
+end
+
 mp.observe_property('osd-dimensions', 'native', function() if state.visible then draw_qr() end end)
 
 -- ---------------------------------------------------------------------------------------------
 -- menu
+
+local COPY_ACTION = { { name = 'copy', icon = 'content_copy', label = 'Copiar el enlace' } }
 
 local function menu_items()
   local st = state.status or {}
   local items = {}
   items[#items + 1] = { title = state.visible and 'Ocultar el código QR' or 'Mostrar código QR para emparejar un móvil',
                         hint = 'alt+z', icon = 'qr_code_2', value = { action = 'toggle' } }
-  items[#items + 1] = { title = 'Panel de descargas en el navegador', hint = 'este ordenador', icon = 'download',
-                        value = { action = 'downloads' } }
+  items[#items + 1] = { title = 'Panel de descargas en el navegador', hint = 'este ordenador · Tab copia el enlace',
+                        icon = 'download', value = { action = 'downloads' }, actions = COPY_ACTION }
   if st.running then
-    items[#items + 1] = { title = 'Servidor activo: ' .. tostring(st.url or ''), hint = 'puerto ' .. tostring(st.port),
+    items[#items + 1] = { title = 'Servidor activo: ' .. tostring(st.url or ''),
+                          hint = 'puerto ' .. tostring(st.port) .. ' · Enter copia el enlace',
                           icon = 'wifi', value = { action = 'copy' } }
   else
     items[#items + 1] = { title = 'Servidor del mando detenido', icon = 'wifi_off', muted = true, selectable = false }
@@ -223,19 +238,18 @@ local function open_menu()
   end)
 end
 
-local function menu_action(v)
+local function menu_action(v, action)
   if v.action == 'toggle' then
     toggle()
     uosc.close(MENU)
   elseif v.action == 'downloads' then
+    if action == 'copy' then copy_downloads_link() return end
     uosc.close(MENU)
     open_downloads()
   elseif v.action == 'copy' or v.action == 'copy-fw' then
     local fw = state.status and state.status.firewall
     local text = v.action == 'copy' and tostring(state.status and state.status.url or '') or (fw and fw.command or '')
-    -- mpv 0.41 has a native clipboard (Wayland/X11/Windows/macOS): no wl-copy/xclip needed
-    local ok = text ~= '' and mp.set_property('clipboard/text', text)
-    osd(ok and ('Copiado: ' .. text) or ('Mando: ' .. text))
+    clip.copy_osd(text, osd)
   elseif v.action == 'forget' then
     rpc.call('remote.forget', nil, function(err, r)
       if err then fail(err, 'olvidar mandos'); return end
@@ -262,7 +276,7 @@ mp.register_script_message(EVENT, function(json)
     if not N:leave() then uosc.close(MENU) end
     return
   end
-  if ev.type == 'activate' and type(ev.value) == 'table' then menu_action(ev.value) end
+  if ev.type == 'activate' and type(ev.value) == 'table' then menu_action(ev.value, ev.action) end
   if ev.type == 'close' then state.view = ''; publish() end
 end)
 
@@ -271,4 +285,5 @@ N:binding('remote-menu', open_menu)
 mp.register_script_message('mu-remote-show', toggle)
 mp.register_script_message('mu-remote-hide', hide)
 mp.register_script_message('mu-remote-downloads', open_downloads)
+mp.register_script_message('mu-remote-downloads-copy', copy_downloads_link)
 publish()

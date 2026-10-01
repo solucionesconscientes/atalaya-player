@@ -371,16 +371,19 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
 - [ ] Elegir entre Lince, Cauce, Lumbre, Mirador, Compás, Querencia (o Sintonía, que quedó descartado) y cambiarlo en
       brand.json, que es el único sitio donde vive.
 
-## H42 · Una sola puerta para abrir y descargar (análisis: docs/ANALISIS-SALA-E-INTERFAZ.md §B.2.3)
-- [ ] A1 Una entrada «Abrir o descargar» que acepte cualquier cosa: un enlace, varios enlaces pegados, una lista de
+## H42 · Una sola puerta para abrir y descargar (análisis: docs/ANALISIS-SALA-E-INTERFAZ.md §B.2.3) — ADR-077
+- [x] A1 Una entrada «Abrir o descargar» que acepte cualquier cosa: un enlace, varios enlaces pegados, una lista de
       reproducción, un canal entero, una ruta local o lo que haya en el portapapeles, sin que el usuario tenga que
-      saber de antemano qué es.
-- [ ] A2 Después de reconocerlo, una sola pregunta: reproducir o descargar. La pantalla de descarga actual se queda
-      como está (parámetros para todos, con la posibilidad de cambiar algunos vídeos uno a uno).
-- [ ] A3 Retirar las otras cinco puertas (Abrir archivo, Abrir URL…, Pegar URL, Buscar en YouTube, Suscripciones)
+      saber de antemano qué es. (`mu-ytdl` vista `gate`, tecla `ctrl+o`; también carpetas y `.txt` de enlaces, y la
+      extensión y el tamaño se miran ANTES de leer el archivo.)
+- [x] A2 Después de reconocerlo, una sola pregunta: reproducir o descargar. La pantalla de descarga actual se queda
+      como está (parámetros para todos, con la posibilidad de cambiar algunos vídeos uno a uno). Dice cuántos
+      elementos hay; a mpvd solo se le pregunta si la URL huele a lista o canal, y la respuesta se reutiliza.
+- [x] A3 Retirar las otras cinco puertas (Abrir archivo, Abrir URL…, Pegar URL, Buscar en YouTube, Suscripciones)
       del primer nivel; siguen existiendo como atajos de teclado y dentro de la nueva entrada.
-- [ ] A4 Botón de copiar en todo enlace que haya que llevarse a otro aparato: sala, mando desde el móvil, panel de
-      descargas. Con aviso en el OSD de que se ha copiado.
+- [x] A4 Botón de copiar en todo enlace que haya que llevarse a otro aparato: sala, mando desde el móvil, panel de
+      descargas. Con aviso en el OSD de que se ha copiado. (Un único `mu/clip.lua`: antes el mismo código estaba
+      escrito tres veces y solo una tenía respaldo sin backend de mpv.)
 
 ## H43 · Grabar: formato, programación visible y radio (§B.2.4-6)
 - [ ] B1 Fila «Formato» en el menú de grabar, que se recuerda: igual que el original (sin recodificar) / MP4 /

@@ -100,11 +100,19 @@ abre **o no suena** (8 s; `mu-iptv-stall_seconds`). Si un canal entrelazado se v
   del hash del id del vídeo, que vale para 1 de cada 65 536 vídeos, y el filtrado se hace en tu equipo.
 
 - `mpv-uos 'https://www.youtube.com/watch?v=…'` reproduce con el yt-dlp vendorizado (se actualiza solo a diario).
-- **Abrir URL** (`ctrl+u`, o `alt+y` → *Abrir URL…*): si el portapapeles tiene un enlace, la primera entrada es *Pegar: …*;
+- **Abrir o descargar** (`ctrl+o`, el menú principal → *Abrir o descargar*, o `alt+y` → *Abrir o descargar…*): **un solo
+  campo para todo**. Pega lo que sea —un enlace, veinte, una lista de reproducción, un canal entero, la ruta de un
+  archivo o de una carpeta, un `.txt` con enlaces— o déjalo en blanco para usar el portapapeles. MPV-UOS reconoce qué
+  es, te dice **cuántos elementos** hay y hace **una sola pregunta: reproducir o descargar**. Si eliges descargar vas a
+  la pantalla de siempre (casillas, formato para todos y formato por fila). Si lo que escribes no es un enlace ni una
+  ruta, se ofrece buscarlo en YouTube. Lo que yt-dlp no sabe abrir (los guardados de Instagram) se te dice **antes** de
+  intentarlo, con la alternativa.
+- Las puertas de antes siguen en el teclado, por si las tenías en la mano: **Abrir URL** (`ctrl+u`): si el portapapeles
+  tiene un enlace, la primera entrada es *Pegar: …*;
   también puedes escribir o pegar (`ctrl+v`) una URL (YouTube, Twitch, archive.org, una radio, `rtsp://`…; vale `youtu.be/…` sin
   `https://`) y pulsar Enter. Si lo escrito no es una URL, la entrada pasa a ser *Buscar «texto» en YouTube*.
   `Tab` sobre una URL: *Añadir a la lista* (se reproduce al terminar lo actual) o *Descargar*.
-- **Buscar en YouTube** (`ctrl+f`, o `alt+y` → *Buscar en YouTube…*): escribe y pulsa Enter; salen hasta 15 resultados con
+- **Buscar en YouTube** (`ctrl+f`): escribe y pulsa Enter; salen hasta 15 resultados con
   duración y canal (*EN DIRECTO* en los directos). Enter reproduce el elegido; `Tab`: *Añadir a la lista* o *Descargar* (abre el
   menú de descarga de ese vídeo sin tocar lo que suena). La misma búsqueda durante una hora sale al instante (caché de mpvd).
 - `alt+a` alterna vídeo / solo audio sin perder la posición; `alt+q` elige cualquier formato; `alt+d` descarga (vídeo por resolución,
@@ -148,7 +156,7 @@ abre **o no suena** (8 s; `mu-iptv-stall_seconds`). Si un canal entrelazado se v
   Si cierras el reproductor con descargas a medias, siguen al volver a abrirlo.
 
 ## 3a. Suscripciones (canales, listas y podcasts)
-*Descargas y conversión › Suscripciones* (o `alt+Y`).
+*Abrir o descargar › Suscripciones* (o `alt+Y`).
 - **Añadir suscripción…**: pega la dirección de un canal de YouTube, una lista o el RSS de un podcast. MPV-UOS dice qué es,
   enseña lo más reciente y te deja cambiar el nombre y cuántos episodios bajar ya (por defecto los 3 últimos; en listas, todo).
 - Cada suscripción se comprueba sola cada 2 horas y descarga lo nuevo sin molestar a lo que estés haciendo.

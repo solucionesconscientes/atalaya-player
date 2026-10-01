@@ -1,8 +1,8 @@
 """H23 · «Suscripciones» (mu-feeds) end to end: headless mpv + uosc + mpvd with the fake yt-dlp and podcast feeds served
 over local HTTP (tests/fixtures/feeds). Opening the menu, adding by URL (detect → name → how many → subscribe), the rules
 (quality, keep N, the chain after downloading, move to a folder), pause / resume from the row actions, the global
-settings (window, limit, metered pause), deleting with confirmation, the entry in «Descargas y conversión», the
-downloaded episodes with the state of their chain, and ⌫ / Esc."""
+settings (window, limit, metered pause), deleting with confirmation, the entry in «Abrir o descargar» (H42: it left
+the root of the downloads menu), the downloaded episodes with the state of their chain, and ⌫ / Esc."""
 
 from __future__ import annotations
 
@@ -286,15 +286,17 @@ def test_add_rules_pause_settings_and_delete(metered_mpv, feed_server, tmp_path)
 def test_from_downloads_menu_downloads_with_the_default_chain(open_mpv, feed_server):
     h, d = open_mpv
     url = feed_server + "/rtve_180_grados.xml"
-    crumbs = "MPV-UOS › Descargas y conversión › Suscripciones"
+    crumbs = "MPV-UOS › Abrir o descargar › Suscripciones"
 
-    # «Descargas y conversión» → «Suscripciones» (a child: ⌫ comes back to it)
-    h.command("script-binding", "mu_ytdl/ytdl-menu")
-    wait_nav(h, "mu-ytdl", "MPV-UOS › Descargas y conversión")
-    yv = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("view") == "root", timeout=10)
-    row = next(i for i in yv["items"] if i["title"] == "Suscripciones")
-    assert row["value"] == {"child": "feeds-menu", "script": "mu_feeds"}
-    h.command("script-message-to", "mu_ytdl", "mu-ytdl-event", json.dumps(
+    # H42: «Suscripciones» salió de la raíz de las descargas y vive donde se abre algo (a child: ⌫ vuelve a él)
+    h.command("script-binding", "mu_menu/root")
+    mv = h.wait_property("user-data/mu/menu", lambda v: bool(v) and v.get("view") == "root", timeout=15)
+    abrir = next(i for i in mv["items"] if i["title"] == "Abrir o descargar")
+    h.command("script-message-to", "mu_menu", "mu-menu-event", json.dumps(
+        {"type": "activate", "index": 1, "menu_id": "{root}", "value": abrir["value"]}))
+    mv = h.wait_property("user-data/mu/menu", lambda v: bool(v) and v.get("view") == "open", timeout=15)
+    row = next(i for i in mv["items"] if i["title"] == "Suscripciones")
+    h.command("script-message-to", "mu_menu", "mu-menu-event", json.dumps(
         {"type": "activate", "index": 1, "menu_id": "{root}", "value": row["value"]}))
     wait_nav(h, "mu-feeds", crumbs)
     st(h, lambda v: v.get("view") == "root" and "Ajustes de suscripciones" in titles(v))
@@ -351,7 +353,7 @@ def test_from_downloads_menu_downloads_with_the_default_chain(open_mpv, feed_ser
     act(h, {"check_all": True})
     st(h, lambda v: v["last_action"] == "check-all:1")
     press(h, "BS")
-    wait_nav(h, "mu-ytdl", "MPV-UOS › Descargas y conversión")
+    wait_nav(h, "mu-menu", "MPV-UOS › Abrir o descargar")
     press(h, "ESC")
     wait_closed(h)
     assert h.script_errors() == [], h.script_errors()

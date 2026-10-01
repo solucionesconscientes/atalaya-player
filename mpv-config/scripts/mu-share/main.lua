@@ -19,6 +19,7 @@ local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local nav = require('mu.nav')
 local prefs = require('mu.prefs')
+local clip = require('mu.clip')
 local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
@@ -644,11 +645,13 @@ local function toggle_qr()
   end)
 end
 
+-- H42/A4: por mu.clip, y con el respaldo de wl-copy/xclip que antes solo tenía mu-iptv
 local function copy_text(text)
-  local ok = text ~= '' and mp.set_property('clipboard/text', text)
-  state.copied = ok and text or ''
-  publish()
-  osd(ok and ('Copiado: ' .. text) or ('Compartir: ' .. text))
+  clip.copy(text, function(ok)
+    state.copied = ok and text or ''
+    publish()
+    osd(clip.notice(ok, text))
+  end)
 end
 
 -- text box (a uosc palette whose query is the text): a chat message or the address of another server

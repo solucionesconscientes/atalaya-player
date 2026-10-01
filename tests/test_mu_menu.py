@@ -81,7 +81,8 @@ def test_continue_watching_survives_rename_and_root_menu(menu_mpv, media_dir, tm
     h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-menu", timeout=15)
     st = wait_menu(h, "root", lambda v: "Continuar viendo" in titles(v))
     t = titles(st)
-    assert t[0] == "Continuar viendo" and "Abrir" in t and "TV y radio" in t and "Preferencias" in t and "Salir" in t
+    assert t[0] == "Continuar viendo" and "Abrir o descargar" in t and "TV y radio" in t
+    assert "Preferencias" in t and "Salir" in t
     cont = next(i for i in st["items"] if i["title"] == "Continuar viendo")
     assert cont["submenu"] == 2 and cont["hint"] == "1"  # 1 resumable + "Todos los recientes…"
     # activating a recent through the callback loads it (uosc would send the leaf item's value)
@@ -99,7 +100,7 @@ def test_palette_and_start_screen(tv, media_dir):  # noqa: F811
         # start screen opened by itself (idle, no file)
         st = wait_menu(h, "start")
         assert st["start_shown"] is True and h.get("user-data/uosc/menu/type") == "mu-menu"
-        assert "Abrir archivo" in titles(st) and "TV y radio" in titles(st)
+        assert "Abrir o descargar…" in titles(st) and "TV y radio" in titles(st)
         h.command("script-message-to", "uosc", "close-menu", "mu-menu")
         h.wait_property("user-data/mu/menu", lambda v: bool(v) and v.get("view") == "", timeout=10)
 

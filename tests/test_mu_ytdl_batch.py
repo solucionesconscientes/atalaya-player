@@ -1,6 +1,7 @@
 """H19 · download manager in mu-ytdl (headless mpv + mpvd + the fake yt-dlp): several URLs pasted at once, a list with
 check boxes (own numbered folder, only the marked entries) and the download settings (simultaneous downloads, speed
-limit, archive)."""
+limit, archive). H42: everything is reached through the single box («Abrir o descargar») and its one question,
+reproducir o descargar; the pick list itself did not change."""
 
 from __future__ import annotations
 
@@ -8,19 +9,18 @@ import json
 import time
 
 from tests.test_mu_ytdl import argv_lines, send_event, wait_view, ytdl_mpv  # noqa: F401 - fixture
+from tests.test_mu_ytdl_puerta import gate_event, open_gate, titles, ytdl_state
 
 
-def batch_event(h, ev: dict) -> None:
-    base = {"menu_id": "{root}", "is_pointer": False, "alt": False, "ctrl": False, "shift": False}
-    h.command("script-message-to", "mu_ytdl", "mu-ytdl-batch-event", json.dumps({**base, **ev}))
-
-
-def titles(v):
-    return [i["title"] for i in v.get("items", [])]
-
-
-def ytdl_state(h, pred, timeout: float = 30.0):
-    return h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and pred(v), timeout=timeout)
+def descargar(h, query: str, fila: str, pred=None):
+    """H42 · la caja única: se pega `query`, se pulsa la fila que lo reconoce y se contesta «Descargar»."""
+    gate_event(h, {"type": "search", "query": query})
+    v = ytdl_state(h, lambda v: fila in titles(v), timeout=40)
+    gate_event(h, {"type": "activate", "index": 1,
+                   "value": next(i for i in v["items"] if i["title"] == fila)["value"]})
+    ytdl_state(h, lambda v: v.get("view") == "what" and "Descargar" in titles(v)
+               and (pred is None or pred(v)), timeout=60)
+    send_event(h, {"type": "activate", "index": 3, "value": {"gate_download": True}})
 
 
 def argv_for(arglog, url, timeout=20.0):
@@ -34,23 +34,14 @@ def argv_for(arglog, url, timeout=20.0):
 
 
 def test_una_sola_puerta_lista_con_casillas_y_ajustes(ytdl_mpv):
-    """H37/D1-D3: una sola fila «Descargar…»; se pega lo que sea y sale una lista con casillas, el formato de todos en
-    la primera fila y el de cada uno en su acción."""
+    """H37/D1-D3 + H42/A1-A2: se pega lo que sea en la caja única, se contesta «Descargar» y sale la lista con
+    casillas, el formato de todos en la primera fila y el de cada uno en su acción."""
     h, d, arglog, _tmp = ytdl_mpv
     h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
-    h.command("script-binding", "mu_ytdl/ytdl-menu")
-    st = ytdl_state(h, lambda v: v.get("view") == "root" and "Descargar…" in titles(v))
-    # D1: ya no hay dos puertas distintas según lo que vayas a pegar
-    assert "Descargar varias URL…" not in titles(st) and "Descargar de una lista o canal…" not in titles(st)
-    puerta = next(i for i in st["items"] if i["title"] == "Descargar…")
 
     # varios enlaces pegados (los repetidos se descartan) → una lista con casillas
-    send_event(h, {"type": "activate", "index": 1, "value": puerta["value"]})
-    h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-ytdl-batch", timeout=10)
-    batch_event(h, {"type": "search", "query": "https://fake.test/uno https://fake.test/dos, https://fake.test/uno"})
-    st = ytdl_state(h, lambda v: "Elegir de 2 enlaces" in titles(v))
-    elegir = next(i for i in st["items"] if i["title"] == "Elegir de 2 enlaces")
-    batch_event(h, {"type": "activate", "index": 1, "value": elegir["value"]})
+    open_gate(h)
+    descargar(h, "https://fake.test/uno https://fake.test/dos, https://fake.test/uno", "Seguir con 2 enlaces")
     st = ytdl_state(h, lambda v: v.get("view") == "picklist" and "Descargar 2" in titles(v), timeout=40)
     assert titles(st)[0].startswith("Para todos: ") and st["pick"]["total"] == 2 and st["pick"]["marked"] == 2
     assert next(i for i in st["items"] if i["title"] == "Subtítulos (SRT) aparte")["hint"] == "no"
@@ -62,15 +53,9 @@ def test_una_sola_puerta_lista_con_casillas_y_ajustes(ytdl_mpv):
     d.wait(lambda: sum(1 for r in d.call("ytdl.downloads.list") if r["status"] == "done") >= 2, timeout=60)
 
     # una lista: cada entrada con su casilla; se desmarca la 2ª → solo 1,3,4,5 en una carpeta numerada
-    h.command("script-binding", "mu_ytdl/ytdl-menu")
-    wait_view(h, "root")
-    send_event(h, {"type": "activate", "index": 1, "value": puerta["value"]})
-    h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-ytdl-batch", timeout=10)
+    open_gate(h)
     pl_url = "https://www.youtube.com/playlist?list=PLtest"
-    batch_event(h, {"type": "search", "query": pl_url})
-    st = ytdl_state(h, lambda v: "Ver qué trae y elegir" in titles(v))
-    ver = next(i for i in st["items"] if i["title"] == "Ver qué trae y elegir")
-    batch_event(h, {"type": "activate", "index": 1, "value": ver["value"]})
+    descargar(h, pl_url, "Seguir con esa lista o canal", lambda v: (v.get("gate") or {}).get("count") == 5)
     st = ytdl_state(h, lambda v: v.get("view") == "picklist" and "Descargar 5" in titles(v), timeout=40)
     assert st["pick"]["source"] == "url" and len(st["items"]) == 4 + 5
     send_event(h, {"type": "activate", "index": 6, "value": {"pick_toggle": 2}})
@@ -83,7 +68,7 @@ def test_una_sola_puerta_lista_con_casillas_y_ajustes(ytdl_mpv):
     # settings: simultaneous downloads and speed limit cycle, the archive toggles
     h.command("script-binding", "mu_ytdl/ytdl-menu")
     wait_view(h, "root")
-    send_event(h, {"type": "activate", "index": 3, "value": {"view": "dl_settings"}})
+    send_event(h, {"type": "activate", "index": 6, "value": {"view": "dl_settings"}})
     st = ytdl_state(h, lambda v: v.get("view") == "dl_settings" and "Límite de velocidad" in titles(v))
     send_event(h, {"type": "activate", "index": 2, "value": {"dlset": "rate_limit"}})
     d.wait(lambda: d.call("ytdl.settings.get")["rate_limit"] == "500K", timeout=10)
@@ -115,27 +100,20 @@ def test_formato_comun_formato_por_fila_srt_y_lo_que_no_se_puede_bajar(ytdl_mpv)
     global o por fila, y lo que yt-dlp no sabe abrir (los guardados de Instagram) se dice ANTES de intentarlo."""
     h, d, arglog, _tmp = ytdl_mpv
     h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
-    h.command("script-binding", "mu_ytdl/ytdl-menu")
-    st = ytdl_state(h, lambda v: v.get("view") == "root" and "Descargar…" in titles(v))
-    puerta = next(i for i in st["items"] if i["title"] == "Descargar…")
 
     # D4: los guardados de Instagram no tienen extractor → se dice, con la alternativa, y no hay nada que pulsar
-    send_event(h, {"type": "activate", "index": 1, "value": puerta["value"]})
-    h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-ytdl-batch", timeout=10)
-    batch_event(h, {"type": "search", "query": "https://www.instagram.com/sc.tecnico/saved/all-posts/"})
+    open_gate(h)
+    gate_event(h, {"type": "search", "query": "https://www.instagram.com/sc.tecnico/saved/all-posts/"})
     st = ytdl_state(h, lambda v: any("guardados de Instagram" in t for t in titles(v)), timeout=30)
     assert any("copia su enlace" in t for t in titles(st)), titles(st)
     assert all(i["value"] == "" for i in st["items"]), "no se ofrece nada que vaya a fallar"
     # y un perfil de TikTok sí se ofrece, recordando lo de las cookies
-    batch_event(h, {"type": "search", "query": "https://www.tiktok.com/@alguien"})
-    st = ytdl_state(h, lambda v: "Ver qué trae y elegir" in titles(v), timeout=30)
+    gate_event(h, {"type": "search", "query": "https://www.tiktok.com/@alguien"})
+    st = ytdl_state(h, lambda v: "Seguir con esa lista o canal" in titles(v), timeout=30)
     assert any("navegador" in t for t in titles(st)), titles(st)
 
     # D2/D3: dos enlaces, el primero en audio Opus y el segundo con el formato de todos (480p) + SRT solo para él
-    batch_event(h, {"type": "search", "query": "https://fake.test/tres https://fake.test/cuatro"})
-    st = ytdl_state(h, lambda v: "Elegir de 2 enlaces" in titles(v))
-    batch_event(h, {"type": "activate", "index": 1,
-                    "value": next(i for i in st["items"] if i["title"] == "Elegir de 2 enlaces")["value"]})
+    descargar(h, "https://fake.test/tres https://fake.test/cuatro", "Seguir con 2 enlaces")
     st = ytdl_state(h, lambda v: v.get("view") == "picklist" and "Descargar 2" in titles(v), timeout=40)
 
     # formato de todos → 480p

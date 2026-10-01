@@ -1,9 +1,11 @@
 -- mu-ytdl: yt-dlp integration for MPV-UOS. Points mpv's ytdl_hook at the vendored yt-dlp, switches video / audio-only
 -- keeping the position, "Calidad" (all formats from `yt-dlp -J` via mpvd), "Descargar" (presets + options) and a
--- live "Descargas" panel fed by mpvd push events, plus two palettes: "Abrir URL" (typed/pasted URL or clipboard) and
--- "Buscar en YouTube" (ytdl.search in mpvd). Script name: mu_ytdl.
--- Bindings: ytdl-menu, ytdl-toggle-audio, ytdl-quality, ytdl-download, ytdl-downloads, open-url, yt-search
--- (see input.conf).
+-- live "Descargas" panel fed by mpvd push events. Script name: mu_ytdl.
+-- H42 · "Abrir o descargar" is the single door: one text box that takes a link, several links, a playlist, a whole
+-- channel, a local path, a .txt of links or, left empty, the clipboard; then one question, play or download. The old
+-- doors ("Abrir URL", "Buscar en YouTube", "Pegar") live on as key bindings and inside this one.
+-- Bindings: ytdl-gate, ytdl-menu, ytdl-toggle-audio, ytdl-quality, ytdl-download, ytdl-downloads, open-url,
+-- yt-search (see input.conf).
 -- Everything about ytdl_hook below was verified against the script embedded in mpv 0.41 (docs/MPV_YTDL.md).
 local mp = require('mp')
 local msg = require('mp.msg')
@@ -23,9 +25,9 @@ local SEARCH_EVENT = 'mu-ytdl-search-event'
 local MENU = 'mu-ytdl'
 local URL_MENU = 'mu-ytdl-url'              -- palettes get their own type (a palette cannot be update-menu'd in/out)
 local SEARCH_MENU = 'mu-ytdl-search'
-local BATCH_MENU = 'mu-ytdl-batch'          -- H19: several URLs / a list or channel URL
-local BATCH_EVENT = 'mu-ytdl-batch-event'
-local OUR_MENUS = { [MENU] = true, [URL_MENU] = true, [SEARCH_MENU] = true, [BATCH_MENU] = true }
+local GATE_MENU = 'mu-ytdl-gate'            -- H42: the single box ("Abrir o descargar")
+local GATE_EVENT = 'mu-ytdl-gate-event'
+local OUR_MENUS = { [MENU] = true, [URL_MENU] = true, [SEARCH_MENU] = true, [GATE_MENU] = true }
 
 local opts = {
   ytdl_path = '',                   -- override: path(s) for ytdl_hook (default <root>/vendor/bin/yt-dlp, then PATH)
@@ -83,7 +85,8 @@ local state = {
   search_status = '',    -- '' | idle | loading | done | error | url
   search_results = 0,
   results = nil,         -- {query, rows} of the last successful search (shown again when coming back to it)
-  add_query = '',        -- H37/D1: lo que se ha pegado en la caja de «Descargar…»
+  gate_query = '',       -- H42/A1: lo que se ha pegado en la caja de «Abrir o descargar»
+  gate = nil,            -- H42/A2: lo reconocido {kind, url|urls|path, count, list, entries, title}
   site = nil,            -- H37/D4: respuesta de ytdl.site_support para la URL pegada
   pick = nil,            -- H37/D2: {entries, sel, fmt, srt, common, common_srt, source, url, title}
 }
@@ -109,7 +112,9 @@ local function publish()
     last_event = state.last_event or '', last_error = state.last_error, hook_path = state.hook_path,
     items = state.items, search_query = state.search_query, search_status = state.search_status,
     search_results = state.search_results,
-    add_query = state.add_query, site = state.site,
+    gate_query = state.gate_query, site = state.site,
+    gate = state.gate and { kind = state.gate.kind, count = state.gate.count or 1,
+                            list = state.gate.list or false } or nil,
     pick = state.pick and { total = #state.pick.entries, marked = (function()
       local n = 0
       for i = 1, #state.pick.entries do if state.pick.sel[i] then n = n + 1 end end
@@ -509,10 +514,11 @@ local function key_for(name)
 end
 
 views.root = function()
+  -- H42/A1-A3 · una sola puerta. Antes había tres filas distintas aquí («Abrir URL…», «Buscar en YouTube…» y
+  -- «Descargar…») y había que saber de antemano qué ibas a pegar. Siguen en el teclado (ctrl+u, ctrl+f).
   local items = {
-    { title = 'Abrir URL…', hint = key_for('open-url'), icon = 'link', value = { view = 'open_url' } },
-    { title = 'Buscar en YouTube…', hint = key_for('yt-search'), icon = 'youtube_searched_for',
-      value = { view = 'yt_search' }, separator = true },
+    { title = 'Abrir o descargar…', hint = key_for('ytdl-gate') or 'un enlace, varios, una lista, un archivo',
+      icon = 'add_link', value = { view = 'gate' }, separator = true },
   }
   if state.active then
     table.insert(items, {
@@ -526,16 +532,9 @@ views.root = function()
     table.insert(items, { title = 'Con una URL abierta: solo audio, calidad y descargar',
                           icon = 'info', selectable = false, muted = true, align = 'center' })
   end
-  -- D1: una sola puerta. Antes había dos filas («varias URL» y «de una lista o canal») y había que saber de antemano
-  -- qué era lo que ibas a pegar. Ahora se pega lo que sea y el reproductor averigua qué es.
-  table.insert(items, { title = 'Descargar…', hint = 'un enlace o veinte, un canal, una lista o un .txt',
-                        icon = 'download', value = { view = 'add' } })
   local n = count_active()
   table.insert(items, { title = 'Descargas', hint = n > 0 and (tostring(n) .. ' activas') or nil, icon = 'downloading',
                         value = { view = 'downloads' } })
-  -- H23: subscriptions live in mu-feeds (opened as a child: ⌫ comes back here)
-  table.insert(items, { title = 'Suscripciones', hint = 'canales, listas y podcasts', icon = 'subscriptions',
-                        value = { child = 'feeds-menu', script = 'mu_feeds' } })
   -- H20: conversions and the unified tasks panel live in mu-convert (opened as a child: ⌫ comes back here)
   table.insert(items, { title = 'Convertir…', hint = 'MP4, más pequeño, solo audio, GIF', icon = 'transform',
                         value = { child = 'convert-menu' } })
@@ -794,9 +793,16 @@ local function downloads_items()
       table.insert(items, download_item(d))
     end
   end
-  if #items == 0 then return uosc.message_items('Sin descargas. Abre una URL y usa «Descargar»', 'download') end
-  table.insert(items, { title = 'Limpiar terminadas', icon = 'cleaning_services', value = { clear = true }, separator = true,
-                        actions = {}, keep_open = true })
+  if #items == 0 then
+    items = uosc.message_items('Sin descargas. Pega algo en «Abrir o descargar»', 'download')
+  else
+    table.insert(items, { title = 'Limpiar terminadas', icon = 'cleaning_services', value = { clear = true },
+                          separator = true, actions = {}, keep_open = true })
+  end
+  -- H42/A4 · el panel web es un enlace que hay que llevarse a otro aparato: se abre aquí o se copia con Tab
+  table.insert(items, { title = 'Panel de descargas en el navegador', hint = 'Tab copia el enlace',
+                        icon = 'open_in_browser', value = { panel = true }, separator = #items > 0,
+                        actions = { { name = 'copy', icon = 'content_copy', label = 'Copiar el enlace' } } })
   return items
 end
 
@@ -932,14 +938,20 @@ local function as_url(text)
   return nil
 end
 
--- URL on the first line of the clipboard, or nil (mpv 0.41 `clipboard/text`; unavailable without a backend).
-local function clipboard_url()
+-- Whatever is in the clipboard (mpv 0.41 `clipboard/text`; empty without a backend). The single box classifies the
+-- whole thing, so it has to see every line, not just the first one.
+local function clipboard_raw()
   local text = opts.clipboard_text
   if text == '' then
     local ok, value = pcall(mp.get_property, 'clipboard/text')
     text = ok and value or ''
   end
-  return as_url(tostring(text or ''):match('^%s*([^\r\n]*)'))
+  return tostring(text or '')
+end
+
+-- URL on the first line of the clipboard, or nil.
+local function clipboard_url()
+  return as_url(clipboard_raw():match('^%s*([^\r\n]*)'))
 end
 
 local function ellipsize(s, n)
@@ -1044,10 +1056,21 @@ end
 -- D1 · la caja donde se pega lo que sea. Lo que se teclea se clasifica aquí mismo: una ruta de .txt, un enlace, veinte
 -- enlaces, o una URL de las que yt-dlp no sabe abrir (guardados de Instagram, favoritos de TikTok: D4), que se dice
 -- antes de intentarlo en vez de fallar con un error de yt-dlp.
+local LINK_FILE_EXT = { txt = true, list = true, urls = true, csv = true }
+local LINK_FILE_MAX = 4 * 1024 * 1024   -- un listado de enlaces no pesa más que esto; un vídeo, sí
+
+-- ¿Es una lista de enlaces en texto? Se mira la extensión y el tamaño ANTES de leer: pasarle un .mkv de 4 GB a
+-- read_links cargaría la película entera en memoria para buscar «https://».
+local function is_link_file(path, info)
+  local ext = tostring(path or ''):match('%.([%a%d]+)$')
+  if not ext or not LINK_FILE_EXT[ext:lower()] then return false end
+  return not info or not info.size or info.size <= LINK_FILE_MAX
+end
+
 local function read_links(path)
   local fh = io.open(path, 'r')
   if not fh then return nil end
-  local text = fh:read('*a') or ''
+  local text = fh:read(LINK_FILE_MAX) or ''
   fh:close()
   local out = {}
   for linea in (text .. '\n'):gmatch('([^\n]*)\n') do
@@ -1058,90 +1081,26 @@ local function read_links(path)
   return out
 end
 
-local function add_items(query)
-  local typed = trim(query)
-  local urls = urls_in(typed)
-  local items = {}
-  local path = typed ~= '' and not typed:match('^https?://') and (mp.command_native({ 'expand-path', typed }) or typed)
-  local info = path and utils.file_info(path)
-  if info and info.is_file then
-    local links = read_links(path) or {}
-    if #links == 0 then
-      return uosc.message_items('Ese archivo no tiene ningún enlace', 'description')
-    end
-    table.insert(items, { title = 'Elegir de ' .. tostring(#links) .. ' enlaces de ' .. typed, icon = 'checklist',
-                          value = { pick_links = links, title = typed } })
-    return items
-  end
-  -- D4: lo que yt-dlp no puede abrir, dicho con su alternativa
-  local aviso = state.site and state.site.url == (urls[1] or '') and state.site or nil
-  if aviso and aviso.supported == false then
-    table.insert(items, { title = aviso.message, icon = 'block', selectable = false, muted = true })
+-- H37/D4 · lo que yt-dlp no puede abrir, dicho con su alternativa antes de intentarlo. Filas sin acción: no se
+-- ofrece nada que vaya a fallar.
+local function site_rows(url)
+  local aviso = state.site and state.site.url == url and state.site or nil
+  if not aviso then return {}, true end
+  local rows = {}
+  if aviso.supported == false then
+    rows[#rows + 1] = { title = aviso.message, icon = 'block', selectable = false, muted = true }
     if aviso.alternative ~= '' then
-      table.insert(items, { title = aviso.alternative, icon = 'lightbulb', selectable = false, muted = true })
+      rows[#rows + 1] = { title = aviso.alternative, icon = 'lightbulb', selectable = false, muted = true }
     end
-    return items
+    return rows, false
   end
-  if #urls == 1 then
-    if aviso and aviso.warning ~= '' then
-      table.insert(items, { title = aviso.warning, icon = 'warning', selectable = false, muted = true })
-    end
-    if aviso and aviso.private then
-      table.insert(items, { title = aviso.private_hint or '', icon = 'cookie', selectable = false, muted = true })
-    end
-    table.insert(items, { title = 'Ver qué trae y elegir', hint = ellipsize(urls[1], 60), icon = 'checklist',
-                          value = { pick_url = urls[1] } })
-  elseif #urls > 1 then
-    table.insert(items, { title = 'Elegir de ' .. #urls .. ' enlaces', icon = 'checklist',
-                          value = { pick_links = urls } })
+  if aviso.warning and aviso.warning ~= '' then
+    rows[#rows + 1] = { title = aviso.warning, icon = 'warning', selectable = false, muted = true }
   end
-  if #items == 0 then
-    items = uosc.message_items('Pega uno o varios enlaces (ctrl+v), una lista, un canal o la ruta de un .txt', 'link')
+  if aviso.private then
+    rows[#rows + 1] = { title = aviso.private_hint or '', icon = 'cookie', selectable = false, muted = true }
   end
-  return items
-end
-
-local function add_menu(items, extra)
-  local menu = {
-    type = BATCH_MENU, title = 'Descargar: pega lo que quieras',
-    items = items, callback = { SCRIPT, BATCH_EVENT }, search_style = 'palette', search_debounce = 0,
-    on_search = 'callback', on_close = 'callback',
-    footnote = 'ctrl+v pega · un enlace, veinte, una lista, un canal o un .txt · ⌫ atrás',
-  }
-  for k, v in pairs(extra or {}) do menu[k] = v end
-  return menu
-end
-
--- Se le pregunta a mpvd por la URL que se acaba de pegar (D4). Es una llamada por URL nueva y la respuesta se guarda.
-local function ask_site(url, cb)
-  if url == '' or (state.site and state.site.url == url) then cb() return end
-  rpc.call('ytdl.site_support', { url = url }, function(err, res)
-    if not err and type(res) == 'table' then state.site = res else state.site = { url = url, supported = true } end
-    cb()
-  end, 15)
-end
-
-views.add = function(args)
-  state.add_query = ''
-  state.site = nil
-  local clip = clipboard_url()
-  local query = args.query or ''
-  local items = add_items(query)
-  remember(items)
-  publish()
-  uosc.open(add_menu(items, { search_suggestion = query ~= '' and query or clip or nil }))
-end
-
-local function add_typed(query)
-  state.add_query = query or ''
-  local urls = urls_in(query or '')
-  ask_site(urls[1] or '', function()
-    if state.view ~= 'add' then return end
-    local items = add_items(state.add_query)
-    remember(items)
-    uosc.update(add_menu(items))
-    publish()
-  end)
+  return rows, true
 end
 
 -- D2/D3 · una sola lista con casillas, venga de una lista de reproducción, de un canal, de veinte enlaces pegados o de
@@ -1170,6 +1129,230 @@ local function pick_set_entries(entries, source, url, title, asked)
   state.pick = { entries = entries, sel = sel, fmt = {}, srt = {}, source = source, url = url, asked = asked,
                  title = title or '', common = (state.pick and state.pick.common) or P:get('pick_preset') or PICK_DEFAULT,
                  common_srt = (state.pick and state.pick.common_srt) or false }
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- H42 · una sola puerta. Un único campo de texto acepta un enlace, veinte, una lista de reproducción, un canal
+-- entero, una ruta local, un .txt con enlaces o, si se deja vacío, lo que haya en el portapapeles. Después hay UNA
+-- sola pregunta, reproducir o descargar, y la de descargar cae en la pantalla de siempre (views.picklist).
+
+local GATE_TITLE = 'Abrir o descargar'
+
+-- Se le pregunta a mpvd por la URL que se acaba de pegar (H37/D4). Es una llamada por URL nueva y se guarda.
+local function ask_site(url, cb)
+  if url == '' or (state.site and state.site.url == url) then cb() return end
+  rpc.call('ytdl.site_support', { url = url }, function(err, res)
+    if not err and type(res) == 'table' then state.site = res else state.site = { url = url, supported = true } end
+    cb()
+  end, 15)
+end
+
+-- Una URL que huele a lista o a canal. Solo para esas se le pregunta a mpvd cuántos elementos trae, que es una
+-- llamada de red: un vídeo suelto no la necesita y así «Reproducir» no espera a nada.
+local LIST_HINTS = { '[?&]list=', '/playlist', '/@[%w%-_.]+', '/channel/', '/c/', '/user/', '/videos/?$',
+                     '/streams/?$', '/podcasts/?$' }
+
+local function looks_like_list(url)
+  for _, pat in ipairs(LIST_HINTS) do if url:match(pat) then return true end end
+  return false
+end
+
+local function plural(n, one, many)
+  if n == 1 then return '1 ' .. one end
+  return tostring(n) .. ' ' .. many
+end
+
+-- Qué es lo que se ha escrito o pegado, o nil si no se reconoce nada (entonces la caja ofrece buscarlo en YouTube).
+local function gate_classify(text)
+  local typed = trim(text)
+  if typed == '' then return nil end
+  local urls = urls_in(typed)
+  if #urls > 1 then
+    return { kind = 'links', urls = urls, count = #urls, title = plural(#urls, 'enlace', 'enlaces') }
+  end
+  if #urls == 1 then
+    return { kind = 'url', url = urls[1], count = 1, list = looks_like_list(urls[1]) }
+  end
+  local bare = as_url(typed)                 -- «youtube.com/…» sin esquema
+  if bare then return { kind = 'url', url = bare, count = 1, list = looks_like_list(bare) } end
+  local path = mp.command_native({ 'expand-path', typed }) or typed
+  local info = utils.file_info(path)
+  if not info then return nil end
+  if info.is_dir then return { kind = 'file', path = path, count = 1, dir = true } end
+  if is_link_file(path, info) then
+    local links = read_links(path) or {}
+    if #links == 0 then return { kind = 'empty_list', path = path, count = 0 } end
+    return { kind = 'links', urls = links, count = #links,
+             title = plural(#links, 'enlace', 'enlaces') .. ' de ' .. typed }
+  end
+  return { kind = 'file', path = path, count = 1 }
+end
+
+local function gate_row(what, from_clipboard)
+  local title, hint, icon
+  if what.kind == 'links' then
+    title, icon = 'Seguir con ' .. (what.title or plural(what.count, 'enlace', 'enlaces')), 'checklist'
+  elseif what.kind == 'url' then
+    title = what.list and 'Seguir con esa lista o canal' or 'Seguir con ese enlace'
+    hint, icon = ellipsize(what.url, 60), 'link'
+  elseif what.dir then
+    title, hint, icon = 'Seguir con esa carpeta', ellipsize(what.path, 60), 'folder'
+  else
+    title, hint, icon = 'Seguir con ese archivo', ellipsize(what.path, 60), 'folder_open'
+  end
+  if from_clipboard then hint = 'del portapapeles · ' .. (hint or '') end
+  return { title = title, hint = hint, icon = icon, value = { gate = what } }
+end
+
+local function gate_items(query)
+  local typed = trim(query)
+  local what = gate_classify(typed)
+  local items = {}
+  if what and what.kind == 'url' then
+    local rows, ok = site_rows(what.url)
+    for _, r in ipairs(rows) do items[#items + 1] = r end
+    if not ok then return items end          -- nada que pulsar: fallaría
+  end
+  if what and what.kind == 'empty_list' then
+    return uosc.message_items('Ese archivo no tiene ningún enlace', 'description')
+  end
+  if what then
+    items[#items + 1] = gate_row(what, false)
+  elseif typed ~= '' then
+    items[#items + 1] = { title = 'Buscar «' .. typed .. '» en YouTube', icon = 'youtube_searched_for',
+                          value = { yt_search = typed } }
+  else
+    -- la caja vacía ya ofrece lo que haya en el portapapeles: es el «Pegar URL o ruta copiada» de antes
+    local pegado = gate_classify(clipboard_raw())
+    if pegado and pegado.kind ~= 'empty_list' then items[#items + 1] = gate_row(pegado, true) end
+  end
+  if #items == 0 then
+    items = uosc.message_items('Pega o escribe: un enlace, varios, una lista, un canal, un archivo o una carpeta',
+                               'add_link')
+  end
+  return items
+end
+
+local function gate_menu(items, extra)
+  local menu = {
+    type = GATE_MENU, title = GATE_TITLE, items = items, callback = { SCRIPT, GATE_EVENT },
+    search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
+    footnote = 'ctrl+v pega · un enlace, varios, una lista, un canal, un archivo · vacío usa el portapapeles · ⌫ atrás',
+  }
+  for k, v in pairs(extra or {}) do menu[k] = v end
+  return menu
+end
+
+views.gate = function(args)
+  state.gate = nil
+  state.site = nil
+  state.gate_query = trim(args.query)
+  local items = gate_items(state.gate_query)
+  remember(items)
+  publish()
+  uosc.open(gate_menu(items, { search_suggestion = state.gate_query ~= '' and state.gate_query or nil }))
+end
+
+local function gate_typed(query)
+  state.gate_query = trim(query)
+  local top = state.stack[#state.stack]
+  if top and top.name == 'gate' then top.args = { query = state.gate_query } end   -- «atrás» conserva el texto
+  local urls = urls_in(state.gate_query)
+  ask_site(urls[1] or as_url(state.gate_query) or '', function()
+    if state.view ~= 'gate' then return end
+    local items = gate_items(state.gate_query)
+    remember(items)
+    uosc.update(gate_menu(items))
+    publish()
+  end)
+end
+
+-- A2 · la única pregunta. El número de elementos se dice siempre: 1 para un enlace o un archivo, los que haya para
+-- varios enlaces, y los que diga mpvd para una lista o un canal.
+local function what_desc(what)
+  if what.kind == 'links' then return 'Varios enlaces' end
+  if what.kind == 'file' then return what.dir and 'Una carpeta de tu equipo' or 'Un archivo de tu equipo' end
+  if what.list or what.entries then return 'Una lista o un canal' end
+  return 'Un enlace de internet'
+end
+
+local function show_what(what, status)
+  local cuenta = plural(what.count or 1, 'elemento', 'elementos')
+  local items = {
+    { title = what_desc(what), hint = status or cuenta, icon = 'info', selectable = false, muted = true },
+    { title = 'Reproducir', hint = cuenta, icon = 'play_arrow', value = { gate_play = true } },
+  }
+  if what.kind == 'file' then
+    items[#items + 1] = { title = 'Descargar', hint = cuenta .. ' · ya está aquí: convertir', icon = 'transform',
+                          value = { gate_download = true } }
+  else
+    items[#items + 1] = { title = 'Descargar', hint = cuenta, icon = 'download', value = { gate_download = true } }
+  end
+  show('¿Reproducir o descargar?', items, { footnote = 'Enter elige · ⌫ vuelve a la caja con el texto puesto' })
+end
+
+views.what = function(args)
+  local what = args.what or state.gate
+  if type(what) ~= 'table' then
+    show('¿Reproducir o descargar?', uosc.message_items('No hay nada que abrir', 'info'))
+    return
+  end
+  state.gate = what
+  publish()
+  if what.kind == 'url' and what.list and not what.entries and rpc.connected() then
+    show_what(what, 'mirando qué trae…')
+    rpc.call('ytdl.playlist', { url = what.url }, function(err, res)
+      if state.view ~= 'what' then return end
+      if not err and type(res) == 'table' and #(res.entries or {}) > 0 then
+        what.entries, what.count, what.title = res.entries, #res.entries, res.title or what.url
+      else
+        what.list = false                     -- no era una lista: un enlace suelto y punto
+      end
+      state.gate = what
+      publish()
+      show_what(what)
+    end, 90)
+    return
+  end
+  show_what(what)
+end
+
+local function gate_play()
+  local g = state.gate or {}
+  if g.kind == 'links' then
+    for i, u in ipairs(g.urls or {}) do mp.commandv('loadfile', u, i == 1 and 'replace' or 'append-play') end
+    osd('Abriendo ' .. plural(#(g.urls or {}), 'enlace', 'enlaces'))
+  elseif g.kind == 'file' then
+    load_url(g.path, false)
+  elseif g.url then
+    load_url(g.url, false)
+  end
+  close_menus()
+end
+
+local function gate_download()
+  local g = state.gate or {}
+  if g.kind == 'file' then
+    -- un archivo que ya está aquí no se baja: se convierte, que es lo mismo pero dicho bien
+    local crumbs = {}
+    for _, c in ipairs(N.parent.crumbs or {}) do crumbs[#crumbs + 1] = c end
+    for _, spec in ipairs(state.stack) do crumbs[#crumbs + 1] = spec.title end
+    nav.open_child('mu_convert', 'convert-menu', crumbs, state.view)
+    return
+  end
+  if g.kind == 'links' then
+    local entries = {}
+    for _, u in ipairs(g.urls or {}) do entries[#entries + 1] = { url = u, title = u } end
+    pick_set_entries(entries, 'links', nil, g.title)
+    open_view({ name = 'picklist', args = {} })
+  elseif g.entries then
+    -- la lista ya se resolvió para poder decir cuántos elementos trae: no se vuelve a preguntar
+    pick_set_entries(g.entries, 'url', g.url, g.title, g.url)
+    open_view({ name = 'picklist', args = {} })
+  elseif g.url then
+    state.pick = nil
+    open_view({ name = 'picklist', args = { url = g.url } })
+  end
 end
 
 views.picklist = function(args)
@@ -1499,6 +1682,10 @@ local function on_event(source, json)
       reopen_current()
     elseif v.download then
       if ev.action then download_action(v.download, ev.action) else download_details(v.download) end
+    elseif v.panel then
+      mp.commandv('script-message-to', 'mu_remote', ev.action == 'copy' and 'mu-remote-downloads-copy'
+                                                    or 'mu-remote-downloads')
+      if ev.action ~= 'copy' then close_menus() end
     elseif v.clear then
       rpc.call('ytdl.downloads.clear', nil, function() open_view({ name = 'downloads' }, false) end)
     elseif v.update then
@@ -1508,6 +1695,13 @@ local function on_event(source, json)
         if err then return end
         rpc.call('ytdl.settings.set', { auto_update = not s.auto_update }, function() open_view({ name = 'status' }, false) end)
       end)
+    elseif v.gate then
+      -- A2 · de la caja a la única pregunta. La caja se queda debajo en la pila: ⌫ vuelve a ella con el texto puesto.
+      open_view({ name = 'what', args = { what = v.gate } })
+    elseif v.gate_play then
+      gate_play()
+    elseif v.gate_download then
+      gate_download()
     elseif v.pick_url then
       -- D1: una URL cualquiera. mpvd dice qué trae (una lista, un canal o un solo vídeo) y se enseña igual.
       state.pick = nil
@@ -1572,7 +1766,7 @@ local function on_event(source, json)
   elseif ev.type == 'search' then
     if source == URL_MENU then url_typed(ev.query or '')
     elseif source == SEARCH_MENU then run_search(ev.query or '')
-    elseif source == BATCH_MENU then add_typed(ev.query or '') end
+    elseif source == GATE_MENU then gate_typed(ev.query or '') end
   elseif ev.type == 'back' then
     table.remove(state.stack)
     if #state.stack == 0 then
@@ -1594,7 +1788,7 @@ mp.register_script_message('mu-nav-return', function()
 end)
 mp.register_script_message(URL_EVENT, function(json) on_event(URL_MENU, json) end)
 mp.register_script_message(SEARCH_EVENT, function(json) on_event(SEARCH_MENU, json) end)
-mp.register_script_message(BATCH_EVENT, function(json) on_event(BATCH_MENU, json) end)
+mp.register_script_message(GATE_EVENT, function(json) on_event(GATE_MENU, json) end)
 
 local reset_timer = nil
 mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
@@ -1666,6 +1860,16 @@ local function open_root()
   open_view({ name = 'root' })
 end
 
+-- H42 · la puerta única: tecla propia, entrada del menú principal (mu-menu la abre como hija) y mensaje para otros
+-- scripts, con un texto inicial opcional.
+local function open_gate(text)
+  if not uosc.available() then osd('uosc no está cargado') return end
+  state.stack = {}
+  open_view({ name = 'gate', args = { query = text } })
+end
+
+N:binding('ytdl-gate', open_gate)
+mp.register_script_message('mu-ytdl-gate', open_gate)
 N:binding('ytdl-menu', open_root)
 mp.add_key_binding(nil, 'ytdl-toggle-audio', toggle_audio)
 local function open_under_root(view)
