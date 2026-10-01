@@ -1,5 +1,6 @@
--- mu-recap: «¿Qué me he perdido?» (H27, ADR-062). A few lines that sum up what was said while you were away, picked
--- by mpvd (recap.summarize) from the subtitles of the video or its AI transcription; Enter jumps to that moment.
+-- mu-recap: «Resumen e índice» (H27/H38/H45, ADR-062, ADR-075, ADR-076, ADR-081). A few lines that sum up what was
+-- said while you were away, the index of the whole video, and a written summary; all from the subtitles of the video,
+-- its AI transcription or —for an internet video— the ones the website offers; Enter jumps to that moment.
 --   · Away = the window lost focus or was minimised while playing (also `script-message mu-recap-away` /
 --     `mu-recap-back`, used by the tests: headless mpv has no window). Coming back after `min_away` seconds shows a
 --     hint with the key; the recap then covers exactly that stretch.
@@ -18,7 +19,8 @@ local N = nav.new()
 local SCRIPT = mp.get_script_name()
 local MENU = 'mu-recap'
 local EVENT = 'mu-recap-event'
-local ROOT_TITLE = '¿Qué me he perdido?'
+local ROOT_TITLE = 'Resumen e índice'
+local MISSED_TITLE = '¿Qué me he perdido?'
 
 local opts = {
   minutes = 5,          -- what the key sums up when you were not away
@@ -33,12 +35,16 @@ local TEXT_CODECS = { subrip = true, ass = true, ssa = true, webvtt = true, mov_
 
 local state = { away_from = nil, missed = nil, status = 'idle', result = nil, last_error = '', items = {},
                 -- H38/G3: el resumen en prosa que escribe el modelo local (tarda ~1 min: va con su progreso)
-                prose = nil, llm = nil }
+                prose = nil, llm = nil,
+                -- H45/D1: los subtítulos que ofrece la web del vídeo, ya traídos como SRT {url, srt, lang, kind}
+                web = nil, view = '' }
 
 local function publish()
   mp.set_property_native('user-data/mu/recap', {
     status = state.status, missed = state.missed, away = state.away_from ~= nil, result = state.result,
     last_error = state.last_error, items = state.items,
+    view = state.view,
+    web_lang = state.web and state.web.lang or '', web_kind = state.web and state.web.kind or '',
     prose_status = state.prose and state.prose.status or '', prose_rows = state.prose and #(state.prose.rows or {}) or 0,
     prose_length = state.prose and state.prose.length or '', prose_model = state.prose and state.prose.model or '',
     prose_progress = state.prose and state.prose.progress or 0,
@@ -134,8 +140,6 @@ local function source_params()
   return nil
 end
 
--- -- menu ----------------------------------------------------------------------------------------------
-
 local function show(items, title, open)
   state.items = {}
   for _, it in ipairs(items) do state.items[#state.items + 1] = { title = it.title or '', hint = it.hint or '' } end
@@ -144,6 +148,61 @@ local function show(items, title, open)
                        { { name = 'root' } })
   if open or uosc.open_type() ~= MENU then uosc.open(menu) else uosc.update(menu) end
 end
+
+-- H45/D1-D2 · un vídeo de internet no trae ninguna pista de subtítulos cargada, así que `source_params()` devolvía
+-- nil y el resumen no aparecía nunca: no estaba roto, se quedaba sin material. Casi siempre los tiene la web.
+-- Se piden AL PULSAR, no al abrir cada vídeo (así no hay una petición de red por cada cosa que se abra), y en los
+-- idiomas NATIVOS del vídeo: eso lo garantiza `subs.web.list`, que nunca ofrece las traducciones automáticas de
+-- YouTube porque responden HTTP 429 sin PO token (ADR-056). El castellano se consigue después traduciendo el SRT
+-- con OPUS-MT desde el panel de subtítulos, que además queda mejor que la traducción de la web.
+-- Medido el 2026-10-01 en un vídeo de 15 min: 5,41 s y 23 KB, frente a los ~8 min de transcribir con Whisper.
+local function web_source(title, cb)
+  local url = abs_path()
+  if not url or not is_url(url) then cb(nil) return end
+  if state.web and state.web.url == url and state.web.srt ~= '' then cb({ sub_path = state.web.srt }) return end
+  if not rpc.connected() then cb(nil) return end
+  show(uosc.loading_items('Buscando los subtítulos del vídeo…'), title, true)
+  rpc.call('subs.web.list', { url = url, prefer = 'es' }, function(err, res)
+    -- la primera pista es la mejor: el idioma del usuario antes que el original, y manual antes que automática
+    local pick = (not err and type(res) == 'table') and (res.tracks or {})[1] or nil
+    if not pick then cb(nil, err) return end
+    rpc.call('subs.web.fetch', { url = url, lang = pick.lang, kind = pick.kind }, function(e2, got)
+      if e2 or type(got) ~= 'table' or not got.srt then cb(nil, e2) return end
+      state.web = { url = url, srt = got.srt, lang = pick.lang, kind = pick.kind, label = pick.label or pick.lang }
+      publish()
+      cb({ sub_path = got.srt })
+    end, 90)
+  end, 60)
+end
+
+-- Material para resumir: lo que ya hay cargado y, si no hay nada y es un vídeo de internet, lo que ofrezca su web.
+local function with_source(title, cb)
+  local src = source_params()
+  if src then cb(src) return end
+  web_source(title, cb)
+end
+
+-- Qué decir cuando no hay material, según de qué se trate: no es lo mismo «pon unos subtítulos» que «esta web no
+-- da ninguno».
+local function no_source_items()
+  local path = abs_path()
+  if path and is_url(path) then
+    return uosc.message_items('Este vídeo de internet no ofrece subtítulos, ni propios ni automáticos', 'info')
+  end
+  return uosc.message_items('Este vídeo no tiene subtítulos de texto: activa unos o los subtítulos IA (alt+c)', 'info')
+end
+
+-- D2 · si los subtítulos que se han usado no están en castellano, se dice y se lleva a traducirlos (OPUS-MT, en el
+-- panel de subtítulos, que es donde vive ese trabajo con su progreso).
+local function translate_row(items)
+  local w = state.web
+  if not w or w.lang == '' then return end
+  if w.lang:lower():match('^es') then return end
+  items[#items + 1] = { title = 'Estos subtítulos están en ' .. (w.label or w.lang), icon = 'translate',
+                        hint = 'traducirlos al español sin conexión', value = { translate = true } }
+end
+
+-- -- menu ----------------------------------------------------------------------------------------------
 
 local function stretch()
   local pos = now() or 0
@@ -155,18 +214,18 @@ end
 local function recap()
   if mp.get_property_native('idle-active') then osd('Abre un vídeo primero') return end
   local from, to, was_away = stretch()
-  local title = string.format('%s · %s–%s', ROOT_TITLE, clock(from), clock(to))
+  local title = string.format('%s · %s–%s', MISSED_TITLE, clock(from), clock(to))
   if to - from < 5 then osd('Aún no ha pasado nada que resumir') return end
-  local src = source_params()
+  if not rpc.connected() then
+    show(uosc.message_items('mpvd no está conectado: espera unos segundos', 'error'), title, true)
+    return
+  end
+  state.view = 'recap'
+  with_source(title, function(src)
   if not src then
     state.status, state.last_error = 'error', 'no-source'
     publish()
-    show(uosc.message_items('Este vídeo no tiene subtítulos de texto: activa unos o los subtítulos IA (alt+c)', 'info'),
-         title, true)
-    return
-  end
-  if not rpc.connected() then
-    show(uosc.message_items('mpvd no está conectado: espera unos segundos', 'error'), title, true)
+    show(no_source_items(), title, true)
     return
   end
   state.status, state.last_error = 'working', ''
@@ -192,12 +251,15 @@ local function recap()
       items[#items + 1] = { title = 'Volver a verlo desde ' .. clock(from), icon = 'replay', value = { seek = from } }
       items[#items + 1] = { title = 'Índice del vídeo entero', icon = 'list', hint = 'secciones y frases clave',
                             value = { outline = true } }
+      translate_row(items)
     end
     show(items, title)
   end, 30)
+  end)
 end
 
 local ask_llm   -- se define con el nivel 2, más abajo; el índice ya lo usa para saber qué ofrecer
+local open_root -- la raíz «Resumen e índice» se define con las teclas, al final; el despacho ya la necesita
 
 -- H38/G2-G5 · el índice del vídeo: secciones con su título y, dentro, las frases clave con su minuto. Lo compone mpvd
 -- a partir del subtítulo que ya hay (`recap.outline`), sin escribir nada con un modelo y sin lanzar ninguna
@@ -205,16 +267,16 @@ local ask_llm   -- se define con el nivel 2, más abajo; el índice ya lo usa pa
 local function outline()
   if mp.get_property_native('idle-active') then osd('Abre un vídeo primero') return end
   local title = 'Índice del vídeo'
-  local src = source_params()
+  if not rpc.connected() then
+    show(uosc.message_items('mpvd no está conectado: espera unos segundos', 'error'), title, true)
+    return
+  end
+  state.view = 'outline'
+  with_source(title, function(src)
   if not src then
     state.status, state.last_error = 'error', 'no-source'
     publish()
-    show(uosc.message_items('Para el índice hace falta un subtítulo de texto: pon uno o créalo con IA (alt+c)', 'info'),
-         title, true)
-    return
-  end
-  if not rpc.connected() then
-    show(uosc.message_items('mpvd no está conectado: espera unos segundos', 'error'), title, true)
+    show(no_source_items(), title, true)
     return
   end
   src.duration = mp.get_property_number('duration')
@@ -259,8 +321,10 @@ local function outline()
       items[#items + 1] = { title = 'Resumen en prosa (largo)', hint = 'alrededor de un minuto', icon = 'subject',
                             value = { prose = 'long' } }
     end
+    translate_row(items)
     show(items, title)
   end, 60)
+  end)
 end
 
 -- H38/G3 · el resumen en prosa. Lo escribe un modelo local a partir del índice, así que tarda del orden de un minuto:
@@ -397,7 +461,14 @@ mp.register_script_message(EVENT, function(json)
   local back, handled = nav.classify(ev)
   if handled then return end
   if back or ev.type == 'back' then
+    -- desde un resultado se vuelve a «Resumen e índice»; desde ahí, a quien nos abrió
+    if state.view ~= 'root' and state.view ~= '' then open_root() return end
     if not N:leave() then uosc.close(MENU) end
+  elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.recap then
+    recap()
+  elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.translate then
+    -- H45/D2 · traducir el SRT de la web al español con OPUS-MT vive en el panel de subtítulos, con su progreso
+    nav.open_child('mu_subs', 'subs-web', { nav.HOME, ROOT_TITLE }, 'root')
   elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.outline then
     outline()
   elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.prose then
@@ -412,6 +483,38 @@ mp.register_script_message(EVENT, function(json)
   end
 end)
 
+-- H45/D3 · «Resumen e índice» como una sola entrada. Antes «¿Qué me he perdido?» estaba en el tercer nivel (dentro
+-- de «Herramientas», que tiene 15 filas) y el índice del vídeo no estaba en el menú principal en absoluto: solo
+-- como alt+I. Ahora las dos cosas viven aquí, y se llega desde la raíz y desde el panel de subtítulos.
+local function key_for(name)
+  local cmd = 'script-binding ' .. SCRIPT .. '/' .. name
+  for _, b in ipairs(mp.get_property_native('input-bindings') or {}) do
+    if b.cmd == cmd and not b.is_weak then return b.key end
+  end
+  return nil
+end
+
+local function root_items()
+  local from, to, was_away = stretch()
+  local items = {}
+  items[#items + 1] = {
+    title = was_away and 'Lo que te has perdido' or ('Resumen de los últimos ' .. opts.minutes .. ' minutos'),
+    hint = clock(from) .. '–' .. clock(to) .. (key_for('recap') and (' · ' .. key_for('recap')) or ''),
+    icon = 'history_edu', value = { recap = true } }
+  items[#items + 1] = { title = 'Índice del vídeo entero',
+                        hint = 'secciones y frases clave' .. (key_for('outline') and (' · ' .. key_for('outline')) or ''),
+                        icon = 'list', value = { outline = true } }
+  return items
+end
+
+open_root = function()
+  if mp.get_property_native('idle-active') then osd('Abre un vídeo primero') return end
+  state.view = 'root'
+  publish()
+  show(root_items(), ROOT_TITLE, true)
+end
+
+N:binding('recap-menu', open_root)
 N:binding('recap', recap)
 N:binding('outline', outline)
 publish()

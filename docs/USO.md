@@ -368,13 +368,21 @@ tele, *Seguir viendo aquí* (vuelve al reproductor donde iba la tele) y *Parar e
 - **Modo sencillo** (*Preferencias*): menú principal corto y barra mínima, para quien solo quiere ver cosas;
   *Menú completo* lo quita.
 
-## 9d. ¿Qué me he perdido?
-Si minimizas la ventana o te vas a otra mientras sigue el vídeo, al volver aparece «¿Te has perdido algo? alt+R».
-`alt+R` (o *Herramientas → ¿Qué me he perdido?*) muestra 3–7 frases del propio diálogo que resumen ese tramo (si no te
-fuiste, los últimos 5 minutos), cada una con su minuto: Enter salta ahí. Todo en tu equipo, en menos de un segundo.
-Necesita palabras: subtítulos de texto del vídeo (incluidos los de la web o de OpenSubtitles) o su transcripción con
-subtítulos IA (`alt+c`). Con el modelo de búsqueda semántica instalado elige mejor; sin él cuenta las palabras que más
-se repiten. No inventa nada: son frases que se dijeron.
+## 9d. Resumen e índice
+Las dos cosas viven juntas en **Resumen e índice**: en la raíz del menú (mientras hay algo abierto) y dentro del
+*Panel de subtítulos*, que es de donde sale el material. También `alt+R` y `alt+I` directamente.
+
+**¿Qué me he perdido?** Si minimizas la ventana o te vas a otra mientras sigue el vídeo, al volver aparece
+«¿Te has perdido algo? alt+R». `alt+R` muestra 3–7 frases del propio diálogo que resumen ese tramo (si no te fuiste,
+los últimos 5 minutos), cada una con su minuto: Enter salta ahí. Todo en tu equipo, en menos de un segundo.
+Necesita palabras: subtítulos de texto del vídeo, o su transcripción con subtítulos IA (`alt+c`).
+**En un vídeo de internet** no hay ninguna pista cargada, así que al pulsar se piden **los que ofrece la web**
+(«Buscando los subtítulos del vídeo…»): unos 5 segundos, frente a los ~8 minutos que tardaría transcribirlo. Se piden
+solo en los **idiomas propios** del vídeo —pedirle a YouTube una traducción automática devuelve un error de «demasiadas
+peticiones»—, así que si el vídeo está en inglés el resumen sale en inglés y se te ofrece **traducirlo al español sin
+conexión** (OPUS-MT, en el panel de subtítulos), que además queda mejor que la traducción de la web.
+Con el modelo de búsqueda semántica instalado elige mejor; sin él cuenta las palabras que más se repiten. No inventa
+nada: son frases que se dijeron.
 
 ### Índice del vídeo (`alt+I`)
 Lo mismo, pero del vídeo entero: **secciones** (cortes donde cambia el tema, si está el modelo de búsqueda semántica;

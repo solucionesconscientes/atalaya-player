@@ -695,3 +695,28 @@
   submenú sale de datos se le pone un id estable —`sched:<id>`, `prog:<inicio>`, `sec:<n>`—. **Regla para lo que
   venga: una fila con `items` cuyo título no sea un literal lleva `id`.** De paso, un refresco de «Grabaciones
   programadas» (una grabación que empieza o acaba mientras se mira la lista) ya no la deja en «Cargando…»: parpadeaba.
+- ADR-081 · El resumen en los vídeos de internet, y «Resumen e índice» donde se encuentre (H45). **Amplía** ADR-062
+  (el resumen) y ADR-075 (el índice), y **se apoya en** ADR-056 (los subtítulos de la web) sin cambiarlo.
+  **La causa, verificada**: `mu-recap`'s `source_params()` necesita una pista de subtítulos cargada y para una URL
+  acababa en `if path and not is_url(path)` → `nil`. El resumen no estaba roto: se quedaba **sin material**. Lo que
+  no se ha hecho, a propósito: **no** se añade `ytdl-raw-options` con `write-auto-subs` a `mpv.conf`, que es lo
+  primero que se piensa. Con `--sub-langs all` el `-J` de YouTube pasa de unos KB a **14 MB** (miles de pistas
+  traducidas) y eso lo paga el `ytdl_hook` de mpv en cada vídeo que se abra (ADR-056 ya lo midió). En su lugar se usa
+  el camino que ya existe: `subs.web.list` / `subs.web.fetch`, que piden el `-J` normal (en caché) y bajan **una**
+  pista como SRT limpio. **Cuándo**: al pulsar, no al abrir el vídeo, con el aviso «Buscando los subtítulos del
+  vídeo…»; así no hay una petición de red por cada cosa que Ser abra, y el SRT queda en caché para la siguiente vez
+  (el test comprueba que la segunda pulsación no toca la red). Medido el 2026-10-01 sobre un vídeo de 15 min:
+  **5,41 s** y 23 KB / 3.678 palabras, frente a los ~8 min de transcribir con Whisper. **Qué idiomas**: solo los
+  **nativos** del vídeo, y eso lo garantiza mpvd —`list_tracks` ofrece las pistas manuales y las automáticas del
+  idioma original, y **nunca** las traducciones automáticas de YouTube, que responden **HTTP 429** sin PO token—.
+  Se coge la primera de la lista, que ya viene ordenada: el idioma del usuario antes que el original y manual antes
+  que automática. Si la que se usa no está en castellano se dice en una fila («Estos subtítulos están en Inglés ·
+  traducirlos al español sin conexión») que lleva al panel de subtítulos, donde la traducción con OPUS-MT ya vive con
+  su progreso y su caché: traducir un SRT entero es un trabajo largo y no se duplica aquí.
+  **Dónde se encuentra** (D3): «¿Qué me he perdido?» estaba en el **tercer** nivel, dentro de «Herramientas» (15
+  filas), y el índice del vídeo **no estaba en el menú** en absoluto, solo como `alt+I`. Ahora las dos cosas son una
+  entrada, **«Resumen e índice»** (`mu-recap`, entrada `recap-menu`), que aparece: en la **raíz** del menú principal,
+  en el **panel de subtítulos** (que es de donde sale el material) y en *Subtítulos*. Sale de «Herramientas». En la
+  raíz va como **fila del archivo que se está viendo**, no como novena categoría: lo que solo sirve para este vídeo no
+  ocupa un sitio fijo (criterio de §B.3), así que con el reproductor vacío no aparece y la raíz sigue teniendo ocho
+  categorías. `alt+R` y `alt+I` siguen llevando directamente a cada cosa.

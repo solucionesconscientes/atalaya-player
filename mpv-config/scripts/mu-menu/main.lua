@@ -314,6 +314,15 @@ local function work_row()
            value = { child = { script = 'mu_subs', entry = 'subs-menu' } } }
 end
 
+-- H45/D3 · «Resumen e índice» se encuentra desde la raíz, pero como fila de lo que se está viendo, no como una
+-- novena categoría: lo que solo tiene sentido para este archivo no ocupa un sitio fijo (criterio de §B.3).
+local function recap_row()
+  if mp.get_property_native('idle-active') then return nil end
+  if (mp.get_property('path') or '') == '' then return nil end
+  return { title = 'Resumen e índice', hint = 'qué me he perdido · secciones con su minuto', icon = 'history_edu',
+           value = { child = { script = 'mu_recap', entry = 'recap-menu' } } }
+end
+
 local function root_items()
   local items = {}
   if modes.simple then
@@ -334,6 +343,11 @@ local function root_items()
   for _, c in ipairs(CATEGORIES) do
     if c.view then table.insert(items, sub(c.title, c.hint, c.icon, c.view))
     else table.insert(items, child(c.title, c.hint, c.icon, c.child[1], c.child[2])) end
+  end
+  local r = recap_row()
+  if r then
+    r.separator = true
+    table.insert(items, r)
   end
   local w = work_row()
   if w then table.insert(items, w) end
@@ -380,6 +394,7 @@ views.subs = function()
     bind('Cargar un archivo de subtítulos', 'alt+s', 'upload_file', 'uosc/load-subtitles'),
     cmd('Mostrar u ocultar', 'v', 'visibility', { 'cycle', 'sub-visibility' }, { separator = true }),
     child('Panel de subtítulos', 'alt+i', 'closed_caption', 'mu_subs', 'subs-menu'),
+    child('Resumen e índice del vídeo', 'alt+R · alt+I', 'history_edu', 'mu_recap', 'recap-menu'),
     bind('Guardar subtítulos (SRT)', 'alt+S', 'save', 'mu_subs/subs-save'),
     child('Buscar subtítulos en internet', 'OpenSubtitles', 'travel_explore', 'mu_library', 'library-subs'),
   })
@@ -407,7 +422,6 @@ views.tools = function()
     child('Saltar intro y créditos', 'alt+j', 'skip_next', 'mu_intro', 'intro-menu'),
     child('Estudio: repetir, velocidad, notas', 'alt+e', 'school', 'mu_study', 'study-menu'),
     child('Mis notas', 'alt+B', 'sticky_note_2', 'mu_notes', 'notes-menu'),
-    child('¿Qué me he perdido?', 'alt+R', 'history_edu', 'mu_recap', 'recap'),
     child('Mando desde el móvil', 'alt+Z', 'qr_code_2', 'mu_remote', 'remote-menu'),
     cmd('Panel de descargas en el navegador', nil, 'open_in_browser',
         { 'script-message-to', 'mu_remote', 'mu-remote-downloads' }),

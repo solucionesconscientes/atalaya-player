@@ -413,13 +413,15 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
 - [ ] C7 ADR: WebTorrent como no-objetivo, con los números (subida medida de 167 Mb/s = 15 a 60 invitados; no resuelve
       los códecs del navegador, ni la sincronía, ni el directo, y añade tracker, WebRTC y a veces TURN).
 
-## H45 · El resumen en los vídeos de internet (§B.2.1-2)
-- [ ] D1 Para una URL, pedir los subtítulos automáticos antes de transcribir: medido en 5,41 s para un vídeo de 15 min
-      (23 KB, 3.678 palabras) frente a los ~8 min de whisper.
-- [ ] D2 Pedir solo los idiomas nativos del vídeo: pedir una traducción automática de YouTube devuelve HTTP 429.
-      El castellano se consigue traduciendo el SRT con OPUS-MT, que además queda mejor.
-- [ ] D3 «Resumen e índice» en la raíz del menú y como fila dentro del panel de subtítulos. Hoy «¿Qué me he perdido?»
-      está en el tercer nivel y «Índice del vídeo» no está en el menú principal.
+## H45 · El resumen en los vídeos de internet (§B.2.1-2) — ADR-081
+- [x] D1 Para una URL, pedir los subtítulos de la web antes de transcribir (5,41 s frente a ~8 min de whisper), al
+      pulsar y no al abrir el vídeo, con el aviso de «Buscando los subtítulos del vídeo…» y caché para la siguiente.
+      NO se añade `write-auto-subs` a mpv.conf: con `--sub-langs all` el `-J` pasa a 14 MB en cada vídeo (ADR-056).
+- [x] D2 Solo los idiomas nativos: lo garantiza `subs.web.list`, que nunca ofrece las traducciones automáticas de
+      YouTube (HTTP 429). Si la pista no está en castellano, una fila lleva a traducirla con OPUS-MT.
+- [x] D3 «Resumen e índice» (las dos cosas en una entrada) en la raíz del menú —como fila del archivo que se está
+      viendo, así que la raíz sigue con ocho categorías—, en el panel de subtítulos y en Subtítulos. Sale de
+      «Herramientas», donde estaba en el tercer nivel.
 
 ## H46 · Un solo menú (§B.1, §B.3)
 - [ ] E1 Retirar el árbol `#!` de input.conf (119 entradas, 40 en el primer nivel) y dejar `input.conf` solo para las

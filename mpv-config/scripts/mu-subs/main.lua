@@ -1358,6 +1358,10 @@ views.root = function()
     hint = nch > 0 and (nch .. ' capítulos · quitar') or (state.chapters_status ~= '' and state.chapters_status
       or 'según la transcripción'), value = { chapters = true } }
   items[#items + 1] = { title = 'Estado del motor', icon = 'monitor_heart', value = { view = 'status' } }
+  -- H45/D3 · el resumen y el índice salen de los subtítulos, así que su sitio natural es también este panel
+  items[#items + 1] = { title = 'Resumen e índice del vídeo', icon = 'history_edu',
+                        hint = 'lo que te has perdido y las secciones, con su minuto',
+                        value = { child = { script = 'mu_recap', entry = 'recap-menu' } } }
   show(ROOT_TITLE, items)
 end
 
@@ -1710,6 +1714,11 @@ mp.register_script_message(EVENT, function(json)
       publish()
       if v.opt == 'precompute_next' and state.precompute_next and task_running() then precompute_next() end
       reopen_current()
+    elseif v.child then
+      local crumbs = {}
+      for _, c in ipairs(N.parent.crumbs or {}) do crumbs[#crumbs + 1] = c end
+      for _, spec in ipairs(state.stack) do crumbs[#crumbs + 1] = spec.title end
+      nav.open_child(v.child.script, v.child.entry, crumbs, state.view)
     elseif v.view then
       if v.ensure then mp.commandv('script-message-to', 'mu_core', 'mu-ensure') end
       if v.view == 'root' then state.stack = {} end
@@ -1772,6 +1781,12 @@ open_save_menu = function()
 end
 
 N:binding('subs-menu', open_root)
+-- H45/D2 · a donde lleva mu-recap cuando los subtítulos de la web no están en español: aquí se traducen con OPUS-MT
+N:binding('subs-web', function()
+  if not uosc.available() then osd('uosc no está cargado') return end
+  state.stack = { { name = 'root', title = ROOT_TITLE } }
+  open_view({ name = 'web' })
+end)
 mp.add_key_binding(nil, 'subs-toggle', toggle)
 mp.add_key_binding(nil, 'subs-resync', resync_selected)
 mp.add_key_binding(nil, 'subs-save', save_default)
