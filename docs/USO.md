@@ -317,8 +317,18 @@ abra pone su nombre y ve lo mismo que tú, a la vez, en su navegador (móvil u o
 dentro de tu red (wifi de casa); para que entren desde fuera, enciende *Que se pueda entrar desde internet* (abajo).
 - Los invitados entran en *solo ver*. Si uno pide el control, te sale un sí/no en pantalla; en *Invitados* puedes
   darlo, quitarlo o sacar a alguien. Verás avisos como «Ana ha pausado».
-- Vídeos de internet: el navegador del invitado los abre directamente si puede; archivos de tu equipo: MPV-UOS los
-  retransmite (con los subtítulos de texto activos).
+- Vídeos de internet: el navegador del invitado los abre directamente si puede; si no, MPV-UOS los retransmite (con
+  los subtítulos de texto activos).
+- **Archivos de tu equipo: el invitado puede verlos tal cual.** En su página aparece *Abrir en mi reproductor*, con
+  tres formas de llevárselo porque cada sistema va mejor con una: **copiar el enlace**, bajar un **`.m3u`** (doble
+  clic lo abre en VLC o en mpv en Windows, macOS y Linux) y la línea **`mpv "<enlace>"`** para pegar en un terminal.
+  Así lo ve **como es** —calidad original, cualquier códec— y los saltos son instantáneos (medido: primer fotograma
+  en 0,36 s, salto al minuto 98 en 0,07 s), sin que tu equipo recomprima nada. Para ir juntos, la página dice en vivo
+  por dónde vas, con un botón para copiar esa posición.
+  En el navegador se ve el original cuando puede con él; cuando no (y «es un MP4» no basta: tus grabaciones son HEVC
+  + Opus con el índice al final, que es justo lo que peor lleva), se ve la retransmisión y se te dice por qué.
+- **La retransmisión empieza donde vas tú**, no en el segundo 0: quien entra en el minuto 40 ya no espera a que el
+  empaquetado llegue hasta ahí (eran ~18 minutos). La página lo dice: «Empezamos donde va el anfitrión».
 - El enlace caduca (24 h como mucho), se puede cambiar por uno nuevo y deja de valer al cerrar la sala.
 - **Que se pueda entrar desde internet.** En *Compartir* hay un interruptor con ese nombre, **apagado** por defecto y que
   se recuerda. Encendido, al crear la sala MPV-UOS abre un *túnel rápido de Cloudflare* (sin cuenta ni configuración) y el

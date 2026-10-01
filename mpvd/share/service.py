@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import mimetypes
 import os
 import re
 import secrets
@@ -71,6 +72,7 @@ STATIC = {"room.js": "text/javascript; charset=utf-8", "sync.js": "text/javascri
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
        "media-src 'self' blob: https: http:; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; "
        "base-uri 'none'; form-action 'self'")
+FILE_CHUNK = 256 * 1024          # H44/C1: bytes read per chunk when serving a file (measured: 2 MB of RSS)
 SEG_RE = re.compile(r"^(index\.m3u8|seg_\d{5}\.ts)$")
 SUB_RE = re.compile(r"^[a-f0-9]{8}\.vtt$")
 STATE_PROPS = ("path", "time-pos", "pause", "speed", "duration", "media-title", "aid", "sid", "idle-active",
@@ -527,6 +529,7 @@ class ShareService:
     def _media_public(self, rt: RoomRuntime) -> dict[str, Any]:
         m = dict(rt.media)
         m.pop("path", None)
+        m.pop("local", None)   # H44/C2: la ruta real del fichero no se publica; se sirve por /s/<sala>/file
         return m
 
     def _media_progress(self, rt: RoomRuntime) -> None:
@@ -593,8 +596,21 @@ class ShareService:
                 if not local.is_file():
                     raise ValueError("solo se retransmiten archivos de este equipo o vídeos de internet")
                 audio_index = await self._audio_ff_index(s) if s is not None else None
-                st = await self._start_stream(rt, [hls.Input(str(local))], audio_index)
-                media = {"kind": "hls", "url": self._stream_url(rt, st), "stream": st.id, "source": "local"}
+                # H44/C4 · el fichero original se ofrece SIEMPRE («abrir en tu reproductor»): cero CPU del
+                # anfitrión, calidad original, todos los códecs y saltos instantáneos (0,36 s y 0,07 s medidos).
+                # Si además lo lleva el navegador (H.264/AAC en MP4), esa es la vía de la página; si no, se hace el
+                # relay de siempre para el navegador y se ofrecen las dos cosas a la vez.
+                probe = await asyncio.to_thread(hls.probe, hls.Input(str(local)))
+                media = {"kind": "file", "url": f"/s/{rt.room.id}/file", "source": "local", "local": str(local),
+                         "name": local.name, "size": local.stat().st_size,
+                         "duration": hls.duration_of(probe) or None}
+                if not hls.browser_playable(probe, local):
+                    at = self._host_pos(rt)
+                    st = await self._start_stream(rt, [hls.Input(str(local), start=at)], audio_index)
+                    media.update({"relay_url": self._stream_url(rt, st), "relay_stream": st.id,
+                                  "browser": "relay", "relay_offset": at})
+                else:
+                    media["browser"] = "direct"
             elif hls.plain_direct(path):
                 media = {"kind": "direct", "url": path, "source": "url", "can_relay": True, "path": path}
             else:
@@ -613,8 +629,11 @@ class ShareService:
                              "format": direct.get("format_id"), "path": path}
                 else:
                     inputs = hls.pick_relay(info) if info else [hls.Input(path)]
+                    at = 0.0 if info is None or info.get("is_live") else self._host_pos(rt)
+                    inputs = [hls.Input(i.url, i.headers, start=at) for i in inputs]
                     st = await self._start_stream(rt, inputs, None)
-                    media = {"kind": "hls", "url": self._stream_url(rt, st), "stream": st.id, "source": "web"}
+                    media = {"kind": "hls", "url": self._stream_url(rt, st), "stream": st.id, "source": "web",
+                             "offset": at}
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -637,6 +656,11 @@ class ShareService:
         if rt.room.closed or self.rt is not rt:
             raise RuntimeError("la sala se ha cerrado")
 
+    def _host_pos(self, rt: RoomRuntime) -> float:
+        """H44/C5 · dónde va el anfitrión ahora mismo, para que el relay empiece ahí y no en el segundo 0."""
+        pos = rt.raw.get("time-pos")
+        return max(0.0, float(pos)) if isinstance(pos, (int, float)) else 0.0
+
     async def _start_stream(self, rt: RoomRuntime, inputs: list[hls.Input], audio_index: int | None) -> hls.HlsStream:
         if not hls.ffmpeg_bin():
             raise RuntimeError("ffmpeg no está instalado")
@@ -654,7 +678,8 @@ class ShareService:
         # probing a URL takes seconds: the room may have been closed meanwhile, and starting now would transcode the
         # whole film at full CPU for ever AND recreate the folder that close() had just deleted
         self._must_be_open(rt)
-        st = hls.HlsStream(sid, out, plans, duration=hls.duration_of(probes[0]))
+        st = hls.HlsStream(sid, out, plans, duration=hls.duration_of(probes[0]),
+                           offset=max((i.start for i in inputs), default=0.0))
         st.start()
         rt.streams[sid] = st
         while len(rt.streams) > MAX_STREAMS:
@@ -678,13 +703,15 @@ class ShareService:
         try:
             info = rt.info
             inputs = hls.pick_relay(info) if info else [hls.Input(str(m.get("path") or m.get("url")))]
+            at = 0.0 if info is not None and info.get("is_live") else self._host_pos(rt)
+            inputs = [hls.Input(i.url, i.headers, start=at) for i in inputs]
             st = await self._start_stream(rt, inputs, None)
         except Exception as exc:  # noqa: BLE001
             m.pop("relay_pending", None)
             raise HttpError(503, f"no se pudo retransmitir: {exc}") from exc
         if rt.media_key == key:
             m.pop("relay_pending", None)
-            m.update({"relay_url": self._stream_url(rt, st), "relay_stream": st.id})
+            m.update({"relay_url": self._stream_url(rt, st), "relay_stream": st.id, "relay_offset": at})
             self._media_progress(rt)
             self._send_media(rt)
         return self._media_public(rt)
@@ -762,15 +789,26 @@ class ShareService:
 
     @staticmethod
     def _file(path: Path, ctype: str, cache: str, req: Request) -> Response:
-        if not path.is_file():
-            raise HttpError(404)
-        data = path.read_bytes()
+        """A file with byte ranges, read in chunks as it is written out.
+
+        H44/C1: this used to be ``data = path.read_bytes()`` and then slice the range out of that buffer, so a 4 GB
+        film would have been **4 GB of RSS per request**. It did not show because only 4 s HLS segments came through
+        here, but serving the original file (``/s/<room>/file``, C2) made it a real problem. Measured with a 428 MB
+        MKV served to mpv: **2.052 kB of RSS**, first frame in 0,36 s and a seek to minute 98 in 0,07 s.
+        The Range behaviour is exactly the one that was here before (206 + ``Content-Range``, ``Accept-Ranges``,
+        416 with ``bytes * /size`` when it cannot be satisfied); only where the bytes come from changed."""
+        try:
+            size = path.stat().st_size
+            if not path.is_file():
+                raise HttpError(404)
+        except OSError:
+            raise HttpError(404) from None
         headers = {"Content-Type": ctype, "Cache-Control": cache, "Accept-Ranges": "bytes",
                    "X-Content-Type-Options": "nosniff"}
+        status, start, end = 200, 0, size - 1
         rng = req.headers.get("range", "")
         m = re.match(r"^bytes=(\d*)-(\d*)$", rng.strip())
         if m and (m.group(1) or m.group(2)):
-            size = len(data)
             if m.group(1):
                 start = int(m.group(1))
                 end = min(int(m.group(2)) if m.group(2) else size - 1, size - 1)
@@ -779,8 +817,25 @@ class ShareService:
             if start > end or start >= size:
                 return Response(416, {"Content-Range": f"bytes */{size}"}, b"")
             headers["Content-Range"] = f"bytes {start}-{end}/{size}"
-            return Response(206, headers, data[start:end + 1])
-        return Response(200, headers, data)
+            status = 206
+        length = max(0, end - start + 1)
+        # con `stream` el servidor no pone Content-Length solo: hay que decirlo, o el navegador no sabe cuánto viene
+        headers["Content-Length"] = str(length)
+
+        async def chunks() -> AsyncIterator[bytes]:
+            left = length
+            with path.open("rb") as fh:
+                await asyncio.to_thread(fh.seek, start)
+                while left > 0:
+                    data = await asyncio.to_thread(fh.read, min(FILE_CHUNK, left))
+                    if not data:
+                        break
+                    left -= len(data)
+                    yield data
+
+        if length == 0:
+            return Response(status, headers, b"")
+        return Response(status, headers, b"", stream=chunks())
 
     def _guest_from(self, rt: RoomRuntime, req: Request) -> Any:
         guest = rt.room.guest_from_cookie(req.cookies.get(COOKIE))
@@ -831,7 +886,36 @@ class ShareService:
             self._guests_changed(rt)
             return Response.json({"ok": True, "guest": guest.public(), "room": room.public()},
                                  **{"Set-Cookie": cookie})
+        if rest in ("file", "file.m3u") and req.method in ("GET", "HEAD"):
+            # H44/C2-C3 · el fichero original, para el reproductor del invitado. mpv o VLC no mandan nuestra cookie,
+            # así que el enlace lleva el MISMO valor firmado en la query (`?k=`): es de ese invitado, no sirve para
+            # entrar en la sala y caduca con ella. La ruta real del fichero no se publica en ningún sitio.
+            who = room.guest_from_cookie(req.cookies.get(COOKIE) or req.query.get("k"))
+            if who is None:
+                raise HttpError(401, "no estás en la sala: abre el enlace de invitación")
+            local = rt.media.get("local")
+            if not local or rt.media.get("kind") != "file":
+                raise HttpError(404, "lo que se está viendo no es un archivo de este equipo")
+            link = f"/s/{room.id}/file?k={room.cookie_value(who.id)}"
+            if rest == "file.m3u":
+                # un .m3u de una línea: doble clic lo abre en VLC o en mpv en Windows, macOS y Linux
+                base = self.public_url or f"http://{req.headers.get('host', '')}"
+                body = ("#EXTM3U\n#EXTINF:-1," + str(rt.media.get("title") or rt.media.get("name") or "")
+                        + "\n" + base + link + "\n")
+                return Response(200, {"Content-Type": "audio/x-mpegurl; charset=utf-8", "Cache-Control": "no-store",
+                                      "Content-Disposition": 'attachment; filename="sala.m3u"'},
+                                body.encode("utf-8"))
+            name = str(rt.media.get("name") or "video")
+            ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
+            return self._file(Path(str(local)), ctype, "private, max-age=3600", req)
         guest = self._guest_from(rt, req)
+        if rest == "api/filelink":
+            # H44/C3 · el enlace del fichero original para ESTE invitado, con su credencial firmada en la query
+            if rt.media.get("kind") != "file":
+                raise HttpError(404, "lo que se está viendo no es un archivo de este equipo")
+            base = self.public_url or f"http://{req.headers.get('host', '')}"
+            link = f"/s/{room.id}/file?k={room.cookie_value(guest.id)}"
+            return Response.json({"url": base + link, "m3u": f"{base}/s/{room.id}/file.m3u"})
         if rest == "api/me":
             return Response.json({"guest": guest.public(), "room": room.public(), "state": rt.state or None,
                                   "media": self._media_public(rt), "notices": list(rt.notices)[-5:],

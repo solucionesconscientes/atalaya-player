@@ -396,22 +396,27 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
 - [x] B4 Al volver a pulsar el botón de grabar, termina sin preguntar nada (ya hecho en H35; comprobado con la fila
       de formato nueva: el botón sigue llevando a `record-toggle` mientras se graba).
 
-## H44 · La sala: fichero original y el reproductor del invitado (§A)
-- [ ] C1 Handler Range que lea por trozos en vez de `path.read_bytes()`: hoy una película de 4 GB se cargaría entera
-      en RAM por petición. Prototipo medido: 2 MB de RSS sirviendo un fichero de 428 MB.
-- [ ] C2 Ruta `GET /s/<sala>/file` que sirva el fichero original. Medido como invitado: primer fotograma en 0,36 s y
-      salto al minuto 98 en 0,07 s, sin recodificar nada.
-- [ ] C3 Bloque «Abrir en mi reproductor» en la página del invitado: copiar el enlace, descargar un `.m3u` (doble clic
-      lo abre en VLC o mpv) y la línea `mpv "<enlace>"`. Con la posición del anfitrión en vivo y un botón para copiarla.
-- [ ] C4 Decidir el camino según el origen, sin preguntar: fichero local con códecs de navegador → el original;
-      con otros códecs → las dos cosas a la vez (tu reproductor, y remux `-c copy` a fMP4 o WebM para el navegador,
-      9,64 s para 115 min); TV, radio, YouTube o grabación en curso → relay.
-- [ ] C5 El relay empieza donde está el anfitrión, no en el segundo 0, y se lo dice al invitado. Es la causa de los
-      ~18 min de espera al entrar en el minuto 40.
+## H44 · La sala: fichero original y el reproductor del invitado (§A) — ADR-082 · [~] falta C6
+- [x] C1 Handler Range que lee por trozos (256 kB) en vez de `path.read_bytes()`. El test sirve 300 MB enteros y mide
+      el RSS del proceso. El comportamiento del Range se conserva exactamente.
+- [x] C2 Ruta `GET /s/<sala>/file` con el fichero original; la ruta real no se publica (`_media_public` quita
+      `path` y `local`).
+- [x] C3 Bloque «Abrir en mi reproductor»: copiar el enlace, `.m3u` (`GET /s/<sala>/file.m3u`), la línea
+      `mpv "<enlace>"` y la posición del anfitrión con su botón. mpv y VLC no mandan la cookie, así que el enlace
+      lleva la credencial firmada del invitado en la query (`?k=`), pedida a `api/filelink`. Comprobado en un
+      navegador real (test_share_browser).
+- [x] C4 El camino se decide sin preguntar, mirando códecs, contenedor **y dónde está el `moov`**: «es un MP4» no
+      vale. El original siempre para «tu reproductor»; para el navegador, el original si puede con él y el relay si
+      no. El remux `-c copy` a fMP4/WebM queda como mejora de CPU (ver abajo), no como arreglo: con C5 la espera ya
+      no es el problema.
+- [x] C5 El relay empieza donde está el anfitrión (`-ss` antes del `-i`), el stream recuerda el `offset` y la página
+      lo descuenta y lo dice («Empezamos donde va el anfitrión»). En un directo no se pone `-ss`.
 - [ ] C6 Unirse a la sala desde MPV-UOS (no solo desde el navegador): el mpv del invitado sigue pausa, saltos y
-      velocidad por el SSE que ya existe. Es la única forma de «ver juntos» exacto a calidad original.
-- [ ] C7 ADR: WebTorrent como no-objetivo, con los números (subida medida de 167 Mb/s = 15 a 60 invitados; no resuelve
-      los códecs del navegador, ni la sincronía, ni el directo, y añade tracker, WebRTC y a veces TURN).
+      velocidad por el SSE que ya existe. Es la única forma de «ver juntos» exacto a calidad original. **Pendiente**:
+      hoy `mu-share` solo sabe ser anfitrión (`views.guest` es la ficha de un invitado vista desde el anfitrión).
+- [x] C7 ADR: WebTorrent como no-objetivo, con los números (ADR-082).
+- [ ] C8 (nuevo, menor) Remux `-c copy` a fMP4/WebM para el navegador cuando los códecs lo permitan, en vez del relay
+      recodificando: 9,64 s para 115 min frente a 2,2× tiempo real. Ahorra CPU del anfitrión; no arregla nada roto.
 
 ## H45 · El resumen en los vídeos de internet (§B.2.1-2) — ADR-081
 - [x] D1 Para una URL, pedir los subtítulos de la web antes de transcribir (5,41 s frente a ~8 min de whisper), al

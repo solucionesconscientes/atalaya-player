@@ -183,20 +183,40 @@ def test_room_join_sync_relay_permissions_and_close(share_env, clip):
     ana.wait(lambda e, x: e == "hello" and x["guest"]["name"] == "Ana")
     st0 = ana.wait(lambda e, x: e == "state")
     assert st0["paused"] is True and st0["title"] == "Peli de prueba"
-    media = ana.wait(lambda e, x: e == "media" and x.get("kind") == "hls" and x.get("complete"), timeout=60)
-    assert media["mode"] == "copy" and media["url"].startswith(f"/s/{room}/media/") and "path" not in media
-    status, m3u8, headers = ana.req(media["url"])
+    # H44/C4 · un archivo del anfitrión se ofrece SIEMPRE tal cual («abrir en tu reproductor»); esta peli es un
+    # Matroska con H.264 + AAC, que el navegador no abre, así que además va el relay de siempre
+    media = ana.wait(lambda e, x: e == "media" and x.get("kind") == "file" and x.get("relay_complete"), timeout=60)
+    assert media["browser"] == "relay" and media["relay_mode"] == "copy"
+    assert media["url"] == f"/s/{room}/file" and media["name"] == "peli.mkv" and media["size"] > 0
+    # ni la ruta real del fichero ni nada que la delate salen en el aviso que se reparte
+    assert "path" not in media and "local" not in media
+    status, m3u8, headers = ana.req(media["relay_url"])
     assert status == 200 and headers["Content-Type"] == "application/vnd.apple.mpegurl"
     text = m3u8.decode()
     assert "#EXT-X-ENDLIST" in text and "#EXT-X-PLAYLIST-TYPE:EVENT" in text
     seg = next(ln for ln in text.splitlines() if ln.endswith(".ts"))
-    seg_url = media["url"].rsplit("/", 1)[0] + "/" + seg
+    seg_url = media["relay_url"].rsplit("/", 1)[0] + "/" + seg
     status, body, headers = ana.req(seg_url)
     assert status == 200 and headers["Content-Type"] == "video/mp2t" and body[:1] == b"G"  # TS sync byte
     status, part, headers = ana.req(seg_url, headers={"Range": "bytes=0-187"})
     assert status == 206 and len(part) == 188 and headers["Content-Range"].startswith("bytes 0-187/")
-    assert ana.req(media["url"].rsplit("/", 1)[0] + "/../../x")[0] == 404
+    assert ana.req(media["relay_url"].rsplit("/", 1)[0] + "/../../x")[0] == 404
     assert Guest(base, room).req(seg_url)[0] == 401  # no cookie, no media
+
+    # H44/C2-C3 · el fichero original, con rangos y leído por trozos, y el enlace para el reproductor del invitado
+    status, head, headers = ana.req("file", headers={"Range": "bytes=0-1023"})
+    assert status == 206 and len(head) == 1024 and headers["Content-Range"].endswith("/" + str(media["size"]))
+    assert headers["Accept-Ranges"] == "bytes" and headers["Content-Length"] == "1024"
+    assert ana.req("file", headers={"Range": f"bytes={media['size'] + 10}-"})[0] == 416
+    link = ana.req("api/filelink")[1]
+    assert link["url"].endswith("/file?k=") is False and "/file?k=" in link["url"]
+    # mpv o VLC no mandan la cookie: con la credencial en la query sí pueden, sin ella no
+    plain = Guest(base, room)
+    assert plain.req(link["url"].split("/s/" + room + "/", 1)[1])[0] == 200
+    assert plain.req("file")[0] == 401
+    status, m3u, headers = ana.req("file.m3u")
+    assert status == 200 and headers["Content-Type"].startswith("audio/x-mpegurl")
+    assert b"#EXTM3U" in m3u and b"/file?k=" in m3u
 
     # subtitles of the active track as WebVTT
     h.command("set", "sid", "1")
@@ -367,7 +387,7 @@ def test_public_room_view_only(share_env, clip):
     hello = a.wait(lambda e, x: e == "hello")
     assert hello["room"]["mode"] == "public"
     a.wait(lambda e, x: e == "viewers" and x == {"count": 1, "max": 2})
-    a.wait(lambda e, x: e == "media" and x.get("kind") == "hls", timeout=60)
+    a.wait(lambda e, x: e == "media" and x.get("kind") == "file", timeout=60)
     b = Guest(base, room)
     assert b.req("api/join", {"token": token})[1]["guest"]["name"] == "Espectador 2"
     b.listen()

@@ -253,9 +253,24 @@
 
   function hostPos() { return S.expected(state, anchor, performance.now()); }
 
-  function ready() {
-    // seconds the relay has produced (Infinity for direct URLs and finished relays)
+  // H44/C5 · el relay ya no empieza en el segundo 0 del vídeo sino donde estaba el anfitrión al arrancarlo, así que
+  // el reloj del vídeo que llega va `offset` segundos por detrás del reloj del anfitrión. Todo lo que compara los
+  // dos tiene que descontarlo: antes el invitado que entraba en el minuto 40 esperaba a que el empaquetado
+  // *alcanzara* su posición, y eso eran ~18 minutos medidos.
+  function offset() {
     if (!media) return 0;
+    if (media.kind === 'file') return useRelay ? (media.relay_offset || 0) : 0;
+    if (media.kind === 'direct') return useRelay ? (media.relay_offset || 0) : 0;
+    return media.offset || 0;
+  }
+
+  // segundo del vídeo que corresponde a la posición del anfitrión
+  function localPos() { return Math.max(0, hostPos() - offset()); }
+
+  function ready() {
+    // seconds the relay has produced (Infinity for a direct URL, the original file and finished relays)
+    if (!media) return 0;
+    if (media.kind === 'file' && !useRelay) return Infinity;
     if (media.kind === 'direct' && !useRelay) return Infinity;
     var complete = useRelay ? media.relay_complete : media.complete;
     var r = useRelay ? media.relay_ready : media.ready;
@@ -265,11 +280,17 @@
   function correct(force) {
     if (!state || !source || ended) return;
     if (state.idle) { overlay('El anfitrión no está reproduciendo nada'); return; }
-    var exp = hostPos();
+    var exp = localPos();
     if (exp > ready() - 1) {
       if (!video.paused) video.pause();
       var r = ready();
-      overlay('Preparando la retransmisión… ' + S.clock(r) + ' de ' + S.clock(state.duration || exp));
+      // con offset, lo que se está preparando empieza donde va el anfitrión: decirlo, en vez de dejar al invitado
+      // mirando una cuenta que parece que no avanza nunca
+      if (offset() > 1) {
+        overlay('Empezamos donde va el anfitrión (' + S.clock(offset()) + '): ' + S.clock(r) + ' listos…');
+      } else {
+        overlay('Preparando la retransmisión… ' + S.clock(r) + ' de ' + S.clock(state.duration || exp));
+      }
       return;
     }
     if (needGesture) { overlay('La sala ya está en marcha', true); return; }
@@ -319,6 +340,9 @@
     media = m;
     var url = '';
     if (m.kind === 'hls') url = m.url;
+    // H44/C4 · un archivo del anfitrión: el original tal cual cuando este navegador puede con él, y si no el relay.
+    // En los dos casos se ofrece además abrirlo en el reproductor del invitado (calidad original, saltos al instante).
+    else if (m.kind === 'file') url = (!useRelay && m.browser === 'direct') ? m.url : (m.relay_url || '');
     else if (m.kind === 'direct') url = useRelay ? (m.relay_url || '') : m.url;
     // Un archivo del anfitrión hay que empaquetarlo para este navegador, y en un equipo modesto eso tarda: decir qué
     // está pasando, porque un «Preparando…» mudo no distingue «va» de «se ha roto».
@@ -326,10 +350,62 @@
                                              '»… puede tardar un minuto');
     else if (m.kind === 'none') overlay(m.reason ? 'No se puede compartir esto: ' + m.reason : 'Nada en reproducción');
     if (m.kind === 'hls' && m.status === 'failed') overlay('La retransmisión ha fallado: ' + (m.error || ''));
+    if (m.kind === 'file' && m.browser !== 'direct' && !useRelay) useRelay = true;
     if (url && url !== source) attach(url);
     setSubs(m.subs);
+    ownPlayer(m);
     correct(false);
   }
+
+  // -- H44/C3 · «Abrir en mi reproductor» -------------------------------------------------------------------
+  // Tres formas, porque cada sistema va mejor con una: copiar el enlace, bajar un .m3u (doble clic lo abre en VLC
+  // o en mpv en Windows, macOS y Linux) y la línea para pegar en un terminal. Solo aparece cuando lo que se está
+  // viendo es un archivo del anfitrión: un vídeo de YouTube, la TV o la radio no se pueden servir así.
+  var fileLink = '';
+  var fileFor = '';
+
+  function ownPlayer(m) {
+    var on = m && m.kind === 'file';
+    show('own', !!on);
+    if (!on) { fileLink = ''; fileFor = ''; return; }
+    $('own-name').textContent = m.name || '';
+    if (fileFor !== (m.name || '')) {
+      // el enlace lleva una credencial de ESTE invitado (mpv y VLC no mandan la cookie de la sala), así que no
+      // puede ir en el aviso que se reparte a todos: se pide aquí, una vez por archivo.
+      fileFor = m.name || '';
+      api('api/filelink').then(function (r) {
+        fileLink = r.url || '';
+        $('own-cmd').textContent = 'mpv "' + fileLink + '"';
+        $('own-m3u').href = r.m3u || '#';
+      }).catch(function () { fileFor = ''; });
+    }
+    if (m.browser !== 'direct') {
+      $('own-why').textContent = 'Este vídeo no está en un formato que tu navegador abra tal cual, así que aquí lo '
+        + 'ves recomprimido. En tu reproductor lo verás como es.';
+    } else {
+      $('own-why').textContent = 'Calidad original, sin recomprimir nada, y los saltos son instantáneos.';
+    }
+  }
+
+  function copyText(text, what) {
+    var done = function () { toast('Copiado: ' + what); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { toast(text); });
+      return;
+    }
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) { toast(text); }
+    document.body.removeChild(ta);
+  }
+
+  $('own-copy').addEventListener('click', function () { copyText(fileLink, 'el enlace del vídeo'); });
+  $('own-copy-cmd').addEventListener('click', function () { copyText('mpv "' + fileLink + '"', 'la orden de mpv'); });
+  $('own-copy-pos').addEventListener('click', function () {
+    copyText(S.clock(state ? hostPos() : 0), 'la posición del anfitrión');
+  });
 
   function loadHlsJs() {
     if (window.Hls) return Promise.resolve(window.Hls);

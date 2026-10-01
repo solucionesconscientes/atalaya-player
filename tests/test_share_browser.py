@@ -133,6 +133,15 @@ def test_browser_guest_follows_the_host(share_env, clip, engine):  # noqa: F811
         assert b.js("location.hash") == ""  # the token leaves the address bar
         assert d.call("share.status")["guests"][0]["name"] == "Navegador"
         b.wait(f"{VIDEO}.readyState >= 1", timeout=40)
+        # H44/C3 · «Abrir en mi reproductor»: aparece porque lo que se ve es un archivo del anfitrión, y lleva las
+        # tres formas de llevárselo. El enlace es del invitado (credencial en la query: mpv no manda la cookie).
+        b.wait("!document.getElementById('own').classList.contains('hidden')", timeout=20)
+        b.wait("document.getElementById('own-cmd').textContent.includes('/file?k=')", timeout=20)
+        assert b.js("document.getElementById('own-name').textContent") == "peli.mkv"
+        assert b.js("document.getElementById('own-cmd').textContent").startswith('mpv "http')
+        assert "/file.m3u" in b.js("document.getElementById('own-m3u').getAttribute('href')")
+        # este Matroska con H.264 + AAC no lo abre el navegador tal cual: se dice, y aquí se ve el relay
+        assert "en tu reproductor lo verás como es" in b.js("document.getElementById('own-why').textContent").lower()
         used = b.js("window.Hls ? 'hls.js' : 'nativo'")
         if engine == "hlsjs":
             assert used == "hls.js"

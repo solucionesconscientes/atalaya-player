@@ -720,3 +720,58 @@
   raíz va como **fila del archivo que se está viendo**, no como novena categoría: lo que solo sirve para este vídeo no
   ocupa un sitio fijo (criterio de §B.3), así que con el reproductor vacío no aparece y la raíz sigue teniendo ocho
   categorías. `alt+R` y `alt+I` siguen llevando directamente a cada cosa.
+- ADR-082 · La sala sirve el fichero original, y el relay empieza donde va el anfitrión (H44). **Matiza** ADR-054 en
+  un punto, «qué reproduce el invitado»; todo lo demás de ADR-054 sigue en pie tal cual (token en el fragmento,
+  cookie firmada de la sala, SSE, permisos, sala pública). Todo lo que lleva un número aquí está medido en este
+  portátil el 2026-10-01, no estimado.
+  **C1 · el fallo real.** `mpvd/share/service.py::_file()` hacía `data = path.read_bytes()` y cortaba el rango sobre
+  ese buffer: una película de 4 GB habrían sido **4 GB de RSS por petición**. No se notaba porque solo pasaban por
+  ahí segmentos HLS de 4 s, pero servir el fichero original lo convertía en un problema de verdad. Ahora se lee por
+  trozos de 256 kB mientras se escribe la respuesta (`Response.stream`, que ya existía para el SSE), poniendo el
+  `Content-Length` a mano porque con `stream` el servidor no lo pone solo. El Range se conserva **exactamente** como
+  estaba (206 con `Content-Range`, `Accept-Ranges`, el sufijo «últimos N», 416 con `bytes */size`): solo cambia de
+  dónde salen los bytes. Medido con un MKV de 428 MB servido a mpv: **2.052 kB de RSS**, primer fotograma en
+  **0,36 s** y salto al minuto 98 en **0,07 s**. El test lo comprueba sirviendo 300 MB enteros y midiendo el RSS del
+  proceso.
+  **C2/C3 · el camino bueno.** `GET /s/<sala>/file` sirve el original y `GET /s/<sala>/file.m3u` lo envuelve en un
+  `.m3u` de una línea (doble clic lo abre en VLC o en mpv en los tres sistemas). La ruta real del fichero **no se
+  publica**: `_media_public` ya quitaba `path` y ahora también `local`. Lo que no es obvio y hubo que resolver: mpv y
+  VLC **no mandan la cookie de la sala**, así que el enlace lleva una credencial en la query (`?k=`). No es el token
+  de invitación —con ese se entraría en la sala—: es el **mismo valor firmado de la cookie de ese invitado**
+  (`Room.cookie_value`, HMAC con el secreto de la sala), que solo sirve para esto y caduca con la sala. Y como es por
+  invitado, no puede ir en el aviso `media` que se reparte a todos: la página lo pide a `api/filelink`. El bloque de
+  la página da las tres formas (copiar el enlace, bajar el `.m3u`, la línea `mpv "<enlace>"`) y la posición del
+  anfitrión con un botón para copiarla: la sincronía de los pobres, que para ver una película con una llamada al lado
+  sobra.
+  **C4 · el camino se decide sin preguntar**, y «es un MP4, se verá» **no vale**: las grabaciones de esta casa son
+  HEVC + Opus en MP4 **con el `moov` al final** (verificado con ffprobe), que es justo lo que el navegador lleva
+  peor. Se comprueban los códecs, el contenedor y dónde está el `moov` (`hls.browser_playable` + `hls.moov_at_start`,
+  que recorre los átomos de primer nivel). Dos trampas que salieron al escribirlo: (1) ffprobe llama
+  `matroska,webm` **igual** a un `.webm` y a un `.mkv`, así que el contenedor no decide: un Matroska solo lo abre el
+  navegador si por dentro es WebM de verdad (VP8/VP9/AV1 + Opus/Vorbis), y un `.mkv` con H.264 + AAC no va en Firefox
+  ni en Safari; (2) con el `moov` al final el navegador tiene que bajarse la película entera antes del primer
+  fotograma, mientras que mpv y VLC no se enteran porque saltan. Resultado: un archivo del anfitrión se ofrece
+  **siempre** tal cual para «abrir en tu reproductor», y para el navegador va el original si puede con él y el relay
+  de siempre si no. Lo que **no** se ha hecho: el remux `-c copy` a fMP4/WebM que midió el análisis (9,64 s para
+  115 min). Con C5 la espera del relay deja de ser el problema, así que el remux pasa a ser una mejora de CPU, no un
+  arreglo; queda apuntado en BACKLOG.
+  **C5 · el relay empieza donde está el anfitrión.** `Input.start` añade `-ss` **antes** del `-i` (salto por el
+  demuxer, no decodificando y tirando), el stream recuerda ese `offset` y la página lo descuenta: el reloj del vídeo
+  que llega va `offset` segundos por detrás del reloj del anfitrión. Antes el invitado esperaba a que el empaquetado
+  **alcanzara** la posición del anfitrión, y a 2,2× tiempo real con VA-API entrar en el minuto 40 eran **~18
+  minutos** de «Preparando la retransmisión…». Ahora la página dice «Empezamos donde va el anfitrión (40:00)». No se
+  pone `-ss` en un directo (TV, radio, un vídeo en vivo), donde la posición no quiere decir nada.
+  **C7 · WebTorrent: no-objetivo**, con los números. Su única ventaja real es repartir la subida entre los invitados,
+  y la subida medida aquí es de **~167 Mb/s** (22,7 y 19,1 MB/s con el endpoint `__up` de Cloudflare, dos pasadas de
+  25 MB): caben **15 invitados** con una película 1080p buena (8,9 Mb/s) y **60** con una normal (2,2 Mb/s), y las
+  salas de las que hablamos son de 2 a 5 personas. Resolvería un problema que no tenemos. Y lo que **no** resuelve:
+  los **códecs** (pinta en la misma etiqueta `<video>`, así que sigue limitado a MP4/WebM, y lo que genera Ser es
+  justo lo que el navegador lleva peor), la **sincronía** (un torrent no sabe de «vamos juntos»: habría que usar el
+  SSE que ya tenemos, así que no ahorra código) y el **directo** (TV, radio o una grabación en curso no se pueden
+  servir por torrent: seguirían necesitando el relay, con lo que sería un segundo camino, no un sustituto). Lo que
+  cuesta: el anfitrión tiene que leerse la película entera para calcular el SHA-1 de las piezas antes del primer byte
+  útil; cada invitado sube a los demás (en datos móviles, un gasto que no ha pedido, que es justo el caso del QR en el
+  móvil); y WebRTC entre dos NAT necesita STUN y a veces **TURN**, o sea cambiar «un servidor mío» por «un servidor
+  mío más un tracker más a veces un TURN». Se revisaría solo si (a) la subida medida bajara de ~20 Mb/s o (b) las
+  salas pasaran de ~15 personas; y si algún día se hace, el camino correcto es el torrent normal con cualquier
+  reproductor, no WebTorrent, porque WebTorrent hereda las limitaciones del navegador sin quitar ninguna.

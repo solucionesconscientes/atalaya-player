@@ -56,6 +56,25 @@
         <button id="full" type="button">Pantalla completa</button>
       </div>
       <p id="status" class="muted"></p>
+      <!-- H44/C3 · abrir el fichero original en el reproductor del invitado: cero CPU del anfitrión, calidad
+           original, todos los códecs y saltos al instante. Tres formas porque cada sistema va mejor con una. -->
+      <section id="own" class="own hidden">
+        <h3>Abrir en mi reproductor</h3>
+        <p id="own-name" class="muted"></p>
+        <p id="own-why" class="muted"></p>
+        <div class="row">
+          <button id="own-copy" type="button">Copiar el enlace</button>
+          <a id="own-m3u" class="button" href="#" download="sala.m3u">Descargar .m3u</a>
+          <button id="own-copy-pos" type="button">Copiar la posición del anfitrión</button>
+        </div>
+        <p class="muted">O pega esto en un terminal:</p>
+        <div class="row">
+          <code id="own-cmd"></code>
+          <button id="own-copy-cmd" type="button">Copiar</button>
+        </div>
+        <p class="muted">El .m3u se abre con doble clic en VLC o en mpv (Windows, macOS y Linux). Para ir juntos,
+          salta a la posición del anfitrión; con MPV-UOS en los dos lados la sincronía es exacta.</p>
+      </section>
     </div>
     <aside>
       <h3 id="guests-title">En la sala</h3>

@@ -47,12 +47,21 @@ DIRECT_EXT = {".mp4", ".m4v", ".webm", ".mp3", ".m4a", ".ogg", ".oga", ".opus", 
 
 @dataclass
 class Input:
-    """One ffmpeg input (a file or URL) with the request headers it needs."""
+    """One ffmpeg input (a file or URL) with the request headers it needs.
+
+    ``start``: H44/C5, seconds to skip before reading (``-ss`` BEFORE ``-i``, which is the fast seek: ffmpeg jumps
+    with the demuxer instead of decoding and throwing away). The relay used to start at second 0 of the film even
+    when the host was at minute 40, and the guest waited for the packaging to *catch up* with them: measured at
+    2,2× real time with VA-API, that is ~18 minutes of «Preparando la retransmisión…». Timestamps come out rebased
+    to 0, so whoever plays it has to add this offset back (``media.offset``)."""
     url: str
     headers: dict[str, str] = field(default_factory=dict)
+    start: float = 0.0
 
     def args(self) -> list[str]:
         out: list[str] = []
+        if self.start > 0.5:
+            out += ["-ss", f"{self.start:.3f}"]
         ua = next((v for k, v in self.headers.items() if k.lower() == "user-agent"), None)
         extra = "".join(f"{k}: {v}\r\n" for k, v in self.headers.items() if k.lower() not in PLAIN_HEADERS)
         if ua and "://" in self.url:
@@ -134,6 +143,74 @@ def video_copyable(stream: dict[str, Any] | None) -> bool:
 
 def audio_copyable(stream: dict[str, Any] | None) -> bool:
     return bool(stream) and stream.get("codec_name") == "aac"  # type: ignore[union-attr]
+
+
+# Containers a browser's <video> opens as they are. Checked with ffprobe on 2026-10-01: the recordings of this house
+# are **HEVC + Opus in MP4 with the moov at the end**, which is exactly what a browser handles worst (HEVC only in
+# Safari and in Chrome with hardware support, never in Firefox; Opus inside MP4 not in Safari). So «it is an MP4» is
+# not enough: the codecs, the container AND where the `moov` sits all have to be checked.
+MP4_FORMATS = {"mov,mp4,m4a,3gp,3g2,mj2"}
+WEBM_FORMATS = {"matroska,webm", "webm"}
+
+
+def moov_at_start(path: Path) -> bool:
+    """True when an MP4 carries its ``moov`` atom before ``mdat`` (``-movflags +faststart``).
+
+    With it at the end the browser has to download the whole film before the first frame, which over a tunnel is
+    unusable; mpv and VLC do not care, because they seek. Read by walking the top-level atoms, which costs two or
+    three reads."""
+    try:
+        with path.open("rb") as fh:
+            for _ in range(64):                       # un MP4 normal tiene 3 o 4 átomos de primer nivel
+                head = fh.read(8)
+                if len(head) < 8:
+                    return False
+                size = int.from_bytes(head[:4], "big")
+                kind = head[4:8]
+                if kind == b"moov":
+                    return True
+                if kind == b"mdat":
+                    return False
+                if size == 1:                         # tamaño de 64 bits en los 8 bytes siguientes
+                    ext = fh.read(8)
+                    if len(ext) < 8:
+                        return False
+                    size = int.from_bytes(ext, "big")
+                    if size < 16:
+                        return False
+                    fh.seek(size - 16, 1)
+                elif size < 8:
+                    return False
+                else:
+                    fh.seek(size - 8, 1)
+    except OSError:
+        return False
+    return False
+
+
+def browser_playable(data: dict[str, Any] | None, path: Path | None = None) -> bool:
+    """H44/C4: can a browser's <video> play this file as it is, without repackaging anything?"""
+    if not data:
+        return False
+    fmt = str((data.get("format") or {}).get("format_name") or "")
+    v = video_stream(data)
+    auds = audio_streams(data)
+    if v is None and not auds:
+        return False
+    vname = str((v or {}).get("codec_name") or "")
+    aname = str(auds[0].get("codec_name") or "") if auds else ""
+    # OJO: ffprobe llama `matroska,webm` igual a un .webm y a un .mkv, así que el contenedor no basta para decidir.
+    # Un Matroska solo lo abre el navegador cuando por dentro es WebM de verdad (VP8/VP9/AV1 + Opus/Vorbis); un
+    # .mkv con H.264 + AAC no va en Firefox ni en Safari, aunque Chrome a veces lo aguante.
+    if fmt in WEBM_FORMATS:
+        return (v is None or vname in ("vp8", "vp9", "av1")) and (not auds or aname in ("opus", "vorbis"))
+    if fmt not in MP4_FORMATS:
+        return False
+    if v is not None and not (video_copyable(v) or vname == "av1"):
+        return False
+    if auds and not (audio_copyable(auds[0]) or aname == "mp3"):
+        return False
+    return path is None or moov_at_start(path)
 
 
 # -- the ffmpeg command ---------------------------------------------------------------------------------------
@@ -366,11 +443,13 @@ def _lower_priority() -> None:  # pragma: no cover - runs in the child
 class HlsStream:
     """One relay: ffmpeg (plans tried in order) writing into ``out_dir``; status, produced seconds, stop."""
 
-    def __init__(self, sid: str, out_dir: Path, plans: list[HlsPlan], duration: float | None = None, label: str = ""):
+    def __init__(self, sid: str, out_dir: Path, plans: list[HlsPlan], duration: float | None = None, label: str = "",
+                 offset: float = 0.0):
         self.id = sid
         self.dir = out_dir
         self.plans = plans
         self.duration = duration
+        self.offset = offset           # H44/C5: second of the original the first segment corresponds to
         self.label = label
         self.status = "preparing"      # preparing | running | done | failed | stopped
         self.mode = plans[0].mode if plans else ""
@@ -428,7 +507,7 @@ class HlsStream:
         pi = playlist_info(text)
         return {"id": self.id, "status": self.status, "mode": self.mode, "error": self.error,
                 "ready": pi["seconds"], "segments": pi["segments"], "complete": pi["complete"],
-                "duration": self.duration}
+                "duration": self.duration, "offset": self.offset}
 
     async def stop(self) -> None:
         if self.status in ("running", "preparing"):
