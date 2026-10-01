@@ -93,6 +93,14 @@ else
   echo "deno: no necesario (hay deno o node >= 22 en PATH)"
 fi
 
+# llama.cpp (H38): solo a petición, igual que cloudflared. El índice del vídeo funciona sin él; esto es para el resumen
+# en prosa, y el modelo (806 MB) se baja aparte cuando alguien lo pide desde el menú.
+if [ "${MU_VENDOR_LLAMA:-0}" = "1" ]; then
+  "$ROOT/tools/vendor_llama.sh" || status=1
+elif [ -x vendor/llama/bin/llama-cli ]; then
+  echo "llama.cpp: presente (vendor/llama/bin)"
+fi
+
 # cloudflared (H25): solo a petición. Es lo único que saca algo a internet, así que nunca se instala por defecto.
 if [ -x vendor/bin/cloudflared ]; then
   echo "cloudflared: presente (vendor/bin/cloudflared)"

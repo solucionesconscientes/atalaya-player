@@ -292,3 +292,36 @@ def test_mu_recap_indice_del_video(daemon_env, media_dir, tmp_path):
         assert h.script_errors() == [], h.script_errors()
     finally:
         h.stop()
+
+
+def test_mu_recap_el_indice_ofrece_el_nivel_2_segun_lo_que_haya(daemon_env, media_dir, tmp_path):
+    """H38/G3-G6: el índice ofrece el resumen en prosa solo si se puede, y si falta algo dice qué falta.
+
+    No se ejecuta el modelo (son ~40 s): se comprueba que lo que ofrece el menú coincide con lo que dice mpvd.
+    """
+    srt = write_srt(tmp_path / "largo.srt", cues_largas())
+    h = start_mpv(daemon_env.runtime_dir, [MU_OPTS, "--keep-open=yes", "--pause=yes", f"--sub-file={srt}"],
+                  env=daemon_env.env)
+    try:
+        h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected" and v.get("uosc"),
+                        timeout=40)
+        h.command("loadfile", str(media_dir / "video30.mkv"))
+        h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 10, timeout=20)
+        h.command("script-binding", "mu_recap/outline")
+        st = h.wait_property("user-data/mu/recap", lambda v: bool(v) and v.get("status") == "done", timeout=60)
+        titulos = [i["title"] for i in st["items"]]
+
+        estado = h.wait_property("user-data/mu/recap", lambda v: bool(v) and "llm_available" in v, timeout=20)
+        if not estado["llm_available"]:
+            assert any("falta llama.cpp" in t for t in titulos), titulos
+        elif not estado["llm_model_present"]:
+            assert any(t == "Descargar el modelo del resumen" for t in titulos), titulos
+            fila = next(i for i in st["items"] if i["title"] == "Descargar el modelo del resumen")
+            assert "MB" in fila["hint"]
+        else:
+            assert "Resumen en prosa (corto)" in titulos and "Resumen en prosa (largo)" in titulos
+            corto = next(i for i in st["items"] if i["title"] == "Resumen en prosa (corto)")
+            assert corto["hint"], "hay que decir cuánto tarda antes de empezar"
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()

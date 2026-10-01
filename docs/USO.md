@@ -370,6 +370,12 @@ instantáneo porque no lo escribe ningún modelo: los títulos y las frases son 
 son los de verdad. Hace falta un subtítulo de texto (los de YouTube valen, y son gratis); **nunca** se lanza una
 transcripción para hacer un índice, porque eso serían horas en un portátil normal.
 
+**Resumen en prosa** (al final del índice): lo escribe un modelo que corre **en tu equipo**, a partir del índice, en
+español. Corto (3-4 frases, unos 40 s en un portátil de 4 núcleos) o largo (8-12 frases, alrededor de un minuto); el
+tiempo se dice antes de empezar y hay progreso. Cada frase lleva su `[mm:ss]` y salta ahí al pulsarla. **Los minutos no
+los pone el modelo**: salen del subtítulo, y si el modelo escribe uno que no existe, se quita antes de que lo veas.
+El modelo se baja una vez (806 MB) desde el propio menú; mientras no esté, el índice funciona igual.
+
 ## 9d-2. Música
 `alt+M` (o *Abrir → Música*) abre tu música. La primera vez añade tu carpeta Música y la lee en segundo plano (solo
 cambia lo nuevo en las siguientes); en *Carpetas* puedes añadir otras. Navega por *Artistas › Álbumes › Pistas*,

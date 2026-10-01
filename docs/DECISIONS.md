@@ -607,3 +607,19 @@
   subtítulo y lo mueve a la frase más cercana (±30 s) o **lo quita**: una marca que lleva a un sitio donde no pasa nada
   es peor que no tener marca, porque parece que el programa miente. En el reproductor es un menú (`alt+I`): cada sección
   es un submenú y cada línea salta a su minuto.
+- ADR-076 · Resumen en prosa con un modelo local (H38, nivel 2). **Sustituye** la parte de ADR-062 que dejaba el LLM
+  fuera a propósito: Ser aceptó el coste («se instala al pedirlo») y el nivel 1 se queda como respuesta instantánea, así
+  que ahora hay dos niveles y el de siempre sigue siendo el rápido. Medido aquí el 2026-10-01 con 15 min de una charla
+  real en español (docs/BENCHMARKS_LLM.md): **gemma-3-1b-it Q4_K_M** (806 MB) tarda 36-45 s y escribe español correcto;
+  **qwen2.5-3b** (1,9 GB) escribe mejor pero tarda el doble y queda como opción; **qwen2.5-1.5b** se descartó tras
+  medirlo porque repetía frases enteras. Lo que decidió el diseño, y que solo se vio midiendo: (1) **ningún** modelo se
+  inventó un minuto cuando el prompt lleva el índice delante, pero (2) hay que pedir explícitamente «cada frase EMPIEZA
+  con su marca», porque sin eso gemma escribía el resumen corto **sin ninguna marca** —y un resumen sin minutos no sirve
+  para lo que se quiere—; (3) algún modelo escribe rangos `[0:04-0:36]`, que se quedan en su instante inicial porque el
+  menú solo puede llevarte a un sitio. Implementación: `llama.cpp` vendorizado desde la release oficial de CPU
+  (`tools/vendor_llama.sh`, fijado en vendor.lock), **un proceso por resumen** (`llama-cli -st`) en vez de un servidor
+  (40 s cada pocas horas no justifican 1 GB de RAM y un puerto abiertos todo el día: el mismo razonamiento de ADR-024),
+  modelo descargado al pedirlo y verificado por SHA-256 (ADR-023), caché por (índice, longitud, idioma, modelo), y
+  `tools/install.sh --resumen` para quien lo quiera desde el principio. Aviso para quien actualice llama.cpp: su
+  interfaz de chat mezcla en la misma salida el cartel, el eco **recortado** del prompt y las estadísticas, así que
+  `mpvd.llm.clean_output` corta por ahí y hay un test que fija ese contrato.

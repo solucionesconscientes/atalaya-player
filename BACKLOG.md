@@ -339,13 +339,13 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
 - [x] G1 Solo donde la transcripción es gratis: YouTube y webs con subtítulos, o un archivo local que ya esté transcrito.
       Nunca se lanza una transcripción para resumir.
 - [x] G2 Nivel 1 sin IA generativa: secciones por significado y frases clave con su minuto exacto, instantáneo (amplía recap).
-- [ ] G3 Nivel 2 con modelo local: prosa corta o larga en español, inglés o francés, escrita a partir del nivel 1.
+- [x] G3 Nivel 2 con modelo local: prosa corta o larga en español, inglés o francés, escrita a partir del nivel 1.
 - [x] G4 Cada marca [mm:ss] se valida contra el SRT; si no existe se ajusta a la frase más parecida y, si nada encaja, se
       quita antes que mentir.
 - [x] G5 El resumen es un menú: cada viñeta salta a su minuto.
-- [ ] G6 Modelo descargado al pedirlo (fijado por SHA-256) y binario de llama.cpp vendorizado como whisper.cpp, con casilla
+- [x] G6 Modelo descargado al pedirlo (fijado por SHA-256) y binario de llama.cpp vendorizado como whisper.cpp, con casilla
       opcional en el instalador. Modelo concreto: el que gane el banco de pruebas del 2026-10-01.
-- [ ] ADR nuevo que sustituye al ADR-062 (que dejaba fuera el LLM a propósito): Ser acepta el coste y el nivel 1 se queda
+- [x] ADR nuevo que sustituye al ADR-062 (que dejaba fuera el LLM a propósito): Ser acepta el coste y el nivel 1 se queda
       como respuesta instantánea.
 
 ## H39 · TV, radio e intro

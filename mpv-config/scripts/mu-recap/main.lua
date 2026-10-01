@@ -31,12 +31,19 @@ options.read_options(opts, 'mu-recap')
 -- text subtitle codecs ffmpeg can turn into SRT (bitmap ones like PGS/DVB cannot)
 local TEXT_CODECS = { subrip = true, ass = true, ssa = true, webvtt = true, mov_text = true, text = true }
 
-local state = { away_from = nil, missed = nil, status = 'idle', result = nil, last_error = '', items = {} }
+local state = { away_from = nil, missed = nil, status = 'idle', result = nil, last_error = '', items = {},
+                -- H38/G3: el resumen en prosa que escribe el modelo local (tarda ~1 min: va con su progreso)
+                prose = nil, llm = nil }
 
 local function publish()
   mp.set_property_native('user-data/mu/recap', {
     status = state.status, missed = state.missed, away = state.away_from ~= nil, result = state.result,
     last_error = state.last_error, items = state.items,
+    prose_status = state.prose and state.prose.status or '', prose_rows = state.prose and #(state.prose.rows or {}) or 0,
+    prose_length = state.prose and state.prose.length or '', prose_model = state.prose and state.prose.model or '',
+    prose_progress = state.prose and state.prose.progress or 0,
+    llm_available = state.llm and state.llm.available or false,
+    llm_model_present = state.llm and state.llm.present or false,
   })
 end
 
@@ -190,6 +197,8 @@ local function recap()
   end, 30)
 end
 
+local ask_llm   -- se define con el nivel 2, más abajo; el índice ya lo usa para saber qué ofrecer
+
 -- H38/G2-G5 · el índice del vídeo: secciones con su título y, dentro, las frases clave con su minuto. Lo compone mpvd
 -- a partir del subtítulo que ya hay (`recap.outline`), sin escribir nada con un modelo y sin lanzar ninguna
 -- transcripción: si no hay subtítulo, se dice, porque transcribir una película para hacer un índice son horas.
@@ -211,6 +220,7 @@ local function outline()
   src.duration = mp.get_property_number('duration')
   state.status, state.last_error = 'working', ''
   show(uosc.loading_items('Leyendo todo lo que se dice…'), title, true)
+  if state.llm == nil then ask_llm() end
   rpc.call('recap.outline', src, function(err, res)
     if uosc.open_type() ~= MENU then state.status = 'idle'; publish(); return end
     if err then
@@ -233,9 +243,154 @@ local function outline()
     if #items == 0 then
       items = uosc.message_items('No hay suficiente diálogo para hacer un índice', 'info')
     end
+    items[#items].separator = true
+    local llm = state.llm or {}
+    if not llm.available then
+      items[#items + 1] = { title = 'Resumen en prosa: falta llama.cpp', hint = 'tools/vendor_llama.sh',
+                            icon = 'info', selectable = false, muted = true }
+    elseif not llm.present then
+      local mb = 0
+      for _, m in ipairs(llm.models or {}) do if m.default then mb = m.size_mb or 0 end end
+      items[#items + 1] = { title = 'Descargar el modelo del resumen', hint = mb .. ' MB, una vez',
+                            icon = 'cloud_download', value = { download_model = true } }
+    else
+      items[#items + 1] = { title = 'Resumen en prosa (corto)', hint = 'unos 40 s', icon = 'notes',
+                            value = { prose = 'short' } }
+      items[#items + 1] = { title = 'Resumen en prosa (largo)', hint = 'alrededor de un minuto', icon = 'subject',
+                            value = { prose = 'long' } }
+    end
     show(items, title)
   end, 60)
 end
+
+-- H38/G3 · el resumen en prosa. Lo escribe un modelo local a partir del índice, así que tarda del orden de un minuto:
+-- se dice antes de empezar y se enseña el progreso. Los minutos NO los pone el modelo: mpvd los valida contra el
+-- subtítulo y quita lo que no exista, así que lo que se pinta siempre lleva a algún sitio.
+local function prose_items()
+  local pr = state.prose or {}
+  local items = {}
+  if pr.status == 'working' then
+    items[#items + 1] = { title = 'Escribiendo el resumen…', icon = 'spinner', selectable = false, muted = true,
+                          hint = pr.model or '' }
+  end
+  for _, row in ipairs(pr.rows or {}) do
+    if row.start then
+      items[#items + 1] = { title = row.text, hint = clock(row.start), value = { seek = row.start } }
+    else
+      items[#items + 1] = { title = row.text, selectable = false, muted = true }
+    end
+  end
+  if pr.status == 'done' and #items == 0 then
+    items = uosc.message_items('El modelo no ha escrito nada aprovechable', 'info')
+  end
+  if pr.status == 'error' then
+    items = uosc.message_items(pr.error or 'no se pudo escribir el resumen', 'error')
+  end
+  items[#items + 1] = { title = 'Volver al índice', icon = 'list', value = { outline = true }, separator = false }
+  return items
+end
+
+local function show_prose()
+  local pr = state.prose or {}
+  show(prose_items(), 'Resumen' .. (pr.length == 'long' and ' largo' or ' corto'))
+end
+
+ask_llm = function(cb)
+  rpc.call('recap.llm.status', nil, function(err, st)
+    if err or type(st) ~= 'table' then state.llm = { available = false } else
+      local present = false
+      for _, m in ipairs(st.models or {}) do
+        if m.default and m.present then present = true end
+      end
+      state.llm = { available = st.available, present = present, models = st.models, default_model = st.default_model }
+    end
+    publish()
+    if cb then cb() end
+  end, 15)
+end
+
+local function prose(length)
+  if mp.get_property_native('idle-active') then osd('Abre un vídeo primero') return end
+  local src = source_params()
+  if not src then
+    show(uosc.message_items('Para el resumen hace falta un subtítulo de texto: pon uno o créalo con IA (alt+c)', 'info'),
+         'Resumen', true)
+    return
+  end
+  if not rpc.connected() then osd('mpvd no está conectado') return end
+  src.duration = mp.get_property_number('duration')
+  src.length = length
+  src.language = 'es'
+  state.prose = { status = 'working', length = length, rows = {}, progress = 0,
+                  model = state.llm and state.llm.default_model or '' }
+  publish()
+  show_prose()
+  rpc.call('recap.prose', src, function(err, res)
+    if err then
+      -- lo que falta se dice con lo que hay que hacer, no con un código
+      local data = err.data or {}
+      if data.download then
+        state.prose = { status = 'error', length = length,
+                        error = string.format('Hace falta el modelo (%d MB). Se baja desde «Descargar el modelo».',
+                                              data.size_mb or 0) }
+      elseif data.install then
+        state.prose = { status = 'error', length = length,
+                        error = 'Falta llama.cpp: ejecuta tools/vendor_llama.sh una vez' }
+      else
+        state.prose = { status = 'error', length = length, error = err.message or 'error' }
+      end
+      publish()
+      show_prose()
+      return
+    end
+    if res.status == 'done' then
+      state.prose = { status = 'done', length = length, rows = res.rows or {}, model = res.model,
+                      marks = res.marks, progress = 1 }
+      publish()
+      show_prose()
+      return
+    end
+    state.prose.job = res.job and res.job.id or nil
+    state.prose.model = res.model or state.prose.model
+    publish()
+    show_prose()
+  end, 60)
+end
+
+local function download_model()
+  if not rpc.connected() then osd('mpvd no está conectado') return end
+  local name = (state.llm and state.llm.default_model) or ''
+  if name == '' then osd('No se sabe qué modelo bajar') return end
+  osd('Bajando el modelo del resumen…')
+  rpc.call('recap.llm.download', { model = name, notify = SCRIPT }, function(err)
+    if err then osd('Modelo: ' .. (err.message or 'error')) return end
+  end, 30)
+end
+
+-- eventos de mpvd: el progreso del resumen y el de la descarga del modelo
+mp.register_script_message('mu-event', function(payload)
+  local ev = utils.parse_json(payload or '') or {}
+  if ev.event == 'recap-prose' and type(ev.job) == 'table' then
+    if not state.prose then return end
+    state.prose.progress = ev.job.progress or state.prose.progress
+    if type(ev.result) == 'table' then
+      state.prose = { status = 'done', length = state.prose.length, rows = ev.result.rows or {},
+                      model = ev.result.model, marks = ev.result.marks, progress = 1 }
+      publish()
+      if uosc.open_type() == MENU then show_prose() end
+      osd('Resumen listo')
+      return
+    end
+    publish()
+  elseif ev.event == 'recap-model' and type(ev.job) == 'table' then
+    local pct = math.floor((ev.job.progress or 0) * 100 + 0.5)
+    if ev.job.status == 'done' then
+      ask_llm(function() osd('Modelo del resumen listo') end)
+    elseif pct % 25 == 0 then
+      osd(string.format('Modelo del resumen: %d %%', pct))
+    end
+  end
+end)
 
 mp.register_script_message(EVENT, function(json)
   local ev = utils.parse_json(json or '') or {}
@@ -245,6 +400,10 @@ mp.register_script_message(EVENT, function(json)
     if not N:leave() then uosc.close(MENU) end
   elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.outline then
     outline()
+  elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.prose then
+    prose(ev.value.prose)
+  elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.download_model then
+    download_model()
   elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.seek then
     mp.commandv('seek', tostring(ev.value.seek), 'absolute+exact')
     state.missed = nil

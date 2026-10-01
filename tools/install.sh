@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # User install on Linux (no sudo): launcher in ~/.local/bin, desktop entry + icon under $XDG_DATA_HOME, optional default player.
 # The checkout stays where it is (the launcher points to it); ~/.config/mpv is never touched.
-# Usage: tools/install.sh [--xdg] [--extras] [--no-sync] [--no-vendor] [--default] [--dry-run]
+# Usage: tools/install.sh [--xdg] [--extras] [--resumen] [--no-sync] [--no-vendor] [--default] [--dry-run]
 #        tools/install.sh --uninstall [--dry-run]
 # Env:   MPV_UOS_BIN_DIR (default ~/.local/bin), XDG_DATA_HOME (default ~/.local/share).
 # User data (favourites, notes, prefs, watch_later) always lives in $XDG_DATA_HOME/mpv-uos (bin/mpv-uos);
@@ -39,11 +39,12 @@ MIME="${MIME%;};x-scheme-handler/mpv-uos;"
 MIME_BACKUP="$DATA_HOME/mpv-uos/mime-defaults.bak"
 MIMEAPPS="${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
 
-XDG=0 EXTRAS=0 SYNC=1 VENDOR=1 DEFAULT=0 DRY=0 UNINSTALL=0
+XDG=0 EXTRAS=0 RESUMEN=0 SYNC=1 VENDOR=1 DEFAULT=0 DRY=0 UNINSTALL=0
 for arg in "$@"; do
   case "$arg" in
     --xdg) XDG=1 ;;             # cache in ~/.cache/mpv-uos instead of <checkout>/.cache (data is always there)
     --extras) EXTRAS=1 ;;       # also install the optional translate + semantic + impersonate extras (~260 MB)
+    --resumen) RESUMEN=1 ;;     # H38/G6: también llama.cpp para el resumen en prosa (~18 MB; el modelo se baja al pedirlo)
     --no-sync) SYNC=0 ;;
     --no-vendor) VENDOR=0 ;;
     --default) DEFAULT=1 ;;     # make MPV-UOS the default app for the video/audio MIME types (xdg-mime)
@@ -113,6 +114,9 @@ if [ "$SYNC" = 1 ]; then
   else say "uv sync (con extra desktop: MPRIS)"; run uv sync --project "$ROOT" --extra desktop; fi
 fi
 if [ "$VENDOR" = 1 ]; then say "tools/vendor.sh (uosc, thumbfast, yt-dlp)"; run "$ROOT/tools/vendor.sh"; fi
+# H38/G6: llama.cpp solo si se pide. El modelo (806 MB) NO se baja aquí: se baja la primera vez que alguien pide un
+# resumen, desde el menú, para que una instalación no se lleve casi un giga sin preguntar.
+if [ "$RESUMEN" = 1 ]; then say "tools/vendor_llama.sh (resumen en prosa)"; run "$ROOT/tools/vendor_llama.sh"; fi
 
 # -- launcher -----------------------------------------------------------------------------------------------
 if [ -e "$LAUNCHER" ] && ! ours "$LAUNCHER"; then

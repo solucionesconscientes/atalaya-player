@@ -66,3 +66,12 @@ YTDLP_EXE_SHA256=66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7
 WHISPER_WIN_VERSION=b5130
 WHISPER_WIN_URL=https://github.com/ggml-org/whisper.cpp/releases/download/b5130/whisper-bin-x64.zip
 WHISPER_WIN_SHA256=f9ec6c52a2e949b62ab51fa21d0d497958f9e41c3010c157c4e42932d5316f3c
+
+# llama.cpp: el modelo local que escribe el resumen en prosa (H38, ADR-076). Se usa el binario de CPU de la release
+# oficial, como con whisper.cpp: un proceso por resumen, sin servidor. NO se instala por defecto: con
+# MU_VENDOR_LLAMA=1 tools/vendor.sh o con tools/vendor_llama.sh, porque el índice del vídeo (nivel 1) funciona sin él.
+# Suma del fichero descargado y usado aquí el 2026-10-01 (GitHub no publica .sha256 de estos assets).
+LLAMA_VERSION=b11319
+LLAMA_BASE_URL=https://github.com/ggml-org/llama.cpp/releases/download/b11319
+LLAMA_ASSET_x86_64_linux=llama-b11319-bin-ubuntu-x64.tar.gz
+LLAMA_SHA256_x86_64_linux=f0c51e621f287c40f80d511793971aae5750e1afe6642f0a3de5995f6a352d55

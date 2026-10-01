@@ -153,6 +153,7 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 | — (Preferencias) | **Modo salón**: pantalla completa, menús, subtítulos y mensajes grandes; un mando de consola (gamepad) controla el reproductor: A pausa, B/Back cierra el menú, X subtítulos, Start/Guide menú, cruceta ←/→ 10 s, ↑/↓ volumen, LB/RB anterior/siguiente |
 | `alt+R` | **¿Qué me he perdido?**: las frases que resumen lo que se dijo mientras la ventana estaba minimizada o en segundo plano (o en los últimos 5 min); Enter salta a ese momento. Usa los subtítulos de texto del vídeo o su transcripción IA |
 | `alt+I` | **Índice del vídeo**: secciones por significado, cada una con su título y sus frases clave, y cada línea salta a su minuto exacto. Sale de los subtítulos que ya hay (nunca lanza una transcripción) y es instantáneo: los títulos y las frases son del propio diálogo, no los escribe ningún modelo |
+| (menú `alt+I`) | **Resumen en prosa**, corto o largo, escrito por un modelo local (se baja una vez, 806 MB): cada frase con su `[mm:ss]`, validado contra el subtítulo (lo que el modelo invente se quita) |
 | — (Preferencias) | **Modo sencillo**: menú principal corto (Abrir, TV y radio, Subtítulos, Preferencias) y barra mínima; «Menú completo» lo quita |
 
 ## Música, audiolibros, podcasts y letras (mu-music, mu-books, mu-lyrics)

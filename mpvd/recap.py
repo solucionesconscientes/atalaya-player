@@ -14,6 +14,8 @@ seconds per paragraph and may invent things: left out on purpose."""
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import math
 import re
@@ -21,7 +23,8 @@ import unicodedata
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, RpcError
+from mpvd import llm as llm_mod
+from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd.semantic.index import Sentence, sentences_from_segments
 
 if TYPE_CHECKING:
@@ -30,6 +33,8 @@ if TYPE_CHECKING:
 log = logging.getLogger("mpvd.recap")
 
 MMR_LAMBDA = 0.7
+PROSE_ARTIFACT = "recap-prose"
+PROSE_VERSION = "1"
 MIN_WORDS = 12                  # below this there is nothing to summarise: every line is returned
 WORD_RE = re.compile(r"[^\W\d_]{4,}", re.UNICODE)
 # short function words of Spanish and English that pass the 4-letter filter
@@ -132,7 +137,9 @@ def summarize(cues: list[dict[str, Any]], start: float, end: float, embed: Any =
 
 # -- H38 · el índice del vídeo: secciones por significado y frases clave con su minuto ---------------
 
-MARK_RE = re.compile(r"\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]")
+# Un modelo puede escribir «[2:15]», «[1:02:15]» o un rango «[2:15-3:40]». El rango se queda en su primer minuto:
+# el menú solo puede llevarte a un sitio, y ese es el bueno. (Lo vimos en el banco de pruebas: qwen2.5-1.5b los usa.)
+MARK_RE = re.compile(r"\[(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*[-\u2013\u2014]\s*\d{1,2}:\d{2}(?::\d{2})?)?\]")
 SECTION_SECONDS = 300.0      # cuando no hay modelo de embeddings, secciones de ~5 min: honesto y sigue sirviendo
 TITLE_CHARS = 60
 
@@ -215,6 +222,14 @@ def outline(cues: list[dict[str, Any]], duration: float | None = None, embed: An
             "duration": round(float(duration), 2) if duration else round(sentences[-1].end, 2)}
 
 
+def _mark_text(seconds: float) -> str:
+    """Una marca normalizada: siempre un solo instante, con horas solo si hace falta."""
+    n = max(0, int(seconds))
+    if n >= 3600:
+        return f"[{n // 3600:d}:{n % 3600 // 60:02d}:{n % 60:02d}]"
+    return f"[{n // 60:d}:{n % 60:02d}]"
+
+
 def validate_marks(text: str, cues: list[dict[str, Any]], tolerance: float = 30.0) -> dict[str, Any]:
     """H38/G4 · cada ``[mm:ss]`` de un texto escrito por un modelo se comprueba contra el subtítulo.
 
@@ -234,11 +249,10 @@ def validate_marks(text: str, cues: list[dict[str, Any]], tolerance: float = 30.
         nearest = min(starts, key=lambda t: abs(t - seconds))
         if abs(nearest - seconds) <= 1.0:
             out.append({"mark": m.group(0), "seconds": seconds, "action": "kept", "to": round(nearest, 2)})
-            return m.group(0)
+            return _mark_text(seconds)
         if abs(nearest - seconds) <= tolerance:
-            fixed = f"[{int(nearest) // 60:d}:{int(nearest) % 60:02d}]"
             out.append({"mark": m.group(0), "seconds": seconds, "action": "moved", "to": round(nearest, 2)})
-            return fixed
+            return _mark_text(nearest)
         out.append({"mark": m.group(0), "seconds": seconds, "action": "removed", "to": None})
         return ""
 
@@ -251,10 +265,35 @@ def validate_marks(text: str, cues: list[dict[str, Any]], tolerance: float = 30.
             "removed": sum(1 for m in out if m["action"] == "removed")}
 
 
+def split_marks(text: str) -> list[dict[str, Any]]:
+    """El resumen en prosa, partido en filas: cada frase con el segundo al que lleva (H38/G5).
+
+    Si el texto empieza sin marca, ese trozo se queda como entradilla sin minuto (``start`` nulo): no se le inventa uno.
+    """
+    rows: list[dict[str, Any]] = []
+    pos = 0
+    pending: str | None = None
+    for m in MARK_RE.finditer(text):
+        chunk = text[pos:m.start()].strip()
+        if chunk:
+            rows.append({"start": pending, "text": chunk}) if pending is not None else rows.append(
+                {"start": None, "text": chunk})
+        h, mi, se = m.group(1), m.group(2), m.group(3)
+        pending = (int(h) * 3600 + int(mi) * 60 + int(se)) if se else (int(h) * 60 + int(mi))
+        pos = m.end()
+    tail = text[pos:].strip()
+    if tail:
+        rows.append({"start": pending, "text": tail})
+    return [r for r in rows if r["text"]]
+
+
 class RecapService:
     def __init__(self, server: MpvdServer):
         self.server = server
         server.services["recap"] = True
+        # H38/G3: el modelo local para la prosa. Si no está, todo lo demás (el índice) sigue funcionando igual.
+        self.llm = llm_mod.LlmEngine(llm_mod.LlmStore(llm_mod.model_dirs(server.root, server.settings.data_dir)),
+                                     llm_mod.find_binary(server.root))
 
     async def _embed(self) -> Any:
         sem = getattr(self.server, "semantic", None)
@@ -306,6 +345,108 @@ class RecapService:
                 raise RpcError(NOT_FOUND, f"no se pudo leer la pista de subtítulos: {exc}") from exc
         return dest
 
+    # -- H38/G3 · nivel 2: prosa escrita por un modelo local, con los minutos del nivel 1 ----------
+
+    def llm_status(self) -> dict[str, Any]:
+        st = self.llm.status()
+        st["languages"] = sorted(llm_mod.SYSTEM)
+        st["lengths"] = ["short", "long"]
+        return st
+
+    def download_model(self, name: str, notify: str, session_id: str | None) -> Any:
+        from mpvd.jobs import Priority  # noqa: PLC0415
+
+        if name not in llm_mod.CATALOG:
+            raise RpcError(INVALID_PARAMS, f"modelo desconocido {name!r}")
+
+        async def body(job: Any) -> dict[str, Any]:
+            loop = asyncio.get_running_loop()
+
+            def progress(frac: float, message: str) -> None:
+                def report() -> None:
+                    job.report(frac, message)
+                    self._push(session_id, notify, "prose-model:" + name, f"running:{frac:.2f}",
+                               {"event": "recap-model", "model": name, "job": job.to_dict()})
+                loop.call_soon_threadsafe(report)
+
+            path = await self.llm.store.download(name, progress)
+            self._push(session_id, notify, "prose-model:" + name, "done",
+                       {"event": "recap-model", "model": name, "path": str(path),
+                        "job": {**job.to_dict(), "status": "done"}}, final=True)
+            return {"model": name, "path": str(path)}
+
+        return self.server.jobs.submit(f"recap.model.{name}", body, priority=Priority.INTERACTIVE, heavy=False,
+                                      session_id=None, meta={"notify": notify, "model": name})
+
+    def _push(self, session_id: str | None, target: str, key: str, status: str, payload: dict[str, Any],
+              final: bool = False) -> None:
+        if not session_id:
+            return
+        session = self.server.sessions.get(session_id)
+        if session is not None and session.connected:
+            session.push_event(target, key, status, payload, min_interval=0.5, final=final)
+
+    async def prose(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Resumen en prosa del vídeo entero, corto o largo, en español, inglés o francés.
+
+        Los minutos NO los pone el modelo: el prompt lleva el índice del nivel 1 con sus marcas y, al volver, cada
+        ``[mm:ss]`` se comprueba contra el subtítulo (G4). Tarda del orden de un minuto en un portátil de 4 núcleos, así
+        que va como trabajo con progreso, no como una respuesta que se espera.
+        """
+        from mpvd.jobs import Priority  # noqa: PLC0415
+
+        length = params.get("length") or "short"
+        language = params.get("language") or "es"
+        model = params.get("model") or llm_mod.DEFAULT_MODEL
+        if length not in ("short", "long"):
+            raise RpcError(INVALID_PARAMS, "length: short o long")
+        if language not in llm_mod.SYSTEM:
+            raise RpcError(INVALID_PARAMS, "language: " + ", ".join(sorted(llm_mod.SYSTEM)))
+        if model not in llm_mod.CATALOG:
+            raise RpcError(INVALID_PARAMS, f"modelo desconocido {model!r}")
+        if not self.llm.available:
+            raise RpcError(UNAVAILABLE, "falta llama-cli: ejecuta tools/vendor_llama.sh",
+                           {"install": "tools/vendor_llama.sh"})
+        if self.llm.store.find(model) is None:
+            raise RpcError(UNAVAILABLE, f"el modelo {model} no está descargado",
+                           {"download": model, "size_mb": llm_mod.CATALOG[model].size_mb})
+        cues, source = await self._cues(params)
+        base = await asyncio.to_thread(outline, cues, params.get("duration"), await self._embed(), 2)
+        sections = base.get("sections") or []
+        if not sections:
+            raise RpcError(NOT_FOUND, "no hay suficiente diálogo para resumir este vídeo")
+        system, prompt, tokens = llm_mod.prompt_from_outline(sections, length, language)
+        cache_key = "prose:" + hashlib.sha256(
+            json.dumps([sections, length, language, model], ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:32]
+        cached = await asyncio.to_thread(self.server.cache.get, cache_key, PROSE_ARTIFACT, model, PROSE_VERSION, {})
+        if cached is not None and isinstance(cached.data, dict) and cached.data.get("text"):
+            return {"status": "done", "cached": True, "source": source, **cached.data}
+        notify = params.get("notify") or "mu_recap"
+        session_id = params.get("session_id")
+
+        async def body(job: Any) -> dict[str, Any]:
+            job.report(0.05, "pensando…")
+            self._push(session_id, notify, "prose:" + job.id, "running:0.05",
+                       {"event": "recap-prose", "job": job.to_dict()})
+            gen = await self.llm.generate(model, system, prompt, tokens)
+            checked = await asyncio.to_thread(validate_marks, gen["text"], cues)
+            data = {"text": checked["text"], "rows": split_marks(checked["text"]),
+                    "marks": {k: checked[k] for k in ("kept", "moved", "removed")},
+                    "model": model, "length": length, "language": language,
+                    "tokens_per_second": gen.get("tokens_per_second"), "sections": len(sections)}
+            await asyncio.to_thread(self.server.cache.put, cache_key, PROSE_ARTIFACT, model=model,
+                                   version=PROSE_VERSION, params={}, data=data)
+            self._push(session_id, notify, "prose:" + job.id, "done",
+                       {"event": "recap-prose", "job": {**job.to_dict(), "status": "done"}, "result": data},
+                       final=True)
+            return data
+
+        job = self.server.jobs.submit(f"recap.prose.{length}.{language}", body, priority=Priority.INTERACTIVE,
+                                      heavy=True, session_id=None,
+                                      meta={"notify": notify, "model": model, "length": length, "language": language})
+        return {"status": "queued", "job": job.to_dict(), "source": source, "sections": len(sections),
+                "model": model, "length": length, "language": language}
+
     async def outline(self, params: dict[str, Any]) -> dict[str, Any]:
         """H38/G1-G2: el índice del vídeo, de las fuentes que ya existen. **Nunca** lanza una transcripción."""
         cues, source = await self._cues(params)
@@ -348,6 +489,36 @@ class RecapService:
 
 def register(server: MpvdServer, service: RecapService) -> None:
     d = server.dispatcher
+
+    def _sid(ctx: RpcContext) -> str | None:
+        return ctx.session.id if ctx.session is not None else None
+
+    @d.method("recap.llm.status")
+    async def llm_status(ctx: RpcContext) -> dict[str, Any]:
+        """H38/G6: si está el binario de llama.cpp, qué modelos hay y cuál es el de serie, con su tamaño."""
+        return service.llm_status()
+
+    @d.method("recap.llm.download")
+    async def llm_download(ctx: RpcContext, model: str, notify: str = "mu_recap") -> dict[str, Any]:
+        """Descarga el modelo del resumen (verificado por SHA-256) en segundo plano, con progreso."""
+        return service.download_model(model, notify, _sid(ctx)).to_dict()
+
+    @d.method("recap.llm.remove")
+    async def llm_remove(ctx: RpcContext, model: str) -> dict[str, Any]:
+        """Borra un modelo descargado."""
+        return {"removed": service.llm.store.remove(model)}
+
+    @d.method("recap.prose")
+    async def recap_prose(ctx: RpcContext, cues: list | None = None, sub_path: str = "", path: str = "",
+                          ff_index: int | None = None, duration: float | None = None, length: str = "short",
+                          language: str = "es", model: str | None = None,
+                          notify: str = "mu_recap") -> dict[str, Any]:
+        """H38/G3 · resumen en prosa del vídeo, corto o largo, en es/en/fr, escrito por el modelo local a partir del
+        índice del nivel 1. Los minutos son los del subtítulo: lo que el modelo invente se quita (G4). Tarda del orden
+        de un minuto, así que devuelve un trabajo con progreso (eventos ``recap-prose``)."""
+        return await service.prose({"cues": cues, "sub_path": sub_path, "path": path, "ff_index": ff_index,
+                                    "duration": duration, "length": length, "language": language, "model": model,
+                                    "notify": notify, "session_id": _sid(ctx)})
 
     @d.method("recap.outline")
     async def recap_outline(ctx: RpcContext, cues: list | None = None, sub_path: str = "", path: str = "",
