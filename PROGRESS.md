@@ -54,9 +54,16 @@ Cada hito tiene sus pasos a mano en «Registro por iteración».
 - **Probar en hardware que no hay aquí**: Windows, macOS, Raspberry Pi 5, tele DLNA real (pasos en NEEDS_HUMAN.md).
 - **Cortafuegos**: `ufw` bloquea la entrada; mando (8790), salas (8791) y DLNA (8792) necesitan un `sudo ufw allow …` (NEEDS_HUMAN.md).
 - **Nombre de la app**: pendiente de tu decisión (centralizado en `brand.json`, que leen `mpvd/brand.py` y `mu/brand.lua`).
-- **Tests sensibles a la carga**: los de Whisper (`test_asr_engine`, `test_mu_subs`) y `test_mpris` fallan por tiempo si el
-  portátil está ocupado; aislados y con la máquina libre pasan. El 2026-10-01 tu `llama-server` tenía ~2,5 de los 4 núcleos,
-  así que la última pasada completa de `tools/check.sh` no es concluyente para esos tres: repítela con la máquina libre.
+- **Tests sensibles a la carga**: los de Whisper (`test_asr_engine`, `test_mu_subs`) fallan por tiempo si el portátil está
+  ocupado; aislados y con la máquina libre pasan.
+  El 2026-10-01 tu `llama-server` ocupaba ~3,5 de los 4 núcleos (whisper medido a `rtf 2.1`, cuando libre va a ~0,3), así
+  que la última pasada completa de `tools/check.sh` no es concluyente para ellos: repítela con el portátil libre.
+- **`test_mpris` falla, y el fallo es del test, no del reproductor**: mpvd emite la señal `Seeked` de MPRIS cuando debe y
+  con el valor correcto (comprobado en el log del daemon: `pos=0` al cargar, `pos=10000000` y `pos=20000000` tras cada
+  salto), y un filtro «todas las señales» en el cliente demuestra que llegan. Lo que falla es cómo las captura el test
+  con la API bloqueante de jeepney (`send_and_get_reply` descarta las señales que llegan mientras espera su respuesta, y
+  con filtros solapados cada mensaje va a una sola cola). Hay que rehacer esa captura con la máquina libre; el
+  reproductor no necesita cambios.
 
 ## Resumen para Ser (2026-09-29, histórico)
 Todos los hitos H0–H13 de BACKLOG.md están [x]; ninguno quedó [~]. `tools/check.sh` pasa 202 tests sin red + 4 con red; lo único
@@ -112,22 +119,28 @@ Si hay otra iteración: (1) nada del BACKLOG está pendiente; los [~] esperan a 
 app). (2) Siguiente trabajo útil sin Ser, por orden: añadir hitos nuevos desde el TOP 10 de docs/VISION.md que sigan la
 regla «nada con retraso» (OCR de subtítulos PGS B6, diccionario/Anki C2–C3, handoff entre dispositivos E5), cada uno con su
 criterio de aceptación en BACKLOG.md y su ADR. (3) Antes de empezar, `tools/check.sh` **con la máquina libre** para partir
-de verde: ver «Qué quedó pendiente» sobre `test_mpris` y los tests de Whisper, que fallan por tiempo bajo carga.
+de verde: ver «Qué quedó pendiente» sobre los tests de Whisper (fallan por tiempo bajo carga) y sobre `test_mpris`, cuyo
+fallo ya está diagnosticado: hay que rehacer la captura de señales D-Bus del test, no el reproductor.
 
 ## Registro por iteración
-### Iteración 5 · 2026-10-01 · H34 · Revisión de calidad — hecho (quedan 3 fallos de tests por cribar)
-**PENDIENTE INMEDIATO** (se agotó el cupo a mitad): la última pasada completa de `tools/check.sh` dio **706 pasan, 4
-fallan**. Uno era mío y ya está arreglado (`test_asr_service`: el SRT lleva ahora la pista de audio en el nombre,
-`base.en.a1.srt`, que es lo correcto; la expectativa del test estaba sin actualizar). Los otros tres hay que repetirlos
-**aislados y con el portátil libre** antes de darlos por buenos o por malos:
-```bash
-uv run pytest tests/test_asr_service.py -q                                   # el arreglado: confirmar que pasa
-uv run pytest tests/test_mpris.py -q                                         # la señal Seeked de D-Bus; falla bajo carga
-uv run pytest tests/test_mu_iptv_live.py -q                                   # ¿carga, o la delegación de Grabar a mu-record?
-MU_KEEP_LOGS=1 uv run pytest tests/test_mu_subs.py -q                         # Whisper; sensible a la carga
-```
-De los dos últimos, `test_mu_iptv_live` es el que más conviene mirar: en esta iteración el menú de TV dejó de escribir
-`stream-record` por su cuenta y ahora se lo pide a mu-record, así que puede ser eso y no la carga.
+### Iteración 5 · 2026-10-01 · H34 · Cribado de los 4 fallos de check.sh — hecho
+La última pasada completa dio 706 pasan, 4 fallan. Cribados uno a uno (con tu `llama-server` ocupando ~3,5 de los 4
+núcleos, que es justo lo que hace inestables a los que miden tiempos):
+- `test_asr_service` → **era mío y está arreglado**: el SRT de una tarea de subtítulos IA lleva ahora la pista de audio en
+  el nombre (`base.en.a1.srt`), que es el arreglo para que el doblaje no reutilice los subtítulos de la VO; la
+  expectativa del test seguía con el nombre antiguo. Pasa.
+- `test_mu_iptv_live` → **era la carga**: pasa aislado (va de `watch_later` y saltos en un HLS en directo, nada que
+  tocara H34).
+- `test_mu_subs` → **es la carga, con prueba**: el estado publicado trae `rtf: 2.112`, o sea que whisper va a 2,1× el
+  tiempo real cuando con la máquina libre va a ~0,3×; de ahí el timeout de 120 s.
+- `test_mpris` → **falla de verdad, pero el fallo es del test, no del reproductor**. Comprobado con el log del daemon:
+  mpvd emite `Seeked` cuando debe y con el valor correcto (`pos=0` al cargar, `pos=10000000` y `pos=20000000` tras cada
+  salto), y un filtro «todas las señales» en el cliente demuestra que llegan. Lo que falla es cómo las captura el test:
+  con la API bloqueante de jeepney, `send_and_get_reply` descarta las señales que llegan mientras espera su respuesta, y
+  con dos filtros solapados cada mensaje va a una sola cola. Probé cuatro variantes (comprobar antes de `Position`,
+  provocar el salto desde mpv, una sola cola con filtrado en Python, y una conexión aparte solo para señales) y ninguna
+  resultó fiable con la máquina así, de modo que **dejé el test como estaba en vez de empeorarlo**. Hay que rehacer su
+  captura de señales con el portátil libre; el reproductor no necesita cambios.
 
 ### Iteración 5 · 2026-10-01 · H34 · Revisión de calidad — hecho
 Siete revisiones de código por áreas (TV, descargas/convertir, subtítulos, biblioteca/suscripciones/notas, audio,
