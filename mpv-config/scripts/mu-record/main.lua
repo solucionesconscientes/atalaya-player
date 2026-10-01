@@ -1,8 +1,8 @@
 -- mu-record: the ● «Grabar» button (H18, ADR-044). One menu for everything that saves what is playing:
 --   · captures with or without subtitles (mpv screenshot);
---   · «grabar desde ahora» (video or audio only) until «detener»: live TV/radio with mpv's stream-record (audio only is
---     extracted afterwards by mpvd), internet videos as a yt-dlp --download-sections range, local files as a lossless
---     cut (mpvd study.clip, stream copy);
+--   · «grabar desde ahora» until «detener»: live TV/radio with mpv's stream-record (audio only is extracted
+--     afterwards by mpvd), internet videos as a yt-dlp --download-sections range, local files as a lossless cut
+--     (mpvd study.clip, stream copy). H43: the container is a remembered choice («Formato»), not a guess;
 --   · «recortar un tramo»: marks A and B (mpv's ab-loop points, so `l` works too) and saves it the same way.
 -- While recording: a red dot and a counter on screen and on the button. Folder: remembered (mu-prefs), default
 -- <Vídeos>/MPV-UOS/Grabaciones. Script name: mu_record. State: user-data/mu/record.
@@ -24,7 +24,16 @@ local INPUT = 'mu-record-input'
 local INPUT_EVENT = 'mu-record-input-event'
 local ROOT_TITLE = 'Grabar'
 
-local P = prefs.ns('mu-record', { dir = '' })
+-- H43/B1 · el formato se recuerda. mpv escribe el flujo TAL CUAL (`stream-record`), así que lo que se puede elegir
+-- no es «calidad» sino el envase: el del original (MKV, el que nunca falla), MP4 cuando los códecs caben en MP4, o
+-- solo el audio, que mpvd extrae después a Opus 128 (`record.audio`).
+local P = prefs.ns('mu-record', { dir = '', format = 'copy' })
+local FORMAT_IDS = { copy = true, mp4 = true, audio = true }
+
+local function fmt_id()
+  local id = P:get('format')
+  return FORMAT_IDS[id] and id or 'copy'
+end
 
 local state = {
   view = '', stack = {}, items = {}, force_open = false,
@@ -41,7 +50,7 @@ local function publish()
     recording = rec ~= nil, mode = rec and rec.mode or '', audio = rec and rec.audio or false,
     kind = rec and rec.kind or '',
     file = rec and rec.file or '', start = rec and rec.start or -1, last = state.last or { status = '' },
-    stream_record = mp.get_property('stream-record') or '', last_error = state.last_error,
+    stream_record = mp.get_property('stream-record') or '', last_error = state.last_error, format = fmt_id(),
     input = state.input and state.input.mode or '', indicator = state.indicator,
   })
 end
@@ -106,6 +115,16 @@ local function source_kind()
 end
 
 local KIND_HINT = { live = 'directo', url = 'tramo del vídeo de internet', ['local'] = 'sin recodificar' }
+
+local FORMATS = {
+  { id = 'copy', title = 'Igual que el original (MKV)', hint = 'sin recodificar · el que nunca falla',
+    icon = 'content_copy' },
+  { id = 'mp4', title = 'MP4 si los códecs lo permiten', icon = 'movie' },
+  { id = 'audio', title = 'Solo el audio (Opus 128)', icon = 'mic' },
+}
+local FORMAT_TITLES = {}
+for _, f in ipairs(FORMATS) do FORMAT_TITLES[f.id] = f.title end
+local FORMAT_SHORT = { copy = 'MKV', mp4 = 'MP4', audio = 'solo audio' }
 
 local function record_dir()
   local d = P:get('dir')
@@ -226,7 +245,9 @@ local function save_range(a, b, audio, gif, kind, path, title_at_start, mp4_at_s
   local what = string.format('%s–%s', hms(a), hms(b))
   if kind == 'local' then
     local mp4 = mp4_at_start
-    if mp4 == nil then mp4 = mp4_friendly() end
+    -- H43/B1: antes se elegía MP4 solo si los códecs cabían, sin decirlo; ahora lo manda la fila «Formato», y con
+    -- «igual que el original» siempre sale MKV (empieza en el fotograma clave anterior a la marca, no en la marca).
+    if mp4 == nil then mp4 = fmt_id() == 'mp4' and mp4_friendly() end
     local fmt = gif and 'gif' or (audio and 'audio-copy' or (mp4 and 'mp4-copy' or 'mkv-copy'))
     -- max_seconds = 0: no cap. The 600 s of «clips de estudio» made every recording over ten minutes fail
     rpc.call('study.clip', { path = path, start = a, ['end'] = b, format = fmt, dir = dir, title = title,
@@ -237,7 +258,8 @@ local function save_range(a, b, audio, gif, kind, path, title_at_start, mp4_at_s
   elseif kind == 'url' then
     if gif then osd('GIF: solo con archivos locales') return end
     local h = mp.get_property_number('height')
-    local spec = audio and { kind = 'audio_original' } or { kind = 'video', height = h, container = 'mp4' }
+    local container = (mp4_at_start or fmt_id() == 'mp4') and 'mp4' or 'mkv'
+    local spec = audio and { kind = 'audio_original' } or { kind = 'video', height = h, container = container }
     spec.url = path
     spec.sections = string.format('*%.2f-%.2f', a, b)
     spec.title = title .. ' [' .. what .. ']'
@@ -260,7 +282,10 @@ local function save_range(a, b, audio, gif, kind, path, title_at_start, mp4_at_s
   end
 end
 
-local function start_recording(audio)
+-- `format`: 'copy' | 'mp4' | 'audio'. Sin él, el recordado en la fila «Formato».
+local function start_recording(format)
+  local fmt = FORMAT_IDS[format or ''] and format or fmt_id()
+  local audio = fmt == 'audio'
   local kind = source_kind()
   if not kind then osd('Nada que grabar') return end
   if state.rec then osd('Ya se está grabando') return end
@@ -268,14 +293,19 @@ local function start_recording(audio)
     local dir = record_dir()
     if not ensure_dir(dir) then osd('No se pudo crear la carpeta ' .. dir) return end
     local radio = mp.get_property_native('vid') == false
-    local file = utils.join_path(dir, sanitize(media_title()) .. ' ' .. os.date('%Y-%m-%d %H.%M.%S')
-      .. ((audio or radio) and '.mka' or '.mkv'))
+    -- Medido: un VP8 NO entra en MP4 («Could not write header (incorrect codec parameters?)») y el fichero se queda
+    -- vacío, así que si los códecs no caben se avisa y se graba en MKV, que es lo que pedía el formato por defecto.
+    local mp4 = fmt == 'mp4' and not radio and mp4_friendly()
+    if fmt == 'mp4' and not mp4 then osd('Estos códecs no caben en un MP4: se graba en MKV', 5) end
+    local ext = (audio or radio) and '.mka' or (mp4 and '.mp4' or '.mkv')
+    local file = utils.join_path(dir, sanitize(media_title()) .. ' ' .. os.date('%Y-%m-%d %H.%M.%S') .. ext)
     mp.set_property('stream-record', file)
-    state.rec = { mode = 'live', audio = audio, started = mp.get_time(), start = mp.get_property_number('time-pos') or 0,
-                  file = file }
+    state.rec = { mode = 'live', audio = audio, fmt = fmt, started = mp.get_time(),
+                  start = mp.get_property_number('time-pos') or 0, file = file }
   else
-    state.rec = { mode = 'range', audio = audio, start = mp.get_property_number('time-pos') or 0, started = mp.get_time(),
-                  kind = kind, path = current_path(), title = media_title(), mp4 = mp4_friendly() }
+    state.rec = { mode = 'range', audio = audio, fmt = fmt, start = mp.get_property_number('time-pos') or 0,
+                  started = mp.get_time(), kind = kind, path = current_path(), title = media_title(),
+                  mp4 = fmt == 'mp4' and mp4_friendly() }
   end
   publish()
   start_tick()
@@ -415,18 +445,24 @@ views.root = function()
     table.insert(items, { title = 'Detener y guardar', icon = 'stop_circle', bold = true, active = true,
       hint = (state.rec.audio and 'audio · ' or '') .. hms(elapsed()), value = { stop = true } })
   elseif kind then
-    table.insert(items, { title = 'Grabar desde ahora', icon = 'fiber_manual_record', hint = KIND_HINT[kind],
-                          value = { start = 'video' } })
-    table.insert(items, { title = 'Grabar solo el audio desde ahora', icon = 'mic', value = { start = 'audio' } })
+    -- H43/B1 · una sola fila para grabar: el envase ya no es otra puerta, es la fila «Formato» de debajo
+    table.insert(items, { title = 'Grabar desde ahora', icon = 'fiber_manual_record',
+                          hint = (KIND_HINT[kind] or '') .. ' · ' .. (FORMAT_SHORT[fmt_id()] or ''),
+                          value = { start = true } })
   else
     table.insert(items, { title = 'Abre un vídeo, un canal o una radio para grabar', icon = 'info', selectable = false,
                           muted = true })
   end
   if kind then
+    table.insert(items, { title = 'Formato', icon = 'tune', hint = FORMAT_TITLES[fmt_id()],
+                          value = { view = 'format' } })
     table.insert(items, { title = 'Recortar un tramo…', icon = 'content_cut', value = { view = 'cut' },
       hint = (mp.get_property_number('ab-loop-a') and mp.get_property_number('ab-loop-b'))
         and (mark_hint('ab-loop-a') .. '–' .. mark_hint('ab-loop-b')) or nil })
   end
+  -- H43/B2 · programar estaba escondido: solo se llegaba con Tab dentro de la lista de un canal
+  table.insert(items, { title = 'Programar una grabación…', hint = 'TV o radio: canal, inicio y fin',
+                        icon = 'add_alarm', value = { child = { script = 'mu_iptv', entry = 'tv-schedule-new' } } })
   items[#items].separator = true
   local dir = P:get('dir')
   table.insert(items, { title = 'Carpeta de grabaciones', icon = 'folder', hint = dir ~= '' and dir or 'predeterminada',
@@ -444,6 +480,23 @@ views.root = function()
   show(ROOT_TITLE, items, { footnote = 'Enter elige · ⌫ atrás · Esc cierra' })
 end
 
+-- H43/B1 · el envase, con lo que de verdad se puede elegir y lo que pasa si no cabe
+views.format = function()
+  local cur = fmt_id()
+  local friendly = mp4_friendly()
+  local items = {}
+  for _, f in ipairs(FORMATS) do
+    local hint = f.hint
+    if f.id == 'mp4' then
+      hint = friendly and 'estos códecs caben · empieza exactamente en la marca'
+        or 'estos códecs NO caben: se grabaría en MKV'
+    end
+    items[#items + 1] = { title = f.title, hint = hint, icon = f.icon, active = f.id == cur,
+                          value = { format = f.id } }
+  end
+  show('Formato de la grabación', items, { footnote = 'Se recuerda para la próxima vez' })
+end
+
 views.cut = function()
   local kind = source_kind()
   local a, b = mp.get_property_number('ab-loop-a'), mp.get_property_number('ab-loop-b')
@@ -452,9 +505,10 @@ views.cut = function()
     { title = 'Marcar el inicio aquí', icon = 'first_page', hint = mark_hint('ab-loop-a'), value = { mark = 'a' } },
     { title = 'Marcar el final aquí', icon = 'last_page', hint = mark_hint('ab-loop-b'), value = { mark = 'b' },
       separator = true },
-    { title = 'Guardar el tramo', icon = 'save', hint = ready and (hms(b - a) .. ' · ' .. (KIND_HINT[kind] or '')) or
-      'marca inicio y final', value = { save = 'video' }, muted = not ready },
-    { title = 'Guardar solo el audio del tramo', icon = 'mic', value = { save = 'audio' }, muted = not ready },
+    { title = 'Guardar el tramo', icon = 'save',
+      hint = ready and (hms(b - a) .. ' · ' .. (FORMAT_SHORT[fmt_id()] or '')) or 'marca inicio y final',
+      value = { save = true }, muted = not ready },
+    { title = 'Formato', icon = 'tune', hint = FORMAT_TITLES[fmt_id()], value = { view = 'format' } },
   }
   if kind == 'local' then
     table.insert(items, { title = 'Guardar el tramo como GIF', icon = 'gif_box', value = { save = 'gif' }, muted = not ready })
@@ -507,7 +561,7 @@ mp.register_script_message(EVENT, function(json)
       mp.command_native(v.cmd)
     elseif v.start then
       uosc.close(MENU)
-      start_recording(v.start == 'audio')
+      start_recording(type(v.start) == 'string' and v.start or nil)
     elseif v.stop then
       uosc.close(MENU)
       stop_recording('user')
@@ -522,12 +576,25 @@ mp.register_script_message(EVENT, function(json)
       local a, b = mp.get_property_number('ab-loop-a'), mp.get_property_number('ab-loop-b')
       if not (a and b and b > a) then osd('Marca primero el inicio y el final') return end
       uosc.close(MENU)
-      save_range(a, b, v.save == 'audio', v.save == 'gif')
+      local gif = v.save == 'gif'
+      save_range(a, b, not gif and fmt_id() == 'audio', gif)
     elseif v.choose_dir then
       local d = P:get('dir')
       state.input = { mode = 'dir', query = d }
       publish()
       uosc.open(input_menu(d))
+    elseif v.format then
+      P:set('format', v.format)
+      table.remove(state.stack)
+      -- la fila se elige desde el menú de grabar, así que detrás hay al menos la raíz; si no hubiera nada (el menú
+      -- se cerró y llega el evento con retraso) se vuelve a ella en vez de quedarse sin pintar nada
+      if #state.stack == 0 then table.insert(state.stack, { name = 'root' }) end
+      reopen_current()
+    elseif v.child then
+      local crumbs = {}
+      for _, c in ipairs(N.parent.crumbs or {}) do crumbs[#crumbs + 1] = c end
+      for _, spec in ipairs(state.stack) do crumbs[#crumbs + 1] = spec.title end
+      nav.open_child(v.child.script, v.child.entry, crumbs, state.view)
     elseif v.show then
       mp.commandv('script-binding', 'uosc/show-in-directory')
     elseif v.view then
@@ -579,9 +646,9 @@ mp.add_key_binding(nil, 'record-toggle', function()
   end
 end)
 mp.add_key_binding(nil, 'record-audio-toggle', function()
-  if state.rec then stop_recording('user') else start_recording(true) end
+  if state.rec then stop_recording('user') else start_recording('audio') end
 end)
-mp.register_script_message('mu-record-start', function(what) start_recording(what == 'audio') end)
+mp.register_script_message('mu-record-start', function(what) start_recording(what) end)
 mp.register_script_message('mu-record-stop', function() stop_recording('user') end)
 mp.register_script_message('mu-record-range', function(a, b, what)
   save_range(tonumber(a) or 0, tonumber(b) or 0, what == 'audio', what == 'gif')

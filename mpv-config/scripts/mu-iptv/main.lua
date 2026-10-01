@@ -520,6 +520,10 @@ views.root = function()
                           hint = #state.badges > 0 and table.concat(state.badges, ' ') or nil,
                           value = { view = 'tracks' } })
   end
+  -- H43/B2 · programar una grabación nueva, en el primer nivel: antes solo se llegaba con Tab dentro de la lista
+  -- de un canal, y nadie lo encontraba.
+  table.insert(items, { title = 'Programar una grabación…', hint = 'TV o radio: canal, inicio y fin',
+                        icon = 'add_alarm', value = { view = 'sched_new' } })
   table.insert(items, { title = 'Grabaciones programadas', icon = 'schedule', value = { view = 'schedule' } })
   table.insert(items, { title = 'Actualizar listas', icon = 'refresh', value = { view = 'refresh' } })
   show('TV y radio', items)
@@ -923,7 +927,9 @@ views.guide = function(args, tries)
       end
       table.insert(sub, { title = p.now and 'Ver ahora' or 'Ver el canal ahora', icon = 'live_tv',
                           value = { play = args.id } })
+      -- `id` propio: dos programas con el mismo título (una reposición, «Cine») chocarían (ver ADR-079)
       table.insert(items, { title = os.date('%H:%M', p.start) .. '  ' .. p.title, hint = hint, items = sub,
+                            id = 'prog:' .. tostring(p.start),
                             bold = p.now or nil, icon = p.now and 'play_arrow' or nil })
     end
     show(title, items, { footnote = 'Enter abre el programa (grabar, ver) · ⌫ atrás' })
@@ -958,10 +964,13 @@ local function power_rows(d, out)
   end
 end
 
-views.schedule = function()
+views.schedule = function(args)
   local title = 'Grabaciones programadas'
   if not require_mpvd(title) then return end
-  show_loading(title)
+  -- Un refresco (una grabación que empieza o termina mientras se mira la lista) no debe dejarla en «Cargando…»:
+  -- parpadea, y además encoger a dos filas un menú que uosc tiene abierto le hace perder el alto de sus submenús
+  -- (`Menu:set_scroll_to` acaba con `scroll_height` nil y uosc revienta). Se refresca con la lista puesta.
+  if not (args and args.refresh) then show_loading(title) end
   local view = state.view
   rpc.call('iptv.schedule.defaults', nil, function(derr, defaults)
     if not derr and type(defaults) == 'table' then state.sched_defaults = defaults end
@@ -993,7 +1002,8 @@ views.schedule = function()
       local what = (r.title and r.title ~= ch) and (ch .. ' · ' .. r.title) or ch
       table.insert(items, {
         title = what, hint = (r.label or '') .. ' · ' .. (r.status_label or r.status), icon = STATUS_ICONS[r.status],
-        items = sub, separator = (i == #list) or nil, muted = (r.status == 'cancelled' or r.status == 'missed') or nil,
+        items = sub, id = 'sched:' .. tostring(r.id),
+        separator = (i == #list) or nil, muted = (r.status == 'cancelled' or r.status == 'missed') or nil,
         bold = r.status == 'recording' or nil,
       })
     end
@@ -1017,9 +1027,10 @@ views.sched_new = function()
   local view = state.view
   local items, seen, pending = {}, {}, 2
   local function add(ch, hint)
-    if ch and ch.id and not seen[ch.id] and ch.kind ~= 'radio' then
+    -- H43/B3 · la radio también: mpvd la graba en .mka sin problema, era este `kind ~= 'radio'` el que la excluía
+    if ch and ch.id and not seen[ch.id] then
       seen[ch.id] = true
-      table.insert(items, { title = ch.name, hint = hint, icon = 'live_tv',
+      table.insert(items, { title = ch.name, hint = hint, icon = ch.kind == 'radio' and 'radio' or 'live_tv',
                             value = { view = 'sched_time', id = ch.id, name = ch.name } })
     end
   end
@@ -1109,7 +1120,9 @@ mp.register_script_message('mu-event', function(payload)
     state.schedule_event = { id = r.id, status = r.status, text = text or '', file = r.file or '' }
     publish()
     if text then mp.osd_message(text, math.max(opts.osd_seconds, 5)) end
-    if state.view == 'schedule' and uosc.open_type() == MENU then reopen_current() end
+    if state.view == 'schedule' and uosc.open_type() == MENU then
+      open_view({ name = 'schedule', args = { refresh = true } }, false)
+    end
   elseif ev.event == 'epg' then
     -- a guide was just (re)loaded: forget the «nothing on» answers so the next list asks again
     for id, e in pairs(epg_cache) do if not e.title then epg_cache[id] = nil end end
@@ -1383,6 +1396,12 @@ N:binding('tv-schedule', function()
   if not uosc.available() then osd('uosc no está cargado') return end
   state.stack = {}
   open_view({ name = 'schedule' })
+end)
+-- H43/B2 · entrada para «Programar una grabación…» desde el menú de Grabar (mu-record la abre como hija)
+N:binding('tv-schedule-new', function()
+  if not uosc.available() then osd('uosc no está cargado') return end
+  state.stack = {}
+  open_view({ name = 'sched_new' })
 end)
 mp.add_key_binding(nil, 'zap-next', function() zap(1) end)
 mp.add_key_binding(nil, 'zap-prev', function() zap(-1) end)

@@ -238,7 +238,7 @@ local function outline()
         sub[#sub + 1] = { title = pt.text, hint = clock(pt.start), value = { seek = pt.start } }
       end
       items[#items + 1] = { title = string.format('%d. %s', i, sec.title or ''), hint = clock(sec.start),
-                            icon = 'bookmark', items = sub }
+                            icon = 'bookmark', items = sub, id = 'sec:' .. i }
     end
     if #items == 0 then
       items = uosc.message_items('No hay suficiente diálogo para hacer un índice', 'info')

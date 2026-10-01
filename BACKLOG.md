@@ -385,14 +385,16 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
       descargas. Con aviso en el OSD de que se ha copiado. (Un único `mu/clip.lua`: antes el mismo código estaba
       escrito tres veces y solo una tenía respaldo sin backend de mpv.)
 
-## H43 · Grabar: formato, programación visible y radio (§B.2.4-6)
-- [ ] B1 Fila «Formato» en el menú de grabar, que se recuerda: igual que el original (sin recodificar) / MP4 /
-      solo audio en Opus 128. Hoy no se puede elegir: `KIND_HINT` solo informa.
-- [ ] B2 «Programar una grabación» visible en el primer nivel de TV y radio y también en Grabar, no solo con Tab
+## H43 · Grabar: formato, programación visible y radio (§B.2.4-6) — ADR-079, ADR-080
+- [x] B1 Fila «Formato» en el menú de grabar, que se recuerda: igual que el original (sin recodificar) / MP4 /
+      solo audio en Opus 128. Dice de antemano si los códecs caben en MP4 y, si no, avisa y graba en MKV. Al dejar de
+      ser una pregunta, «solo el audio» deja de ser una fila aparte (seguía siendo la misma elección dos veces).
+- [x] B2 «Programar una grabación» visible en el primer nivel de TV y radio y también en Grabar, no solo con Tab
       dentro de la lista de un canal.
-- [ ] B3 La radio se puede programar: quitar `ch.kind ~= 'radio'` de mu-iptv:449 y :1042. mpvd ya graba audio bien.
-- [ ] B4 Al volver a pulsar el botón de grabar, termina sin preguntar nada (ya hecho en H35; comprobar que sigue así
-      con la fila de formato nueva).
+- [x] B3 La radio se puede programar. OJO: de las dos condiciones que apuntaba el análisis solo una lo impedía (la de
+      `views.sched_new`); la de `want_now` es el filtro de la guía de TV, que la radio no tiene, y debe quedarse.
+- [x] B4 Al volver a pulsar el botón de grabar, termina sin preguntar nada (ya hecho en H35; comprobado con la fila
+      de formato nueva: el botón sigue llevando a `record-toggle` mientras se graba).
 
 ## H44 · La sala: fichero original y el reproductor del invitado (§A)
 - [ ] C1 Handler Range que lea por trozos en vez de `path.read_bytes()`: hoy una película de 4 GB se cargaría entera

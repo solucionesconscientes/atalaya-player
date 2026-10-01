@@ -1,6 +1,7 @@
 """H18 · the ● «Grabar» button end to end (headless mpv + mpvd): «grabar desde ahora» on a local file (lossless range,
 video and audio only), «recortar un tramo» with the A-B marks, a live stream with stream-record (and audio only kept
-afterwards), the red dot + counter while recording and ⌫ back to the main menu."""
+afterwards), the red dot + counter while recording and ⌫ back to the main menu.
+H43: la fila «Formato» (igual que el original / MP4 / solo audio) manda el envase y se recuerda."""
 
 from __future__ import annotations
 
@@ -78,23 +79,56 @@ def test_record_local_ranges_cut_and_menu(rec_mpv, media_dir, tmp_path):
     st = rec_state(h, lambda v: v.get("view") == "root" and v.get("items"))
     titles = [i["title"] for i in st["items"]]
     assert titles[:2] == ["Captura de pantalla", "Captura sin subtítulos"] and "Grabar desde ahora" in titles
-    assert next(i for i in st["items"] if i["title"] == "Grabar desde ahora")["hint"] == "sin recodificar"
+    # H43/B1: una sola fila para grabar (antes había otra para «solo el audio») y el envase en su propia fila
+    assert "Grabar solo el audio desde ahora" not in titles
+    assert next(i for i in st["items"] if i["title"] == "Grabar desde ahora")["hint"] == "sin recodificar · MKV"
+    assert next(i for i in st["items"] if i["title"] == "Formato")["hint"] == "Igual que el original (MKV)"
+    assert st["format"] == "copy"
     set_folder(h, out_dir)
 
-    # «grabar desde ahora» from 5 s, stop at 11 s → lossless cut of 6 s with video and audio
+    # «grabar desde ahora» from 5 s, stop at 11 s → lossless cut of 6 s with video and audio, en MKV (el valor por
+    # defecto: el que nunca falla). Antes se elegía MP4 por detrás cuando los códecs cabían, sin decirlo.
     seek_to(h, 5.0)
-    ev(h, "mu-record-event", {"type": "activate", "index": 3, "value": {"start": "video"}})
+    ev(h, "mu-record-event", {"type": "activate", "index": 3, "value": {"start": True}})
     st = rec_state(h, lambda v: v.get("recording") is True and v.get("mode") == "range")
     assert abs(st["start"] - 5.0) < 0.3
     seek_to(h, 11.0)
     h.command("script-binding", "mu_record/record-toggle")
     st = rec_state(h, lambda v: v.get("recording") is False and v.get("last", {}).get("status") == "done", timeout=60)
     f = st["last"]["file"]
-    assert Path(f).parent == out_dir and f.endswith(".mp4") and "video30" in Path(f).name  # H.264 + AAC fit mp4
+    assert Path(f).parent == out_dir and f.endswith(".mkv") and "video30" in Path(f).name
     info = probe(f)
-    assert kinds(info) == ["audio", "video"] and abs(float(info["format"]["duration"]) - 6.0) < 0.3
+    # en MKV el corte arranca en el fotograma clave anterior a la marca (aquí hay uno por segundo), así que el tramo
+    # pedido de 6 s sale igual o algo más largo; con MP4 empieza exactamente en la marca (lista de edición)
+    assert kinds(info) == ["audio", "video"] and 6.0 - 0.3 <= float(info["format"]["duration"]) <= 7.2
 
-    # audio only, 2 → 8 s: the original AAC in .m4a
+    # H43/B1: se elige MP4 (estos códecs sí caben: H.264 + AAC) y se recuerda; el siguiente tramo sale en .mp4
+    h.command("script-binding", "mu_record/record-menu")
+    rec_state(h, lambda v: v.get("view") == "root")
+    ev(h, "mu-record-event", {"type": "activate", "index": 4, "value": {"view": "format"}})
+    st = rec_state(h, lambda v: v.get("view") == "format")
+    fila = next(i for i in st["items"] if i["title"] == "MP4 si los códecs lo permiten")
+    assert "caben" in fila["hint"] and "NO caben" not in fila["hint"]
+    ev(h, "mu-record-event", {"type": "activate", "index": 2, "value": {"format": "mp4"}})
+    st = rec_state(h, lambda v: v.get("format") == "mp4" and v.get("view") == "root")
+    assert next(i for i in st["items"] if i["title"] == "Grabar desde ahora")["hint"] == "sin recodificar · MP4"
+    seek_to(h, 5.0)
+    ev(h, "mu-record-event", {"type": "activate", "index": 3, "value": {"start": True}})
+    rec_state(h, lambda v: v.get("recording") is True)
+    seek_to(h, 11.0)
+    h.command("script-binding", "mu_record/record-toggle")
+    st = rec_state(h, lambda v: v.get("recording") is False and v.get("last", {}).get("file", "").endswith(".mp4"),
+                   timeout=60)
+    info = probe(st["last"]["file"])
+    assert kinds(info) == ["audio", "video"] and abs(float(info["format"]["duration"]) - 6.0) < 0.3
+    h.command("script-binding", "mu_record/record-menu")
+    rec_state(h, lambda v: v.get("view") == "root")
+    ev(h, "mu-record-event", {"type": "activate", "index": 4, "value": {"view": "format"}})
+    rec_state(h, lambda v: v.get("view") == "format")
+    ev(h, "mu-record-event", {"type": "activate", "index": 1, "value": {"format": "copy"}})
+    rec_state(h, lambda v: v.get("format") == "copy" and v.get("view") == "root")
+
+    # audio only (la tecla de siempre), 2 → 8 s: the original AAC in .m4a
     seek_to(h, 2.0)
     h.command("script-message-to", "mu_record", "mu-record-start", "audio")
     rec_state(h, lambda v: v.get("recording") is True and v.get("audio") is True)
@@ -116,7 +150,7 @@ def test_record_local_ranges_cut_and_menu(rec_mpv, media_dir, tmp_path):
     ev(h, "mu-record-event", {"type": "activate", "index": 2, "value": {"mark": "b"}})
     h.wait_property("ab-loop-b", lambda v: isinstance(v, (int, float)) and abs(v - 24.0) < 0.3, timeout=10)
     assert abs(h.get("ab-loop-a") - 20.0) < 0.3
-    ev(h, "mu-record-event", {"type": "activate", "index": 3, "value": {"save": "video"}})
+    ev(h, "mu-record-event", {"type": "activate", "index": 3, "value": {"save": True}})
     st = rec_state(h, lambda v: "00.00.20-00.00.24" in v.get("last", {}).get("file", ""), timeout=60)
     assert kinds(probe(st["last"]["file"])) == ["audio", "video"]
 
@@ -187,7 +221,8 @@ def test_record_internet_video_range_with_yt_dlp_sections(ytdl_mpv):
     h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 0, timeout=40)
     h.command("script-binding", "mu_record/record-menu")
     st = rec_state(h, lambda v: v.get("view") == "root" and v.get("items"))
-    assert next(i for i in st["items"] if i["title"] == "Grabar desde ahora")["hint"] == "tramo del vídeo de internet"
+    assert next(i for i in st["items"] if i["title"] == "Grabar desde ahora")["hint"] == \
+        "tramo del vídeo de internet · MKV"
     set_folder(h, out_dir)
     seek_to(h, 3.0)
     h.command("script-binding", "mu_record/record-toggle")

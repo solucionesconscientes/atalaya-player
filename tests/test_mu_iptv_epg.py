@@ -1,6 +1,7 @@
 """mu-iptv with the TV guide and scheduled recordings (H21), headless mpv + daemon + local HTTP server: «ahora» in
 the channel lists (by tvg-id and by name), the guide of a channel, «Grabar este programa», the list of scheduled
-recordings (cancel), the manual time palette and the OSD when a recording made by mpvd ends."""
+recordings (cancel), the manual time palette and the OSD when a recording made by mpvd ends.
+H43: «Programar una grabación…» en el primer nivel (y en el menú de Grabar) y la radio también se programa."""
 
 from __future__ import annotations
 
@@ -49,7 +50,9 @@ def tv(daemon_env, media_dir):
         f'#EXTINF:-1 group-title="Pruebas",Canal Dos\nfile://{m}/chapters.mkv\n'
         f'#EXTINF:-1 tvg-id="Live.TV" group-title="Directo",Directo Test\nhttp://127.0.0.1:{live_port}/live.ts\n'
     ).encode()
-    files["/radio.m3u8"] = b"#EXTM3U\n"
+    files["/radio.m3u8"] = (
+        f'#EXTM3U\n#EXTINF:-1 radio="true" group-title="Radio_Pruebas",Emisora Voz\nfile://{m}/voz_es.flac\n'
+    ).encode()
     files["/world.m3u"] = b"#EXTM3U\n"
     files["/json/stations/search"] = b"[]"
     sources = [
@@ -250,3 +253,58 @@ def test_despertar_antes_y_apagar_al_terminar(tv):
     send_event(h, {"type": "activate", "index": 1, "value": al_terminar["value"]})
     d.wait(lambda: d.call("iptv.schedule.defaults")["after"] == "nothing", timeout=15)
     assert h.script_errors() == [], h.script_errors()
+
+
+def test_programar_visible_y_la_radio_tambien_se_programa(tv):
+    """H43/B2-B3: «Programar una grabación…» está en el primer nivel de «TV y radio» y también en el menú de Grabar,
+    y una emisora de radio se puede programar: mpvd ya la graba (.mka), era la interfaz la que lo prohibía."""
+    h, d, rec_dir, _t0, _fake = tv
+    radio = d.call("iptv.channels", {"source": "tdt_radio", "compact": True})["items"][0]
+    assert radio["kind"] == "radio"
+    d.call("iptv.favorites.toggle", {"id": radio["id"]})   # para que salga en el selector de canal
+
+    # B2 · en el primer nivel, no solo con Tab dentro de la lista de un canal
+    h.command("script-binding", "mu_iptv/tv-menu")
+    wait_view(h, "root")
+    menu = wait_menu(h, lambda v: any(r["title"] == "Programar una grabación…" for r in rows(v)))
+    fila = next(r for r in rows(menu) if r["title"] == "Programar una grabación…")
+    assert fila["value"] == {"view": "sched_new"}
+    send_event(h, {"type": "activate", "index": 1, "value": fila["value"]})
+    wait_view(h, "sched_new")
+
+    # B3 · la radio aparece en el selector (antes la excluía `ch.kind ~= 'radio'`) y se programa de verdad
+    menu = wait_menu(h, lambda v: any(r["title"] == radio["name"] for r in rows(v)))
+    fila = next(r for r in rows(menu) if r["title"] == radio["name"])
+    send_event(h, {"type": "activate", "index": 1, "value": fila["value"]})
+    wait_view(h, "sched_time:" + radio["id"])
+    send_event(h, {"type": "search", "query": "mañana 7:00 7:30"})
+    menu = wait_menu(h, lambda v: v.get("title") == "sched_time" and v["items"][0]["title"].startswith("Grabar"))
+    send_event(h, {"type": "activate", "index": 1, "value": menu["items"][0]["value"]})
+    wait_view(h, "schedule")
+    d.wait(lambda: any(r["channel"]["id"] == radio["id"] for r in schedule(d)), timeout=15)
+
+    # y mpvd la graba como audio: una programada corta termina en .mka
+    now = time.time()
+    short = d.call("iptv.schedule.add", {"channel": radio["id"], "start": now + 1, "stop": now + 4,
+                                         "dir": str(rec_dir)})
+    ev = h.wait_property("user-data/mu/iptv", lambda v: v["schedule_event"] and v["schedule_event"]["id"] == short["id"]
+                         and v["schedule_event"]["status"] in ("done", "failed"), timeout=40)["schedule_event"]
+    assert ev["status"] == "done", ev
+    out = Path(ev["file"])
+    assert out.suffix == ".mka" and out.parent == rec_dir
+    streams = json.loads(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "json",
+                                         str(out)], capture_output=True, text=True, check=True).stdout)["streams"]
+    assert sorted(s["codec_type"] for s in streams) == ["audio"]
+
+    # B2 · y desde «Grabar»: la fila abre mu-iptv como hija, con las migas del sitio de donde viene
+    h.command("script-binding", "mu_record/record-menu")
+    st = h.wait_property("user-data/mu/record", lambda v: bool(v) and v.get("view") == "root" and v.get("items"),
+                         timeout=20)
+    fila = next(i for i in st["items"] if i["title"] == "Programar una grabación…")
+    assert fila["value"] == {"child": {"script": "mu_iptv", "entry": "tv-schedule-new"}}
+    h.command("script-message-to", "mu_record", "mu-record-event", json.dumps(
+        {"type": "activate", "index": 1, "menu_id": "{root}", "value": fila["value"]}))
+    nav = h.wait_property("user-data/mu/nav", lambda v: bool(v) and v.get("script") == "mu_iptv", timeout=20)
+    assert nav["title"].startswith("MPV-UOS › Grabar"), nav
+    wait_view(h, "sched_new")
+    assert not h.script_errors(), h.script_errors()

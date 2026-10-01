@@ -28,12 +28,16 @@ falta, avisa con la orden para instalarlo. Los subtítulos IA y los modelos se d
 - **Ayuda**: `?` muestra las teclas principales.
 - **Barra de controles**: reproducir/pausa (y anterior/siguiente si hay lista), subtítulos, audio (si hay varias pistas), velocidad,
   grabar ●, menú ▦ y pantalla completa. Lo demás está en el menú. El botón ⏭ aparece solo dentro de una intro o unos créditos.
-- **Grabar** (botón ● de la barra o `alt+r`): capturas con o sin subtítulos, *Grabar desde ahora* (vídeo o solo audio)
-  hasta *Detener*, y *Recortar un tramo* con marcas de inicio y final (son las del bucle A-B, tecla `l`). Mientras graba
-  verás un punto rojo y un contador. Qué hace según lo que suena: un directo de TV o radio se graba tal cual llega; un
-  vídeo de internet se descarga solo ese tramo con yt-dlp (en H.264/AAC); un archivo local se corta sin recodificar (en
-  mp4 empieza justo en la marca; en mkv, en el fotograma clave anterior). Solo audio guarda la pista original sin
-  recodificar. Carpeta: *Carpeta de grabaciones* (por defecto `~/Vídeos/MPV-UOS/Grabaciones`).
+- **Grabar** (botón ● de la barra o `alt+r`): capturas con o sin subtítulos, *Grabar desde ahora* hasta *Detener*, y
+  *Recortar un tramo* con marcas de inicio y final (son las del bucle A-B, tecla `l`). Mientras graba verás un punto
+  rojo y un contador; el mismo botón ● lo detiene, sin preguntar nada. Qué hace según lo que suena: un directo de TV o
+  radio se graba tal cual llega; un vídeo de internet se descarga solo ese tramo con yt-dlp; un archivo local se corta
+  sin recodificar.
+  **Formato** (una fila, y se recuerda): *igual que el original* (MKV, el valor por defecto: nunca falla), *MP4 si los
+  códecs lo permiten* —la fila te dice si los de este vídeo caben, y si no caben se graba en MKV avisando— o *solo el
+  audio* (Opus 128). En MP4 un recorte empieza justo en la marca; en MKV, en el fotograma clave anterior.
+  Carpeta: *Carpeta de grabaciones* (por defecto `~/Vídeos/MPV-UOS/Grabaciones`).
+  También desde aquí: *Programar una grabación…* de TV **o radio**.
 - **Pausar con un clic en el vídeo**: *Menú → Preferencias* (desactivado por defecto; activado, el clic ya no arrastra la ventana).
 - **Paleta** (`alt+p`): escribe para buscar comandos, canales, recientes, acciones de mpvd y (si hay transcripción) frases del diálogo.
 - **Continuar viendo** (`alt+h`): los recientes se reconocen por contenido, aunque renombres o muevas el archivo.
@@ -64,8 +68,9 @@ falta, avisa con la orden para instalarlo. Los subtítulos IA y los modelos se d
    canal → *Guía de programación* (o `alt+G` para el canal que ves): ahora, después y el resto del día; entra en un
    programa para *Grabar este programa* (empieza 1 min antes y acaba 3 después) o *Grabar lo que queda*.
    *TV y radio → Grabaciones programadas* muestra las pendientes, la que está grabando y las hechas (cancelar, detener,
-   reproducir, quitar de la lista). *Programar grabación…* (o `Tab` → *Programar grabación…* en cualquier canal): elige
-   el canal y escribe cuándo: `21:30 22:15`, `21:30 90` (minutos), `mañana 9:00 1h30`, `ahora 30`.
+   reproducir, quitar de la lista). *TV y radio → Programar una grabación…* (también en *Grabar*, o `Tab` →
+   *Programar grabación…* en cualquier canal): elige el canal y escribe cuándo: `21:30 22:15`, `21:30 90` (minutos),
+   `mañana 9:00 1h30`, `ahora 30`. **Las emisoras de radio también se pueden programar** (se guardan en `.mka`).
    Se graba aunque estés viendo otra cosa o cierres el reproductor, pero el equipo tiene que estar encendido: si estaba
    apagado a esa hora, la grabación sale como *perdida*. Los archivos van a `~/Vídeos/MPV-UOS/Grabaciones`
    («Canal - Programa - 2026-09-30 21.30.mkv») y avisa al terminar.

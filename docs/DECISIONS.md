@@ -660,3 +660,38 @@
   nada hasta que se abra a propósito, y el borrado de la pila espera los mismos 0,2 s que usan los demás módulos,
   comprobando al vencer si uosc tiene un menú puesto. Se veía como un test intermitente (`test_nav`), no como un
   fallo, y por eso llevaba tiempo apuntado como «sensible a la carga».
+- ADR-079 · Grabar: el envase se elige y se recuerda, programar deja de estar escondido y la radio se puede programar
+  (H43). **Qué se puede elegir y qué no**: mpv graba con `mp.set_property('stream-record', file)`, es decir **escribe
+  el flujo tal cual**, sin recodificar, en el contenedor que implique la extensión. Así que una fila de «calidad» sería
+  mentira; lo que hay es el **envase**: *igual que el original* (MKV, el valor por defecto, el que nunca falla),
+  *MP4 si los códecs lo permiten* y *solo el audio* (Opus 128, que ya extraía mpvd con `record.audio`). La elección se
+  recuerda en mu-prefs. Medido el 2026-10-01: un **VP8 no entra en MP4** (`Could not write header (incorrect codec
+  parameters?)`, y el fichero se queda vacío), y sí entra en WebM copiando (9,64 s para 115 min); por eso cuando se
+  pide MP4 y los códecs no caben se avisa y se graba en MKV en vez de dejar un fichero roto. La fila dice de antemano
+  si caben («estos códecs caben» / «estos códecs NO caben: se grabaría en MKV»), que es la única forma de que la
+  elección sea informada. **Consecuencia que conviene saber**: un recorte de un archivo local elegía MP4 **solo** si
+  los códecs cabían, sin decirlo, porque en MP4 el corte empieza exactamente en la marca (lista de edición sobre el
+  arranque desde el fotograma clave anterior); ahora eso es la opción *MP4* y el valor por defecto es MKV, que empieza
+  en el fotograma clave. Se dice en la fila, y así lo decide quien graba y no el programa. Al desaparecer el envase
+  como pregunta, «Grabar solo el audio desde ahora» y «Guardar solo el audio del tramo» dejan de ser filas aparte:
+  eran la misma elección contada dos veces. Las teclas (`record-audio-toggle`) y el mensaje
+  `mu-record-start audio` siguen valiendo. **Programar** («Programar una grabación…») pasa al primer nivel de *TV y
+  radio* y al menú de *Grabar*, que la abre como hija de mu-iptv (entrada `tv-schedule-new`); antes solo se llegaba con
+  Tab dentro de la lista de un canal. **La radio**: el análisis apuntaba a dos condiciones, `mu-iptv:449` y `:1042`.
+  Comprobado: **la de :449 no era la culpable** —es el filtro del lote de `iptv.epg.now`, y la radio no tiene guía, así
+  que quitarla habría hecho pedir la EPG de cientos de emisoras para nada— y la acción de Tab nunca estuvo escondida
+  (las acciones van en `item_actions` del menú, iguales para todas las filas). La que lo impedía era la de
+  `views.sched_new`, que excluía la radio del selector de canal; es la que se quita. mpvd ya graba audio sin cambios
+  (`mpvd/iptv/schedule.py` escribe `.mka` cuando `kind == 'radio'`).
+- ADR-080 · Un submenú de uosc necesita un `id` propio cuando su título sale de datos (encontrado al hacer H43).
+  uosc deriva el id de un submenú de **su título** (`elements/Menu.lua:192`:
+  `menu.id = parent .. ' > ' .. (menu_data.title or i)`), así que dos filas hermanas con el mismo título comparten id:
+  `by_id` se queda con la última y, al recalcular los altos, el `set_scroll_to` de la primera busca por id y encuentra
+  la otra, cuyo `scroll_height` todavía no está puesto → `clamp(0, pos, nil)` y **uosc revienta al pintar**, dejando
+  el menú inservible. Reproducido: dos grabaciones programadas **del mismo canal** (que es lo normal: la radio de las
+  mañanas dos días seguidos). No es un caso raro: pasa igual con dos programas del mismo título en la guía (una
+  reposición) o dos secciones iguales en el índice del vídeo. Su API pública admite un `id` explícito
+  (`if menu_data.id then menu.id = menu_data.id`), así que no hace falta tocar uosc: donde el título de una fila con
+  submenú sale de datos se le pone un id estable —`sched:<id>`, `prog:<inicio>`, `sec:<n>`—. **Regla para lo que
+  venga: una fila con `items` cuyo título no sea un literal lleva `id`.** De paso, un refresco de «Grabaciones
+  programadas» (una grabación que empieza o acaba mientras se mira la lista) ya no la deja en «Cargando…»: parpadeaba.
