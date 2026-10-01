@@ -88,10 +88,10 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 
 Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muestra las acciones del elemento, `ctrl+v` pega.
 
-## Subtítulos IA (mu-subs, whisper.cpp vía mpvd)
+## Subtítulos (mu-subs: pistas, internet y whisper.cpp vía mpvd)
 | Tecla | Acción |
 |---|---|
-| `alt+i` | Menú **Subtítulos IA**: iniciar/detener, idioma, modelo (descarga bajo demanda), activar automáticamente, pre-subtitular el siguiente de la lista, estado del motor |
+| `alt+i` | **Panel de subtítulos** en tres bloques: las pistas que ya hay (con tamaño y retraso a mano) · buscar en internet (la web del vídeo y OpenSubtitles, de más fiable a menos) · crear con IA al final (idioma, modelo, automático, preparar el siguiente, estado del motor) |
 | `alt+c` | Iniciar / detener los subtítulos IA del archivo actual (la transcripción parcial queda en caché y se reanuda) |
 | `alt+x` | Resincronizar la pista de subtítulos externa seleccionada con la transcripción IA (desfase + deriva por tramos) |
 | `alt+S` | Guardar subtítulos como SRT junto al vídeo (`<vídeo>.<idioma>.srt`): la pista seleccionada (IA, traducción, resincronizada, externa o interna de texto) o, si no hay, la pista IA |

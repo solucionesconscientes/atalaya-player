@@ -95,7 +95,10 @@ def test_subtitulos_preparados_pista_precompute_y_menu(subs_mpv, media_dir, tmp_
     assert fixed is not None and fixed["selected"] is True and fixed["title"].startswith("Resincronizado")
     fixed_segs = parse_srt(open(st["resync_out"], encoding="utf-8").read())
     assert abs(fixed_segs[0].start - segs[0].start) < 0.6
-    h.command("set_property", "sid", track["id"])   # back to the AI track for the rest of the test
+    # de vuelta a la pista IA: hay que volver a BUSCAR su id, no reusar el de antes. Cuando la transcripción termina,
+    # mu-subs mete una copia nueva del SRT y quita la vieja, así que el id cambia (y poner un id que ya no existe deja
+    # el vídeo sin subtítulos... y mu-prefs aprende «subtítulos apagados»).
+    h.command("set_property", "sid", external_sub(h, srt)["id"])
 
     # 2c. translate the AI track to English (Argos es→en via CTranslate2) and show both as dual subtitles
     from mpvd.subs.translate import ArgosStore, runtime_available
@@ -104,7 +107,7 @@ def test_subtitulos_preparados_pista_precompute_y_menu(subs_mpv, media_dir, tmp_
         h.command("script-binding", "mu_subs/subs-menu")
         h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-subs", timeout=15)
         st = wait_view(h, "root")
-        idx = [i["title"] for i in st["items"]].index("Traducir la pista seleccionada a…")
+        idx = [i["title"] for i in st["items"]].index("Traducir la pista de arriba a…")
         send_event(h, {"type": "activate", "index": idx, "value": {"view": "translate"}})
         st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("view") == "translate"
                              and any(i["title"] == "Inglés" for i in v.get("items", [])), timeout=30)
@@ -129,7 +132,7 @@ def test_subtitulos_preparados_pista_precompute_y_menu(subs_mpv, media_dir, tmp_
         assert fold(shown).split()[0] in en_text
         h.command("script-message-to", "mu_subs", "mu-subs-dual", "no")
         h.wait_property("secondary-sid", lambda v: v in (False, "no", None), timeout=10)
-        h.command("set_property", "sid", track["id"])
+        h.command("set_property", "sid", external_sub(h, srt)["id"])
 
     # 3. the next item was pre-subtitled at low priority (same model/language)
     st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("precompute_id"), timeout=30)
@@ -150,10 +153,14 @@ def test_subtitulos_preparados_pista_precompute_y_menu(subs_mpv, media_dir, tmp_
     h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-subs", timeout=15)
     st = wait_view(h, "root")
     titles = [i["title"] for i in st["items"]]
-    assert titles[0] == "Subtítulos IA listos" and "Idioma" in titles and "Modelo" in titles
-    assert any(t.startswith("Pre-subtitular") for t in titles) and "Estado del motor" in titles
-    assert any(t.startswith("Resincronizar") for t in titles)
-    idioma = next(i for i in st["items"] if i["title"] == "Idioma")
+    # B3: el panel va en tres bloques — lo que ya hay · buscar en internet · crear con IA (al final)
+    assert titles[0].startswith("Subtítulos IA")            # la pista que acaba de hacerse, arriba
+    assert "Tamaño del texto" in titles and "Retraso" in titles   # siempre a mano, sin entrar en submenús
+    assert titles.index("Buscar subtítulos en internet") < titles.index("Subtítulos con IA listos")
+    assert "Idioma del audio" in titles and "Modelo" in titles and "Estado del motor" in titles
+    assert any(t.startswith("Preparar también") for t in titles)
+    assert "Cuadrar la pista con la voz" in titles
+    idioma = next(i for i in st["items"] if i["title"] == "Idioma del audio")
     assert idioma["hint"] == "Español"
     send_event(h, {"type": "activate", "index": 2, "value": {"view": "language"}})
     st = wait_view(h, "language")
@@ -184,7 +191,10 @@ def test_remote_url_is_refused_politely(subs_mpv):
     h.command("script-binding", "mu_subs/subs-menu")
     h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-subs", timeout=15)
     st = wait_view(h, "root")
-    assert st["items"][0]["title"].startswith("Abre un archivo local")
+    # B3: sin nada cargado, el panel sigue abriéndose; la negativa está en el bloque de «crear con IA», no arriba
+    titles = [i["title"] for i in st["items"]]
+    assert titles[0] == "Este vídeo no trae ninguna pista de subtítulos"
+    assert any(t.startswith("Abre un archivo de tu equipo para subtitularlo") for t in titles), titles
     h.command("script-message-to", "uosc", "close-menu", "mu-subs")
     h.command("script-binding", "mu_subs/subs-toggle")   # nothing loaded → OSD only, no task, no error
     st = h.get("user-data/mu/subs")
@@ -236,8 +246,10 @@ def test_save_srt_menu_binding_engines_and_no_duplicate_ai_track(subs_mpv, media
     st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("view") == "translate"
                          and any(i["title"] == "Inglés" for i in v.get("items", [])), timeout=30)
     titles = [i["title"] for i in st["items"]]
-    assert titles[:3] == ["Automático", "Rápido (Argos)", "Calidad (OPUS-MT, 234 MB, se descarga una vez)"], titles
-    assert st["items"][0]["active"] and st["translate_engine"] == "auto"
+    # H36/C6: el primero es la máxima calidad, que además es el motor por defecto
+    assert titles[:3] == ["Máxima calidad (OPUS-MT donde llegue)", "Solo lo que ya esté descargado",
+                          "Rápido (Argos)"], titles
+    assert st["items"][0]["active"] and st["translate_engine"] == "opus-big"
     send_event(h, {"type": "activate", "index": 2, "value": {"engine": "argos"}})
     h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("translate_engine") == "argos"
                     and v.get("view") == "translate"

@@ -65,3 +65,20 @@
   `powershell -NoProfile -ExecutionPolicy Bypass -File tools\install.ps1 -Whisper` y luego `mpv-uos` (o menú Inicio → MPV-UOS):
   debería abrir la pantalla de inicio; `alt+t` la TV, un vídeo de YouTube con `ctrl+u`. Si falla, guarda la salida del
   instalador y `.cache\mpvd.log` del checkout (y la salida de `.venv\Scripts\python -m mpvd status`).
+
+## 2026-10-01 · Subtítulos de internet (H36/C5, no bloquea)
+- **Clave gratuita de Subdl** (el único segundo proveedor que sigue vivo). No se ha implementado su cliente porque sin
+  clave la API devuelve `403 {"error":"not_authorized"}` y la regla de este proyecto es no escribir contra una API que
+  no se ha podido comprobar de verdad. Si lo quieres, en 2 minutos:
+  1. Crea una cuenta en https://subdl.com/ y entra en tu perfil → *API* → genera la clave.
+  2. Pégala aquí para que la siguiente iteración escriba el cliente contra respuestas reales (o guárdala en
+     `<datos>/library-secrets.json` cuando exista el ajuste `subdl_api_key`).
+  Con eso, la cascada de `subs.find` pasa de dos proveedores (la web del vídeo y OpenSubtitles) a tres.
+- **Podnapisi queda descartado**: su dominio ya no existe. Comprobado el 2026-10-01 con el resolutor del sistema y con
+  1.1.1.1: `www.podnapisi.net` y `podnapisi.net` dan NXDOMAIN. No es un corte momentáneo: no hay a dónde conectarse.
+- **Cuenta de OpenSubtitles (usuario y contraseña), no solo la Api-Key**: la clave sola basta para BUSCAR, pero las
+  descargas anónimas del API antiguo (`api.opensubtitles.org/xml-rpc`) devuelven un fichero de 102 bytes con un anuncio
+  en vez del subtítulo (comprobado el 2026-10-01 con cuatro subtítulos distintos de *Interstellar*: `SubSize` decía
+  ~155 KB y llegaban 102 B). O sea: para descargar de verdad hace falta cuenta. Ponla en *Biblioteca → Ajustes →
+  Usuario / Contraseña de OpenSubtitles*; con ella el menú enseña además el cupo que te queda (200 al día por IP en el
+  API antiguo, 100 al día con cuenta gratuita en el nuevo).

@@ -530,3 +530,19 @@
   manda el canal (las pistas de ADR-055). Alternativas descartadas: seguir en vivo con `base` (mala calidad y el peor de los dos
   mundos); transcribir en vivo solo el trozo que se está viendo (es lo que ya hacía y es lo que falla al saltar);
   esperar sin decir cuánto (es lo que convierte una espera razonable en un programa roto).
+- ADR-071 · Cascada de proveedores de subtítulos y qué proveedores NO se ofrecen (H36/C5). `subs.find {path}` devuelve
+  en una sola lista todo lo que hay para ese archivo o esa URL, ordenado por **fiabilidad**: `canal` (los que trae el
+  propio sitio del vídeo, que son de ESE vídeo) · `hash` (OpenSubtitles reconoce el archivo exacto) · `nombre` (coincide
+  el título: puede ser otra versión y descuadrar) · `auto` (subtítulos automáticos de la web, transcripción de máquina);
+  a igual fiabilidad manda el orden de idiomas preferidos, luego lo no automático y luego las descargas.
+  `subs.pick {source}` se come el campo `pick` tal cual, así el menú no tiene que saber qué RPC toca para cada
+  proveedor. La respuesta incluye además **todos** los proveedores con `ok` y `reason`: decir «no hay subtítulos» cuando
+  lo que falta es una clave es mentir, y era justo lo que pasaba antes. Comprobado contra los servicios reales el
+  2026-10-01, lo que cambió el plan: **Podnapisi está descartado** (su dominio da NXDOMAIN en el resolutor del sistema y
+  en 1.1.1.1: no hay a dónde conectarse); **Subdl queda pendiente de una clave gratuita** (sin ella la API responde
+  `403 not_authorized`, y aquí no se escribe un cliente contra una API que no se ha podido ver funcionar: anotado en
+  NEEDS_HUMAN.md); y el **API antiguo de opensubtitles.org** (`xml-rpc`), que no necesita clave, se descarta como
+  proveedor porque las descargas anónimas devuelven un fichero de 102 bytes con un anuncio en vez del subtítulo
+  (comprobado con cuatro subtítulos cuyo `SubSize` era ~155 KB), aunque la búsqueda sí funcione y el límite sea generoso
+  (200 al día por IP). Consecuencia: los proveedores reales son dos (la web del vídeo y OpenSubtitles.com) y el menú lo
+  dice; añadir un tercero es rellenar una tupla y escribir su `pick`.

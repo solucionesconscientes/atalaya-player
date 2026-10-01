@@ -108,7 +108,7 @@ repartir la traducción proporcionalmente a la longitud de cada cue; los diálog
   `subs.translate.models [index]`, `subs.translate.download {source,target}` (eventos `subs-translate-model`), `subs.translate.remove`.
   Errores: `-32602` idioma de origen desconocido (la pista IA lo sabe; para otras, el menú Idioma), `-32002` con `data.missing` si
   faltan paquetes (mu-subs los descarga y reintenta solo).
-- mu-subs: menú "Traducir la pista seleccionada a…" (lista de idiomas con estado del paquete), pista "Traducción (xx)" añadida al
+- mu-subs: menú "Traducir la pista de arriba a…" (lista de idiomas con estado del paquete), pista "Traducción (xx)" añadida al
   terminar, "Duales" = `secondary-sid` original + `sid` traducción. Runtime: extra `translate` del pyproject (`uv sync --extra translate`).
 - Tests: `tests/test_subs_translate.py` (unidad + traducción real es→en), `tests/test_subs_service.py` (job, caché, errores),
   `tests/test_mu_subs.py` (menú, pista traducida, duales con `secondary-sub-text`).

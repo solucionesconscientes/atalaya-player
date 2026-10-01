@@ -16,6 +16,10 @@ local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local nav = require('mu.nav')
 local N = nav.new()
+
+-- B3: el panel ya no es «solo IA» (trae las pistas que hay, lo de internet y, al final, crear con IA), así que se
+-- llama por lo que es. El nombre sale en la miga de pan del menú.
+local ROOT_TITLE = 'Subtítulos del vídeo'
 local prefs = require('mu.prefs')
 
 local SCRIPT = mp.get_script_name()
@@ -1142,80 +1146,211 @@ local function apply_chapters(on)
   end, 120)
 end
 
+-- C5 · «buscar en internet»: una sola lista con lo de todos los proveedores, ordenada por fiabilidad, tal como la
+-- devuelve mpvd (`subs.find`). El menú no sabe de qué proveedor es cada cosa: para traerla le devuelve su `pick`.
+local FIABILIDAD = {
+  canal = { 'del propio vídeo', 'verified' },
+  hash = { 'reconoce este archivo exacto', 'verified' },
+  nombre = { 'coincide el título (puede descuadrar)', 'subtitles' },
+  auto = { 'automáticos: transcripción de máquina', 'auto_awesome' },
+}
+
+local function pick_source(pick, label)
+  if not rpc.connected() then osd('mpvd no está disponible') return end
+  osd('Bajando ' .. (label or 'los subtítulos') .. '…')
+  rpc.call('subs.pick', { source = pick }, function(err, res)
+    if err then osd('Subtítulos: ' .. fail(err, 'subs.pick')) return end
+    local srt = res.srt or res.original
+    if not srt or srt == '' then osd('Subtítulos: la respuesta no trae ningún archivo') return end
+    local t = find_track(srt)
+    if t then
+      mp.set_property_number('sid', t.id)
+    else
+      mp.command_native({ 'sub-add', srt, 'select', res.title or (label or 'Subtítulos'), res.language or '' })
+    end
+    mp.set_property_bool('sub-visibility', true)
+    publish()
+    osd('✓ ' .. (label or 'Subtítulos') .. (res.cues and (' (' .. tostring(res.cues) .. ' líneas)') or ''))
+  end, 120)
+end
+
+local function find_items(res)
+  local items = {}
+  for _, src in ipairs(res.sources or {}) do
+    local f = FIABILIDAD[src.reliability] or { src.reliability, 'subtitles' }
+    local marcas = { f[1] }
+    if src.hearing_impaired then marcas[#marcas + 1] = 'SDH' end
+    if src.machine then marcas[#marcas + 1] = 'traducción automática' end
+    if (src.downloads or 0) > 0 then marcas[#marcas + 1] = tostring(src.downloads) .. ' descargas' end
+    marcas[#marcas + 1] = src.provider_name or src.provider
+    local idioma = language_name_for(src.language or '')
+    items[#items + 1] = { title = idioma .. ' · ' .. (src.label ~= '' and src.label or (src.provider_name or '')),
+      hint = table.concat(marcas, ' · '), icon = f[2],
+      value = { pick = src.pick, pick_label = idioma .. ' (' .. (src.provider_name or '') .. ')' } }
+  end
+  if #items == 0 then
+    items[#items + 1] = { title = 'No se ha encontrado ningún subtítulo para este vídeo', icon = 'subtitles_off',
+      selectable = false, muted = true }
+  end
+  items[#items].separator = true
+  -- y por qué no está lo que no está: «no hay subtítulos» y «te falta una clave» no son lo mismo
+  for _, prov in ipairs(res.providers or {}) do
+    items[#items + 1] = { title = prov.name, icon = prov.ok and 'check_circle' or 'info', selectable = false,
+      muted = true, hint = prov.ok and 'buscado' or (prov.reason or 'no disponible') }
+  end
+  return items
+end
+
+views.find = function()
+  local title = 'Buscar subtítulos'
+  if not require_mpvd(title) then return end
+  local path = current_path()
+  if path == '' then
+    show(title, uosc.message_items('Abre un vídeo primero', 'info'))
+    return
+  end
+  show(title, uosc.loading_items('Preguntando a la web y a OpenSubtitles…'))
+  rpc.call('subs.find', { path = path }, function(err, res)
+    if state.view ~= 'find' then return end
+    if err then show(title, uosc.message_items(fail(err, 'subs.find'), 'error')); return end
+    show(title, find_items(res), { footnote = 'Enter baja la pista y la pone · ⌫ atrás' })
+  end, 90)
+end
+
+-- B3 · el panel en tres bloques, en el orden en que se busca de verdad: lo que YA hay (y el tamaño y el retraso, que
+-- es lo que se toca a mitad de película) · buscar en internet · y al final crear con IA, que es lo lento y lo raro.
+local ORIGEN = {
+  ai = 'hecha con IA aquí', translation = 'traducción', resync = 'resincronizada',
+}
+
+local function track_label(t)
+  local name = t.title
+  if (not name or name == '') and t.external then name = base_name(t['external-filename']) end
+  if not name or name == '' then name = 'Pista ' .. tostring(t.id) end
+  return name
+end
+
+local function track_hint(t)
+  local parts = {}
+  local kind = track_kind(t)
+  if ORIGEN[kind] then parts[#parts + 1] = ORIGEN[kind] end
+  if t.lang and t.lang ~= '' then parts[#parts + 1] = t.lang end
+  if IMAGE_CODECS[t.codec or ''] then parts[#parts + 1] = IMAGE_MSG
+  elseif not t.external then parts[#parts + 1] = 'interna (' .. (t.codec or '?') .. ')'
+  else parts[#parts + 1] = 'externa' end
+  return table.concat(parts, ' · ')
+end
+
+-- «siempre a mano»: el tamaño y el retraso se ven y se cambian desde el panel, sin entrar en ningún submenú.
+local function text_rows(items)
+  local scale = mp.get_property_number('sub-scale') or 1
+  local delay = mp.get_property_number('sub-delay') or 0
+  items[#items + 1] = { title = 'Tamaño del texto', hint = string.format('%d %%  ·  Enter: más grande', scale * 100 + 0.5),
+    icon = 'format_size', value = { scale = 0.1 },
+    actions = { { name = 'menos', icon = 'remove', label = 'Más pequeño' },
+                { name = 'normal', icon = 'restart_alt', label = 'Tamaño normal' } } }
+  items[#items + 1] = { title = 'Retraso', icon = 'schedule',
+    hint = string.format('%+.1f s  ·  Enter: retrasar (z/x)', delay),
+    value = { delay = 0.1 },
+    actions = { { name = 'menos', icon = 'remove', label = 'Adelantar' },
+                { name = 'normal', icon = 'restart_alt', label = 'Sin retraso' } } }
+end
+
 views.root = function()
   local items = {}
   local t = state.task
   local path = mp.get_property('path') or ''
-  if task_running() or state.starting then
-    local done_pct = t and pct(t.progress) or 0
-    table.insert(items, { title = 'Detener subtítulos IA', icon = 'stop',
-      hint = state.starting and 'iniciando…' or string.format('%d%% · %d cues · %s', done_pct, t.cues or 0, task_label(t)),
-      value = { toggle = true } })
-    local espera = wait_text(t)
-    table.insert(items, { title = espera or 'Calculando cuánto va a tardar…', icon = 'hourglass_top',
-      selectable = false, muted = true })
-  elseif path == '' then
-    table.insert(items, { title = 'Abre un archivo local para subtitularlo', icon = 'info', selectable = false, muted = true })
-  elseif not is_local(path) then
-    if web_video() then
-      local w = state.web
-      table.insert(items, { title = 'Subtítulos de la web', icon = 'language',
-        hint = (w and w.status == 'done') and (language_name_for(w.lang) .. (w.kind == 'auto' and ' · automáticos' or ''))
-          or 'los que da la web, y traducidos sin conexión', value = { view = 'web' } })
+
+  -- 1. lo que ya hay
+  local visible = mp.get_property_bool('sub-visibility', true)
+  local sid = mp.get_property_native('sid')
+  local n = 0
+  for _, tr in ipairs(mp.get_property_native('track-list') or {}) do
+    if tr.type == 'sub' then
+      n = n + 1
+      items[#items + 1] = { title = track_label(tr), hint = track_hint(tr), icon = 'subtitles',
+        active = tr.selected and visible, value = { sid = tr.id } }
     end
-    table.insert(items, { title = 'Subtítulos IA: solo archivos locales (ADR-023)', icon = 'info', selectable = false,
-      muted = true })
-  elseif t and t.status == 'done' then
-    table.insert(items, { title = 'Subtítulos IA listos', icon = 'check_circle',
-      hint = string.format('%d cues · %s', t.cues or 0, task_label(t)), value = { toggle = true } })
+  end
+  if n == 0 then
+    items[#items + 1] = { title = 'Este vídeo no trae ninguna pista de subtítulos', icon = 'subtitles_off',
+      selectable = false, muted = true }
   else
-    table.insert(items, { title = 'Iniciar subtítulos IA', icon = 'closed_caption', hint = 'alt+c', value = { toggle = true } })
+    items[#items + 1] = { title = 'Sin subtítulos', icon = 'visibility_off',
+      active = (not visible) or sid == false or sid == nil, value = { sid = 0 } }
   end
-  table.insert(items, { title = 'Idioma', hint = language_name(state.language), icon = 'translate',
-    value = { view = 'language' } })
-  table.insert(items, { title = 'Modelo', hint = state.model, icon = 'memory', value = { view = 'models' } })
-  table.insert(items, { title = 'Activar automáticamente al abrir un archivo', hint = yesno(state.auto_start),
-    icon = 'autorenew', value = { opt = 'auto_start' }, separator = true })
-  table.insert(items, { title = 'Pre-subtitular el siguiente de la lista', hint = yesno(state.precompute_next),
-    icon = 'queue_play_next', value = { opt = 'precompute_next' } })
-  if state.precompute then
-    table.insert(items, { title = 'Siguiente: ' .. (state.precompute.path:match('[^/\\]+$') or ''),
-      hint = state.precompute.status, icon = 'skip_next', selectable = false, muted = true })
+  text_rows(items)
+  if translated_track() then
+    items[#items + 1] = { title = 'Duales: original arriba + traducción abajo', icon = 'vertical_split',
+      hint = yesno(state.dual), value = { dual = true } }
   end
+  items[#items].separator = true
+
+  -- 2. buscar en internet
+  items[#items + 1] = { title = 'Buscar subtítulos en internet', icon = 'travel_explore',
+    hint = 'la web del vídeo y OpenSubtitles, de más fiable a menos', value = { view = 'find' } }
   local sel, sel_emb = selected_sub_file()
   local tr = state.translate
-  local tr_hint = 'selecciona una pista'
+  local tr_hint = 'selecciona antes una pista'
   if tr and tr.status == 'running' then tr_hint = string.format('traduciendo %d%%', math.floor((tr.progress or 0) * 100 + 0.5))
   elseif tr and tr.status == 'downloading' then tr_hint = string.format('descargando modelo %d%%', pct(tr.dl_progress))
   elseif tr and tr.status == 'done' then tr_hint = 'lista: ' .. language_name_for(tr.target)
-  elseif sel then tr_hint = (sel.title or sel['external-filename']:match('[^/\\]+$') or '')
+  elseif sel then tr_hint = (sel.title or base_name(sel['external-filename']) or '')
   elseif sel_emb then tr_hint = 'pista interna (' .. (sel_emb.codec or '?') .. ')' end
-  table.insert(items, { title = 'Traducir la pista seleccionada a…', icon = 'translate', hint = tr_hint,
-    value = { view = 'translate' }, separator = true, muted = sel == nil and sel_emb == nil and not tr })
-  if translated_track() then
-    table.insert(items, { title = 'Duales: original arriba + traducción abajo', icon = 'vertical_split',
-      hint = yesno(state.dual), value = { dual = true } })
-  end
+  items[#items + 1] = { title = 'Traducir la pista de arriba a…', icon = 'translate', hint = tr_hint,
+    value = { view = 'translate' }, muted = sel == nil and sel_emb == nil and not tr }
   local ext = selected_external_sub()
   local rs = state.resync
-  table.insert(items, { title = 'Resincronizar la pista externa con la IA', icon = 'sync_alt',
+  items[#items + 1] = { title = 'Cuadrar la pista con la voz', icon = 'sync_alt',
     hint = ext and ((rs and rs.srt == ext['external-filename'] and rs.status ~= 'done') and rs.status
-      or (ext['external-filename']:match('[^/\\]+$'))) or 'selecciona un .srt/.ass externo',
-    value = { resync = true }, muted = ext == nil })
-  table.insert(items, { title = 'Buscar subtítulos en internet (OpenSubtitles)', icon = 'travel_explore',
-    hint = 'por hash del archivo', value = { library_subs = true } })
+      or base_name(ext['external-filename'])) or 'selecciona un .srt/.ass externo',
+    value = { resync = true }, muted = ext == nil }
   local sv = state.save
   local sv_hint = 'alt+S'
   if sv and sv.status == 'done' then sv_hint = sv.name or 'guardado'
   elseif sv and sv.status == 'waiting' then sv_hint = string.format('completando %d%%…', pct(sv.coverage))
   elseif sv and sv.status == 'queued' then sv_hint = 'extrayendo…' end
-  table.insert(items, { title = 'Guardar subtítulos (SRT)', icon = 'save', hint = sv_hint, value = { view = 'save' } })
+  items[#items + 1] = { title = 'Guardar subtítulos (SRT)', icon = 'save', hint = sv_hint, value = { view = 'save' },
+    separator = true }
+
+  -- 3. crear con IA (al final: es lo lento)
+  if task_running() or state.starting then
+    local done_pct = t and pct(t.progress) or 0
+    items[#items + 1] = { title = 'Detener los subtítulos con IA', icon = 'stop',
+      hint = state.starting and 'iniciando…' or string.format('%d%% · %d cues · %s', done_pct, t.cues or 0, task_label(t)),
+      value = { toggle = true } }
+    items[#items + 1] = { title = wait_text(t) or 'Calculando cuánto va a tardar…', icon = 'hourglass_top',
+      selectable = false, muted = true }
+  elseif path == '' then
+    items[#items + 1] = { title = 'Abre un archivo de tu equipo para subtitularlo con IA', icon = 'info',
+      selectable = false, muted = true }
+  elseif not is_local(path) then
+    items[#items + 1] = { title = 'Crear con IA: solo archivos de tu equipo (ADR-023)', icon = 'info',
+      selectable = false, muted = true }
+  elseif t and t.status == 'done' then
+    items[#items + 1] = { title = 'Subtítulos con IA listos', icon = 'check_circle',
+      hint = string.format('%d cues · %s', t.cues or 0, task_label(t)), value = { toggle = true } }
+  else
+    items[#items + 1] = { title = 'Crear los subtítulos con IA', icon = 'closed_caption',
+      hint = 'alt+c · tarda, pero luego quedan guardados', value = { toggle = true } }
+  end
+  items[#items + 1] = { title = 'Idioma del audio', hint = language_name(state.language), icon = 'translate',
+    value = { view = 'language' } }
+  items[#items + 1] = { title = 'Modelo', hint = state.model, icon = 'memory', value = { view = 'models' } }
+  items[#items + 1] = { title = 'Crear los subtítulos al abrir un archivo', hint = yesno(state.auto_start),
+    icon = 'autorenew', value = { opt = 'auto_start' } }
+  items[#items + 1] = { title = 'Preparar también el siguiente de la lista', hint = yesno(state.precompute_next),
+    icon = 'queue_play_next', value = { opt = 'precompute_next' } }
+  if state.precompute then
+    items[#items + 1] = { title = 'Siguiente: ' .. (state.precompute.path:match('[^/\\]+$') or ''),
+      hint = state.precompute.status, icon = 'skip_next', selectable = false, muted = true }
+  end
   local nch = state.ai_chapters or 0
-  table.insert(items, { title = 'Capítulos por tema (IA)', icon = 'bookmarks', active = nch > 0,
+  items[#items + 1] = { title = 'Capítulos por tema (IA)', icon = 'bookmarks', active = nch > 0,
     hint = nch > 0 and (nch .. ' capítulos · quitar') or (state.chapters_status ~= '' and state.chapters_status
-      or 'según la transcripción'), value = { chapters = true } })
-  table.insert(items, { title = 'Estado del motor', icon = 'monitor_heart', value = { view = 'status' } })
-  show('Subtítulos IA', items)
+      or 'según la transcripción'), value = { chapters = true } }
+  items[#items + 1] = { title = 'Estado del motor', icon = 'monitor_heart', value = { view = 'status' } }
+  show(ROOT_TITLE, items)
 end
 
 views.web = function()
@@ -1482,6 +1617,33 @@ mp.register_script_message(EVENT, function(json)
     if v.toggle then
       toggle()
       uosc.close(MENU)
+    elseif v.sid then
+      -- B3 · elegir la pista desde el panel. 0 = sin subtítulos, que no es lo mismo que no tener ninguna: la pista
+      -- sigue ahí y se vuelve a poner con su propia fila.
+      if v.sid == 0 then
+        mp.set_property_bool('sub-visibility', false)
+      else
+        mp.set_property_bool('sub-visibility', true)
+        mp.set_property_native('sid', v.sid)
+      end
+      reopen_current()
+    elseif v.scale then
+      local cur = mp.get_property_number('sub-scale') or 1
+      if ev.action == 'normal' then cur = 1
+      elseif ev.action == 'menos' then cur = math.max(0.3, cur - v.scale)
+      else cur = math.min(3, cur + v.scale) end
+      mp.set_property_number('sub-scale', cur)
+      reopen_current()
+    elseif v.delay then
+      local cur = mp.get_property_number('sub-delay') or 0
+      if ev.action == 'normal' then cur = 0
+      elseif ev.action == 'menos' then cur = cur - v.delay
+      else cur = cur + v.delay end
+      mp.set_property_number('sub-delay', cur)
+      reopen_current()
+    elseif v.pick then
+      pick_source(v.pick, v.pick_label)
+      uosc.close(MENU)
     elseif v.resync then
       resync_selected()
       uosc.close(MENU)
@@ -1596,7 +1758,7 @@ end
 
 open_save_menu = function()
   if not uosc.available() then return end
-  state.stack = { { name = 'root', title = 'Subtítulos IA' } }
+  state.stack = { { name = 'root', title = ROOT_TITLE } }
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'save' })
 end

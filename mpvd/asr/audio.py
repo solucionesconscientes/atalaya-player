@@ -54,6 +54,25 @@ def wav_duration(path: Path) -> float:
     return max(0.0, size / (SAMPLE_RATE * 2))
 
 
+def probe_audio_streams(src: str, timeout: float = 30.0) -> int | None:
+    """How many audio streams the container has (``None`` when ffprobe is missing or cannot tell).
+
+    Needed to tell «the first audio track» from «whatever ffmpeg picks»: with a single audio stream they are the same
+    thing, and treating them as different identities threw away work already done (H36).
+    """
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return None
+    try:
+        out = subprocess.run([ffprobe, "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+                              "-of", "json", src],
+                             capture_output=True, text=True, timeout=timeout, check=False).stdout
+        streams = json.loads(out).get("streams")
+        return len(streams) if isinstance(streams, list) else None
+    except (ValueError, subprocess.TimeoutExpired, OSError):
+        return None
+
+
 def probe_duration(src: str, timeout: float = 30.0) -> float | None:
     """Container duration in seconds via ffprobe (None for live streams / unknown)."""
     ffprobe = shutil.which("ffprobe")

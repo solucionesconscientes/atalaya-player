@@ -6,6 +6,7 @@ A film with its original voices and a Spanish dub is one file with two audio tra
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -57,3 +58,18 @@ def test_adopt_model_does_not_raise_with_an_english_only_finished_task(asr):
     asr.tasks[done_en.id] = done_en
     # the model is not downloaded here, so nothing is adopted, but it must not blow up on the ranking either
     assert asyncio.run(asr._adopt_model("mu:abc", "auto", False, 28.5, None)) in (None, "base", "base.en")
+
+
+def test_la_primera_pista_y_la_que_elige_ffmpeg_son_lo_mismo_si_solo_hay_una(asr, media_dir):
+    """H36: el pre-cálculo manda ``audio_track=None`` (el archivo aún no está abierto) y la reproducción manda 0.
+
+    Con una sola pista de audio son la misma cosa, y si se tratan como identidades distintas el trabajo ya hecho se tira
+    y se vuelve a transcribir desde cero. Con dos pistas, 0 sigue siendo 0: ahí sí importa.
+    """
+    una = str(media_dir / "voz_es.flac")
+    dos = str(media_dir / "voz_es_en.mkv")
+    assert asyncio.run(asr._canonical_track(una, 0)) is None
+    assert asyncio.run(asr._canonical_track(una, None)) is None
+    assert asyncio.run(asr._canonical_track(dos, 0)) == 0
+    assert asyncio.run(asr._canonical_track(dos, 1)) == 1
+    assert asyncio.run(asr._canonical_track(dos, None)) is None

@@ -41,6 +41,16 @@ TRANSLATE_ARTIFACT = "translate"
 TRANSLATE_VERSION = "2"   # 2: OPUS-MT engine, punctuation-aware redistribution, pause grouping, dialogue line breaks
 LANG_RE = re.compile(r"^[a-z]{2,3}$")
 
+# C5 · orden de fiabilidad de un subtítulo encontrado (de más a menos). Lo usa `SubsService.find`.
+RELIABILITY = ("canal", "hash", "nombre", "auto")
+
+# Proveedores comprobados contra el servicio real el 2026-10-01 y que NO se pueden ofrecer todavía. Se enseñan en el
+# menú con su motivo: decir «no hay subtítulos» cuando lo que pasa es que falta una clave es mentir.
+UNAVAILABLE_PROVIDERS = (
+    ("subdl", "Subdl", "hace falta una clave gratuita de subdl.com (ver NEEDS_HUMAN.md)"),
+    ("podnapisi", "Podnapisi", "el sitio ya no existe (su dominio no resuelve)"),
+)
+
 
 class SubsService:
     def __init__(self, server: MpvdServer):
@@ -89,6 +99,86 @@ class SubsService:
         if not p.is_file():
             raise RpcError(NOT_FOUND, f"no existe: {p}")
         return (await asyncio.to_thread(file_hash, p)).key
+
+    # -- cascada de proveedores (H36/C5) ---------------------------------------------------------------------------
+
+    async def find(self, path: str, languages: str | None = None) -> dict[str, Any]:
+        """Todo lo que hay para este archivo o esta URL, de todos los proveedores, en una sola lista ordenada.
+
+        Fiabilidad, de más a menos: ``canal`` (los que trae el propio sitio para ESE vídeo) · ``hash`` (OpenSubtitles
+        reconoce el archivo exacto) · ``nombre`` (coincide el título, puede ser otra versión y descuadrar) · ``auto``
+        (subtítulos automáticos de la web: son transcripción de máquina). Cada proveedor dice también por qué no está
+        disponible, que es la diferencia entre «no hay subtítulos» y «te falta una clave».
+        """
+        langs = [x for x in (languages or self.server.library.settings.get("osub_languages") or "es,en").split(",") if x]
+        providers: list[dict[str, Any]] = []
+        sources: list[dict[str, Any]] = []
+        is_web = is_url(path) and not path.startswith("file://")
+
+        # 1. el propio sitio del vídeo (H29): lo más fiable que hay, porque son de ese vídeo
+        if is_web:
+            try:
+                web = await self.web_list(path, langs[0] if langs else "es")
+                providers.append({"id": "web", "name": "La web del vídeo", "ok": True, "reason": ""})
+                for t in web.get("tracks", []):
+                    auto = t.get("kind") == "auto"
+                    sources.append({"provider": "web", "provider_name": "La web del vídeo",
+                                    "reliability": "auto" if auto else "canal",
+                                    "language": t.get("lang", ""), "label": t.get("label") or t.get("lang", ""),
+                                    "downloads": 0, "pick": {"web": {"url": path, "lang": t.get("lang"),
+                                                                     "kind": t.get("kind", "manual")}}})
+            except RpcError as exc:
+                providers.append({"id": "web", "name": "La web del vídeo", "ok": False, "reason": exc.message})
+        else:
+            providers.append({"id": "web", "name": "La web del vídeo", "ok": False,
+                              "reason": "esto no es un vídeo de internet"})
+
+        # 2. OpenSubtitles.com (ADR-050): por hash primero y por nombre después, ya ordenado por el propio buscador
+        if is_web:
+            providers.append({"id": "opensubtitles", "name": "OpenSubtitles", "ok": False,
+                              "reason": "solo busca archivos de tu equipo (necesita el hash)"})
+        else:
+            try:
+                found = await self.server.library.subs_search(path, ",".join(langs))
+                providers.append({"id": "opensubtitles", "name": "OpenSubtitles", "ok": True, "reason": ""})
+                for r in found.get("results", []):
+                    sources.append({"provider": "opensubtitles", "provider_name": "OpenSubtitles",
+                                    "reliability": "hash" if r.get("hash_match") else "nombre",
+                                    "language": r.get("language", ""),
+                                    "label": r.get("release") or r.get("file_name") or "",
+                                    "downloads": int(r.get("downloads") or 0),
+                                    "hearing_impaired": bool(r.get("hearing_impaired")),
+                                    "machine": bool(r.get("machine_translated") or r.get("ai_translated")),
+                                    "pick": {"opensubtitles": {"path": path, "file_id": r.get("file_id")}}})
+            except RpcError as exc:
+                providers.append({"id": "opensubtitles", "name": "OpenSubtitles", "ok": False,
+                                  "reason": exc.message})
+
+        # 3. los que todavía no se pueden ofrecer, dicho aquí para que el menú no los invente (ver NEEDS_HUMAN.md)
+        for pid, name, reason in UNAVAILABLE_PROVIDERS:
+            providers.append({"id": pid, "name": name, "ok": False, "reason": reason})
+
+        sources.sort(key=lambda s: (RELIABILITY.index(s["reliability"]) if s["reliability"] in RELIABILITY else 9,
+                                    langs.index(s["language"]) if s["language"] in langs else len(langs),
+                                    1 if s.get("machine") else 0, -s.get("downloads", 0)))
+        return {"path": path, "languages": ",".join(langs), "web": is_web, "sources": sources,
+                "providers": providers}
+
+    async def pick(self, source: dict[str, Any], notify: str = "mu_subs",
+                   session_id: str | None = None) -> dict[str, Any]:
+        """Un resultado de ``find`` → SRT en la caché. Se le pasa el ``pick`` tal cual, así el menú no tiene que saber
+        qué RPC toca para cada proveedor."""
+        if not isinstance(source, dict):
+            raise RpcError(INVALID_PARAMS, "source debe ser el campo «pick» de subs.find")
+        web = source.get("web")
+        if isinstance(web, dict):
+            return await self.web_fetch(str(web.get("url") or ""), str(web.get("lang") or ""),
+                                        str(web.get("kind") or "manual"))
+        osub = source.get("opensubtitles")
+        if isinstance(osub, dict):
+            return await self.server.library.subs_download(str(osub.get("path") or ""), osub.get("file_id"),
+                                                           notify=notify, session_id=session_id)
+        raise RpcError(INVALID_PARAMS, "ese resultado no viene de subs.find")
 
     # -- subtitles of internet videos (H29) ------------------------------------------------------------------------
 
@@ -614,6 +704,19 @@ def register(server: MpvdServer, service: SubsService) -> None:  # noqa: C901 - 
         argos | opus-big. Cached → ``done`` at once; else a job that pushes ``subs-translate`` events to ``notify``.
         Missing models → error with ``data.missing = [[source, target, engine], …]``."""
         return await service.translate(srt, source, target, path, notify, _sid(ctx), engine)
+
+    @d.method("subs.find")
+    async def find(ctx: RpcContext, path: str, languages: str | None = None) -> dict[str, Any]:
+        """Cascada de proveedores (C5): todo lo que hay para este archivo o URL, en una lista ordenada por fiabilidad
+        (canal · hash · nombre · auto), más qué proveedores hay y por qué alguno no está disponible."""
+        if not path:
+            raise RpcError(INVALID_PARAMS, "path required")
+        return await service.find(path, languages)
+
+    @d.method("subs.pick")
+    async def pick(ctx: RpcContext, source: dict[str, Any], notify: str = "mu_subs") -> dict[str, Any]:
+        """Trae uno de los resultados de ``subs.find`` (el campo ``pick`` tal cual) como SRT listo para `sub-add`."""
+        return await service.pick(source, notify, _sid(ctx))
 
     @d.method("subs.web.list")
     async def web_list(ctx: RpcContext, url: str, prefer: str = "es") -> dict[str, Any]:

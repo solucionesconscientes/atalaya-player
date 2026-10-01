@@ -370,7 +370,7 @@ views.subs = function()
     bind('Elegir pista de subtítulos', 's', 'subtitles', 'uosc/subtitles'),
     bind('Cargar un archivo de subtítulos', 'alt+s', 'upload_file', 'uosc/load-subtitles'),
     cmd('Mostrar u ocultar', 'v', 'visibility', { 'cycle', 'sub-visibility' }, { separator = true }),
-    child('Subtítulos IA y traducción', 'alt+i', 'closed_caption', 'mu_subs', 'subs-menu'),
+    child('Panel de subtítulos', 'alt+i', 'closed_caption', 'mu_subs', 'subs-menu'),
     bind('Guardar subtítulos (SRT)', 'alt+S', 'save', 'mu_subs/subs-save'),
     child('Buscar subtítulos en internet', 'OpenSubtitles', 'travel_explore', 'mu_library', 'library-subs'),
   })

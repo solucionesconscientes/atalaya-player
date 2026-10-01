@@ -112,16 +112,73 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-Iteración 5 (2026-10-01): H34 (revisión de calidad) hecho —siete revisiones por áreas, 42 fallos reales corregidos con su
-test y dos guardianes nuevos (integración Lua↔mpvd y flujos entre módulos)— y H25 cerrado con el túnel de internet de las
-salas (ADR-068). **No queda ningún `[ ]` en BACKLOG.md.**
-Si hay otra iteración: (1) lo único [~] son los torrents (H26, fuera por decisión de Ser) y el nombre de la app, que decide
-él. (2) Siguiente trabajo útil sin Ser, por orden: añadir hitos nuevos desde el TOP 10 de docs/VISION.md que sigan la
-regla «nada con retraso» (OCR de subtítulos PGS B6, diccionario/Anki C2–C3, handoff entre dispositivos E5), cada uno con su
-criterio de aceptación en BACKLOG.md y su ADR. (3) Antes de empezar, `tools/check.sh` **con la máquina libre** para partir
-de verde: ver «Qué quedó pendiente» sobre los tests de Whisper, que fallan por tiempo bajo carga.
+Iteración 6 (2026-10-01, en marcha): Ser probó el reproductor de verdad y de ahí salieron **H35–H41** en BACKLOG.md.
+Hechos: **H35** (arreglos de uso y la barra como mando) y la mayor parte de **H36** (subtítulos). Lo que queda, por orden:
+1. **H36**: nada; está cerrado (C1–C8 y B3).
+2. **H37** · Descargar: una sola puerta (una caja donde pegar un enlace o veinte, lista con casillas, formato común y por
+   fila, SRT, y los guardados de Instagram/TikTok con la sesión del navegador).
+3. **H38** · Resumen con enlaces al minuto (solo vídeos de internet: extraer el SRT de un archivo local tarda demasiado).
+   Antes de implementar hay que **elegir el modelo con un banco de pruebas**: el diseño anterior se descartó porque el
+   modelo no sabe poner los minutos; los minutos salen de las secciones del nivel 1 (recap.py), no del modelo.
+4. **H39** · TV, radio e intro (listas que no suenan, icono de saltar intro, SponsorBlock en reproducción).
+5. **H40** · Apagar/suspender y despertar (Linux con rtcwake, macOS con pmset, Windows con el Programador de tareas).
+6. **H41** · El nombre, que decide Ser (hay una lista de propuestas en BACKLOG.md).
+Antes de empezar, `tools/check.sh` **con la máquina libre**: con carga alta (otros programas de Ser) fallan por tiempo los
+tests de Whisper y, a veces, los de navegación por teclas.
 
 ## Registro por iteración
+### Iteración 6 · 2026-10-01 · H35 · Arreglos de uso y la barra como mando — hecho
+Los nueve apuntes de tu prueba real, por orden de lo que molestaba:
+- **El botón ● de grabar**: el primer clic pregunta (vídeo o audio), el segundo **para** la grabación sin preguntar nada.
+- **El QR de la sala se puede quitar**: el temporizador de 120 s ya no se rearma cada vez que cambia algo de la sala (con
+  una sala viva no se iba nunca), la fila del menú alterna de verdad («Ocultar el código QR») y `alt+Q` lo pone y lo saca.
+- **El invitado veía la pantalla en blanco** mientras se preparaba la retransmisión y tú no podías saber si iba: ahora el
+  anfitrión ve «Preparando la retransmisión… 0:45 listos de 2:10» en su menú, y la página del invitado lo dice también.
+- **La barra de abajo como mando**: botón de subtítulos (abre el panel, no la lista de pistas de uosc) y botón de
+  «solo audio» (quitar el vídeo), que antes solo estaba en `alt+a`.
+- Benchmarks: recuperada la sección de los trozos de 28,5 s que se perdió al regenerar el fichero, y la tabla por tier
+  ahora se genera desde el código, así que no puede volver a desviarse de lo que hace el programa.
+- `tools/check.sh` pasa ahora **siempre** LuaJIT además de luacheck: un `//` (división entera, que LuaJIT no tiene) colaba
+  el lint y rompía el script al cargarlo en mpv. Pasó de verdad, y así no vuelve a pasar.
+
+### Iteración 6 · 2026-10-01 · H36 · Subtítulos: sencillos, buenos y sin esperas en vivo — hecho
+Lo que dijiste: «en vivo nada de subtítulos», «el traductor debe ser de la máxima calidad», «subtítulos más sencillo e
+intuitivo» y «al cerrar, si hay algo por detrás, pregúntame».
+
+- **Fuera los subtítulos en vivo** (ADR-070). Antes se transcribía persiguiendo la reproducción, y eso obligaba a elegir
+  el modelo por velocidad: en este portátil, `base`, que escribe con faltas y casi sin puntuación (y eso es justo lo que
+  estropea después la traducción). Ahora hay un solo modo: se prepara el archivo entero desde el segundo 0 con el mejor
+  modelo que aguante el equipo. En este portátil, `small-q8_0`, que va a 0,45 (más del doble de rápido que el vídeo).
+- **La espera se dice con números, y son medidos.** Cada tarea publica el ritmo de los últimos trozos, lo que queda a ese
+  ritmo y lo que tardaría el modelo rápido. En pantalla: «listos en 7 min · va más rápido que el vídeo, no te alcanzará»
+  o, con un modelo lento, «listos en 1 h 10 min · con small-q8_0, 6 min». Si el portátil se carga, el aviso sube con él.
+  Por qué no son los modelos grandes por defecto: medidos aquí, `medium-q5_0` va a 4,03 y `large-v3-turbo-q5_0` a 5,22,
+  o sea 4 y 5 veces más lento que el propio vídeo (una película de 2 h: 8 h y 10 h 30 de CPU), y en la muestra aciertan
+  lo mismo que `small-q8_0`. Están a un clic, con el tiempo calculado delante.
+- **Al cerrar, se pregunta** (C8). `q` ya no es «cerrar y a ver qué pasa»: mpvd dice qué sigue trabajando y, si son los
+  subtítulos de ESTE archivo, se pregunta siempre («Seguir en segundo plano» / «Dejarlo»); descargas y conversiones
+  admiten «no volver a preguntar»; una grabación programada no se pregunta ni se para nunca. Si cierras la ventana y
+  quedaba algo, sale un aviso de escritorio con botón **Parar**; al volver a abrir, un recordatorio. Y el menú principal
+  tiene siempre una línea que dice qué se está haciendo por detrás.
+- **Buscar subtítulos, guiado** (C4). Antes, sin clave de OpenSubtitles salía «falta la Api-Key» y ahí se acababa. Ahora
+  son dos pasos: *Abrir la página de la clave* (es gratis) y *Pegar la clave del portapapeles*; la clave la lee mpvd por
+  su propia conexión, así que no pasa por la pantalla ni por ningún log. Con cuenta, el menú dice el cupo que te queda.
+- **Traducir, a la máxima calidad** (C6). Añadidos los modelos OPUS-MT de francés, así que es/en/fr se traducen con
+  OPUS-MT de punta a punta (es↔fr por inglés: no existe modelo directo). El motor por defecto pasa a ser «máxima
+  calidad»: OPUS-MT donde llegue y Argos para los demás idiomas. Comprobado traduciendo de verdad en los dos sentidos.
+- **Una sola lista de dónde salen los subtítulos** (C5, ADR-071): `subs.find` junta la web del vídeo y OpenSubtitles y los
+  ordena por fiabilidad (del propio vídeo · reconoce este archivo exacto · coincide el título · automáticos), y dice qué
+  proveedores hay y **por qué** falta alguno. De los dos que íbamos a añadir: **Podnapisi está muerto** (su dominio ya no
+  existe) y **Subdl necesita una clave gratuita** (está en NEEDS_HUMAN.md, 2 minutos). El API antiguo de opensubtitles.org
+  tampoco sirve: busca sin clave, pero las descargas anónimas devuelven 102 bytes con un anuncio en vez del subtítulo.
+- **El panel, en tres bloques** (B3): lo que ya hay (las pistas, con el tamaño del texto y el retraso siempre a mano) ·
+  buscar en internet · y al final crear con IA, que es lo lento. Se llama «Subtítulos del vídeo», porque ya no es solo IA.
+
+Cómo probarlo a mano: `bin/mpv-uos <una peli tuya>` → `alt+i`. Arriba están sus pistas (Enter las pone, «Sin subtítulos»
+las quita) y el tamaño y el retraso. *Buscar subtítulos en internet* enseña todo lo que hay junto, con su fiabilidad y,
+abajo, por qué falta algún proveedor. *Crear los subtítulos con IA* arranca la transcripción y a los pocos trozos dice
+cuánto falta; cierra con `q` mientras va y te preguntará qué hacer (y si cierras la ventana, mira el aviso del escritorio).
+
 ### Iteración 5 · 2026-10-01 · H25 · Túnel de internet para las salas — hecho (ADR-068)
 Era lo único que quedaba `[ ]` en todo el BACKLOG, y ya tenía tu permiso. Ahora una sala de «ver juntos» se puede abrir
 desde fuera de casa:

@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from mpvd.asr.audio import AudioError, extract_wav, probe_duration, wav_duration
+from mpvd.asr.audio import AudioError, extract_wav, probe_audio_streams, probe_duration, wav_duration
 from mpvd.asr.engine import EngineError, WhisperEngine
 from mpvd.asr.models import (BEST_MODEL, CATALOG, FAST_MODEL, QUALITY_ORDER, REFERENCE_RTF, SLOW_MODELS,
                              VAD_MODEL, ModelError, ModelStore, default_model_dirs)
@@ -347,6 +347,15 @@ class AsrService:
             raise RpcError(UNAVAILABLE, "duración desconocida: los directos no se admiten todavía (ADR-023)")
         return key, float(duration)
 
+    async def _canonical_track(self, path: str, audio_track: int | None) -> int | None:
+        """«La primera pista de audio» y «la que elija ffmpeg» son lo mismo cuando solo hay una, y la identidad de la
+        tarea tiene que decir que son lo mismo. Si no, el pre-cálculo (que no sabe qué pista hay porque el archivo
+        todavía no está abierto, y manda ``None``) no se aprovecha nunca y se vuelve a transcribir desde cero."""
+        if audio_track is None or audio_track != 0:
+            return audio_track
+        n = await asyncio.to_thread(probe_audio_streams, str(Path(path.removeprefix("file://"))))
+        return None if n == 1 else audio_track
+
     # -- tasks ----------------------------------------------------------------------
 
     async def start(self, path: str, language: str = "auto", model: str | None = None, purpose: str = "prepare",
@@ -365,6 +374,7 @@ class AsrService:
         if not self.engine.available:
             raise RpcError(UNAVAILABLE, "whisper-cli no encontrado: ejecuta tools/vendor_whisper.sh")
         key, duration = await self._resolve(path)
+        audio_track = await self._canonical_track(path, audio_track)
         chunk = float(chunk_seconds or DEFAULT_CHUNK)
         if auto:
             model = await self._adopt_model(key, language, translate, chunk, audio_track) or model

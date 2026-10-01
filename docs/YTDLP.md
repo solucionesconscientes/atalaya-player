@@ -553,3 +553,23 @@ Cada entrada: `_type: "url"`, `ie_key: "Youtube"`, `id`, `url` (`https://www.you
   seguros (`--no-update --no-remote-components`, `--js-runtimes`), 30 s de tope, caché en memoria de 1 h por (consulta normalizada,
   límite) y una sola ejecución para búsquedas idénticas simultáneas. Devuelve `[{url, title, duration, channel, view_count, is_live}]`
   (`is_live` = `live_status == "is_live"` de la insignia de la búsqueda; `channel` cae a `uploader`). ~3 s por búsqueda real.
+
+## 12. Guardados de Instagram y TikTok: qué soporta de verdad el yt-dlp instalado (2026-10-01, H37/D4)
+Comprobado **contra el binario vendorizado** (2026.08.19) preguntando a cada extractor si acepta la URL
+(`gen_extractor_classes()` + `suitable()`, sin red ni cuentas, porque lo único que se quería saber es si existe el
+extractor):
+
+| URL | Extractor que la acepta | Estado |
+|---|---|---|
+| `https://www.instagram.com/<perfil>/saved/all-posts/` | **ninguno** | no se puede: no hay extractor de «guardados» |
+| `https://www.instagram.com/<perfil>/` | `instagram:user` | existe, pero `--list-extractors` lo marca **CURRENTLY BROKEN** |
+| `https://www.tiktok.com/@<perfil>` | `tiktok:user` | funciona |
+| `https://www.tiktok.com/@<perfil>/collection/<nombre>-<id>` | `tiktok:collection` | funciona |
+| `https://www.tiktok.com/favorite` | **ninguno** | no se puede: no hay extractor de favoritos |
+
+Consecuencia para el menú de descargas: la caja de enlaces reconoce estas formas y **dice lo que va a pasar antes de
+intentarlo** (que es lo que pidió Ser que no fallara en silencio): los guardados de Instagram y los favoritos de TikTok
+se rechazan con una explicación y la alternativa (pegar los enlaces de los vídeos, que sí funcionan uno a uno), el perfil
+de Instagram se acepta avisando de que yt-dlp lo marca roto en esta versión, y el perfil o la colección de TikTok se
+aceptan recordando que para lo privado hace falta *Usar mi sesión del navegador* (cookies, apagado por defecto).
+Al cambiar de versión de yt-dlp conviene repetir la comprobación: el test `test_ytdl_sitios.py` la hace sola.

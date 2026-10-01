@@ -32,6 +32,7 @@ from mpvd.ytdl.binary import (
     nightly_path,
     vendor_path,
 )
+from mpvd.ytdl import sites
 from mpvd.ytdl.downloads import BROWSERS, FINAL, DownloadItem, DownloadManager, valid_browser
 from mpvd.ytdl.presets import (
     SUB_LANG_CHOICES,
@@ -79,6 +80,8 @@ class YtdlService:
         self._nightly_lock = asyncio.Lock()
         self.downloads = DownloadManager(server.jobs, self.binary, settings.data_dir, on_change=self._download_changed,
                                          fallback=self.ensure_nightly, vcodec=lambda: hwdecode.detect()["sort"])
+        self._broken: set[str] = set()        # extractores «CURRENTLY BROKEN» del binario actual (H37/D4)
+        self._broken_for = ""
         self._info_tasks: dict[str, asyncio.Task[dict[str, Any]]] = {}
         self._search_tasks: dict[tuple[str, int], asyncio.Task[dict[str, Any]]] = {}
         self._search_cache: dict[tuple[str, int], tuple[float, list[dict[str, Any]]]] = {}
@@ -292,6 +295,25 @@ class YtdlService:
         hw = (await asyncio.to_thread(hwdecode.detect))["hw"]
         return {**info_mod.analyze(data, set(hw) if hw is not None else None), "url": url}
 
+    # -- qué sabe abrir el yt-dlp instalado (H37/D4) -------------------------------------------
+
+    async def site_support(self, url: str) -> dict[str, Any]:
+        """Si esa URL tiene extractor, y qué decir si no. La lista de extractores roesos la da el propio binario
+        (`--list-extractors`), y se consulta una vez por binario: no cambia mientras no se actualice."""
+        if not isinstance(url, str) or not url.strip():
+            raise RpcError(INVALID_PARAMS, "url required")
+        b = self.binary()
+        roto: set[str] = set()
+        if b is not None:
+            if self._broken_for != str(b.path):
+                self._broken = await asyncio.to_thread(sites.broken_extractors, b)
+                self._broken_for = str(b.path)
+            roto = self._broken
+        out = dict(sites.describe(url, roto))
+        out["url"] = url
+        out["private_hint"] = sites.PRIVATE_HINT
+        return out
+
     # -- search -------------------------------------------------------------------------------
 
     async def search(self, query: str, limit: int = 15) -> list[dict[str, Any]]:
@@ -440,6 +462,12 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
         """YouTube search (``ytsearchN:``, flat, 30 s timeout, cached 1 h per query):
         ``[{url, title, duration, channel, view_count, is_live}]``."""
         return await service.search(query, limit)
+
+    @d.method("ytdl.site_support")
+    async def site_support(ctx: RpcContext, url: str) -> dict[str, Any]:
+        """H37/D4: qué se puede hacer con esa URL antes de intentarlo (guardados de Instagram, favoritos de TikTok,
+        perfiles y colecciones), según los extractores del yt-dlp instalado."""
+        return await service.site_support(url)
 
     @d.method("ytdl.presets")
     async def presets(ctx: RpcContext) -> dict[str, Any]:

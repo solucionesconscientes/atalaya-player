@@ -17,7 +17,7 @@ MU_OPTS = "--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-c
 MODULES = {
     "mu_iptv": ("tv-menu", "mu-iptv", "TV y radio"),
     "mu_ytdl": ("ytdl-menu", "mu-ytdl", "Descargas y conversión"),
-    "mu_subs": ("subs-menu", "mu-subs", "Subtítulos IA"),
+    "mu_subs": ("subs-menu", "mu-subs", "Subtítulos del vídeo"),
     "mu_av": ("av-menu", "mu-av", "Filtros de imagen y sonido"),
     "mu_intro": ("intro-menu", "mu-intro", "Saltar intro y créditos"),
     "mu_study": ("study-menu", "mu-study", "Estudio"),
@@ -84,7 +84,7 @@ def test_main_menu_categories_breadcrumbs_and_back_into_modules(nav_mpv, media_d
     wait_nav(h, "mu-menu", "MPV-UOS › Subtítulos")
     menu_event(h, "mu_menu", {"type": "activate", "index": 4,
                               "value": {"child": {"script": "mu_subs", "entry": "subs-menu"}}})
-    st = wait_nav(h, "mu-subs", "MPV-UOS › Subtítulos › Subtítulos IA")
+    st = wait_nav(h, "mu-subs", "MPV-UOS › Subtítulos › Subtítulos del vídeo")
     assert st["script"] == "mu_subs" and st["parent"] == "mu_menu"
     # a click on the "Atrás" row goes through uosc/menu-back → back at the module root → the category again
     menu_event(h, "mu_subs", {"type": "activate", "index": 1, "value": {"nav": "back"}})

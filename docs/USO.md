@@ -22,7 +22,7 @@ falta, avisa con la orden para instalarlo. Los subtítulos IA y los modelos se d
 - **Menú MPV-UOS**: botón derecho, tecla `MENU`, `alt+m` o el botón ▦ de la barra. Reúne todo lo de esta guía en ocho
   categorías: Abrir, TV y radio, Descargas y conversión, Subtítulos, Imagen y sonido, Grabar, Herramientas y Preferencias
   (arriba, *Continuar viendo* si hay algo a medias).
-- **Un solo menú**: el título dice dónde estás («MPV-UOS › Subtítulos › Subtítulos IA»); la primera fila, **Atrás**, vuelve un
+- **Un solo menú**: el título dice dónde estás («MPV-UOS › Subtítulos › Subtítulos del vídeo»); la primera fila, **Atrás**, vuelve un
   nivel, igual que `⌫` o `←`; `Esc` cierra. Desde la raíz de cualquier módulo (aunque lo abras con su tecla) *Atrás* te lleva al
   menú principal. Las paletas de búsqueda (`ctrl+u`, `ctrl+f`, `alt+f`) se cierran con `⌫` cuando están vacías.
 - **Ayuda**: `?` muestra las teclas principales.
