@@ -58,12 +58,8 @@ Cada hito tiene sus pasos a mano en «Registro por iteración».
   ocupado; aislados y con la máquina libre pasan.
   El 2026-10-01 tu `llama-server` ocupaba ~3,5 de los 4 núcleos (whisper medido a `rtf 2.1`, cuando libre va a ~0,3), así
   que la última pasada completa de `tools/check.sh` no es concluyente para ellos: repítela con el portátil libre.
-- **`test_mpris` falla, y el fallo es del test, no del reproductor**: mpvd emite la señal `Seeked` de MPRIS cuando debe y
-  con el valor correcto (comprobado en el log del daemon: `pos=0` al cargar, `pos=10000000` y `pos=20000000` tras cada
-  salto), y un filtro «todas las señales» en el cliente demuestra que llegan. Lo que falla es cómo las captura el test
-  con la API bloqueante de jeepney (`send_and_get_reply` descarta las señales que llegan mientras espera su respuesta, y
-  con filtros solapados cada mensaje va a una sola cola). Hay que rehacer esa captura con la máquina libre; el
-  reproductor no necesita cambios.
+- ~~`test_mpris`~~: **arreglado** (era el test, no el reproductor): su ayudante tiraba a la basura justo la señal que
+  esperaba, porque `recv_until_filtered` de jeepney extrae y devuelve el mensaje y el test ignoraba ese valor.
 
 ## Resumen para Ser (2026-09-29, histórico)
 Todos los hitos H0–H13 de BACKLOG.md están [x]; ninguno quedó [~]. `tools/check.sh` pasa 202 tests sin red + 4 con red; lo único
@@ -119,8 +115,7 @@ Si hay otra iteración: (1) nada del BACKLOG está pendiente; los [~] esperan a 
 app). (2) Siguiente trabajo útil sin Ser, por orden: añadir hitos nuevos desde el TOP 10 de docs/VISION.md que sigan la
 regla «nada con retraso» (OCR de subtítulos PGS B6, diccionario/Anki C2–C3, handoff entre dispositivos E5), cada uno con su
 criterio de aceptación en BACKLOG.md y su ADR. (3) Antes de empezar, `tools/check.sh` **con la máquina libre** para partir
-de verde: ver «Qué quedó pendiente» sobre los tests de Whisper (fallan por tiempo bajo carga) y sobre `test_mpris`, cuyo
-fallo ya está diagnosticado: hay que rehacer la captura de señales D-Bus del test, no el reproductor.
+de verde: ver «Qué quedó pendiente» sobre los tests de Whisper, que fallan por tiempo bajo carga.
 
 ## Registro por iteración
 ### Iteración 5 · 2026-10-01 · H34 · Cribado de los 4 fallos de check.sh — hecho
@@ -133,14 +128,12 @@ núcleos, que es justo lo que hace inestables a los que miden tiempos):
   tocara H34).
 - `test_mu_subs` → **es la carga, con prueba**: el estado publicado trae `rtf: 2.112`, o sea que whisper va a 2,1× el
   tiempo real cuando con la máquina libre va a ~0,3×; de ahí el timeout de 120 s.
-- `test_mpris` → **falla de verdad, pero el fallo es del test, no del reproductor**. Comprobado con el log del daemon:
-  mpvd emite `Seeked` cuando debe y con el valor correcto (`pos=0` al cargar, `pos=10000000` y `pos=20000000` tras cada
-  salto), y un filtro «todas las señales» en el cliente demuestra que llegan. Lo que falla es cómo las captura el test:
-  con la API bloqueante de jeepney, `send_and_get_reply` descarta las señales que llegan mientras espera su respuesta, y
-  con dos filtros solapados cada mensaje va a una sola cola. Probé cuatro variantes (comprobar antes de `Position`,
-  provocar el salto desde mpv, una sola cola con filtrado en Python, y una conexión aparte solo para señales) y ninguna
-  resultó fiable con la máquina así, de modo que **dejé el test como estaba en vez de empeorarlo**. Hay que rehacer su
-  captura de señales con el portátil libre; el reproductor no necesita cambios.
+- `test_mpris` → **era el test, no el reproductor, y está arreglado**. mpvd emite `Seeked` cuando debe y con el valor
+  correcto (log del daemon: `pos=0` al cargar, `pos=10000000` y `pos=20000000` tras cada salto). El ayudante `saw()` del
+  test llamaba a `recv_until_filtered`, que **extrae y devuelve** el mensaje por el que esperaba, e ignoraba ese valor
+  devuelto: así tiraba a la basura justo la señal que buscaba, sin comprobarla. Con `PropertiesChanged` colaba porque
+  llegan varias seguidas y alguna quedaba en la cola; con `Seeked`, que es una por salto, nunca. Comprobado que el test
+  arreglado falla si se quita la emisión de la señal en mpvd.
 
 ### Iteración 5 · 2026-10-01 · H34 · Revisión de calidad — hecho
 Siete revisiones de código por áreas (TV, descargas/convertir, subtítulos, biblioteca/suscripciones/notas, audio,

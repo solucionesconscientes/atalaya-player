@@ -113,10 +113,12 @@ def test_mpris_controls_mpv_and_follows_it(daemon_env, media_dir, private_bus):
                 if pred(queue.popleft()):
                     return True
             try:
-                conn.recv_until_filtered(queue, timeout=0.5)
+                # recv_until_filtered POPS the message it waited for and returns it: ignoring the return value threw
+                # away precisely the signal we were waiting for (visible with Seeked, of which there is one per seek)
+                msg = conn.recv_until_filtered(queue, timeout=0.5)
             except TimeoutError:
                 return False
-            return saw(queue, pred)
+            return pred(msg) or saw(queue, pred)
 
         video = media_dir / "video30.mkv"
         h.command("loadfile", str(video))
