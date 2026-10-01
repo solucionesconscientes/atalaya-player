@@ -1,17 +1,19 @@
 # Atajos de teclado de MPV-UOS
 
-Configurados en `mpv-config/input.conf` (validado por `tests/test_atajos.py`). Los que llevan `#!` aparecen también en el
-menú **Más opciones** de uosc (`ctrl+m`). Los atajos por defecto de mpv siguen activos salvo los de la tabla
-[Teclas de mpv que cambian](#teclas-de-mpv-que-cambian). `Todas las teclas` (menú principal) abre un buscador con todas.
+Configurados en `mpv-config/input.conf`, que **solo** tiene teclas (validado por `tests/test_atajos.py`). Hasta H46 ese
+fichero construía además un segundo menú, el nativo de uosc (`ctrl+m`): 119 entradas, 40 en el primer nivel y cuatro
+cosas repetidas. Se retiró, y lo que solo vivía allí está ahora en el menú de MPV-UOS, que es el único.
+Los atajos por defecto de mpv siguen activos salvo los de la tabla
+[Teclas de mpv que cambian](#teclas-de-mpv-que-cambian). *Todas las teclas* (menú principal → Herramientas) abre un
+buscador con todas, y `alt+p` la paleta.
 
 ## Menús de MPV-UOS
 | Tecla | Acción |
 |---|---|
-| `MBTN_RIGHT`, `MENU`, `alt+m` | Menú principal **MPV-UOS**: Continuar viendo, Abrir, TV y radio, Descargas y conversión, Subtítulos, Imagen y sonido, Grabar, Herramientas, Preferencias |
+| `MBTN_RIGHT`, `MENU`, `alt+m`, botón ▦ | Menú principal **MPV-UOS**, el único que hay: Abrir o descargar, TV y radio, Descargas y conversión, Subtítulos, Imagen y sonido, Grabar, Herramientas y Preferencias (ocho), más «Continuar viendo» y «Resumen e índice» cuando hay algo que ver |
 | `?` | Ayuda en pantalla con las teclas principales (Enter en la última fila: todas las teclas) |
 | `alt+p` | Paleta global: comandos (todas las teclas con título), canales de TV/radio, vídeos recientes y acciones de mpvd; escribe para filtrar (sin acentos); con transcripción IA, sección **Diálogo** (búsqueda semántica multilingüe, Enter salta al momento) |
 | `alt+h` | Recientes / continuar viendo (Tab sobre un elemento: olvidar) |
-| `ctrl+m` | Más opciones: menú de uosc agrupado (Ver, Audio, Subtítulos, Velocidad, Repetir…) |
 
 ### Moverse por los menús
 Todos los menús de MPV-UOS son uno solo: el título lleva las migas («MPV-UOS › TV y radio › España») y la primera fila es

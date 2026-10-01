@@ -1,5 +1,53 @@
 # PROGRESS
-ESTADO_GLOBAL: COMPLETADO
+ESTADO_GLOBAL: EN_CURSO
+
+## Resumen para Ser (2026-10-02, iteración 7) · H42-H46
+De tu segunda prueba salieron cinco hitos. **Están los cinco**, menos una pieza del de la sala que digo al final.
+
+- **H42 · Una sola puerta para abrir y descargar.** Antes había seis sitios para lo mismo y tenías que saber de
+  antemano qué ibas a pegar. Ahora hay **un campo** (`ctrl+o`, o la primera fila del menú) donde cabe lo que sea: un
+  enlace, veinte, una lista, un canal entero, la ruta de un archivo o de una carpeta, un `.txt` con enlaces o, si lo
+  dejas en blanco, lo que tengas copiado. Te dice **cuántas cosas** hay y hace **una sola pregunta: reproducir o
+  descargar**. Si eliges descargar, caes en la pantalla de siempre. Y todo enlace que haya que llevarse a otro
+  aparato (la sala, el mando del móvil, el panel de descargas) tiene su botón de copiar.
+- **H43 · Grabar: ahora eliges el formato.** Una fila, y se recuerda: *igual que el original* (MKV, el que nunca
+  falla), *MP4 si los códecs lo permiten* —la fila te dice si los de ese vídeo caben, y si no caben te avisa y graba
+  en MKV en vez de dejarte un fichero roto— o *solo el audio*. **Programar una grabación** ya no está escondido
+  detrás de un Tab: está en *TV y radio* y en *Grabar*. Y **las emisoras de radio también se pueden programar**.
+- **H45 · El resumen ya funciona en los vídeos de internet**, que es lo que echabas en falta. No estaba roto: se
+  quedaba sin palabras, porque un vídeo de YouTube no trae subtítulos cargados. Ahora, al pulsar, se piden los que
+  ofrece la web: **cinco segundos**, frente a los ocho minutos que tardaría transcribirlo. Y deja de estar
+  escondido: **«Resumen e índice»** está en la raíz del menú (cuando hay algo que ver) y en el panel de subtítulos.
+- **H44 · La sala.** Tu queja era que el vídeo tardaba mucho desde el móvil: la retransmisión **empezaba en el
+  segundo 0** de la película y tú ibas por el minuto 40, así que el invitado esperaba a que el empaquetado llegara
+  hasta ti. Eran **~18 minutos**. Ahora empieza donde vas tú y lo dice. Además, si lo que compartes es un archivo de
+  tu equipo, el invitado puede **abrirlo en su propio reproductor** (copiar el enlace, bajar un `.m3u` o pegar una
+  línea en un terminal) y lo ve **como es**, sin recomprimir nada: primer fotograma en 0,36 s y saltos en 0,07 s. De
+  paso se arregló un fallo real: el servidor cargaba el fichero **entero en memoria** por cada petición (una película
+  de 4 GB habrían sido 4 GB).
+- **H46 · Un solo menú.** Había un segundo menú escondido en `ctrl+m` con **119 entradas** y cuatro cosas repetidas.
+  Fuera. Antes de quitarlo se revisó entrada por entrada: dos cosas vivían solo allí (*repetir la lista* y *orden
+  aleatorio*) y se trajeron al menú bueno.
+
+### Lo que falta y por qué
+- **El nombre (H41)**: lo decides tú. Está en `brand.json` y en ningún otro sitio.
+- **H44/C6 · unirse a la sala desde MPV-UOS** (no solo desde el navegador): es la única forma de que «ver juntos» sea
+  **exacto y a calidad original**, porque los dos extremos serían código nuestro y el mpv del invitado seguiría tus
+  pausas y saltos por el canal que ya existe. No está hecho. Hoy, con el `.m3u`, el invitado ve la película perfecta
+  pero se sincroniza a mano (la página le dice por dónde vas, con un botón para copiar esa posición).
+- **H44/C8** (nuevo, menor): remux `-c copy` en vez de recodificar para el navegador. Ahorraría CPU de tu equipo
+  (9,64 s para 115 min frente a 2,2× tiempo real), pero ya no arregla nada roto: con C5 la espera desapareció.
+
+### Cómo probar lo de esta iteración a mano
+```bash
+cd ~/Documentos/PROJECTES/MPV-UOS
+mpv-uos                                   # ctrl+o: pega un enlace, dos, una lista o una ruta → reproducir o descargar
+mpv-uos 'https://www.youtube.com/watch?v=aqz-KE-bpKQ'   # alt+R resumen (pide los subtítulos de la web) · alt+I índice
+mpv-uos tests/fixtures/media/video30.mkv  # alt+r graba · en «Grabar» cambia Formato a MP4 y vuelve a grabar
+mpv-uos                                   # alt+t → «Programar una grabación…» y elige una RADIO
+mpv-uos ~/Vídeos/alguna-pelicula.mkv      # alt+W crea la sala; en el móvil, «Abrir en mi reproductor»
+alt+m                                     # el menú: ocho categorías; ctrl+m ya no abre nada
+```
 
 ## Resumen final para Ser (2026-10-01, iteración 6)
 Todo el BACKLOG está hecho salvo **el nombre, que decides tú** (H41). De tu prueba real salieron siete hitos nuevos y
@@ -123,32 +171,69 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-Iteración 6 (2026-10-01): Ser probó el reproductor de verdad y de ahí salieron **H35-H41**. Están hechos **H35, H36,
-H37, H38, H39 y H40** (cada uno con su ADR: 070-076). De H41 (el nombre) decides tú.
+Iteración 7 (2026-10-02): hechos **H42, H43, H45, H44 y H46** en ese orden, con sus ADR (077-083). Lo que queda, por
+orden de valor:
 
-Después Ser volvió a probar y pidió dos análisis, que están escritos en **docs/ANALISIS-SALA-E-INTERFAZ.md** con todo
-medido en este equipo: la sala para ver juntos (seis opciones comparadas, WebTorrent incluido) y la interfaz entera.
-De ahí salen **H42-H46**, ya en BACKLOG.md y sin empezar. El orden recomendado es ese: H42 (una sola puerta para abrir
-y descargar, y botones de copiar) es el que más se nota al usar el programa; H44 (la sala) arregla además un fallo real
-de memoria en `mpvd/share/service.py::_file()`, que carga el fichero entero en RAM; H45 son cinco segundos de trabajo
-para que el resumen funcione en los vídeos de internet, que es lo que Ser esperaba encontrar y no estaba.
+1. **H44/C6 · unirse a la sala desde MPV-UOS.** Es lo único de H42-H46 que falta y es la pieza que convierte «abrir en
+   tu reproductor» en «ver juntos exacto a calidad original». Lo que hay que hacer, concreto: `mu-share` solo sabe ser
+   **anfitrión** (`views.guest` es la ficha de un invitado *vista desde* el anfitrión, no el modo invitado). Hace falta
+   (a) que `bin/mpv-uos` reconozca una URL de sala `http(s)://…/s/<id>#k=<token>` y la pase a un modo invitado en vez
+   de a yt-dlp; (b) un `share.join {url}` en mpvd que haga el `api/join`, guarde la cookie y abra el SSE de
+   `/s/<id>/events`; (c) que ese modo cargue `…/s/<id>/file?k=<credencial>` (ya existe, H44/C2) y aplique del SSE
+   `pos`, `paused` y `speed` al mpv del invitado con la misma corrección de deriva que hace `sync.js`. Lo barato es que
+   los dos extremos son nuestros: el formato de los eventos está en `mpvd/share/service.py::_state_msg` y la
+   corrección, ya escrita y probada, en `mpvd/share/www/sync.js`.
+2. **H44/C8 · remux `-c copy`** a fMP4/WebM para el navegador cuando los códecs lo permitan, en vez de recodificar:
+   9,64 s para 115 min frente a 2,2× tiempo real. Ahorra CPU del anfitrión; no arregla nada roto.
+3. **H41 · el nombre**: decisión de Ser, en `brand.json`.
 
-Lo más importante que salió de medir, para no repetirlo: **la subida de esta casa es de ~167 Mb/s**, así que el
-problema de la sala no es la red sino que el relay empieza en el segundo 0 y recodifica a 2,2× tiempo real. Servir el
-fichero original y dejar que el invitado lo abra en su propio mpv o VLC arranca en 0,36 s y salta en 0,07 s, sin gastar
-CPU ni perder calidad.
-
-Para elegirlo: la lista está en BACKLOG.md (Lince, Cauce, Lumbre, Mirador, Compás, Querencia) y el nombre vive en un
-solo sitio, `brand.json`. Cambiarlo ahí lo cambia en todas partes (menús, carpeta de usuario, icono, PWA, instalador).
-
-Lo que haría falta de ti, por orden de lo que más desbloquea (todo está en NEEDS_HUMAN.md):
-1. **Una orden con sudo, una vez**, para que el reproductor pueda despertar el equipo antes de una grabación programada.
-2. **Usuario y contraseña de OpenSubtitles** (la Api-Key sola basta para buscar, pero no para descargar).
-3. **Una clave gratuita de Subdl** si quieres un tercer sitio de subtítulos (Podnapisi ya no existe: lo comprobé).
-Antes de empezar otra iteración, `tools/check.sh` **con el portátil libre**: con carga alta fallan por tiempo los tests
-de Whisper y, a veces, los de navegación por teclas.
+Avisos para quien siga, todos aprendidos a golpes en esta iteración:
+- **uosc deriva el id de un submenú de su TÍTULO** (`elements/Menu.lua:192`). Dos filas hermanas con el mismo título
+  comparten id y uosc **revienta al pintar** el menú (`clamp(0, pos, nil)` en `set_scroll_to`), dejándolo inservible.
+  Si una fila lleva `items` y su título sale de datos, **ponle `id`** (ADR-080).
+- **LuaJIT no mira hacia adelante**: una función usada antes de definirse se resuelve como variable global (= nil) y
+  `luajit -bl` no lo detecta, solo `luacheck`. Declárala arriba (`local open_root`) y asígnala después.
+- **No partas un fichero Lua por `split('\n}')`** para insertar en una tabla: hay muchos `\n}` y se mete en la tabla
+  de al lado (me pasó con CURATED y ACTIONS, y una vez me dejó el fichero sin la primera mitad). Ancla por texto único
+  y comprueba el resultado con `luacheck`, no solo con `luajit -bl`.
+- **Tests sensibles a la carga**: con otro proyecto ocupando ~3 de los 4 núcleos fallan por tiempo entre 2 y 4 tests
+  por pasada, y **no son siempre los mismos** (los de Whisper, `test_nav`, `test_mu_share`, `test_mu_av`,
+  `test_robustness`, `test_mu_feeds`, `test_prefs`, `test_recap`). Todos pasan al repetirlos aislados. Antes de
+  dar por roto algo, repítelo solo.
 
 ## Registro por iteración
+### Iteración 7 · 2026-10-02 · H42-H46 · La interfaz y la sala — hecho (falta H44/C6)
+- **H42 · Una sola puerta** (ADR-077). `mu-ytdl` vista `gate` (`ctrl+o`, y primera fila de *Abrir o descargar*):
+  clasifica lo pegado —varios enlaces, uno, uno sin esquema, una ruta, una carpeta, un `.txt`/`.list`/`.urls`/`.csv`
+  o el portapapeles entero— y luego hace **una** pregunta. A mpvd solo se le pregunta cuántos elementos trae si la
+  URL **huele a lista** (`list=`, `/playlist`, `/@algo`, `/channel/`…): un vídeo suelto no necesita red para decir
+  «1 elemento», y la respuesta se reutiliza en la pantalla de descarga. La extensión y el tamaño se miran **antes**
+  de leer el archivo (el código anterior le pasaba cualquier ruta a `read_links`, que leía el fichero entero: 4 GB
+  en memoria con una película). `mu/clip.lua` unifica el portapapeles, que estaba escrito tres veces.
+- **ADR-078 (fallo real encontrado de paso).** `mu-menu` borraba su pila al ver el `nil` que uosc publica mientras
+  **sustituye** un menú por otro, así que al volver de un módulo el siguiente `⌫` cerraba todo en vez de subir un
+  nivel. Se veía como un test intermitente (`test_nav`), no como un fallo.
+- **H43 · Grabar** (ADR-079). Fila «Formato» que se recuerda, y que dice de antemano si los códecs caben en MP4.
+  «Grabar solo el audio» deja de ser una fila aparte: era la misma elección contada dos veces. «Programar una
+  grabación…» al primer nivel de TV y radio y de Grabar. **Ojo**: de las dos condiciones que el análisis señalaba
+  para la radio, solo una lo impedía; la otra es el filtro de la guía de TV, que la radio no tiene.
+- **ADR-080 (fallo real).** uosc deriva el id de un submenú de su **título**: dos grabaciones programadas del mismo
+  canal compartían id y uosc reventaba al pintar el menú. Se arregla con el `id` explícito que admite su API, en las
+  tres listas donde el título sale de datos.
+- **H45 · El resumen en los vídeos de internet** (ADR-081). Se piden los subtítulos de la web al pulsar (5,41 s
+  medidos frente a ~8 min de Whisper), solo en idiomas nativos (las traducciones automáticas de YouTube dan 429) y
+  con caché. **No** se añade `write-auto-subs` a `mpv.conf`: con `--sub-langs all` el `-J` pasa a 14 MB por vídeo.
+  «Resumen e índice» pasa a la raíz y al panel de subtítulos, y sale de «Herramientas».
+- **H44 · La sala** (ADR-082). C1 (el handler lee por trozos; 300 MB servidos sin que crezca el RSS), C2/C3 (el
+  fichero original, el `.m3u` y la credencial del invitado en la query, porque mpv y VLC no mandan la cookie),
+  C4 (códecs + contenedor + **dónde está el `moov`**: «es un MP4» no vale), C5 (el relay empieza donde va el
+  anfitrión: era la causa de los ~18 min) y C7 (WebTorrent, no-objetivo, con los números). **Falta C6**.
+- **H46 · Un solo menú** (ADR-083). Fuera el árbol de comentarios de `input.conf` (119 entradas, 40 en el primer
+  nivel, cuatro cosas repetidas) y la tecla que lo abría. Antes de borrarlo: dos cosas vivían **solo** allí
+  (repetir la lista, orden aleatorio) y la **paleta leía de ahí sus títulos**, así que los 67 que faltaban pasaron a
+  `CURATED`, con la tecla leída del reproductor. Tres tests impiden que vuelva.
+- Probar a mano: los comandos están arriba, en el resumen de la iteración 7.
+
 ### Iteración 6 · 2026-10-01 · H37-H40 · Descargas, TV, resumen y energía — hecho
 - **H37 · Descargar por una sola puerta** (ADR-072). Antes había que saber de antemano si lo tuyo era «varias URL» o «una
   lista o canal»; ahora hay una fila, *Descargar…*, y pegas lo que sea: un enlace, veinte, una lista, un canal o un

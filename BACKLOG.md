@@ -428,9 +428,12 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
       viendo, así que la raíz sigue con ocho categorías—, en el panel de subtítulos y en Subtítulos. Sale de
       «Herramientas», donde estaba en el tercer nivel.
 
-## H46 · Un solo menú (§B.1, §B.3)
-- [ ] E1 Retirar el árbol `#!` de input.conf (119 entradas, 40 en el primer nivel) y dejar `input.conf` solo para las
-      teclas. mu-menu pasa a ser el único menú.
-- [ ] E2 Quitar las cuatro duplicaciones (Biblioteca, Música, Audiolibros, Saltar intro aparecen dos veces).
-- [ ] E3 Raíz de ocho filas o menos, nombradas por lo que quieres hacer. Lo que solo sirve para el archivo que estás
-      viendo va a la pantalla o al panel de su función, no a la raíz.
+## H46 · Un solo menú (§B.1, §B.3) — ADR-083
+- [x] E1 Retirado el árbol de comentarios de menú de `input.conf`, que ahora tiene 78 teclas y nada más; fuera la
+      tecla que abría el menú nativo de uosc. Dos cosas vivían SOLO allí (*Repetir la lista* y *Orden aleatorio*) y
+      se trajeron antes de borrar. Y la paleta leía de ahí los títulos: los 67 que faltaban pasan a `CURATED`, con
+      la tecla leída del reproductor para que no se quede vieja.
+- [x] E2 Las cuatro duplicaciones estaban en ese árbol y se van con él. Un test impide que ninguna vista de
+      `mu-menu` repita un título.
+- [x] E3 Raíz de ocho categorías (lo comprueba el mismo test). Lo que solo sirve para el archivo que se está viendo
+      («Continuar viendo», «Resumen e índice») va como fila contextual, no como categoría fija.

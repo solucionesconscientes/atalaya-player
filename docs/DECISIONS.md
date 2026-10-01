@@ -775,3 +775,22 @@
   mío más un tracker más a veces un TURN». Se revisaría solo si (a) la subida medida bajara de ~20 Mb/s o (b) las
   salas pasaran de ~15 personas; y si algún día se hace, el camino correcto es el torrent normal con cualquier
   reproductor, no WebTorrent, porque WebTorrent hereda las limitaciones del navegador sin quitar ninguna.
+- ADR-083 · Un solo menú: fuera el árbol de comentarios de `input.conf` (H46). **Sustituye** la parte de ADR-016 que
+  decía «`ctrl+m` conserva el menú completo que uosc genera de input.conf» y la de ADR-018 que hacía la paleta leer
+  los títulos de esos comentarios; el resto de los dos sigue en pie. **Qué había**: los comentarios `#!` de
+  `input.conf` construían un **segundo menú**, el nativo de uosc (`ctrl+m`), con **119 entradas y 40 en el primer
+  nivel**, peor que el nuestro y donde se colaban las duplicaciones: Biblioteca, Música, Audiolibros y Saltar intro
+  aparecían **dos veces**, una como entrada suelta y otra como submenú. **Qué se hace**: `input.conf` se queda solo
+  para las teclas (78, cero marcas de menú), desaparece la tecla que abría el otro menú y el único es `mu-menu`
+  (tecla MENU, clic derecho, `alt+m` y el botón ▦), con ocho categorías en la raíz. Dos cosas que hubo que resolver
+  antes de retirarlo, y que son el motivo de que esto no fuera un simple borrado:
+  (1) **43 de esas líneas no tenían tecla**: existían solo para poner una entrada en aquel menú. Se revisaron una a
+  una contra los menús de cada módulo; todas estaban ya cubiertas **salvo dos**, *Repetir la lista* y *Orden
+  aleatorio de la lista*, que se han traído a «Herramientas» y a la paleta. Si no, se habrían perdido.
+  (2) **La paleta (`alt+p`) leía los títulos de esos mismos comentarios** (`input-bindings` → campo `comment` →
+  `^!`), así que borrarlos la habría dejado con los 26 comandos de su lista curada en vez de 93. Los 67 títulos que
+  faltaban se han pasado a `CURATED`, en español y en un solo sitio, y la **tecla** se sigue leyendo del reproductor
+  (`input-bindings` por comando) en vez de escribirse en la tabla, para que no se quede vieja cuando cambie
+  `input.conf`. Tres tests nuevos lo sostienen: `input.conf` no puede volver a llevar marcas de menú ni líneas sin
+  tecla, ninguna vista de `mu-menu` puede repetir un título (con la raíz de ocho o menos), y **ninguna tecla puede
+  quedarse sin nombre** en la paleta o en algún menú, que era justo lo fácil de olvidar.

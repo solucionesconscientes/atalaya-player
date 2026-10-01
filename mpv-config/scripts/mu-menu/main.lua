@@ -429,10 +429,11 @@ views.tools = function()
     child('Enviar a la tele', 'alt+E', 'cast', 'mu_cast', 'cast-menu', { separator = true }),
     bind('Capítulos', 'c', 'bookmark', 'uosc/chapters'),
     cmd('Repetir este archivo', 'L', 'repeat_one', { 'cycle-values', 'loop-file', 'inf', 'no' }),
+    cmd('Repetir la lista', nil, 'repeat_on', { 'cycle-values', 'loop-playlist', 'inf', 'no' }),
+    bind('Orden aleatorio de la lista', nil, 'shuffle', 'uosc/shuffle'),
     bind('Mostrar en la carpeta', 'alt+o', 'folder', 'uosc/show-in-directory', { separator = true }),
     { title = 'Estado del reproductor', icon = 'monitor_heart', value = { action = 'status' } },
     bind('Todas las teclas', nil, 'keyboard', 'uosc/keybinds'),
-    bind('Todas las opciones de mpv', 'ctrl+m', 'menu', 'uosc/menu'),
   })
 end
 
@@ -588,6 +589,77 @@ local CURATED = {
   { title = 'Desentrelazar', cmd = 'cycle deinterlace', key = 'd' },
   { title = 'Guardar posición y salir', cmd = 'quit-watch-later', key = 'Q' },
   { title = 'Restablecer preferencias', cmd = 'script-message-to mu_prefs reset-ask' },
+  -- Los títulos de las teclas. Hasta H46 los daba el comentario `#!` de input.conf, que de paso construía
+  -- un segundo menú; ahora viven aquí, en un solo sitio y en español. La tecla no se escribe: se lee.
+  { title = 'Abrir URL o ruta copiada (portapapeles)', cmd = 'loadfile "${clipboard/text}" replace' },
+  { title = 'Abrir URL…', cmd = 'script-binding mu_ytdl/open-url' },
+  { title = 'Abrir archivo', cmd = 'script-binding uosc/open-file' },
+  { title = 'Abrir carpeta de configuración', cmd = 'script-binding uosc/open-config-directory' },
+  { title = 'Abrir o descargar (enlace, archivo, lista, carpeta)', cmd = 'script-binding mu_ytdl/ytdl-gate' },
+  { title = 'Audio › Pistas de audio', cmd = 'script-binding uosc/audio' },
+  { title = 'Audiolibros › Adelante 30 s', cmd = 'script-binding mu_books/forward-30' },
+  { title = 'Audiolibros › Atrás 30 s', cmd = 'script-binding mu_books/back-30' },
+  { title = 'Audiolibros y podcasts (capítulos, marcadores, temporizador)',
+    cmd = 'script-binding mu_books/books-menu' },
+  { title = 'Biblioteca (películas, series, seguir viendo, carpetas)', cmd = 'script-binding mu_library/library-menu' },
+  { title = 'Buscar en YouTube', cmd = 'script-binding mu_ytdl/yt-search' },
+  { title = 'Captura de pantalla', cmd = 'async screenshot' },
+  { title = 'Capítulos', cmd = 'script-binding uosc/chapters' },
+  { title = 'Compartir › Mostrar / ocultar el QR de la sala', cmd = 'script-binding mu_share/share-qr' },
+  { title = 'Compartir › Ver juntos (sala, invitados, cerrar)', cmd = 'script-binding mu_share/share-menu' },
+  { title = 'Convertir › Convertir vídeo o audio (archivo o carpeta)', cmd = 'script-binding mu_convert/convert-menu' },
+  { title = 'Convertir › Tareas (descargas y conversiones)', cmd = 'script-binding mu_convert/tasks-menu' },
+  { title = 'Ediciones', cmd = 'script-binding uosc/editions' },
+  { title = 'Enviar a la tele (DLNA: elegir tele, pausar, seguir aquí)', cmd = 'script-binding mu_cast/cast-menu' },
+  { title = 'Estudio › Exportar clip del bucle A-B / línea', cmd = 'script-binding mu_study/clip' },
+  { title = 'Estudio › Menú (repetir, velocidad inteligente, notas, clips)', cmd = 'script-binding mu_study/study-menu' },
+  { title = 'Estudio › Nota con enlace de tiempo', cmd = 'script-binding mu_study/note' },
+  { title = 'Estudio › Repetir la línea anterior', cmd = 'script-binding mu_study/repeat-prev' },
+  { title = 'Estudio › Repetir la línea de subtítulo actual', cmd = 'script-binding mu_study/repeat-line' },
+  { title = 'Estudio › Repetir la línea siguiente', cmd = 'script-binding mu_study/repeat-next' },
+  { title = 'Estudio › Velocidad inteligente (acelera silencios)', cmd = 'script-binding mu_study/smart-speed' },
+  { title = 'Grabar › Grabar desde ahora / detener (directo, vídeo o archivo)', cmd = 'script-binding mu_record/record-toggle' },
+  { title = 'Letra de la canción (y ¿qué canción es?)', cmd = 'script-binding mu_lyrics/lyrics-menu' },
+  { title = 'Lista de reproducción', cmd = 'script-binding uosc/playlist' },
+  { title = 'MPV-UOS › Ayuda (teclas principales)', cmd = 'script-binding mu_menu/help' },
+  { title = 'MPV-UOS › Buscar comandos, canales y recientes', cmd = 'script-binding mu_menu/palette' },
+  { title = 'MPV-UOS › Menú principal', cmd = 'script-binding mu_menu/root' },
+  { title = 'MPV-UOS › Recientes / continuar viendo', cmd = 'script-binding mu_menu/recents' },
+  { title = 'Mando a distancia › Menú (estado, móviles, olvidar)', cmd = 'script-binding mu_remote/remote-menu' },
+  { title = 'Mando a distancia › Mostrar / ocultar QR para el móvil', cmd = 'script-binding mu_remote/remote-qr' },
+  { title = 'Mis notas (saltar al minuto, editar, borrar, exportar)', cmd = 'script-binding mu_notes/notes-menu' },
+  { title = 'Modos › Mini reproductor (ventana pequeña encima)', cmd = 'script-binding mu_modes/mini-toggle' },
+  { title = 'Mostrar en la carpeta', cmd = 'script-binding uosc/show-in-directory' },
+  { title = 'Música (artistas, álbumes, géneros, listas, cola)', cmd = 'script-binding mu_music/music-menu' },
+  { title = 'Repetir › Repetir este archivo', cmd = 'cycle-values loop-file "inf" "no"' },
+  { title = 'Resumen e índice › ¿Qué me he perdido? (lo que se dijo)', cmd = 'script-binding mu_recap/recap' },
+  { title = 'Resumen e índice › Índice del vídeo (secciones, cada una a su minuto)', cmd = 'script-binding mu_recap/outline' },
+  { title = 'Salir', cmd = 'script-binding mu_core/quit-ask' },
+  { title = 'Saltar intro / créditos', cmd = 'script-binding mu_intro/skip' },
+  { title = 'Saltar intro / créditos › Menú (segmentos, automático)', cmd = 'script-binding mu_intro/intro-menu' },
+  { title = 'Sonido e imagen › Menú (filtros, diagnóstico)', cmd = 'script-binding mu_av/av-menu' },
+  { title = 'Sonido e imagen › Modo noche', cmd = 'script-binding mu_av/av-night' },
+  { title = 'Subtítulos › Cargar archivo de subtítulos', cmd = 'script-binding uosc/load-subtitles' },
+  { title = 'Subtítulos › Crear con IA: iniciar / detener', cmd = 'script-binding mu_subs/subs-toggle' },
+  { title = 'Subtítulos › Cuadrar la pista con la voz', cmd = 'script-binding mu_subs/subs-resync' },
+  { title = 'Subtítulos › Guardar subtítulos (SRT)', cmd = 'script-binding mu_subs/subs-save' },
+  { title = 'Subtítulos › Mostrar / ocultar los secundarios', cmd = 'cycle secondary-sub-visibility' },
+  { title = 'Subtítulos › Panel (pistas, internet, crear con IA)', cmd = 'script-binding mu_subs/subs-menu' },
+  { title = 'Subtítulos › Pistas de subtítulos', cmd = 'script-binding uosc/subtitles' },
+  { title = 'Suscripciones › Canales, listas y podcasts (añadir, reglas)',
+    cmd = 'script-binding mu_feeds/feeds-menu' },
+  { title = 'TV y radio › Buscar canal o emisora', cmd = 'script-binding mu_iptv/tv-search' },
+  { title = 'TV y radio › Canal anterior', cmd = 'script-binding mu_iptv/zap-prev' },
+  { title = 'TV y radio › Canal siguiente', cmd = 'script-binding mu_iptv/zap-next' },
+  { title = 'TV y radio › Guía del canal que estás viendo', cmd = 'script-binding mu_iptv/tv-guide' },
+  { title = 'TV y radio › Menú de canales', cmd = 'script-binding mu_iptv/tv-menu' },
+  { title = 'Ver › Calidad del stream', cmd = 'script-binding uosc/stream-quality' },
+  { title = 'Ver › Relación de aspecto', cmd = 'cycle-values video-aspect-override "16:9" "4:3" "2.35:1" "-1"' },
+  { title = 'Vídeos de internet › Calidad', cmd = 'script-binding mu_ytdl/ytdl-quality' },
+  { title = 'Vídeos de internet › Descargar', cmd = 'script-binding mu_ytdl/ytdl-download' },
+  { title = 'Vídeos de internet › Descargas', cmd = 'script-binding mu_ytdl/ytdl-downloads' },
+  { title = 'Vídeos de internet › Menú (calidad, descargas)', cmd = 'script-binding mu_ytdl/ytdl-menu' },
+  { title = 'Vídeos de internet › Solo audio / vídeo', cmd = 'script-binding mu_ytdl/ytdl-toggle-audio' },
 }
 
 local ACTIONS = {
@@ -599,25 +671,30 @@ local ACTIONS = {
   { title = 'Suscripciones', icon = 'subscriptions', cmd = { 'script-binding', 'mu_feeds/feeds-menu' } },
   { title = 'Estado de mpvd', icon = 'monitor_heart', action = 'status' },
   { title = 'Relanzar mpvd', icon = 'restart_alt', cmd = { 'script-message-to', 'mu_core', 'mu-ensure' } },
+
 }
 
 local commands_cache = nil
+
+-- H46/E1 · la tecla de cada comando se lee del reproductor, no se escribe en la tabla: así no se queda vieja
+-- cuando se cambia input.conf. Antes el TÍTULO también salía de ahí (del comentario `#!`), y ese comentario
+-- montaba de paso un segundo menú; al retirarlo los títulos pasan a CURATED, que es donde se leen y se cuidan.
+local function keys_by_cmd()
+  local out = {}
+  for _, b in ipairs(mp.get_property_native('input-bindings') or {}) do
+    if b.cmd and b.cmd ~= 'ignore' and not b.is_weak and b.key and not out[b.cmd] then out[b.cmd] = b.key end
+  end
+  return out
+end
+
 local function commands()
   if commands_cache then return commands_cache end
   local list, seen = {}, {}
-  for _, b in ipairs(mp.get_property_native('input-bindings') or {}) do
-    local comment = b.comment or ''
-    local title = comment:match('^!%s*(.+)$')
-    if title and b.cmd and b.cmd ~= 'ignore' and not b.is_weak and not seen[b.cmd] then
-      seen[b.cmd] = true
-      title = title:gsub('%s*>%s*', ' › ')
-      table.insert(list, { title = title, cmd = b.cmd, key = b.key or '' })
-    end
-  end
+  local keys = keys_by_cmd()
   for _, c in ipairs(CURATED) do
     if not seen[c.cmd] then
       seen[c.cmd] = true
-      table.insert(list, { title = c.title, cmd = c.cmd, key = c.key or '', kw = c.kw })
+      table.insert(list, { title = c.title, cmd = c.cmd, key = keys[c.cmd] or c.key or '', kw = c.kw })
     elseif c.kw then
       for _, l in ipairs(list) do if l.cmd == c.cmd then l.kw = c.kw end end
     end

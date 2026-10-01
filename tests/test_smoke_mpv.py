@@ -19,9 +19,12 @@ def test_uosc_is_detected_and_registers_bindings(mpv_headless):
     core = mpv_headless.wait_property("user-data/mu/core", lambda v: bool(v and v.get("uosc")))
     assert core["uosc_version"] == "5.13.0"
     bindings = mpv_headless.get("input-bindings")
-    uosc_cmds = {b["cmd"] for b in bindings if "uosc" in b.get("cmd", "")}
-    assert "script-binding uosc/menu" in uosc_cmds
-    assert len(uosc_cmds) >= 10
+    cmds = {b.get("cmd", "") for b in bindings}
+    uosc_cmds = {c for c in cmds if "uosc" in c}
+    assert "script-binding uosc/subtitles" in uosc_cmds and len(uosc_cmds) >= 10
+    # H46 · el menú nativo de uosc ya no tiene tecla: el único menú es el nuestro
+    assert "script-binding uosc/menu" not in cmds
+    assert "script-binding mu_menu/root" in cmds
 
 
 def test_plays_test_media_headless(mpv_headless, media_dir: Path, media_manifest):

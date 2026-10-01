@@ -111,9 +111,11 @@ def test_palette_and_start_screen(tv, media_dir):  # noqa: F811
 
         h.command("script-binding", "mu_menu/palette")
         h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-palette", timeout=15)
-        st = wait_menu(h, "palette", lambda v: v.get("palette_results", 0) > 0)
+        # H46: los comandos salen al instante de la tabla propia (antes se leían de `input-bindings`, que tarda un
+        # momento en estar), así que hay que esperar a lo que viene de mpvd y no a «haya algún resultado»
+        st = wait_menu(h, "palette", lambda v: "Recientes" in titles(v) and "Película de prueba" in titles(v))
         t = titles(st)
-        assert "Comandos" in t and "Recientes" in t and "Película de prueba" in t  # empty query: recents + top commands
+        assert "Comandos" in t  # empty query: recents + top commands
 
         send_event(h, {"type": "search", "query": "captura"})
         st = wait_menu(h, "palette", lambda v: v.get("palette_query") == "captura" and "Captura de pantalla" in titles(v))

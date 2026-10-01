@@ -19,9 +19,12 @@ Cópialo donde quieras, `chmod +x MPV-UOS-x86_64.AppImage` y ábrelo. Necesita e
 falta, avisa con la orden para instalarlo. Los subtítulos IA y los modelos se descargan la primera vez que se usan.
 
 ## 1. Moverse por la interfaz
-- **Menú MPV-UOS**: botón derecho, tecla `MENU`, `alt+m` o el botón ▦ de la barra. Reúne todo lo de esta guía en ocho
-  categorías: Abrir, TV y radio, Descargas y conversión, Subtítulos, Imagen y sonido, Grabar, Herramientas y Preferencias
-  (arriba, *Continuar viendo* si hay algo a medias).
+- **Menú MPV-UOS**: botón derecho, tecla `MENU`, `alt+m` o el botón ▦ de la barra. Es **el único menú que hay** y
+  reúne todo lo de esta guía en ocho categorías: Abrir o descargar, TV y radio, Descargas y conversión, Subtítulos,
+  Imagen y sonido, Grabar, Herramientas y Preferencias. Arriba aparecen, solo cuando sirven de algo, *Continuar
+  viendo* y *Resumen e índice* de lo que estás viendo.
+  (Hasta ahora había un segundo menú escondido en `ctrl+m`, con 119 entradas y cuatro cosas repetidas: se retiró, y
+  lo que solo estaba allí está ahora aquí.)
 - **Un solo menú**: el título dice dónde estás («MPV-UOS › Subtítulos › Subtítulos del vídeo»); la primera fila, **Atrás**, vuelve un
   nivel, igual que `⌫` o `←`; `Esc` cierra. Desde la raíz de cualquier módulo (aunque lo abras con su tecla) *Atrás* te lleva al
   menú principal. Las paletas de búsqueda (`ctrl+u`, `ctrl+f`, `alt+f`) se cierran con `⌫` cuando están vacías.
