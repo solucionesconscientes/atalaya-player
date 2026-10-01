@@ -33,39 +33,49 @@ def argv_for(arglog, url, timeout=20.0):
     raise AssertionError(f"no yt-dlp download for {url}")
 
 
-def test_batch_list_with_checkboxes_and_settings(ytdl_mpv):
+def test_una_sola_puerta_lista_con_casillas_y_ajustes(ytdl_mpv):
+    """H37/D1-D3: una sola fila «Descargar…»; se pega lo que sea y sale una lista con casillas, el formato de todos en
+    la primera fila y el de cada uno en su acción."""
     h, d, arglog, _tmp = ytdl_mpv
     h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
     h.command("script-binding", "mu_ytdl/ytdl-menu")
-    ytdl_state(h, lambda v: v.get("view") == "root" and
-               {"Descargar varias URL…", "Descargar de una lista o canal…", "Ajustes de descarga"} <= set(titles(v)))
+    st = ytdl_state(h, lambda v: v.get("view") == "root" and "Descargar…" in titles(v))
+    # D1: ya no hay dos puertas distintas según lo que vayas a pegar
+    assert "Descargar varias URL…" not in titles(st) and "Descargar de una lista o canal…" not in titles(st)
+    puerta = next(i for i in st["items"] if i["title"] == "Descargar…")
 
-    # several URLs pasted at once (repeats dropped) → one download each
-    send_event(h, {"type": "activate", "index": 1, "value": {"view": "batch"}})
+    # varios enlaces pegados (los repetidos se descartan) → una lista con casillas
+    send_event(h, {"type": "activate", "index": 1, "value": puerta["value"]})
     h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-ytdl-batch", timeout=10)
     batch_event(h, {"type": "search", "query": "https://fake.test/uno https://fake.test/dos, https://fake.test/uno"})
-    st = ytdl_state(h, lambda v: "Descargar 2 enlaces · vídeo" in titles(v))
-    batch_event(h, {"type": "activate", "index": 1, "value": {"batch": "video"}})
+    st = ytdl_state(h, lambda v: "Elegir de 2 enlaces" in titles(v))
+    elegir = next(i for i in st["items"] if i["title"] == "Elegir de 2 enlaces")
+    batch_event(h, {"type": "activate", "index": 1, "value": elegir["value"]})
+    st = ytdl_state(h, lambda v: v.get("view") == "picklist" and "Descargar 2" in titles(v), timeout=40)
+    assert titles(st)[0].startswith("Para todos: ") and st["pick"]["total"] == 2 and st["pick"]["marked"] == 2
+    assert next(i for i in st["items"] if i["title"] == "Subtítulos (SRT) aparte")["hint"] == "no"
+    send_event(h, {"type": "activate", "index": 4, "value": {"pick_download": True}})
     wait_view(h, "downloads")
     for url in ("https://fake.test/uno", "https://fake.test/dos"):
         a = argv_for(arglog, url)
         assert "--download-archive" in a
     d.wait(lambda: sum(1 for r in d.call("ytdl.downloads.list") if r["status"] == "done") >= 2, timeout=60)
 
-    # a list: every entry checked at first; unmark the 2nd → only 1,3,4,5 in a numbered folder
+    # una lista: cada entrada con su casilla; se desmarca la 2ª → solo 1,3,4,5 en una carpeta numerada
     h.command("script-binding", "mu_ytdl/ytdl-menu")
     wait_view(h, "root")
-    send_event(h, {"type": "activate", "index": 2, "value": {"view": "batch", "list": True}})
+    send_event(h, {"type": "activate", "index": 1, "value": puerta["value"]})
     h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-ytdl-batch", timeout=10)
     pl_url = "https://www.youtube.com/playlist?list=PLtest"
     batch_event(h, {"type": "search", "query": pl_url})
-    ytdl_state(h, lambda v: "Ver la lista y elegir" in titles(v))
-    batch_event(h, {"type": "activate", "index": 1, "value": {"pl_url": pl_url}})
-    st = ytdl_state(h, lambda v: v.get("view") == "playlist" and "Descargar 5 · vídeo" in titles(v), timeout=40)
-    assert titles(st)[0] == "Desmarcar todo" and len(st["items"]) == 3 + 5
-    send_event(h, {"type": "activate", "index": 5, "value": {"pl_toggle": 2}})
-    st = ytdl_state(h, lambda v: "Descargar 4 · vídeo" in titles(v))
-    send_event(h, {"type": "activate", "index": 2, "value": {"pl_download": "video"}})
+    st = ytdl_state(h, lambda v: "Ver qué trae y elegir" in titles(v))
+    ver = next(i for i in st["items"] if i["title"] == "Ver qué trae y elegir")
+    batch_event(h, {"type": "activate", "index": 1, "value": ver["value"]})
+    st = ytdl_state(h, lambda v: v.get("view") == "picklist" and "Descargar 5" in titles(v), timeout=40)
+    assert st["pick"]["source"] == "url" and len(st["items"]) == 4 + 5
+    send_event(h, {"type": "activate", "index": 6, "value": {"pick_toggle": 2}})
+    st = ytdl_state(h, lambda v: "Descargar 4" in titles(v) and v["pick"]["marked"] == 4)
+    send_event(h, {"type": "activate", "index": 4, "value": {"pick_download": True}})
     a = argv_for(arglog, pl_url)
     assert a[a.index("--playlist-items") + 1] == "1,3,4,5" and "--yes-playlist" in a
     assert a[a.index("-o") + 1].startswith("%(playlist_title,playlist_id|Lista)s/%(playlist_index)03d - ")
@@ -97,6 +107,70 @@ def test_batch_list_with_checkboxes_and_settings(ytdl_mpv):
     except Exception as exc:  # noqa: BLE001
         assert "navegador" in str(exc)
     assert r["id"]
+    assert h.script_errors() == [], h.script_errors()
+
+
+def test_formato_comun_formato_por_fila_srt_y_lo_que_no_se_puede_bajar(ytdl_mpv):
+    """H37/D2-D4: el formato de todos se cambia en la primera fila, una fila puede llevar el suyo, el SRT se marca
+    global o por fila, y lo que yt-dlp no sabe abrir (los guardados de Instagram) se dice ANTES de intentarlo."""
+    h, d, arglog, _tmp = ytdl_mpv
+    h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
+    h.command("script-binding", "mu_ytdl/ytdl-menu")
+    st = ytdl_state(h, lambda v: v.get("view") == "root" and "Descargar…" in titles(v))
+    puerta = next(i for i in st["items"] if i["title"] == "Descargar…")
+
+    # D4: los guardados de Instagram no tienen extractor → se dice, con la alternativa, y no hay nada que pulsar
+    send_event(h, {"type": "activate", "index": 1, "value": puerta["value"]})
+    h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-ytdl-batch", timeout=10)
+    batch_event(h, {"type": "search", "query": "https://www.instagram.com/sc.tecnico/saved/all-posts/"})
+    st = ytdl_state(h, lambda v: any("guardados de Instagram" in t for t in titles(v)), timeout=30)
+    assert any("copia su enlace" in t for t in titles(st)), titles(st)
+    assert all(i["value"] == "" for i in st["items"]), "no se ofrece nada que vaya a fallar"
+    # y un perfil de TikTok sí se ofrece, recordando lo de las cookies
+    batch_event(h, {"type": "search", "query": "https://www.tiktok.com/@alguien"})
+    st = ytdl_state(h, lambda v: "Ver qué trae y elegir" in titles(v), timeout=30)
+    assert any("navegador" in t for t in titles(st)), titles(st)
+
+    # D2/D3: dos enlaces, el primero en audio Opus y el segundo con el formato de todos (480p) + SRT solo para él
+    batch_event(h, {"type": "search", "query": "https://fake.test/tres https://fake.test/cuatro"})
+    st = ytdl_state(h, lambda v: "Elegir de 2 enlaces" in titles(v))
+    batch_event(h, {"type": "activate", "index": 1,
+                    "value": next(i for i in st["items"] if i["title"] == "Elegir de 2 enlaces")["value"]})
+    st = ytdl_state(h, lambda v: v.get("view") == "picklist" and "Descargar 2" in titles(v), timeout=40)
+
+    # formato de todos → 480p
+    send_event(h, {"type": "activate", "index": 1, "value": {"pick_fmt": "all"}})
+    st = ytdl_state(h, lambda v: v.get("view") == "pickfmt" and "Vídeo · 480p" in titles(v), timeout=30)
+    send_event(h, {"type": "activate", "index": 4, "value": {"pick_choose": {"target": "all", "preset": "video_480"}}})
+    st = ytdl_state(h, lambda v: v.get("view") == "picklist" and v["pick"]["common"] == "video_480", timeout=20)
+    assert titles(st)[0] == "Para todos: Vídeo · 480p"
+
+    # formato solo para la primera fila → audio Opus 128
+    send_event(h, {"type": "activate", "index": 5, "value": {"pick_toggle": 1}, "action": "formato"})
+    st = ytdl_state(h, lambda v: v.get("view") == "pickfmt" and "Audio · Opus 128 kbps" in titles(v), timeout=30)
+    assert titles(st)[0].startswith("Como todos (")
+    send_event(h, {"type": "activate", "index": 2,
+                   "value": {"pick_choose": {"target": 1, "preset": "audio_opus_128"}}})
+    st = ytdl_state(h, lambda v: v.get("view") == "picklist"
+                    and any(i["hint"] and "Opus 128" in i["hint"] for i in v["items"]), timeout=20)
+    assert "1 con formato propio" in titles(st)[0] or st["items"][0]["hint"] == "1 con formato propio"
+
+    # SRT solo para la segunda fila
+    send_event(h, {"type": "activate", "index": 6, "value": {"pick_toggle": 2}, "action": "srt"})
+    st = ytdl_state(h, lambda v: any(i["hint"] and "con SRT" in i["hint"] for i in v["items"]), timeout=20)
+    assert st["pick"]["marked"] == 2, "la acción de la fila no debe marcar ni desmarcar"
+
+    # dos grupos → dos llamadas: el primero en Opus sin SRT, el segundo en 480p con SRT
+    send_event(h, {"type": "activate", "index": 4, "value": {"pick_download": True}})
+    wait_view(h, "downloads")
+    a3 = argv_for(arglog, "https://fake.test/tres")
+    a4 = argv_for(arglog, "https://fake.test/cuatro")
+    # el grupo de la primera fila baja audio Opus («-x» es como yt-dlp llama a extraer el audio)
+    assert "-x" in a3 and a3[a3.index("--audio-format") + 1] == "opus"
+    assert "--write-subs" not in a3, a3
+    # el de la segunda, vídeo 480p con los subtítulos en un .srt aparte
+    assert "-x" not in a4 and "height<=?480" in " ".join(a4), a4
+    assert "--write-subs" in a4 and "--convert-subs" in a4, a4
     assert h.script_errors() == [], h.script_errors()
 
 

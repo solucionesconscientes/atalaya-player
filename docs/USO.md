@@ -104,11 +104,14 @@ abre. Si un canal entrelazado se ve con "peines" (7TV), pulsa `d`. Detalles en d
   abra cualquier aparato viejo (H.264 + AAC) o un archivo más pequeño (HEVC), usa *Convertir*.
 - Tamaños orientativos por hora: 1080p60 H.264 ≈ 2,5–3 GB; 1080p H.264 ≈ 1,5–2 GB; 1080p AV1/VP9 ≈ 1–1,5 GB;
   720p ≈ 0,7–1 GB; 480p ≈ 0,3–0,5 GB; audio Opus 130–160 kb/s ≈ 60–70 MB; MP3 320 kb/s ≈ 145 MB.
-- **Varias a la vez** (*Descargas y conversión → Descargar varias URL…*): pega uno o muchos enlaces (`ctrl+v`; da igual el
-  separador) o escribe la ruta de un `.txt` con un enlace por línea; los repetidos se descartan. **Listas y canales**
-  (*Descargar de una lista o canal…*): pega su URL, *Ver la lista y elegir* muestra todos los vídeos marcados; desmarca los
-  que no quieras y descarga: van a una carpeta con el nombre de la lista, numerados (`001 - …`). Lo ya descargado de una
-  lista, un canal o un lote no se repite (archivo `ytdl-archive.txt` en tus datos).
+- **Una sola puerta** (*Descargas y conversión → Descargar…*): pega lo que quieras —un enlace, veinte (`ctrl+v`, da igual
+  el separador), una lista de reproducción, un canal o la ruta de un `.txt` con un enlace por línea— y el reproductor
+  averigua qué es. Sale **una lista con casillas**: la primera fila fija el formato de todos (*Para todos: Vídeo · hasta
+  1080p*), la segunda si quieres los subtítulos en un `.srt` aparte, y cada fila puede llevar **su propio** formato o su
+  propio SRT con sus acciones (*Formato solo para este*, *SRT solo para este*). Se descarga solo lo marcado, y las filas
+  que comparten formato van juntas en un solo lote. Si es una lista o un canal y no has cambiado nada por filas, va a una
+  carpeta con el nombre de la lista y numerado (`001 - …`). Los repetidos se descartan y lo ya descargado no se repite
+  (archivo `ytdl-archive.txt` en tus datos).
 - **Subtítulos al descargar** (*Descargar → Opciones*): *Subtítulos* rota entre no, dentro del vídeo y archivo SRT
   aparte (junto al vídeo); *Idiomas* entre originales + es + en (por defecto), solo el original, español, inglés y todos.
   *Solo subtítulos (SRT)* baja únicamente los `.srt` (sin vídeo). «Original» es el idioma del vídeo según la web (y, en
@@ -117,9 +120,12 @@ abre. Si un canal entrelazado se ve con "peines" (7TV), pulsa `d`. Detalles en d
   2026), MPV-UOS lo intenta una vez con la versión *nightly* (se descarga y verifica sola; *Estado de yt-dlp* muestra cuál
   hay). No se reintenta lo que no es cosa de versión: vídeos privados, con inicio de sesión, bloqueados en tu país,
   borrados…
-- **TikTok e Instagram**: un vídeo o reel se abre y se descarga con su enlace; un perfil de TikTok se descarga con
-  *Descargar de una lista o canal…* (casillas). Los perfiles de Instagram no funcionan hoy en yt-dlp (su extractor está
-  roto). La suplantación de navegador que TikTok prefiere necesita `curl_cffi` (`tools/install.sh --extras`).
+- **TikTok e Instagram**: un vídeo o reel se abre y se descarga con su enlace. Un perfil o una colección de TikTok se
+  pegan en *Descargar…* y salen con casillas. Lo que **no** se puede, y el menú te lo dice antes de intentarlo en vez de
+  fallar: los **guardados de Instagram** (`…/saved/all-posts/`) y los **favoritos de TikTok**, porque yt-dlp no tiene
+  ningún extractor para esas páginas; la alternativa es abrir cada uno y pegar su enlace. El perfil entero de Instagram
+  se ofrece, pero avisando de que yt-dlp marca ese extractor como roto. Para lo privado hace falta *Usar mi sesión del
+  navegador*, y la suplantación de navegador que TikTok prefiere necesita `curl_cffi` (`tools/install.sh --extras`).
 - **Ajustes de descarga**: descargas a la vez (1–4), límite de velocidad (sin límite, 500 KB/s … 10 MB/s), no repetir lo ya
   descargado, carpeta por lista y *Usar mi sesión del navegador* (desactivado; Firefox, Chrome, Chromium, Brave, Edge…:
   yt-dlp lee sus cookies para lo que ya puedes ver con tu cuenta; vale también al reproducir; nunca sirve para DRM).

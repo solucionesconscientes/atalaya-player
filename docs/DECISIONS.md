@@ -546,3 +546,19 @@
   (comprobado con cuatro subtítulos cuyo `SubSize` era ~155 KB), aunque la búsqueda sí funcione y el límite sea generoso
   (200 al día por IP). Consecuencia: los proveedores reales son dos (la web del vídeo y OpenSubtitles.com) y el menú lo
   dice; añadir un tercero es rellenar una tupla y escribir su `pick`.
+- ADR-072 · Descargar por una sola puerta (H37). Antes había dos filas distintas —«Descargar varias URL…» y «Descargar de
+  una lista o canal…»— y había que saber de antemano qué era lo que ibas a pegar; además el formato era uno para todo el
+  lote. Ahora hay una sola fila, **Descargar…**, y lo que se pega se clasifica en el propio menú: una ruta de `.txt` (se
+  leen sus enlaces, saltando comentarios `#`/`;`), una URL (se le pregunta a mpvd con `ytdl.playlist`: si trae entradas es
+  una lista o un canal, y si no, se trata como un enlace suelto) o varias URL. En los tres casos se acaba en **la misma
+  lista con casillas**: la primera fila es el formato de todos (recordado en mu-prefs), la segunda el SRT aparte, y cada
+  fila puede llevar su propio formato y su propio SRT con sus acciones (uosc las recorre con Tab y las dispara con Enter,
+  docs/UOSC_API.md §2.3). Al descargar, las filas marcadas se agrupan por (formato, SRT) y va **una llamada a
+  `ytdl.download.batch` por grupo**; si es una lista entera sin nada propio por filas se usa el camino de siempre, que
+  además numera y mete todo en una carpeta con el nombre de la lista. Alternativas descartadas: una llamada
+  `ytdl.download` por fila (ruido en la cola y pierde el archivo de «ya descargado» por lote) y pedir el formato una vez
+  por fila (es lo que hacía la gente abandonar a mitad). Lo que yt-dlp no puede abrir se dice antes de intentarlo
+  (`ytdl.site_support`, `mpvd/ytdl/sites.py`): los **guardados de Instagram** y los **favoritos de TikTok** no tienen
+  extractor —comprobado el 2026-10-01 preguntando a los extractores del binario instalado— así que se rechazan con su
+  alternativa; el perfil de Instagram se ofrece con el aviso de que yt-dlp lo marca roto; y los avisos de «esto es
+  privado: hace falta tu sesión del navegador» salen solos para perfiles y colecciones.

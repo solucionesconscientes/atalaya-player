@@ -325,12 +325,15 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
       retraso siempre a mano.
 
 ## H37 · Descargar: una sola puerta
-- [ ] D1 Un único «Descargar…»: una caja donde pegar un enlace o veinte, un canal o una lista de reproducción.
-- [ ] D2 Lista con casillas; la primera fila fija el formato común («Para todos: Audio · Opus 128») y cada fila puede
+- [x] D1 Un único «Descargar…»: una caja donde pegar un enlace o veinte, un canal o una lista de reproducción.
+- [x] D2 Lista con casillas; la primera fila fija el formato común («Para todos: Audio · Opus 128») y cada fila puede
       sobrescribirlo con Tab.
-- [ ] D3 Casilla SRT global y por fila.
-- [ ] D4 Guardados de Instagram y TikTok (perfil/colección) con la opción de cookies del navegador, que ya existe desactivada.
+- [x] D3 Casilla SRT global y por fila.
+- [x] D4 Guardados de Instagram y TikTok (perfil/colección) con la opción de cookies del navegador, que ya existe desactivada.
       Verificar antes contra yt-dlp que el extractor lo soporta; si no, decirlo en el menú en vez de fallar.
+      **Comprobado el 2026-10-01 contra el binario instalado** (preguntando a sus extractores): los guardados de Instagram
+      y los favoritos de TikTok NO tienen extractor → el menú lo dice con su alternativa; el perfil de Instagram existe pero
+      yt-dlp lo marca roto → se ofrece avisando; perfil y colecciones de TikTok sí funcionan (docs/YTDLP.md §12).
 
 ## H38 · Resumen con enlaces al minuto
 - [ ] G1 Solo donde la transcripción es gratis: YouTube y webs con subtítulos, o un archivo local que ya esté transcrito.
