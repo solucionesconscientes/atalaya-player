@@ -60,14 +60,20 @@ def tv(daemon_env, media_dir):
     src_path = daemon_env.base / "sources.json"
     src_path.write_text(json.dumps(sources), encoding="utf-8")
     rec_dir = daemon_env.base / "Grabaciones"
+    # H40: ninguna orden de energía real en los tests; el programa falso solo apunta lo que se le pidió
+    fake_power = daemon_env.base / "fake-power"
+    fake_power.write_text("#!/usr/bin/env python3\nimport sys, pathlib\n"
+                          "pathlib.Path(sys.argv[0] + '.log').open('a').write(' '.join(sys.argv[1:]) + '\\n')\n",
+                          encoding="utf-8")
+    fake_power.chmod(0o755)
     env = {**daemon_env.env, "MPV_UOS_IPTV_SOURCES": str(src_path), "MPV_UOS_COUNTRY": "es",
-           "MPV_UOS_RADIO_BROWSER_URL": base}
+           "MPV_UOS_RADIO_BROWSER_URL": base, "MPVD_POWER_FAKE": str(fake_power), "MPV_UOS_NO_NOTIFY": "1"}
     h = start_mpv(daemon_env.runtime_dir,
                   [f"--script-opts=mu-core-watchdog_seconds=5,mu-iptv-osd_seconds=1,mu-iptv-schedule_dir={rec_dir}"],
                   env=env)
     try:
         h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
-        yield h, daemon_env, rec_dir, t0
+        yield h, daemon_env, rec_dir, t0, fake_power
     finally:
         h.stop()
         httpd.shutdown()
@@ -93,7 +99,7 @@ def schedule(d) -> list[dict]:
 
 
 def test_now_hints_guide_and_schedule_from_the_guide(tv):
-    h, d, rec_dir, t0 = tv
+    h, d, rec_dir, t0, _fake = tv
     chans = {c["name"]: c["id"] for c in d.call("iptv.channels", {"source": "tdt_tv", "compact": True})["items"]}
 
     # «ahora» in the list: Canal Uno by its tvg-id, Canal Dos by its name (no tvg-id); the first query finds the
@@ -151,7 +157,7 @@ def test_now_hints_guide_and_schedule_from_the_guide(tv):
 
 
 def test_manual_schedule_palette_and_osd_when_a_recording_ends(tv):
-    h, d, rec_dir, _ = tv
+    h, d, rec_dir, _, _fake = tv
     chans = {c["name"]: c["id"] for c in d.call("iptv.channels", {"source": "tdt_tv", "compact": True})["items"]}
 
     # «Programar grabación…» by hand: channel, then «mañana 21:30 22:15» in the palette
@@ -199,3 +205,48 @@ def test_manual_schedule_palette_and_osd_when_a_recording_ends(tv):
                                          str(out)], capture_output=True, text=True, check=True).stdout)["streams"]
     assert sorted(s["codec_type"] for s in streams) == ["audio", "video"]
     assert not h.script_errors(), h.script_errors()
+
+
+def test_despertar_antes_y_apagar_al_terminar(tv):
+    """H40/F1: las dos opciones viven en mpvd (valen con el reproductor cerrado) y se heredan en lo que se programe."""
+    h, d, rec_dir, _t0, fake = tv
+    chans = {c["name"]: c["id"] for c in d.call("iptv.channels", {"source": "tdt_tv", "compact": True})["items"]}
+
+    # de serie, nada: no se toca la energía de nadie sin pedirlo
+    assert d.call("iptv.schedule.defaults")["wake"] is False
+    assert d.call("iptv.schedule.defaults")["after"] == "nothing"
+
+    h.command("script-binding", "mu_iptv/tv-schedule")
+    wait_view(h, "schedule")
+    menu = wait_menu(h, lambda v: any(r["title"] == "Despertar el equipo 5 min antes" for r in rows(v)))
+    titulos = [r["title"] for r in rows(menu)]
+    assert "Al terminar la grabación" in titulos
+    despertar = next(r for r in rows(menu) if r["title"] == "Despertar el equipo 5 min antes")
+    al_terminar = next(r for r in rows(menu) if r["title"] == "Al terminar la grabación")
+    assert despertar["hint"].startswith("no") and al_terminar["hint"].startswith("nada")
+
+    # encender el despertador y pasar «al terminar» a suspender
+    send_event(h, {"type": "activate", "index": 1, "value": despertar["value"]})
+    d.wait(lambda: d.call("iptv.schedule.defaults")["wake"] is True, timeout=15)
+    send_event(h, {"type": "activate", "index": 1, "value": al_terminar["value"]})
+    d.wait(lambda: d.call("iptv.schedule.defaults")["after"] == "suspend", timeout=15)
+    menu = wait_menu(h, lambda v: any(r["title"] == "Al terminar la grabación" and "suspender" in (r["hint"] or "")
+                                      for r in rows(v)))
+
+    # lo que se programe a partir de ahora lo hereda, y el despertador se pone 5 min antes
+    start = time.time() + 3600
+    rec = d.call("iptv.schedule.add", {"channel": chans["Canal Dos"], "start": start, "stop": start + 600})
+    assert rec["wake"] is True and rec["after"] == "suspend"
+    log = Path(str(fake) + ".log")
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline and not log.exists():
+        time.sleep(0.2)
+    assert log.exists(), "la grabación con despertador tiene que poner la alarma"
+    assert str(int(rec["begin"] - 300)) in log.read_text(encoding="utf-8")
+
+    # y «al terminar» vuelve a nada dando dos vueltas más (nada → suspender → apagar → nada)
+    send_event(h, {"type": "activate", "index": 1, "value": al_terminar["value"]})
+    d.wait(lambda: d.call("iptv.schedule.defaults")["after"] == "shutdown", timeout=15)
+    send_event(h, {"type": "activate", "index": 1, "value": al_terminar["value"]})
+    d.wait(lambda: d.call("iptv.schedule.defaults")["after"] == "nothing", timeout=15)
+    assert h.script_errors() == [], h.script_errors()

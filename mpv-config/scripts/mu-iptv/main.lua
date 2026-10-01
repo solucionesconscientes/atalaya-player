@@ -49,6 +49,7 @@ local state = {
   entry_id = nil,     -- playlist entry of the URL we loaded (its end-file error triggers the next alternative)
   fallbacks = 0,      -- alternatives tried for the current channel
   epg_hints = 0,      -- channels with a known «ahora» (cache below)
+  sched_defaults = nil,  -- H40/F1: {wake, after, power} que aplica mpvd a las grabaciones nuevas
   guide = nil,        -- guide shown: {id, programmes, epg_id}
   schedule_event = nil, -- last scheduled-recording event from mpvd {id, status, text}
   playing_id = nil,   -- id of the copy of the current channel really playing (an alternative after a fallback)
@@ -954,11 +955,39 @@ end
 local STATUS_ICONS = { scheduled = 'schedule', recording = 'fiber_manual_record', done = 'check_circle',
                        failed = 'error', missed = 'event_busy', cancelled = 'block' }
 
+-- H40/F1 · lo que se aplica a las grabaciones nuevas: despertar el equipo antes y qué hacer al terminar. Lo guarda
+-- mpvd (sobrevive a cerrar el reproductor, que es justo cuando hace falta), y si el equipo no puede poner el
+-- despertador se dice qué falta en vez de ofrecer algo que no va a pasar.
+local AFTER_LABEL = { nothing = 'nada', suspend = 'suspender el equipo', shutdown = 'apagar el equipo' }
+local AFTER_NEXT = { nothing = 'suspend', suspend = 'shutdown', shutdown = 'nothing' }
+
+local function power_rows(d, out)
+  local p = (d and d.power) or {}
+  local wake_hint
+  if d and d.wake then wake_hint = 'sí' else wake_hint = 'no' end
+  if p.can_wake == false then wake_hint = wake_hint .. ' · ' .. (p.reason or 'este equipo no puede') end
+  out[#out + 1] = { title = 'Despertar el equipo 5 min antes', hint = wake_hint, icon = 'alarm',
+                    active = (d and d.wake) or false, value = { sched_pref = 'wake' } }
+  local after = (d and d.after) or 'nothing'
+  local hint = AFTER_LABEL[after] or after
+  if after == 'suspend' and p.can_suspend == false then hint = hint .. ' · este equipo no deja suspender' end
+  if after == 'shutdown' and p.can_shutdown == false then hint = hint .. ' · este equipo no deja apagar' end
+  out[#out + 1] = { title = 'Al terminar la grabación', hint = hint, icon = 'bedtime',
+                    active = after ~= 'nothing', value = { sched_pref = 'after' } }
+  if p.install_hint and p.install_hint ~= '' and d and d.wake then
+    out[#out + 1] = { title = 'Para el despertador hace falta una orden con sudo, una sola vez',
+                      hint = 'está en NEEDS_HUMAN.md', icon = 'info', selectable = false, muted = true }
+  end
+end
+
 views.schedule = function()
   local title = 'Grabaciones programadas'
   if not require_mpvd(title) then return end
   show_loading(title)
   local view = state.view
+  rpc.call('iptv.schedule.defaults', nil, function(derr, defaults)
+    if not derr and type(defaults) == 'table' then state.sched_defaults = defaults end
+  end, 10)
   rpc.call('iptv.schedule.list', nil, function(err, res)
     if state.view ~= view then return end
     if err then show(title, uosc.message_items(fail(err, 'iptv.schedule.list'), 'error')) return end
@@ -994,6 +1023,7 @@ views.schedule = function()
       table.insert(items, { title = 'No hay grabaciones: prográmalas desde la guía de un canal (Tab › Guía)',
                             icon = 'info', selectable = false, muted = true })
     end
+    power_rows(state.sched_defaults, items)
     table.insert(items, { title = 'Carpeta: ' .. (opts.schedule_dir ~= '' and opts.schedule_dir or res.dir or ''),
                           icon = 'folder', selectable = false, muted = true })
     show(title, items, { footnote = 'Se graba aunque veas otra cosa o cierres el reproductor (con el equipo encendido)' })
@@ -1253,6 +1283,18 @@ mp.register_script_message(EVENT, function(json)
         state.force_open = true  -- the palette is replaced by the list
         open_view({ name = 'schedule' })
       end)
+    elseif v.sched_pref then
+      -- H40/F1: lo guarda mpvd, así que vale también con el reproductor cerrado
+      local d = state.sched_defaults or { wake = false, after = 'nothing' }
+      local params = {}
+      if v.sched_pref == 'wake' then params.wake = not d.wake
+      else params.after = AFTER_NEXT[d.after or 'nothing'] or 'nothing' end
+      rpc.call('iptv.schedule.defaults', params, function(err, res)
+        if err then osd('No se pudo guardar: ' .. fail(err, 'iptv.schedule.defaults')) return end
+        state.sched_defaults = res
+        publish()
+        reopen_current()
+      end, 10)
     elseif v.sched_cancel then
       sched_cancel(v.sched_cancel, false)
     elseif v.sched_remove then

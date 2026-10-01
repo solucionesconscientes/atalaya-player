@@ -66,6 +66,24 @@
   debería abrir la pantalla de inicio; `alt+t` la TV, un vídeo de YouTube con `ctrl+u`. Si falla, guarda la salida del
   instalador y `.cache\mpvd.log` del checkout (y la salida de `.venv\Scripts\python -m mpvd status`).
 
+## 2026-10-01 · El despertador para grabar necesita UNA orden con sudo (H40/F4)
+Suspender y apagar el equipo ya funcionan sin contraseña (logind contesta `yes` a `CanSuspend` y `CanPowerOff`), pero
+**poner el despertador** necesita `rtcwake`, y `rtcwake` necesita root: comprobado aquí el 2026-10-01, da
+«/dev/rtc0: Permiso denegado» y `sudo -n` pide contraseña. Con esto, una sola vez, el reproductor puede despertar el
+equipo 5 min antes de una grabación programada:
+```bash
+echo "$USER ALL=(root) NOPASSWD: /usr/sbin/rtcwake" | sudo tee /etc/sudoers.d/mpv-uos-rtcwake \
+  && sudo chmod 0440 /etc/sudoers.d/mpv-uos-rtcwake
+```
+Comprobarlo después: `sudo -n rtcwake --version` (tiene que contestar sin pedir nada) y, en el reproductor,
+*TV y radio → Grabaciones programadas*: la fila «Despertar el equipo 5 min antes» dejará de decir que falta algo.
+Para quitarlo: `sudo rm /etc/sudoers.d/mpv-uos-rtcwake`. Es una regla **limitada a ese programa**, no un sudo general.
+En macOS es lo mismo con `/usr/bin/pmset`. Mientras no esté puesto, **no se pierde ninguna grabación**: se programa
+igual (si el equipo está encendido graba) y la grabación anota «sin despertador: …».
+
+Aviso de lo que el despertador NO hace: solo despierta de la **suspensión**. Un equipo apagado del todo no se puede
+encender desde el programa (eso es cosa de la BIOS/UEFI: «Wake on RTC alarm»).
+
 ## 2026-10-01 · Tu llama-server sigue pausado (hazlo tú si yo no he llegado)
 Me pediste pausarlo para dejar CPU libre (`kill -STOP 130081`). **Si al volver lo ves parado**, con esto sigue:
 ```bash

@@ -141,6 +141,9 @@ class MpvdServer:
         lyrics.register(self, self.lyrics)
         self.songid = songid.SongIdService(self, self.lyrics.settings)
         songid.register(self, self.songid)
+        from mpvd import power  # noqa: PLC0415 - H40: despertar para grabar y apagar al terminar
+        self.power = power.PowerService(self)
+        power.register(self, self.power)
         from mpvd import sponsorblock  # noqa: PLC0415 - H39/E3: tramos marcados de un vídeo de YouTube
         self.sponsorblock = sponsorblock.SponsorBlockService(self)
         sponsorblock.register(self, self.sponsorblock)

@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mpvd.asr.audio import ffmpeg_path
+from mpvd.power import WAKE_MARGIN, inhibit_prefix
 from mpvd.iptv.model import HLS_LAVF_DEFAULTS, Channel
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, RpcError
 
@@ -68,6 +69,8 @@ class Recording:
     files: list[str] = field(default_factory=list)
     message: str = ""
     origin: str = "manual"  # "manual" | "epg"
+    wake: bool = False      # H40/F1: poner el despertador del equipo 5 min antes
+    after: str = "nothing"  # H40/F1: al terminar → nothing | suspend | shutdown
     programme: dict[str, Any] | None = None
     created_at: float = field(default_factory=time.time)
     started_at: float | None = None
@@ -280,6 +283,39 @@ class ScheduleService:
 
     # -- persistence --------------------------------------------------------------------------
 
+    # H40/F1 · lo que se aplica a las grabaciones nuevas cuando quien las programa no dice otra cosa. Va en un fichero
+    # aparte para no cambiar la forma del de las grabaciones (y su recuperación al arrancar).
+    def _defaults_path(self) -> Path:
+        return self.path.with_name(self.path.stem + "-defaults.json")
+
+    def load_defaults(self) -> dict[str, Any]:
+        out = {"wake": False, "after": "nothing"}
+        try:
+            data = json.loads(self._defaults_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return out
+        if isinstance(data, dict):
+            if isinstance(data.get("wake"), bool):
+                out["wake"] = data["wake"]
+            if data.get("after") in ("nothing", "suspend", "shutdown"):
+                out["after"] = data["after"]
+        return out
+
+    def set_defaults(self, wake: bool | None = None, after: str | None = None) -> dict[str, Any]:
+        cur = self.load_defaults()
+        if wake is not None:
+            cur["wake"] = bool(wake)
+        if after is not None:
+            if after not in ("nothing", "suspend", "shutdown"):
+                raise RpcError(INVALID_PARAMS, "al terminar: nothing, suspend o shutdown")
+            cur["after"] = after
+        path = self._defaults_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cur, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, path)
+        return cur
+
     def _load(self) -> None:
         try:
             rows = json.loads(self.path.read_text(encoding="utf-8"))
@@ -441,7 +477,7 @@ class ScheduleService:
             if remaining < 1 or parts >= MAX_PARTS:
                 break
             out = self._out_path(rec)
-            cmd = ffmpeg_args(rec.channel, out, remaining + 60)
+            cmd = [*inhibit_prefix(f"grabando «{rec.title}»"), *ffmpeg_args(rec.channel, out, remaining + 60)]
             log.info("recording %s: %s", rec.id, " ".join(cmd[:-1]) + " " + out.name)
             with open(log_path, "ab") as err:
                 proc = await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.PIPE,
@@ -515,6 +551,11 @@ class ScheduleService:
             title = "Grabación terminada" if status == "done" else "La grabación ha fallado"
             asyncio.get_running_loop().create_task(desktop_notify(title, body + (f": {message}" if status == "failed"
                                                                                    and message else "")))
+            power = getattr(self.server, "power", None)
+            if power is not None and rec.after != "nothing":
+                power.arm(rec.after, rec.id)
+                asyncio.get_running_loop().create_task(power.on_recording_finished(rec.id))
+            self.sync_wake()
 
     def _push(self, rec: Recording) -> None:
         payload = {"event": "schedule", "item": rec.public()}
@@ -526,7 +567,7 @@ class ScheduleService:
 
     def add(self, ch: Channel, start: float, stop: float, title: str | None = None, margin_before: float = 0.0,
             margin_after: float = 0.0, programme: dict[str, Any] | None = None, folder: str | None = None,
-            now: float | None = None) -> Recording:
+            now: float | None = None, wake: bool | None = None, after: str | None = None) -> Recording:
         now = time.time() if now is None else now
         start, stop = float(start), float(stop)
         margin_before = max(0.0, min(float(margin_before or 0), 3600.0))
@@ -543,13 +584,46 @@ class ScheduleService:
             if other.status in ACTIVE and other.channel.get("id") == ch.id and abs(other.start - start) < 1 \
                     and abs(other.stop - stop) < 1:
                 return other
+        defaults = self.load_defaults()
+        wake = defaults["wake"] if wake is None else bool(wake)
+        after = defaults["after"] if after is None else after
+        if after not in ("nothing", "suspend", "shutdown"):
+            raise RpcError(INVALID_PARAMS, "al terminar: nothing, suspend o shutdown")
         rec = Recording(id=uuid.uuid4().hex[:10], channel=channel_snapshot(ch), title=(title or ch.name).strip(),
                         start=start, stop=stop, margin_before=margin_before, margin_after=margin_after,
-                        dir=folder or "", origin="epg" if programme else "manual", programme=programme)
+                        dir=folder or "", origin="epg" if programme else "manual", programme=programme,
+                        wake=bool(wake), after=after)
         self.items[rec.id] = rec
         self.save()
         self._poke()
+        self.sync_wake()
         return rec
+
+    def sync_wake(self) -> None:
+        """H40/F1: el despertador se pone para la PRIMERA grabación pendiente que lo pida. Si el equipo no puede
+        (hace falta una regla de sudo, ver mpvd/power.py), no se pierde la grabación: se anota el motivo y se sigue."""
+        soonest: Recording | None = None
+        for rec in self.items.values():
+            if rec.wake and rec.status == "scheduled" and (soonest is None or rec.begin < soonest.begin):
+                soonest = rec
+        if soonest is None:
+            return
+        rec = soonest
+        power = getattr(self.server, "power", None)
+        if power is None:
+            return
+        at = rec.begin - WAKE_MARGIN
+
+        async def body() -> None:
+            try:
+                await power.schedule_wake(at)
+            except RpcError as exc:
+                rec.message = f"sin despertador: {exc.message}"
+                self.save()
+                self._push(rec)
+
+        with contextlib.suppress(RuntimeError):
+            asyncio.get_running_loop().create_task(body())
 
     def get(self, rid: str) -> Recording:
         rec = self.items.get(rid)
@@ -616,11 +690,25 @@ def register(server: MpvdServer, service: ScheduleService) -> None:
     @d.method("iptv.schedule.add")
     async def add(ctx: RpcContext, channel: str, start: float, stop: float, title: str | None = None,
                   margin_before: float = 0.0, margin_after: float = 0.0, programme: dict[str, Any] | None = None,
-                  dir: str | None = None) -> dict[str, Any]:  # noqa: A002
-        """Schedule a recording of a channel (epoch seconds; optional margins in seconds and folder)."""
+                  dir: str | None = None, wake: bool | None = None,
+                  after: str | None = None) -> dict[str, Any]:  # noqa: A002
+        """Schedule a recording of a channel (epoch seconds; optional margins in seconds and folder).
+
+        Sin ``wake``/``after``, se usan los de `iptv.schedule.defaults`.
+        ``wake``: poner el despertador del equipo 5 min antes (solo despierta de la suspensión; si hace falta una regla
+        de sudo, la grabación se programa igual y se dice por qué no hay despertador). ``after``: nothing | suspend |
+        shutdown al terminar, con los tres seguros y el aviso cancelable de mpvd/power.py."""
         ch = await resolve(channel)
-        rec = service.add(ch, start, stop, title, margin_before, margin_after, programme, dir)
+        rec = service.add(ch, start, stop, title, margin_before, margin_after, programme, dir, wake=wake, after=after)
         return rec.public() | {"label": describe(rec.start, rec.stop)}
+
+    @d.method("iptv.schedule.defaults")
+    async def defaults(ctx: RpcContext, wake: bool | None = None, after: str | None = None) -> dict[str, Any]:
+        """Lo que se aplica a las grabaciones nuevas: ``wake`` (despertar el equipo 5 min antes) y ``after``
+        (nothing | suspend | shutdown). Sin argumentos, solo lo consulta; incluye lo que puede hacer el equipo."""
+        cur = service.set_defaults(wake, after) if (wake is not None or after is not None) else service.load_defaults()
+        power = getattr(service.server, "power", None)
+        return {**cur, "power": power.capabilities() if power is not None else {}}
 
     @d.method("iptv.schedule.list")
     async def listing(ctx: RpcContext) -> dict[str, Any]:

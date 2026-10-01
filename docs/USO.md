@@ -70,11 +70,19 @@ falta, avisa con la orden para instalarlo. Los subtítulos IA y los modelos se d
    apagado a esa hora, la grabación sale como *perdida*. Los archivos van a `~/Vídeos/MPV-UOS/Grabaciones`
    («Canal - Programa - 2026-09-30 21.30.mkv») y avisa al terminar.
 
-7. **Audio y subtítulos del canal.** Los canales que traen pistas propias lo dicen en la lista: `CC` (subtítulos),
+7. **Despertar para grabar y apagar al terminar.** En *TV y radio → Grabaciones programadas*: **Despertar el equipo 5 min
+   antes** (solo saca de la suspensión; un equipo apagado no se puede encender desde aquí) y **Al terminar la grabación:
+   nada / suspender / apagar**. Las dos las guarda mpvd, así que valen con el reproductor cerrado, y se aplican a lo que
+   programes a partir de entonces. Mientras graba, el equipo no se duerme. Antes de suspender o apagar se comprueban tres
+   cosas —que no estés usando el reproductor, que no haya otra grabación a menos de 15 min y que no quede nada
+   descargando, convirtiendo o transcribiendo— y sale un aviso de 60 s con **Cancelar**; si falla cualquiera de las tres,
+   no se hace y se dice cuál. El despertador necesita una orden con `sudo` **una sola vez** (está en NEEDS_HUMAN.md): sin
+   ella todo lo demás funciona igual y la grabación avisa de que no habrá despertador.
+8. **Audio y subtítulos del canal.** Los canales que traen pistas propias lo dicen en la lista: `CC` (subtítulos),
    `VO` (versión original), `AD` (audiodescripción). Mientras ves uno, *TV y radio → Audio y subtítulos del canal*
    las muestra con nombres claros (*Español*, *Versión original*, *Audiodescripción*, *Español (para sordos)*). RTVE
    trae subtítulos en español, inglés, gallego, catalán y euskera. No hay traducción en directo.
-8. **Buscar en esta lista.** La primera fila de *España TV*, *España radio*, cada país de *Mundo*, *Radio mundial*,
+9. **Buscar en esta lista.** La primera fila de *España TV*, *España radio*, cada país de *Mundo*, *Radio mundial*,
    *Favoritos* y *Recientes* busca solo entre sus canales (sin acentos, como `alt+f`).
 
 **Lo que depende de la fuente y lo que no.** La resolución, las imágenes por segundo y el bitrate los pone cada cadena:

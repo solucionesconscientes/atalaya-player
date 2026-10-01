@@ -578,3 +578,19 @@
   responde», «prohibido: suele ser geobloqueo») y, en un canal repetido, cuántas de sus copias respondieron, en vez de un
   «✕» que no decía si merecía la pena intentarlo. **Intro**: el análisis para en cuanto **dos** vecinos coinciden en los
   dos tramos (dos es lo que ya se exigía para dar un tramo por bueno), así que se ahorra la huella del tercero.
+- ADR-074 · Despertar para grabar y apagar al terminar (H40). Lo que se puede hacer sin pedir contraseña, comprobado en
+  este equipo el 2026-10-01: **suspender y apagar sí** (logind contesta `yes` a `CanSuspend`/`CanPowerOff` para la sesión
+  local, así que basta `systemctl suspend|poweroff`), **poner el despertador no** (`rtcwake` da «/dev/rtc0: Permiso
+  denegado» y `sudo -n` pide contraseña). Decisión: el programa **detecta** lo que puede hacer y **no instala nada**; para
+  el despertador dice la orden exacta de sudoers, limitada a `rtcwake` (o `pmset` en macOS), y la grabación se programa
+  igual anotando «sin despertador: …» — no se pierde una grabación porque falte un permiso. Descartados un helper con
+  setuid (una puerta abierta para siempre por una alarma) y pedir la contraseña al usuario desde el reproductor (un
+  programa que pide la contraseña de root enseña a la gente a dársela a cualquiera). El despertador solo saca de la
+  **suspensión**: encender un equipo apagado es cosa de la BIOS. Mientras graba, el ffmpeg va envuelto en
+  `systemd-inhibit --what=sleep:idle` (en macOS `caffeinate -i`). Antes de suspender o apagar hay **tres seguros** —nadie
+  usando el reproductor, ninguna grabación a menos de 15 min, nada descargando/convirtiendo/transcribiendo— y un aviso de
+  60 s con botón *Cancelar*; los seguros se vuelven a mirar **después** del aviso, porque en un minuto puede haber vuelto
+  alguien. `MPVD_POWER_FAKE` sustituye todas las órdenes de energía por un programa que solo apunta lo que se le pidió:
+  los tests comprueban la orden exacta de cada plataforma sin tocar el equipo. Las dos opciones («despertar 5 min antes»,
+  «al terminar: nada/suspender/apagar») las guarda **mpvd**, no el reproductor, porque tienen que valer con el reproductor
+  cerrado, y se heredan en cada grabación nueva.

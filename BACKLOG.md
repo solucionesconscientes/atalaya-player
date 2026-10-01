@@ -358,13 +358,13 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
       clara y tres estados visibles en el icono (buscando / saltar / no hay). La ventana de 10 min ya está bien.
 
 ## H40 · Despertar para grabar y apagar al terminar
-- [ ] F1 Al programar una grabación: «despertar 5 min antes» y «al terminar: nada / suspender / apagar». Solo desde
+- [x] F1 Al programar una grabación: «despertar 5 min antes» y «al terminar: nada / suspender / apagar». Solo desde
       suspensión, no desde apagado.
-- [ ] F2 Inhibir el sueño mientras graba (systemd-inhibit / caffeinate / SetThreadExecutionState).
-- [ ] F3 Tres seguros antes de suspender o apagar: nadie usando el equipo, ninguna grabación cerca, nada descargando o
+- [x] F2 Inhibir el sueño mientras graba (systemd-inhibit / caffeinate / SetThreadExecutionState).
+- [x] F3 Tres seguros antes de suspender o apagar: nadie usando el equipo, ninguna grabación cerca, nada descargando o
       convirtiendo; y aviso de 60 s cancelable.
-- [ ] F4 Linux y macOS: una instalación con sudo, una sola vez, limitada a rtcwake / pmset schedule → NEEDS_HUMAN.
-- [ ] F5 Windows: tarea programada con WakeToRun sin administrador, comprobando que el plan de energía permite los
+- [x] F4 Linux y macOS: una instalación con sudo, una sola vez, limitada a rtcwake / pmset schedule → NEEDS_HUMAN.
+- [x] F5 Windows: tarea programada con WakeToRun sin administrador, comprobando que el plan de energía permite los
       temporizadores de activación y avisando si no. Sin Windows aquí: queda sin probar en real.
 
 ## H41 · Nombre (lo decide Ser)
