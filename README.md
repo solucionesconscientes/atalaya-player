@@ -1,4 +1,6 @@
-# MPV-UOS
+# Atalaya Player
+
+**<https://solucionesconscientes.es/atalaya>**
 
 Reproductor multiplataforma sobre **mpv ≥ 0.41 + uosc ≥ 5.13** con un daemon companion en Python (**mpvd**) que hace lo pesado
 (IA, red, índices, descargas) y habla con mpv por JSON IPC. Local-first; sin fork de mpv; configuración portable.
@@ -11,7 +13,7 @@ Reproductor multiplataforma sobre **mpv ≥ 0.41 + uosc ≥ 5.13** con un daemon
 
 ## Puesta en marcha
 ```bash
-git clone <repo> MPV-UOS && cd MPV-UOS
+git clone <repo> Atalaya Player && cd Atalaya Player
 uv sync              # crea .venv con Python 3.12 y el paquete mpvd
 tools/vendor.sh      # descarga y verifica uosc 5.13.0 (+ ziggy), thumbfast y yt-dlp según vendor.lock
 tools/check.sh       # lint + tests headless; debe acabar en "✅ check OK"
@@ -19,7 +21,7 @@ tools/check.sh       # lint + tests headless; debe acabar en "✅ check OK"
 
 ## Instalación de usuario (Linux, sin sudo)
 ```bash
-tools/install.sh               # uv sync + vendor.sh + ~/.local/bin/mpv-uos + "MPV-UOS" en el menú de aplicaciones (icono y tipos MIME)
+tools/install.sh               # uv sync + vendor.sh + ~/.local/bin/mpv-uos + "Atalaya Player" en el menú de aplicaciones (icono y tipos MIME)
 tools/install.sh --extras      # + traducción offline y búsqueda semántica (≈220 MB)
 tools/install.sh --xdg         # caché y datos en ~/.cache/mpv-uos y ~/.local/share/mpv-uos en vez de <proyecto>/.cache
 tools/install.sh --default     # además, reproductor por defecto para vídeo y audio (xdg-mime)
@@ -48,7 +50,7 @@ por instancia en `$XDG_RUNTIME_DIR/mpv-uos/mpv-<pid>.sock` (nunca se hereda de o
 Socket: `$XDG_RUNTIME_DIR/mpv-uos/mpvd.sock` (JSON-RPC 2.0, una línea por mensaje). Log: `.cache/mpvd.log`.
 
 ## Menú, paleta y continuar viendo
-- Botón derecho, `MENU` o `alt+m`: menú **MPV-UOS** (buscar, abrir, continuar viendo, TV y radio, yt-dlp, lista, subtítulos, audio,
+- Botón derecho, `MENU` o `alt+m`: menú **Atalaya Player** (buscar, abrir, continuar viendo, TV y radio, yt-dlp, lista, subtítulos, audio,
   capítulos, captura, menú completo, salir). Al arrancar sin archivo aparece la pantalla de inicio con los recientes.
 - `alt+p`: **paleta** global. Escribe para filtrar comandos (todas las teclas con título), canales de TV y radio, vídeos recientes y
   acciones de mpvd (actualizar listas, buscar actualización de yt-dlp, estado). Sin acentos: "pelicula" encuentra "Película".
@@ -60,7 +62,7 @@ Menú **TV y radio** en uosc (botón 📺 en la barra de controles, `alt+t`, o m
 Mundo por país y categoría (iptv-org), Radio mundial (Radio Browser), Favoritos, Recientes, Mis listas (M3U propias) y búsqueda
 tipo paleta (`alt+f`, sin acentos). Sobre un canal, `Tab` abre las acciones: favorito y copiar URL.
 - Zapping dentro del grupo actual: `alt+UP` / `alt+DOWN`. Grabar el directo (`stream-record`): `alt+r`; lo hace el mismo
-  botón «Grabar» del reproductor (H18), así que se guarda en su carpeta: `~/Vídeos/MPV-UOS/Grabaciones` por defecto,
+  botón «Grabar» del reproductor (H18), así que se guarda en su carpeta: `~/Vídeos/Atalaya/Grabaciones` por defecto,
   cambiable en *Grabar → Carpeta de grabaciones* o con `MPV_UOS_RECORD_DIR`.
 - Las listas se descargan por mpvd con caché (ETag, 12 h, modo offline con la última copia) y las cabeceras `#EXTVLCOPT`/`#KODIPROP`
   se traducen a opciones de mpv por archivo. Añade tus propias M3U desde "Mis listas" (pega la URL con `ctrl+v`) o por CLI:
@@ -80,7 +82,7 @@ Menú **yt-dlp** (botón ⬇ en la barra, `alt+y`):
 - `alt+d` **Descargar**: presets (mejor calidad, 1080/720/480/360p, audio original, MP3 96–320 kbps o VBR, Opus, M4A, FLAC, WAV)
   y opciones (contenedor mp4/mkv/webm, subtítulos, capítulos, miniatura, metadatos, SponsorBlock marcar/quitar, playlist entera).
 - `alt+l` **Descargas**: progreso (%, velocidad, ETA), cancelar, repetir, quitar; aviso en pantalla al terminar.
-  Carpetas por defecto `~/Vídeos/MPV-UOS` y `~/Música/MPV-UOS` (XDG); plantilla `%(title).120B [%(id)s].%(ext)s`.
+  Carpetas por defecto `~/Vídeos/Atalaya` y `~/Música/Atalaya` (XDG); plantilla `%(title).120B [%(id)s].%(ext)s`.
 ```bash
 .venv/bin/python -m mpvd call ytdl.status                                   # binario, versión, runtime JS, actualización
 .venv/bin/python -m mpvd call ytdl.info '{"url":"https://www.youtube.com/watch?v=aqz-KE-bpKQ"}'
@@ -104,7 +106,7 @@ pista externa y recarga solo. Menú **Subtítulos IA** (botón CC en la barra, `
   *Rápido (Argos)* para cualquier par (pivota por inglés) y *Calidad (OPUS-MT tc-big, 234 MB, se descarga una vez)* para
   español/catalán↔inglés. Los tiempos no cambian. La calidad depende sobre todo de la transcripción.
 - **Guardar subtítulos (SRT)** (`alt+S`): pista IA, traducción, resincronizado o pista seleccionada → `<vídeo>.<idioma>.srt` junto al
-  vídeo (o `~/Vídeos/MPV-UOS/Subtítulos`). Los subtítulos de imagen (PGS/VobSub) necesitarían OCR y no se pueden guardar.
+  vídeo (o `~/Vídeos/Atalaya/Subtítulos`). Los subtítulos de imagen (PGS/VobSub) necesitarían OCR y no se pueden guardar.
 - **Duales**: original arriba (`secondary-sid`) y traducción abajo, activables desde el mismo menú.
 ```bash
 LD_LIBRARY_PATH=vendor/whisper/bin vendor/whisper/bin/whisper-cli --version    # ¿está whisper?
@@ -164,7 +166,7 @@ Menú **Estudio** (`alt+e`, entrada en el menú raíz; docs/ESTUDIO.md): `alt+w`
 (`alt+←`/`alt+→` pasan a la anterior/siguiente; `l` o `alt+w` lo quitan), `alt+g` activa la velocidad inteligente (×2,5 en los
 silencios que mpvd mapea con `silencedetect`, velocidad normal cuando hay voz), `alt+b` guarda una nota con enlace de tiempo y la
 cita del subtítulo en `<datos>/notas/<título del vídeo>.md` (Markdown con enlaces `mpv-uos://` que abren el vídeo en ese minuto; `alt+B` = Mis notas), y `alt+u` exporta el bucle A-B (o la línea actual)
-como clip: mp4 exacto, mp4/mkv sin recodificar, GIF, mp3, opus o wav a `<Vídeos|Música>/MPV-UOS/clips`, con progreso y aviso.
+como clip: mp4 exacto, mp4/mkv sin recodificar, GIF, mp3, opus o wav a `<Vídeos|Música>/Atalaya/clips`, con progreso y aviso.
 ```bash
 .venv/bin/python -m mpvd call study.formats
 .venv/bin/python -m mpvd call study.clip '{"path":"/ruta/video.mkv","start":65,"end":72.5,"format":"gif"}'

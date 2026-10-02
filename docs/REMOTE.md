@@ -28,9 +28,9 @@ Una segunda página del mismo servidor, `http://<IP>:8790/downloads`, con el mis
 - **Aviso al terminar**: «Avisarme al terminar» pide permiso de notificaciones. Por la red local sin HTTPS el navegador del
   móvil no las permite: el aviso sale arriba en la página, el móvil vibra y el título de la pestaña cuenta las terminadas.
   La página tiene que estar abierta.
-- **«Enviar a MPV-UOS» desde el navegador** (sección plegable al final de la página): tres marcadores para arrastrar a la barra.
-  «⬇ Descargar con MPV-UOS» abre `mpv-uos://download?url=<página>` (en este ordenador, con `tools/install.sh`: se pone en cola
-  sin abrir el reproductor y sale una notificación del escritorio); «▶ Ver en MPV-UOS» abre `mpv-uos://open?path=<página>`
+- **«Enviar a Atalaya Player» desde el navegador** (sección plegable al final de la página): tres marcadores para arrastrar a la barra.
+  «⬇ Descargar con Atalaya Player» abre `mpv-uos://download?url=<página>` (en este ordenador, con `tools/install.sh`: se pone en cola
+  sin abrir el reproductor y sale una notificación del escritorio); «▶ Ver en Atalaya Player» abre `mpv-uos://open?path=<página>`
   (la reproduce); «⬇ Enviar al panel» abre esta página con el enlace puesto — sirve en cualquier equipo de la red, sin esquema —
   y **no descarga hasta que pulsas «Descargar»** (cualquier web podría abrir esa dirección).
 

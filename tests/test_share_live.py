@@ -22,7 +22,7 @@ import pytest
 from mpvd.convert.presets import HwPlan
 from mpvd.rpc import RpcError
 from mpvd.share import hls, live
-from tests.conftest import start_mpv
+from tests.conftest import APP, start_mpv
 from tests.test_mu_share import ev, share, titles
 from tests.test_nav import wait_nav
 from tests.test_share_http import MU_OPTS
@@ -381,7 +381,7 @@ def test_menu_configure_start_and_stop(live_env, clips, tmp_path):
     h.command("script-binding", "mu_share/share-menu")
     v = share(h, lambda v: "Emitir en directo…" in titles(v))
     ev(h, {"type": "activate", "index": 9, "value": {"view": "live"}})
-    wait_nav(h, "mu-share", "MPV-UOS › Compartir › Emitir en directo")
+    wait_nav(h, "mu-share", f"{APP} › Compartir › Emitir en directo")
     v = share(h, lambda v: v["view"] == "live" and "Emite solo lo que tengas derecho a compartir" in titles(v))
     assert "Emitir lo que estoy viendo" not in titles(v) and "Pegar la clave de emisión" in titles(v)
     # server: the presets, then another one typed in the text box

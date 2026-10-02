@@ -12,7 +12,7 @@ import time
 import pytest
 
 from mpvd.hashing import file_hash
-from tests.conftest import start_mpv
+from tests.conftest import APP, start_mpv
 from tests.test_nav import wait_nav
 from tests.test_opensubtitles import fake_api  # noqa: F401 - fixture
 
@@ -67,7 +67,7 @@ def test_library_menu_play_next_episode_countdown_home_and_subtitles(lib_mpv, me
 
     # Biblioteca › Carpetas › type the path
     h.command("script-binding", "mu_library/library-menu")
-    wait_nav(h, "mu-library", "MPV-UOS › Biblioteca")
+    wait_nav(h, "mu-library", f"{APP} › Biblioteca")
     s = lib_state(h, lambda v: v.get("view") == "root" and "Carpetas" in titles(v))
     assert "Películas" in titles(s) and "Series" in titles(s)
     ev(h, "mu-library-event", {"type": "activate", "index": 5, "value": item(s, "Carpetas")["value"]})
@@ -94,7 +94,7 @@ def test_library_menu_play_next_episode_countdown_home_and_subtitles(lib_mpv, me
     ev(h, "mu-library-event", {"type": "activate", "index": 1, "value": item(s, "Temporada 1")["value"]})
     s = lib_state(h, lambda v: v.get("view") == "season" and titles(v) == ["1x01", "1x02", "1x03"])
     nav = h.get("user-data/mu/nav")
-    assert nav["title"].endswith("Mi Serie › Temporada 1") and nav["title"].startswith("MPV-UOS")
+    assert nav["title"].endswith("Mi Serie › Temporada 1") and nav["title"].startswith(APP)
 
     # Enter plays the episode and closes the menu
     ev(h, "mu-library-event", {"type": "activate", "index": 1, "value": item(s, "1x01")["value"]})

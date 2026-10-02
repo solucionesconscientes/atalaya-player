@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import start_mpv
+from tests.conftest import APP, start_mpv
 from tests.test_mu_iptv import free_port, start_live_stream
 from tests.test_mu_ytdl import ytdl_mpv  # noqa: F401 - fixture: fake yt-dlp wired into mpv and mpvd
 from tests.test_nav import press, wait_nav
@@ -75,7 +75,7 @@ def test_record_local_ranges_cut_and_menu(rec_mpv, media_dir, tmp_path):
     h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 0, timeout=20)
 
     h.command("script-binding", "mu_record/record-menu")
-    wait_nav(h, "mu-record", "MPV-UOS › Grabar")
+    wait_nav(h, "mu-record", f"{APP} › Grabar")
     st = rec_state(h, lambda v: v.get("view") == "root" and v.get("items"))
     titles = [i["title"] for i in st["items"]]
     assert titles[:2] == ["Captura de pantalla", "Captura sin subtítulos"] and "Grabar desde ahora" in titles
@@ -110,8 +110,10 @@ def test_record_local_ranges_cut_and_menu(rec_mpv, media_dir, tmp_path):
     fila = next(i for i in st["items"] if i["title"] == "MP4 si los códecs lo permiten")
     assert "caben" in fila["hint"] and "NO caben" not in fila["hint"]
     ev(h, "mu-record-event", {"type": "activate", "index": 2, "value": {"format": "mp4"}})
-    st = rec_state(h, lambda v: v.get("format") == "mp4" and v.get("view") == "root")
-    assert next(i for i in st["items"] if i["title"] == "Grabar desde ahora")["hint"] == "sin recodificar · MP4"
+    # el estado publica la vista y las filas en dos pasos: se espera a que la fila ya lo diga
+    st = rec_state(h, lambda v: v.get("format") == "mp4" and v.get("view") == "root" and any(
+        i["title"] == "Grabar desde ahora" and i["hint"] == "sin recodificar · MP4" for i in v.get("items", [])))
+    assert next(i for i in st["items"] if i["title"] == "Formato")["hint"] == "MP4 si los códecs lo permiten"
     seek_to(h, 5.0)
     ev(h, "mu-record-event", {"type": "activate", "index": 3, "value": {"start": True}})
     rec_state(h, lambda v: v.get("recording") is True)
@@ -143,7 +145,7 @@ def test_record_local_ranges_cut_and_menu(rec_mpv, media_dir, tmp_path):
     h.command("script-binding", "mu_record/record-menu")
     rec_state(h, lambda v: v.get("view") == "root")
     ev(h, "mu-record-event", {"type": "activate", "index": 5, "value": {"view": "cut"}})
-    wait_nav(h, "mu-record", "MPV-UOS › Grabar › Recortar un tramo")
+    wait_nav(h, "mu-record", f"{APP} › Grabar › Recortar un tramo")
     seek_to(h, 20.0)
     ev(h, "mu-record-event", {"type": "activate", "index": 1, "value": {"mark": "a"}})
     seek_to(h, 24.0)
@@ -156,9 +158,9 @@ def test_record_local_ranges_cut_and_menu(rec_mpv, media_dir, tmp_path):
 
     # ⌫ from the root of Grabar → main menu
     h.command("script-binding", "mu_record/record-menu")
-    wait_nav(h, "mu-record", "MPV-UOS › Grabar")
+    wait_nav(h, "mu-record", f"{APP} › Grabar")
     press(h, "BS")
-    wait_nav(h, "mu-menu", "MPV-UOS")
+    wait_nav(h, "mu-menu", APP)
     press(h, "ESC")
     assert h.script_errors() == [], h.script_errors()
 

@@ -16,6 +16,7 @@ from mpvd.asr.srt import Segment, parse_srt, render_srt
 from mpvd.rpc import UNAVAILABLE, RpcError
 from mpvd.subs import save
 from tests.asr_helpers import asr_model, whisper_available
+from tests.conftest import APP_FOLDER
 
 ASS = """[Script Info]
 ScriptType: v4.00+
@@ -68,9 +69,9 @@ def test_names_and_folders(tmp_path, monkeypatch):
     videos.mkdir()
     (cfg / "user-dirs.dirs").write_text(f'XDG_MUSIC_DIR="$HOME/Música"\nXDG_VIDEOS_DIR="{videos}"\n', encoding="utf-8")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(cfg))
-    assert save.fallback_dir() == videos / "MPV-UOS" / "Subtítulos"
+    assert save.fallback_dir() == videos / APP_FOLDER / "Subtítulos"
     videos.rmdir()
-    assert save.fallback_dir() == Path.home() / "Vídeos" / "MPV-UOS" / "Subtítulos"
+    assert save.fallback_dir() == Path.home() / "Vídeos" / APP_FOLDER / "Subtítulos"
     monkeypatch.setenv("MPV_UOS_SUBS_SAVE_DIR", str(tmp_path / "fb"))
     assert save.target_dir(str(d / "peli.mkv")) == (d, False)
     assert save.target_dir("https://x.org/v.mp4") == (tmp_path / "fb", True)

@@ -12,7 +12,7 @@ import shutil
 
 import pytest
 
-from tests.conftest import start_mpv
+from tests.conftest import APP, start_mpv
 from tests.music_helpers import build_music
 from tests.test_nav import wait_nav
 
@@ -80,7 +80,7 @@ def test_music_menu_browse_play_next_queue_lists_gain_fade_history(music_mpv):
 
     # first open: the XDG Music folder is added and scanned in the background
     h.command("script-binding", "mu_music/music-menu")
-    wait_nav(h, "mu-music", "MPV-UOS › Música")
+    wait_nav(h, "mu-music", f"{APP} › Música")
     d.wait(lambda: d.call("music.status", {"default_folder": False})["tracks"] == 5
            and not d.call("music.status", {"default_folder": False})["scanning"], timeout=60)
     assert [f["path"] for f in d.call("music.folders.list")] == [str(root)]
@@ -98,7 +98,7 @@ def test_music_menu_browse_play_next_queue_lists_gain_fade_history(music_mpv):
     s = st(h, lambda v: v["view"] == "artist" and "Palabra de mujer" in titles(v))
     activate(h, s, "Palabra de mujer")
     s = st(h, lambda v: v["view"] == "album" and "2. Desátame" in titles(v))
-    assert h.get("user-data/mu/nav")["title"] == "MPV-UOS › … › Mónica Naranjo › Palabra de mujer"   # long trails shortened
+    assert h.get("user-data/mu/nav")["title"] == f"{APP} › … › Mónica Naranjo › Palabra de mujer"   # long trails shortened
     activate(h, s, "2. Desátame")
     h.wait_property("path", lambda v: v == str(p["t2"]), timeout=15)
     assert playlist(h) == [str(p["t1"]), str(p["t2"])] and h.get("playlist-pos") == 1
@@ -203,7 +203,7 @@ def test_a_missing_file_in_the_album_does_not_shift_what_enter_plays(music_mpv):
     h, d, root, p = music_mpv
 
     h.command("script-binding", "mu_music/music-menu")
-    wait_nav(h, "mu-music", "MPV-UOS › Música")
+    wait_nav(h, "mu-music", f"{APP} › Música")
     d.wait(lambda: d.call("music.status", {"default_folder": False})["tracks"] == 5
            and not d.call("music.status", {"default_folder": False})["scanning"], timeout=60)
 
@@ -235,7 +235,7 @@ def test_moving_in_the_queue_uses_the_track_index_not_the_menu_row(music_mpv):
     Subir movía otra entrada (o ninguna). La fila lleva su índice real, que es el que vale."""
     h, d, root, p = music_mpv
     h.command("script-binding", "mu_music/music-menu")
-    wait_nav(h, "mu-music", "MPV-UOS › Música")
+    wait_nav(h, "mu-music", f"{APP} › Música")
     d.wait(lambda: d.call("music.status", {"default_folder": False})["tracks"] == 5
            and not d.call("music.status", {"default_folder": False})["scanning"], timeout=60)
 

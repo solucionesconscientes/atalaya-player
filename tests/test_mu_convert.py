@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import start_mpv
+from tests.conftest import APP, APP_FOLDER, start_mpv
 from tests.test_nav import press, wait_nav
 
 MU_OPTS = ("--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5,"
@@ -81,7 +81,7 @@ def test_convert_open_file_with_range_and_tasks_panel(conv_mpv, clip, tmp_path):
     h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 0, timeout=20)
 
     h.command("script-binding", "mu_convert/convert-menu")
-    wait_nav(h, "mu-convert", "MPV-UOS › Convertir")
+    wait_nav(h, "mu-convert", f"{APP} › Convertir")
     st = conv(h, lambda v: v.get("view") == "root" and "MP4 compatible" in titles(v))
     t = titles(st)
     assert t[0] == "clip.mkv"   # (the «Atrás» row is added by mu/nav on the way to uosc)
@@ -89,14 +89,14 @@ def test_convert_open_file_with_range_and_tasks_panel(conv_mpv, clip, tmp_path):
                        "Solo audio · Opus", "Solo audio · FLAC", "Solo audio · WAV", "GIF animado"]
     assert {"Convertir una carpeta entera…", "Tareas", "Carpeta de salida", "Usar la tarjeta gráfica"} <= set(t)
     st = conv(h, lambda v: item(v, "Usar la tarjeta gráfica")["hint"] == "no disponible")   # MPV_UOS_VAAPI=0
-    assert st["default_dir"].endswith("MPV-UOS/Convertidos")
+    assert st["default_dir"].endswith(f"{APP_FOLDER}/Convertidos")
     set_output(h, out_dir)
 
     # A-B marks already set (the «l» loop): the range is on by default
     h.command("set", "ab-loop-a", "1")
     h.command("set", "ab-loop-b", "3")
     ev(h, {"type": "activate", "index": 3, "value": {"preset": "mp4", "source": str(clip)}})
-    wait_nav(h, "mu-convert", "MPV-UOS › Convertir › MP4 compatible")
+    wait_nav(h, "mu-convert", f"{APP} › Convertir › MP4 compatible")
     st = conv(h, lambda v: v.get("view") == "options" and "Resolución máxima" in titles(v))
     assert st["preset"] == "mp4" and st["range"] is True and item(st, "Solo un tramo")["hint"] == "0:01–0:03"
     assert titles(st)[0] == "Convertir ahora" and item(st, "Resolución máxima")["hint"] == "original"
@@ -105,7 +105,7 @@ def test_convert_open_file_with_range_and_tasks_panel(conv_mpv, clip, tmp_path):
         ev(h, {"type": "activate", "index": 3, "value": {"opt": "height"}})
         conv(h, lambda v, x=hint: item(v, "Resolución máxima")["hint"] == x)
     ev(h, {"type": "activate", "index": 2, "value": {"start": True}})
-    wait_nav(h, "mu-convert", "MPV-UOS › Convertir › MP4 compatible › Tareas")
+    wait_nav(h, "mu-convert", f"{APP} › Convertir › MP4 compatible › Tareas")
     st = conv(h, lambda v: v.get("last_done", {}).get("status") == "done", timeout=60)
     out = Path(st["last_done"]["file"])
     assert out == out_dir / "clip [00.00.01-00.00.03].mp4" and out.exists()
@@ -132,11 +132,11 @@ def test_convert_open_file_with_range_and_tasks_panel(conv_mpv, clip, tmp_path):
 
     # ⌫: tasks → options → Convertir → main menu
     press(h, "BS")
-    wait_nav(h, "mu-convert", "MPV-UOS › Convertir › MP4 compatible")
+    wait_nav(h, "mu-convert", f"{APP} › Convertir › MP4 compatible")
     press(h, "BS")
-    wait_nav(h, "mu-convert", "MPV-UOS › Convertir")
+    wait_nav(h, "mu-convert", f"{APP} › Convertir")
     press(h, "BS")
-    wait_nav(h, "mu-menu", "MPV-UOS")
+    wait_nav(h, "mu-menu", APP)
     press(h, "ESC")
     assert h.script_errors() == [], h.script_errors()
 
@@ -151,12 +151,12 @@ def test_folder_from_downloads_menu_and_tasks_entry(conv_mpv, clip, tmp_path):
 
     # «Descargas y conversión» has the two new entries; they open mu-convert one level below it
     h.command("script-binding", "mu_ytdl/ytdl-menu")
-    wait_nav(h, "mu-ytdl", "MPV-UOS › Descargas y conversión")
+    wait_nav(h, "mu-ytdl", f"{APP} › Descargas y conversión")
     st = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("view") == "root", timeout=10)
     assert {"Convertir…", "Tareas"} <= {i["title"] for i in st["items"]}
     h.command("script-message-to", "mu_ytdl", "mu-ytdl-event", json.dumps(
         {"type": "activate", "index": 1, "menu_id": "{root}", "value": {"child": "convert-menu"}}))
-    wait_nav(h, "mu-convert", "MPV-UOS › Descargas y conversión › Convertir")
+    wait_nav(h, "mu-convert", f"{APP} › Descargas y conversión › Convertir")
     st = conv(h, lambda v: v.get("view") == "root" and "Tareas" in titles(v))
     assert "Abre un archivo de tu equipo para convertirlo" in titles(st)
     set_output(h, out_dir)
@@ -166,7 +166,7 @@ def test_folder_from_downloads_menu_and_tasks_entry(conv_mpv, clip, tmp_path):
     conv(h, lambda v: v.get("input") == "folder")
     ev(h, {"type": "search", "query": str(folder)}, "mu-convert-input-event")
     ev(h, {"type": "activate", "index": 1, "value": {"save": str(folder)}}, "mu-convert-input-event")
-    wait_nav(h, "mu-convert", "MPV-UOS › Descargas y conversión › Convertir › Carpeta Clases")
+    wait_nav(h, "mu-convert", f"{APP} › Descargas y conversión › Convertir › Carpeta Clases")
     st = conv(h, lambda v: v.get("view") == "folder" and "Solo audio · MP3" in titles(v))
     ev(h, {"type": "activate", "index": 5, "value": {"preset": "mp3", "source": str(folder), "folder": True}})
     st = conv(h, lambda v: v.get("view") == "options" and "Bitrate del audio" in titles(v))
@@ -183,13 +183,13 @@ def test_folder_from_downloads_menu_and_tasks_entry(conv_mpv, clip, tmp_path):
 
     # «Tareas» from the downloads menu: ⌫ goes back to it
     h.command("script-binding", "mu_ytdl/ytdl-menu")
-    wait_nav(h, "mu-ytdl", "MPV-UOS › Descargas y conversión")
+    wait_nav(h, "mu-ytdl", f"{APP} › Descargas y conversión")
     h.command("script-message-to", "mu_ytdl", "mu-ytdl-event", json.dumps(
         {"type": "activate", "index": 1, "menu_id": "{root}", "value": {"child": "tasks-menu"}}))
-    wait_nav(h, "mu-convert", "MPV-UOS › Descargas y conversión › Tareas")
+    wait_nav(h, "mu-convert", f"{APP} › Descargas y conversión › Tareas")
     st = conv(h, lambda v: v.get("view") == "tasks" and "Limpiar terminadas" in titles(v))
     assert sum(1 for i in st["items"] if i["value"] and i["value"].get("task", {}).get("type") == "convert") == 2
     press(h, "BS")
-    wait_nav(h, "mu-ytdl", "MPV-UOS › Descargas y conversión")
+    wait_nav(h, "mu-ytdl", f"{APP} › Descargas y conversión")
     press(h, "ESC")
     assert h.script_errors() == [], h.script_errors()

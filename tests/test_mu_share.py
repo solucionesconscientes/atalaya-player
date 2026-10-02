@@ -9,7 +9,7 @@ import urllib.error
 
 import pytest
 
-from tests.conftest import start_mpv
+from tests.conftest import APP, start_mpv
 from tests.test_nav import press, wait_nav
 from tests.test_share_http import MU_OPTS, Guest
 
@@ -46,7 +46,7 @@ def titles(v: dict) -> list[str]:
 def test_menu_create_guests_permissions_close(mu_share):
     h, d = mu_share
     h.command("script-binding", "mu_share/share-menu")
-    wait_nav(h, "mu-share", "MPV-UOS › Compartir")
+    wait_nav(h, "mu-share", f"{APP} › Compartir")
     v = share(h, lambda v: "Crear una sala para ver juntos" in titles(v))
     assert v["open"] is False and v["view"] == "root"
 
@@ -81,11 +81,11 @@ def test_menu_create_guests_permissions_close(mu_share):
     v = share(h, lambda v: v["last_notice"] == "Ana se ha unido" and len(v["guests"]) == 1)
     gid = v["guests"][0]["id"]
     ev(h, {"type": "activate", "index": 4, "value": {"view": "guests"}})
-    wait_nav(h, "mu-share", "MPV-UOS › Compartir › Invitados")
+    wait_nav(h, "mu-share", f"{APP} › Compartir › Invitados")
     v = share(h, lambda v: v["view"] == "guests" and "Ana" in titles(v))
     assert v["items"][0]["hint"].startswith("solo ver")
     ev(h, {"type": "activate", "index": 2, "value": {"view": "guest", "id": gid}})
-    wait_nav(h, "mu-share", "MPV-UOS › Compartir › Invitados › Ana")
+    wait_nav(h, "mu-share", f"{APP} › Compartir › Invitados › Ana")
     share(h, lambda v: v["view"] == "guest" and "Dar el control" in titles(v))
     ev(h, {"type": "activate", "index": 1, "value": {"perm": "control", "id": gid}})
     share(h, lambda v: v["view"] == "guest" and "Quitar el control" in titles(v))
@@ -183,7 +183,7 @@ def test_menu_public_room_and_chat(mu_share_chat):
     h.command("script-binding", "mu_share/share-menu")
     v = share(h, lambda v: "Chat" in titles(v))
     ev(h, {"type": "activate", "index": 4, "value": {"view": "chat"}})
-    wait_nav(h, "mu-share", "MPV-UOS › Compartir › Chat")
+    wait_nav(h, "mu-share", f"{APP} › Compartir › Chat")
     v = share(h, lambda v: v["view"] == "chat" and "Escribir un mensaje" in titles(v))
     assert "Ana: ¡Qué {\\an8}escena!" in titles(v)
     ev(h, {"type": "activate", "index": 1, "value": {"action": "chat-write"}})

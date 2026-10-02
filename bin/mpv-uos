@@ -103,5 +103,20 @@ for a in "$@"; do
 done
 [ "$has_target" = 0 ] && [ "$has_mode" = 0 ] && extra+=(--player-operation-mode=pseudo-gui)
 [ "$has_idle" = 0 ] && extra+=(--idle=yes)
+
+# H49 · el idioma se decide AQUÍ, antes de que cargue el primer script, para que la pantalla de inicio no salga en
+# un idioma y cambie al siguiente (mpv no expone ninguna propiedad de idioma: la fuente es el entorno, en el orden
+# de POSIX). Regla: castellano o francés → ese; inglés o cualquier otro → inglés. MPV_UOS_LANG lo fuerza.
+# uosc ya trae sus propias traducciones (scripts/uosc/intl): se le dice el idioma y no se duplica nada.
+mu_lang="${MPV_UOS_LANG:-}"
+if [ -z "$mu_lang" ]; then
+  for v in "${LC_ALL:-}" "${LC_MESSAGES:-}" "${LANG:-}"; do
+    case "$v" in ''|C|C.*|POSIX) continue ;; esac
+    case "$v" in es*) mu_lang=es ;; fr*) mu_lang=fr ;; *) mu_lang=en ;; esac
+    break
+  done
+fi
+case "$mu_lang" in es|en|fr) ;; *) mu_lang=en ;; esac
+extra+=("--script-opts-append=mu-core-lang=$mu_lang" "--script-opts-append=uosc-languages=$mu_lang,slang,en")
 exec "$MPV_BIN" --config-dir="$CONFIG_DIR" --input-ipc-server="$SOCKET" --watch-later-dir="$DATA_DIR/watch_later" \
   "${extra[@]}" "$@"

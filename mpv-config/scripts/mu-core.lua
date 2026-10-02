@@ -26,8 +26,14 @@ local opts = {
   load_errors = true,        -- explain on screen why a file/URL/channel could not be opened
   rpc_timeout = 15,          -- seconds before a pending call fails with a timeout error
   ensure_timeout = 20,       -- seconds the ensure subprocess may take (daemon start + attach)
+  lang = '',                 -- H49: 'es' | 'en' | 'fr'; empty = work it out from the environment. bin/mpv-uos
+                             -- sets it before any script loads, so nothing is ever drawn in the wrong language.
 }
 options.read_options(opts, 'mu-core')
+-- The language is decided once, here, and published: every other mu-* script reads it from user-data instead of
+-- working it out again (and the tests can see which one is in use). See docs/IDIOMAS.md.
+local i18n = require('mu.i18n')
+i18n.set(opts.lang)
 
 -- ---------------------------------------------------------------------------------------------
 -- environment
@@ -56,6 +62,7 @@ local state = {
   session = '',
   error = '',
   attempts = 0,
+  lang = i18n.lang,       -- H49: el idioma en uso ('es' | 'en' | 'fr')
   work = '',              -- C8: qué se está haciendo por detrás, tal como lo cuenta mpvd (pending.status)
   work_subs = 0,          -- cuántas transcripciones hay sin terminar
 }

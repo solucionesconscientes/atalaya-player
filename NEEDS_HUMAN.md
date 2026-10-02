@@ -35,10 +35,6 @@
 - **Carpeta oculta de la versión anterior**: la detección de intro escribía `.mpv-uos/segments.json` junto a los vídeos; ya no lo hace.
   Queda una en `~/Descargas/Los tres días del cóndor (1975)/.mpv-uos`. Para quitarla:
   `rm -r "$HOME/Descargas/Los tres días del cóndor (1975)/.mpv-uos"`
-- **Desentrelazado con ventana real** (no se puede comprobar sin pantalla): abre 7TV Andalucía (emite entrelazado sin marcarlo),
-  pulsa `d` y comprueba que desaparecen las rayas horizontales en movimiento. Si no, dímelo con el log:
-  `mpv-uos --deinterlace=yes --msg-level=autofilters=v,vf=v --log-file=/tmp/deint.log <URL del canal>`
-
 ## 2026-09-30 · Compartir (H25)
 - **Túnel a internet (H25 punto 3) — HECHO el 2026-10-01** (ADR-068), ya no necesita nada de ti salvo encenderlo:
   *Compartir → Que se pueda entrar desde internet* (apagado por defecto, se recuerda). El binario no viene instalado;
@@ -56,7 +52,7 @@
   `git clone … && cd MPV-UOS && curl -LsSf https://astral.sh/uv/install.sh | sh && uv sync --extra desktop &&
   tools/vendor.sh && tools/check.sh` y prueba el modo salón: `bin/mpv-uos` → `alt+m` → Preferencias → Modo salón.
   Si falla algo, guarda `tmp/check.log` y el `.cache/mpvd.log`.
-- **AppImage en otra distribución**: `tools/build_appimage.sh` y abre `dist/MPV-UOS-x86_64.AppImage` en un equipo con
+- **AppImage en otra distribución**: `tools/build_appimage.sh` y abre `dist/Atalaya-x86_64.AppImage` en un equipo con
   otra distro (Fedora, Arch) que tenga mpv ≥ 0.41: debería abrir la pantalla de inicio y `alt+t` la TV.
 - **macOS**: en un Mac con `brew install mpv uv`: clona, `uv sync --extra desktop && tools/vendor.sh &&
   tools/build_macos_app.sh` y abre `dist/MPV-UOS.app` (la primera vez: clic derecho → Abrir, no está firmado).
@@ -89,13 +85,9 @@ Me pediste pausarlo para dejar CPU libre y lo pausé (`kill -STOP`). A las 13:39
 reanudé yo), así que no hay nada pendiente aquí. Si alguna vez lo ves parado: `kill -CONT <pid>`.
 
 ## 2026-10-01 · Subtítulos de internet (H36/C5, no bloquea)
-- **Clave gratuita de Subdl** (el único segundo proveedor que sigue vivo). No se ha implementado su cliente porque sin
-  clave la API devuelve `403 {"error":"not_authorized"}` y la regla de este proyecto es no escribir contra una API que
-  no se ha podido comprobar de verdad. Si lo quieres, en 2 minutos:
-  1. Crea una cuenta en https://subdl.com/ y entra en tu perfil → *API* → genera la clave.
-  2. Pégala aquí para que la siguiente iteración escriba el cliente contra respuestas reales (o guárdala en
-     `<datos>/library-secrets.json` cuando exista el ajuste `subdl_api_key`).
-  Con eso, la cascada de `subs.find` pasa de dos proveedores (la web del vídeo y OpenSubtitles) a tres.
+- **Subdl descartado** (2026-10-02, decisión de Ser): ya hay dos proveedores (la web del vídeo y
+  OpenSubtitles) y el tercero obligaba a escribir un cliente contra una API que no se puede comprobar
+  sin clave. No hace falta que consigas nada.
 - **Podnapisi queda descartado**: su dominio ya no existe. Comprobado el 2026-10-01 con el resolutor del sistema y con
   1.1.1.1: `www.podnapisi.net` y `podnapisi.net` dan NXDOMAIN. No es un corte momentáneo: no hay a dónde conectarse.
 - **Cuenta de OpenSubtitles (usuario y contraseña), no solo la Api-Key**: la clave sola basta para BUSCAR, pero las

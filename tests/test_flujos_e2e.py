@@ -11,7 +11,7 @@ import shutil
 
 import pytest
 
-from tests.conftest import start_mpv
+from tests.conftest import APP, start_mpv
 from tests.test_nav import MODULES, press, wait_closed, wait_nav
 
 MU_OPTS = "--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5"
@@ -49,12 +49,12 @@ def test_saltar_de_un_modulo_a_otro_con_su_tecla_no_deja_menus_ni_pila_colgando(
     for script in HOPS:
         binding, menu_type, title = MODULES[script]
         h.command("script-binding", f"{script}/{binding}")
-        st = wait_nav(h, menu_type, f"MPV-UOS › {title}")
+        st = wait_nav(h, menu_type, f"{APP} › {title}")
         assert st["parent"] == "mu_menu", f"{script}: el padre debería seguir siendo el menú principal, no {st['parent']}"
 
     # ⌫ from the last module lands on the main menu once (the stack did not pile up the previous modules)
     press(h, "BS")
-    wait_nav(h, "mu-menu", "MPV-UOS")
+    wait_nav(h, "mu-menu", APP)
     press(h, "BS")
     wait_closed(h)
     assert h.script_errors() == [], h.script_errors()
@@ -105,7 +105,7 @@ def test_nota_preferencia_y_posicion_siguen_ahi_tras_reiniciar_mpv(flow, media_d
     h2.wait_property("time-pos", lambda v: isinstance(v, (int, float)) and 21 <= v <= 27, timeout=20)
 
     h2.command("script-binding", "mu_notes/notes-menu")
-    wait_nav(h2, "mu-notes", "MPV-UOS › Mis notas")
+    wait_nav(h2, "mu-notes", f"{APP} › Mis notas")
     notes = h2.wait_property("user-data/mu/notes", lambda v: bool(v) and v.get("view") == "root"
                              and any("Mi tarde de cine" in i["title"] for i in v.get("items", [])), timeout=20)
     row = next(i for i in notes["items"] if "Mi tarde de cine" in i["title"])

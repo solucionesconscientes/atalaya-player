@@ -1,8 +1,9 @@
 {
-  "_comment": "Single source of the app's identity (H33). The name is pending (Ser decides): change it here only.",
-  "name": "MPV-UOS",
+  "_comment": "Single source of the app's identity (H33). `name` is what you see; `id` stays `mpv-uos` on purpose (sockets, data dir, command): renaming it would mean migrating the user's data for nothing. `folder` is where downloads and recordings land.",
+  "name": "Atalaya Player",
   "id": "mpv-uos",
-  "folder": "MPV-UOS",
+  "folder": "Atalaya",
+  "site": "https://solucionesconscientes.es/atalaya",
   "colors": {
     "ink": "#0D1320",
     "slate": "#24324D",

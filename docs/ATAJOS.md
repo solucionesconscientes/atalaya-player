@@ -1,22 +1,22 @@
-# Atajos de teclado de MPV-UOS
+# Atajos de teclado de Atalaya Player
 
 Configurados en `mpv-config/input.conf`, que **solo** tiene teclas (validado por `tests/test_atajos.py`). Hasta H46 ese
 fichero construía además un segundo menú, el nativo de uosc (`ctrl+m`): 119 entradas, 40 en el primer nivel y cuatro
-cosas repetidas. Se retiró, y lo que solo vivía allí está ahora en el menú de MPV-UOS, que es el único.
+cosas repetidas. Se retiró, y lo que solo vivía allí está ahora en el menú de Atalaya Player, que es el único.
 Los atajos por defecto de mpv siguen activos salvo los de la tabla
 [Teclas de mpv que cambian](#teclas-de-mpv-que-cambian). *Todas las teclas* (menú principal → Herramientas) abre un
 buscador con todas, y `alt+p` la paleta.
 
-## Menús de MPV-UOS
+## Menús de Atalaya Player
 | Tecla | Acción |
 |---|---|
-| `MBTN_RIGHT`, `MENU`, `alt+m`, botón ▦ | Menú principal **MPV-UOS**, el único que hay: Abrir o descargar, TV y radio, Descargas y conversión, Subtítulos, Imagen y sonido, Grabar, Herramientas y Preferencias (ocho), más «Continuar viendo» y «Resumen e índice» cuando hay algo que ver |
+| `MBTN_RIGHT`, `MENU`, `alt+m`, botón ▦ | Menú principal **Atalaya Player**, el único que hay: Abrir o descargar, TV y radio, Descargas y conversión, Subtítulos, Imagen y sonido, Grabar, Herramientas y Preferencias (ocho), más «Continuar viendo» y «Resumen e índice» cuando hay algo que ver |
 | `?` | Ayuda en pantalla con las teclas principales (Enter en la última fila: todas las teclas) |
 | `alt+p` | Paleta global: comandos (todas las teclas con título), canales de TV/radio, vídeos recientes y acciones de mpvd; escribe para filtrar (sin acentos); con transcripción IA, sección **Diálogo** (búsqueda semántica multilingüe, Enter salta al momento) |
 | `alt+h` | Recientes / continuar viendo (Tab sobre un elemento: olvidar) |
 
 ### Moverse por los menús
-Todos los menús de MPV-UOS son uno solo: el título lleva las migas («MPV-UOS › TV y radio › España») y la primera fila es
+Todos los menús de Atalaya Player son uno solo: el título lleva las migas («Atalaya Player › TV y radio › España») y la primera fila es
 **Atrás**. `⌫` (Retroceso) o `←` vuelven un nivel; en la raíz de un módulo (TV, descargas, subtítulos IA, filtros…) vuelven
 al menú desde el que se abrió o, si se abrió con su tecla, al menú principal. `Esc` cierra. Con el ratón: clic en **Atrás**
 o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
@@ -168,9 +168,9 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 | `alt+M` | **Música**: artistas › álbumes › pistas, álbumes, géneros, buscar (sin acentos), listas M3U8 e inteligentes, cola («Reproducir a continuación», mover con `ctrl+↑/↓`, guardar como lista), historial local, carpetas y ajustes (sin cortes, fundido, volumen igualado, salida exclusiva) |
 
 ## Teclas de mpv que cambian
-Estas teclas por defecto de mpv 0.41 hacen otra cosa en MPV-UOS:
+Estas teclas por defecto de mpv 0.41 hacen otra cosa en Atalaya Player:
 
-| Tecla | En mpv | En MPV-UOS |
+| Tecla | En mpv | En Atalaya Player |
 |---|---|---|
 | `s` | Captura de pantalla | Pistas de subtítulos (la captura está en `ctrl+s` y `S`) |
 | `p` | Pausa | Lista de reproducción (la pausa está en `SPACE`) |
@@ -179,6 +179,6 @@ Estas teclas por defecto de mpv 0.41 hacen otra cosa en MPV-UOS:
 | `ctrl+v` | Añadir el portapapeles a la lista | Abrir el portapapeles ahora (sustituye lo que suena) |
 | `alt+v` | Subtítulo secundario visible | Menú Sonido e imagen (el secundario está en `ctrl+alt+v`) |
 | `alt+←/→/↑/↓` | Desplazar el vídeo | Estudio (repetir línea anterior/siguiente) y zapping de TV |
-| Botón derecho, `MENU` | Pausa / menú contextual | Menú principal MPV-UOS |
-| `?` | Página de teclas de las estadísticas | Ayuda de MPV-UOS (las estadísticas siguen en `i` / `I`) |
+| Botón derecho, `MENU` | Pausa / menú contextual | Menú principal Atalaya Player |
+| `?` | Página de teclas de las estadísticas | Ayuda de Atalaya Player (las estadísticas siguen en `i` / `I`) |
 | Clic izquierdo | Nada (arrastra la ventana) | Igual; con Preferencias › «Pausar con un clic en el vídeo», pausa |

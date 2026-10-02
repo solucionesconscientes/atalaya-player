@@ -86,7 +86,28 @@ function Get-MuExtraArguments {
   $extra = @()
   if (-not $hasTarget -and -not $hasMode) { $extra += '--player-operation-mode=pseudo-gui' }
   if (-not $hasIdle) { $extra += '--idle=yes' }
+  # H49 · el idioma, igual que en bin/mpv-uos y antes de que cargue ningún script. En Windows las variables de
+  # POSIX no suelen estar, así que además se mira el idioma de la interfaz del sistema. Regla: castellano o francés
+  # → ese; inglés o cualquier otro → inglés. MPV_UOS_LANG lo fuerza.
+  $extra += @("--script-opts-append=mu-core-lang=$(Get-MuLanguage)",
+              "--script-opts-append=uosc-languages=$(Get-MuLanguage),slang,en")
   return $extra
+}
+
+function Get-MuLanguage {
+  $forced = $env:MPV_UOS_LANG
+  if ($forced -in @('es', 'en', 'fr')) { return $forced }
+  $tags = @()
+  foreach ($v in @($env:LC_ALL, $env:LC_MESSAGES, $env:LANG)) {
+    if ($v -and $v -notin @('C', 'POSIX') -and -not $v.StartsWith('C.')) { $tags += $v }
+  }
+  try { $tags += (Get-UICulture).Name } catch { }
+  foreach ($tag in $tags) {
+    $code = ($tag -replace '^([A-Za-z]{2}).*$', '$1').ToLowerInvariant()
+    if ($code -eq 'es' -or $code -eq 'fr') { return $code }
+    if ($code.Length -eq 2) { return 'en' }
+  }
+  return 'en'
 }
 
 function Get-MuPython {

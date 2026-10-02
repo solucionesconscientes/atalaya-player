@@ -22,6 +22,13 @@ from mpvd.client import rpc_call
 from mpvd.mpvipc import MpvIpcClient
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# H41 · el nombre y la carpeta salen de brand.json, nunca escritos a mano: así renombrar la aplicación no obliga a
+# tocar los tests (antes «MPV-UOS» estaba literal en 30 ficheros, la mayoría en las migas de los menús).
+_BRAND = json.loads((ROOT / "brand.json").read_text(encoding="utf-8"))
+APP = _BRAND["name"]            # lo que se ve: migas de los menús, MPRIS, páginas web
+APP_FOLDER = _BRAND["folder"]   # ~/Vídeos/<APP_FOLDER>, ~/Música/<APP_FOLDER>
+APP_ID = _BRAND["id"]           # sockets, carpeta de datos, orden del sistema
 MEDIA = ROOT / "tests" / "fixtures" / "media"
 # MU_TEST_TMP: shorter base for sockets when the checkout path is long (git worktrees): AF_UNIX paths max ~107 bytes
 TMP = Path(os.environ["MU_TEST_TMP"]) if os.environ.get("MU_TEST_TMP") else ROOT / "tmp"

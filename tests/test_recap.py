@@ -17,7 +17,7 @@ from mpvd.recap import content_words, pick_count, select_by_vectors, select_by_w
 from mpvd.semantic.fake import FakeEmbedder
 from mpvd.semantic.index import Sentence
 from mpvd.server import MpvdServer
-from tests.conftest import start_mpv
+from tests.conftest import APP, start_mpv
 
 MU_OPTS = ("--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5,"
            "mu-recap-min_away=5")
@@ -149,7 +149,7 @@ def test_mu_recap_after_being_away(daemon_env, media_dir, tmp_path):
         assert titles[-1] == "Índice del vídeo entero"
         nav = h.wait_property("user-data/mu/nav", lambda v: bool(v) and "¿Qué me he perdido?" in v.get("title", ""),
                               timeout=10)
-        assert nav["title"].startswith("MPV-UOS › ")
+        assert nav["title"].startswith(f"{APP} › ")
 
         # Enter on a line jumps there and closes the menu
         target = next(i for i in st["items"] if "faro viejo" in i["title"] or "tesoro" in i["title"])
@@ -282,7 +282,7 @@ def test_mu_recap_indice_del_video(daemon_env, media_dir, tmp_path):
         assert all(i["hint"] for i in st["items"]), st["items"]
         nav = h.wait_property("user-data/mu/nav", lambda v: bool(v) and "Índice del vídeo" in v.get("title", ""),
                               timeout=10)
-        assert nav["title"].startswith("MPV-UOS › ")
+        assert nav["title"].startswith(f"{APP} › ")
 
         # activar una frase del índice salta a su minuto y cierra el menú
         base = {"menu_id": "{root}", "is_pointer": False, "alt": False, "ctrl": False, "shift": False}

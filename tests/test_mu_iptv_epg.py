@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import start_mpv
+from tests.conftest import APP, start_mpv
 from tests.test_mu_iptv import free_port, send_event, serve, start_live_stream, wait_view
 
 
@@ -305,6 +305,6 @@ def test_programar_visible_y_la_radio_tambien_se_programa(tv):
     h.command("script-message-to", "mu_record", "mu-record-event", json.dumps(
         {"type": "activate", "index": 1, "menu_id": "{root}", "value": fila["value"]}))
     nav = h.wait_property("user-data/mu/nav", lambda v: bool(v) and v.get("script") == "mu_iptv", timeout=20)
-    assert nav["title"].startswith("MPV-UOS › Grabar"), nav
+    assert nav["title"].startswith(f"{APP} › Grabar"), nav
     wait_view(h, "sched_new")
     assert not h.script_errors(), h.script_errors()

@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from mpvd import mpris
-from tests.conftest import start_mpv
+from tests.conftest import APP, start_mpv
 
 pytest.importorskip("jeepney")
 if shutil.which("dbus-daemon") is None:
@@ -92,7 +92,7 @@ def test_mpris_controls_mpv_and_follows_it(daemon_env, media_dir, private_bus):
             assert reply.header.message_type.name == "method_return", reply.body
             return reply
 
-        assert get("Identity", ROOT) == "MPV-UOS" and get("DesktopEntry", ROOT) == "mpv-uos"
+        assert get("Identity", ROOT) == APP and get("DesktopEntry", ROOT) == "mpv-uos"
         assert get("PlaybackStatus") == "Stopped"
         intro = conn.send_and_get_reply(new_method_call(obj.with_interface("org.freedesktop.DBus.Introspectable"),
                                                         "Introspect")).body[0]

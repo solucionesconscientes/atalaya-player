@@ -13,13 +13,13 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import start_mpv
+from tests.conftest import APP, start_mpv
 from tests.test_nav import press, wait_closed, wait_nav
 
 FIX = Path(__file__).parent / "fixtures"
 FAKE = FIX / "ytdlp" / "fake_ytdlp.py"
 MU_OPTS = "--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5"
-ROOT = "MPV-UOS › Suscripciones"
+ROOT = f"{APP} › Suscripciones"
 
 
 class _Quiet(http.server.SimpleHTTPRequestHandler):
@@ -173,7 +173,7 @@ def test_add_rules_pause_settings_and_delete(metered_mpv, feed_server, tmp_path)
     st(h, lambda v: hint(v, "Renombrar") == "fecha - título")
 
     act(h, {"view": "quality", "id": sid})
-    wait_nav(h, "mu-feeds", "MPV-UOS › … › Reglas › Calidad")   # long trails are shortened
+    wait_nav(h, "mu-feeds", f"{APP} › … › Reglas › Calidad")   # long trails are shortened
     v = st(h, lambda v: v.get("view") == "quality" and "Audio · MP3 192 kbps" in titles(v))
     assert item(v, "Audio · original (sin recodificar, recomendado)")["active"] is True
     act(h, {"set_preset": "audio_mp3_192", "id": sid})
@@ -182,7 +182,7 @@ def test_add_rules_pause_settings_and_delete(metered_mpv, feed_server, tmp_path)
 
     lib = tmp_path / "Podcasts"
     act(h, {"view": "move", "id": sid})
-    wait_nav(h, "mu-feeds", "MPV-UOS › … › Reglas › Mover a la biblioteca")
+    wait_nav(h, "mu-feeds", f"{APP} › … › Reglas › Mover a la biblioteca")
     v = st(h, lambda v: v.get("view") == "move" and "Otra carpeta…" in titles(v))
     assert item(v, "No mover")["active"] is True
     act(h, {"move_input": True, "id": sid})
@@ -272,7 +272,7 @@ def test_add_rules_pause_settings_and_delete(metered_mpv, feed_server, tmp_path)
 
     # ⌫ at the root: back to the main menu; Esc closes
     press(h, "BS")
-    wait_nav(h, "mu-menu", "MPV-UOS")
+    wait_nav(h, "mu-menu", APP)
     press(h, "ESC")
     wait_closed(h)
     h.command("script-binding", "mu_feeds/feeds-menu")
@@ -286,7 +286,7 @@ def test_add_rules_pause_settings_and_delete(metered_mpv, feed_server, tmp_path)
 def test_from_downloads_menu_downloads_with_the_default_chain(open_mpv, feed_server):
     h, d = open_mpv
     url = feed_server + "/rtve_180_grados.xml"
-    crumbs = "MPV-UOS › Abrir o descargar › Suscripciones"
+    crumbs = f"{APP} › Abrir o descargar › Suscripciones"
 
     # H42: «Suscripciones» salió de la raíz de las descargas y vive donde se abre algo (a child: ⌫ vuelve a él)
     h.command("script-binding", "mu_menu/root")
@@ -307,7 +307,7 @@ def test_from_downloads_menu_downloads_with_the_default_chain(open_mpv, feed_ser
     assert hint(v, "Pausar con conexión medida") == "sí · ahora: normal"
     assert hint(v, "Tras descargar (para las nuevas)") == "nada"
     act(h, {"view": "chain_global"})
-    wait_nav(h, "mu-feeds", "MPV-UOS › … › Ajustes de suscripciones › Tras descargar")
+    wait_nav(h, "mu-feeds", f"{APP} › … › Ajustes de suscripciones › Tras descargar")
     st(h, lambda v: v.get("view") == "chain_global" and hint(v, "Renombrar") == "nombre original")
     act(h, {"chain": "rename", "global": True})
     st(h, lambda v: hint(v, "Renombrar") == "fecha - título")
@@ -338,7 +338,7 @@ def test_from_downloads_menu_downloads_with_the_default_chain(open_mpv, feed_ser
     assert all(Path(r["path"]).name.startswith("2026-09-") for r in g["file_records"])
 
     act(h, {"view": "files", "id": sid})
-    wait_nav(h, "mu-feeds", "MPV-UOS › … › 180 grados › Pendientes y descargados")
+    wait_nav(h, "mu-feeds", f"{APP} › … › 180 grados › Pendientes y descargados")
     v = st(h, lambda v: v.get("view") == "files"
            and sum(1 for i in v["items"] if i["hint"] == "listo · 1 paso") == 3)
     rows = [i for i in v["items"] if i["hint"] == "listo · 1 paso"]
@@ -353,7 +353,7 @@ def test_from_downloads_menu_downloads_with_the_default_chain(open_mpv, feed_ser
     act(h, {"check_all": True})
     st(h, lambda v: v["last_action"] == "check-all:1")
     press(h, "BS")
-    wait_nav(h, "mu-menu", "MPV-UOS › Abrir o descargar")
+    wait_nav(h, "mu-menu", f"{APP} › Abrir o descargar")
     press(h, "ESC")
     wait_closed(h)
     assert h.script_errors() == [], h.script_errors()

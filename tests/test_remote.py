@@ -17,7 +17,7 @@ import pytest
 
 from mpvd.remote import qr
 from mpvd.remote.http import HttpError, HttpServer, Request, Response, sse_event
-from tests.conftest import start_mpv
+from tests.conftest import APP, start_mpv
 from tests.qr_helpers import available as zbar_available
 from tests.qr_helpers import decode_modules
 
@@ -255,7 +255,7 @@ def test_remote_pair_commands_and_events(remote_env, media_dir):
 
     # static app without auth, API locked
     status, html = c.req("/")
-    assert status == 200 and b"Mando MPV-UOS" in html and b"/app.js" in html
+    assert status == 200 and f"Mando {APP}".encode() in html and b"/app.js" in html
     assert c.req("/manifest.webmanifest")[0] == 200 and c.req("/sw.js")[0] == 200 and c.req("/icon.svg")[0] == 200
     assert c.req("/api/state")[0] == 401
     assert c.req("/api/cmd", {"cmd": "toggle"})[0] == 401

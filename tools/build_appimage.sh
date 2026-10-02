@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build dist/MPV-UOS-x86_64.AppImage (H28, ADR-067): the project files tracked by git, a relocatable CPython 3.12
+# Build dist/<marca>-x86_64.AppImage (H28, ADR-067): the project files tracked by git, a relocatable CPython 3.12
 # (the python-build-standalone build uv manages) with the light extras, and the vendored yt-dlp. mpv itself is NOT
 # inside: the AppImage uses the system mpv (>= 0.41), like bin/mpv-uos does; AppRun explains how to install it if
 # it is missing. Whisper, the translation and embedding models stay out (hundreds of MB; downloaded on demand).
@@ -25,10 +25,13 @@ ARCH="$(uname -m)"
 [ "$ARCH" = "x86_64" ] || { echo "de momento solo x86_64 (ver docs/PLATAFORMAS.md)" >&2; exit 2; }
 
 WORK="$ROOT/tmp/appimage"
-APPDIR="$WORK/MPV-UOS.AppDir"
+APPDIR="$WORK/app.AppDir"
 APP="$APPDIR/usr/share/mpv-uos"
 TOOL="$ROOT/vendor/bin/appimagetool-$APPIMAGETOOL_VERSION-x86_64.AppImage"
 NAME="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["name"])' "$ROOT/brand.json")"
+# El nombre del FICHERO sale de «folder», que no lleva espacios; «name» puede llevarlos («Atalaya Player») y un
+# AppImage con un espacio en el nombre es un estorbo en cualquier terminal.
+FILE_NAME="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("folder","mpv-uos"))' "$ROOT/brand.json")"
 APP_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id","mpv-uos"))' "$ROOT/brand.json")"
 
 # 1. appimagetool, pinned and checked
@@ -126,7 +129,7 @@ ln -s "$APP_ID.png" "$APPDIR/.DirIcon"
 
 # 5. pack (appimagetool is itself an AppImage: extract-and-run avoids needing FUSE on the build machine)
 mkdir -p "$OUT"
-OUTFILE="$OUT/$NAME-x86_64.AppImage"
+OUTFILE="$OUT/$FILE_NAME-x86_64.AppImage"
 rm -f "$OUTFILE"
 APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 "$TOOL" --no-appstream "$APPDIR" "$OUTFILE" >"$WORK/appimagetool.log" 2>&1 || {
   tail -20 "$WORK/appimagetool.log" >&2; exit 1; }

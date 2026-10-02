@@ -208,3 +208,37 @@ def test_backspace_closes_the_palette(tv, media_dir):  # noqa: F811
         assert h.script_errors() == [], h.script_errors()
     finally:
         h.stop()
+
+
+def test_abrir_varios_archivos_ensena_la_lista_y_se_quita_sola(tv, media_dir):  # noqa: F811
+    """H47 · abrir varios de golpe ya construía la lista (eso lo hace mpv), pero no se veía: lo único que lo
+    insinuaba eran los botones ⏮⏭ de la barra. Ahora se enseña al abrir el primero y se quita sola, para no dejar
+    un menú encima de la película. Con un solo archivo no aparece."""
+    _tv_mpv, d, _record_dir = tv
+    h = start_mpv(d.runtime_dir, [MU_OPTS, "--script-opts-append=mu-menu-playlist_on_open=3",
+                                  "--keep-open=yes", "--pause=yes"], env=d.env)
+    try:
+        h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("uosc"), timeout=40)
+
+        # un solo archivo: no hay lista, así que no se enseña nada
+        h.command("loadfile", str(media_dir / "video30.mkv"))
+        h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 0, timeout=20)
+        time.sleep(1.5)
+        # la clave no existe mientras no haya menú, y leerla entonces es un error, no un None
+        with contextlib.suppress(Exception):
+            assert not h.get("user-data/uosc/menu/type"), "con un archivo no debe salir la lista"
+
+        # tres de golpe (dos vídeos y un audio): sale la lista de uosc, con los tres
+        h.command("loadfile", str(media_dir / "video30.mkv"))
+        for extra in ("chapters.mkv", "voz_es.flac"):
+            h.command("loadfile", str(media_dir / extra), "append")
+        h.wait_property("playlist-count", lambda v: v == 3, timeout=20)
+        h.command("playlist-play-index", 0)
+        h.wait_property("user-data/uosc/menu/type", lambda v: v == "playlist", timeout=20)
+
+        # y se quita sola sin que nadie toque nada
+        h.wait_property("user-data/uosc/menu/type", lambda v: not v, timeout=20)
+        assert h.get("playlist-count") == 3   # la lista sigue ahí, solo se ha cerrado el menú
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()

@@ -16,6 +16,7 @@ from mpvd.rpc import RpcError
 from mpvd.server import MpvdServer
 from mpvd.ytdl.downloads import DownloadSettings, ProgressState, fmt_eta
 from mpvd.ytdl.presets import DownloadSpec
+from tests.conftest import APP_FOLDER
 
 FIX = Path(__file__).parent / "fixtures" / "ytdlp"
 FAKE = FIX / "fake_ytdlp.py"
@@ -52,7 +53,8 @@ def test_progress_state_archive_single_file_and_unknowns():
 def test_download_settings_roundtrip(tmp_path, monkeypatch):
     monkeypatch.delenv("MPV_UOS_DOWNLOAD_DIR", raising=False)
     s = DownloadSettings()
-    assert s.resolved_dir("video").name == "MPV-UOS" and s.resolved_dir("audio").name == "MPV-UOS"
+    assert s.resolved_dir("video").name == APP_FOLDER
+    assert s.resolved_dir("audio").name == APP_FOLDER
     s.update({"video_dir": str(tmp_path / "v"), "chapters": 0, "concurrent": "3", "bogus": 1})
     s.save(tmp_path / "ytdl.json")
     t = DownloadSettings.load(tmp_path / "ytdl.json")

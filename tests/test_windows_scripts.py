@@ -27,6 +27,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from tests.conftest import APP
 
 ROOT = Path(__file__).resolve().parent.parent
 PS1 = ROOT / "bin" / "mpv-uos.ps1"
@@ -331,7 +332,7 @@ def test_install_dry_run_plans_everything_and_changes_nothing(tmp_path):
             "register-protocol", "write-state"} <= set(acts)
     assert "uv-sync" not in acts
     ps1 = str(ROOT / "bin" / "mpv-uos.ps1")
-    assert acts["create-shortcut"]["target"] == str(tmp_path / "menu" / "MPV-UOS.lnk")
+    assert acts["create-shortcut"]["target"] == str(tmp_path / "menu" / f"{APP}.lnk")
     assert acts["create-shortcut"]["detail"].endswith(
         f'-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{ps1}" -Gui')
     assert acts["register-protocol"]["detail"].endswith(f'-File "{ps1}" -Gui "%1"')
@@ -354,7 +355,7 @@ def test_install_then_uninstall_in_a_temporary_folder(tmp_path):
     assert f'if exist "{ps1}" goto run' in text and f'-File "{ps1}" %*' in text
     state = json.loads((tmp_path / "inst" / "install.json").read_text())
     assert state["root"] == str(ROOT) and state["launcher"] == str(launcher)
-    assert state["shortcut"] == str(tmp_path / "menu" / "MPV-UOS.lnk") and state["protocol"] is True
+    assert state["shortcut"] == str(tmp_path / "menu" / f"{APP}.lnk") and state["protocol"] is True
     # a shortcut we did not create (not in install.json) is left alone; ours is removed
     (tmp_path / "menu").mkdir()
     foreign = tmp_path / "menu" / "Otro.lnk"

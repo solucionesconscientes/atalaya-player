@@ -19,6 +19,7 @@ from mpvd.config import Settings
 from mpvd.convert import hw as hw_mod
 from mpvd.rpc import RpcError
 from mpvd.server import MpvdServer
+from tests.conftest import APP_FOLDER
 
 FAST = {"speed": "fast", "hw": "cpu"}
 
@@ -104,7 +105,7 @@ def test_mp4_range_resolution_subtitles_retry_remove_and_tasks(env, clip):
         presets = await c.call("convert.presets")
         assert [p["id"] for p in presets["presets"]] == ["mp4", "small", "web", "mp3", "m4a", "opus", "flac", "wav",
                                                          "gif"]
-        assert presets["heights"] == [0, 1080, 720, 480] and presets["default_dir"].endswith("MPV-UOS/Convertidos")
+        assert presets["heights"] == [0, 1080, 720, 480] and presets["default_dir"].endswith(f"{APP_FOLDER}/Convertidos")
         res = await c.call("convert.start", {"path": str(clip), "preset": "mp4", "out_dir": str(out_dir),
                                              "options": {**FAST, "height": 480, "start": 1.0, "end": 3.5}})
         assert res["count"] == 1 and res["out_dir"] == str(out_dir)

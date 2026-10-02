@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import start_mpv
+from tests.conftest import APP_FOLDER, start_mpv
 
 ROOT = Path(__file__).resolve().parent.parent
-IMAGE = ROOT / "dist" / "MPV-UOS-x86_64.AppImage"
+IMAGE = ROOT / "dist" / f"{APP_FOLDER}-x86_64.AppImage"
 
 
 @pytest.fixture(scope="module")
@@ -21,7 +21,7 @@ def image() -> Path:
     if os.environ.get("MU_BUILD_APPIMAGE") == "1":
         subprocess.run([str(ROOT / "tools" / "build_appimage.sh")], check=True, capture_output=True, timeout=900)
     if not IMAGE.is_file():
-        pytest.skip("sin dist/MPV-UOS-x86_64.AppImage (tools/build_appimage.sh o MU_BUILD_APPIMAGE=1)")
+        pytest.skip(f"sin dist/{IMAGE.name} (tools/build_appimage.sh o MU_BUILD_APPIMAGE=1)")
     return IMAGE
 
 

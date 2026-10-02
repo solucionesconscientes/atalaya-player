@@ -11,6 +11,7 @@ local uosc = require('mu.uosc')
 local brand = require('mu.brand')
 local prefs = require('mu.prefs')
 local nav = require('mu.nav')
+local clip = require('mu.clip')
 
 local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-menu-event'
@@ -27,6 +28,7 @@ local opts = {
   palette_limit = 8,       -- results per section in the palette
   osd_seconds = 3,
   click_pause = false,     -- a left click on the video toggles pause (preference, off by default)
+  playlist_on_open = 4,    -- H47: abrir varios archivos a la vez enseña la lista; segundos que se queda (0 = no)
 }
 options.read_options(opts, 'mu-menu')
 -- remembered "continue watching" switch (mu/prefs.lua; --script-opts=mu-menu-resume=… still wins)
@@ -150,6 +152,31 @@ local function try_resume()
   end, 10)
 end
 
+-- H47 · abrir varios archivos de golpe (seleccionándolos en el gestor de archivos, o `mpv-uos a.mkv b.mkv c.mp3`)
+-- ya construía la lista —eso lo hace mpv— pero no se veía: lo único que lo insinuaba eran los botones ⏮⏭ de la
+-- barra, que uosc solo pinta cuando hay lista. Ahora se enseña al abrir el primero y se quita sola, para no dejar
+-- un menú encima de la película: `playlist_on_open` son los segundos que se queda (0 la desactiva, un número
+-- grande la deja hasta que la cierres).
+local playlist_shown = false
+local playlist_timer = nil
+
+local function show_playlist_once()
+  local secs = tonumber(opts.playlist_on_open) or 0
+  if secs <= 0 or playlist_shown then return end
+  if (mp.get_property_number('playlist-count') or 0) < 2 then return end
+  if (mp.get_property_number('playlist-pos') or 0) ~= 0 then return end   -- solo al empezar la lista, no en cada pista
+  if uosc.open_type() ~= nil then return end                              -- hay un menú puesto: no se lo pisamos
+  playlist_shown = true
+  mp.commandv('script-binding', 'uosc/playlist')
+  if playlist_timer then playlist_timer:kill() end
+  playlist_timer = mp.add_timeout(secs, function()
+    playlist_timer = nil
+    -- si sigue siendo la lista de uosc y nadie ha tocado nada, se cierra; si el espectador se ha movido a otro
+    -- menú o la ha cerrado él, no se toca nada
+    if uosc.open_type() == 'playlist' then mp.commandv('script-message-to', 'uosc', 'close-menu', 'playlist') end
+  end)
+end
+
 mp.register_event('file-loaded', function()
   local path = mp.get_property('path') or ''
   state.path, state.resumed, state.position = path, false, mp.get_property_number('time-pos') or 0
@@ -157,6 +184,7 @@ mp.register_event('file-loaded', function()
   state.title = mp.get_property('media-title') or path
   state.tracked = trackable(path)
   publish()
+  show_playlist_once()
   if not state.tracked then return end
   try_resume()
   start_timer()
@@ -449,7 +477,9 @@ views.prefs = function()
         { 'script-binding', 'mu_modes/simple-toggle' }, { active = modes.simple, separator = true }),
     { title = 'Restablecer preferencias…', hint = 'se guarda una copia', icon = 'restart_alt',
       value = { cmd = { 'script-message-to', 'mu_prefs', 'reset-ask' } } },
-    bind('Abrir la carpeta de configuración', 'ctrl+o', 'folder_open', 'uosc/open-config-directory'),
+    bind('Abrir la carpeta de configuración', 'ctrl+alt+o', 'folder_open', 'uosc/open-config-directory'),
+    { title = 'Ayuda y novedades en ' .. brand.site:gsub('^https?://', ''), icon = 'language',
+      value = { site = true }, actions = { { name = 'copy', icon = 'content_copy', label = 'Copiar la dirección' } } },
   })
 end
 
@@ -480,7 +510,12 @@ views.help = function()
   end
   items[#items].separator = true
   table.insert(items, bind('Ver todas las teclas', nil, 'keyboard', 'uosc/keybinds'))
-  show('Ayuda', items, { footnote = 'Esc cierra' })
+  -- H41 · la dirección del proyecto, donde está toda la información. Vive en brand.json como el resto de la
+  -- identidad, y desde aquí se abre en el navegador o se copia (Tab) para llevársela a otro aparato.
+  table.insert(items, { title = brand.name .. ' en internet', hint = brand.site:gsub('^https?://', ''),
+                        icon = 'language', value = { site = true },
+                        actions = { { name = 'copy', icon = 'content_copy', label = 'Copiar la dirección' } } })
+  show('Ayuda', items, { footnote = 'Esc cierra · Tab copia la dirección' })
 end
 
 views.recents = function()
@@ -917,6 +952,18 @@ mp.register_script_message(EVENT, function(json)
       local crumbs = { nav.HOME }
       for _, spec in ipairs(state.stack) do crumbs[#crumbs + 1] = spec.title end
       nav.open_child(v.child.script, v.child.entry, crumbs, state.view)
+    elseif v.site then
+      -- H41 · Tab la copia (para abrirla en el móvil), Enter la abre en el navegador de este equipo
+      if ev.action == 'copy' then
+        clip.copy_osd(brand.site, osd, 'la dirección de ' .. brand.name)
+      else
+        local platform = mp.get_property_native('platform') or ''
+        local open = platform == 'windows' and 'explorer' or (platform == 'darwin' and 'open' or 'xdg-open')
+        mp.command_native_async({ name = 'subprocess', args = { open, brand.site }, detach = true,
+                                  playback_only = false }, function() end)
+        osd('Abriendo ' .. brand.site)
+        uosc.close(MENU)
+      end
     elseif v.pref then
       set_pref(v.pref, not opts[v.pref])
       reopen_current()

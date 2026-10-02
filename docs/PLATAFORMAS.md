@@ -33,7 +33,7 @@ Desarrollado y probado en Linux (Ubuntu, Wayland/KDE, mpv 0.41). Lo siguiente NO
 ## Instalar en macOS (no probado)
 ```bash
 brew install mpv ffmpeg uv chromaprint     # mpv ≥ 0.41
-git clone <repo> MPV-UOS && cd MPV-UOS && uv sync && tools/vendor.sh
+git clone <repo> Atalaya Player && cd Atalaya Player && uv sync && tools/vendor.sh
 bin/mpv-uos video.mkv                        # o: alias mpv-uos="$PWD/bin/mpv-uos" en ~/.zshrc
 ```
 Una app `.app` que abra archivos desde Finder queda pendiente (necesita un bundle con `Info.plist` que llame a `bin/mpv-uos`).
@@ -42,13 +42,13 @@ Una app `.app` que abra archivos desde Finder queda pendiente (necesita un bundl
 Sin permisos de administrador; el checkout se queda donde esté y todo apunta a él (nada en `%APPDATA%\mpv`).
 ```powershell
 # antes: mpv ≥ 0.41 (build oficial de mpv.io/installation), ffmpeg/ffprobe, uv y git en el PATH
-git clone <repo> MPV-UOS; cd MPV-UOS
+git clone <repo> Atalaya Player; cd Atalaya Player
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\install.ps1 -Whisper     # -Extras: traducción y búsqueda
-mpv-uos video.mkv          # o desde el menú Inicio → MPV-UOS; también bin\mpv-uos.cmd sin instalar
+mpv-uos video.mkv          # o desde el menú Inicio → Atalaya Player; también bin\mpv-uos.cmd sin instalar
 ```
 `install.ps1` comprueba mpv (≥ 0.41), ffmpeg, ffprobe y uv, ejecuta `uv sync`, descarga y verifica con SHA-256 los binarios
 fijados en `vendor.lock` (`ziggy-windows.exe` de uosc, `yt-dlp.exe` contra el `SHA2-256SUMS` de su release, `deno.exe` si no hay
-deno/node ≥ 22 y, con `-Whisper`, whisper.cpp CPU `whisper-bin-x64.zip`), crea `%LOCALAPPDATA%\MPV-UOS\bin\mpv-uos.cmd`,
+deno/node ≥ 22 y, con `-Whisper`, whisper.cpp CPU `whisper-bin-x64.zip`), crea `%LOCALAPPDATA%\Atalaya Player\bin\mpv-uos.cmd`,
 un acceso en el menú Inicio y los enlaces `mpv-uos://` (en `HKCU\Software\Classes`). `-DryRun` enseña lo que haría sin tocar nada
 (una línea JSON); `-Uninstall` lo quita todo menos los datos (`%APPDATA%\mpv-uos`) y el checkout.
 El lanzador `bin\mpv-uos.ps1` pasa a mpv las mismas opciones que `bin/mpv-uos` y un `--input-ipc-server=\\.\pipe\mpv-uos-<pid>-<azar>`

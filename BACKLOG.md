@@ -367,9 +367,48 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
 - [x] F5 Windows: tarea programada con WakeToRun sin administrador, comprobando que el plan de energía permite los
       temporizadores de activación y avisando si no. Sin Windows aquí: queda sin probar en real.
 
-## H41 · Nombre (lo decide Ser)
-- [ ] Elegir entre Lince, Cauce, Lumbre, Mirador, Compás, Querencia (o Sintonía, que quedó descartado) y cambiarlo en
-      brand.json, que es el único sitio donde vive.
+## H41 · Nombre — **Atalaya Player** (decidido por Ser el 2026-10-02)
+- [x] `brand.json`: `name` = «Atalaya Player», `folder` = «Atalaya». `id` se queda en `mpv-uos` a propósito (sockets,
+      carpeta de datos, orden): renombrarlo obligaría a migrar los datos del usuario sin ganar nada. Para teclear,
+      `tools/install.sh` instala además un segundo nombre, `atalaya`, enlazado al lanzador.
+- [x] Los tests leen el nombre y la carpeta de `brand.json` (antes «MPV-UOS» estaba literal en 30 ficheros, la mayoría
+      en las migas de los menús), así que el próximo cambio de nombre no vuelve a tocarlos.
+- [x] Movidas `~/Vídeos/MPV-UOS` → `~/Vídeos/Atalaya` y `~/Música/MPV-UOS` → `~/Música/Atalaya` (285 ficheros).
+      El AppImage y los logos toman el nombre de la marca; el nombre del fichero sale de `folder`, que no lleva espacios.
+
+## H47 · La lista de reproducción al abrir varios archivos
+- [x] Abrir varios de golpe ya construía la lista (lo hace mpv, y el `.desktop` pasa `%U`), pero no se veía: lo único
+      que lo insinuaba eran los botones ⏮⏭ de la barra. Ahora se enseña al abrir el primero y se quita sola a los 4 s
+      (`mu-menu-playlist_on_open`, 0 la desactiva). No sale con un solo archivo ni al cambiar de pista.
+
+## H48 · Consumo — medido, nada que hacer (2026-10-02)
+- [x] Medido en este portátil: en pausa 0,1 % de CPU y mpvd 0,00 %; reproduciendo, +6 puntos de un núcleo (1,5 % del
+      total) y +13 MB sobre mpv pelado. uosc es gratis (13,7 % frente a 14,1 % sin él) y nuestro `mpv.conf` es más
+      barato que el mpv de serie. Ningún temporizador desbocado: los rápidos se crean solo cuando hacen falta.
+- [ ] **No-objetivo**: un modo ligero o una configuración mínima paralela. Decidido con Ser el 2026-10-02: lo que se
+      ganaría es RAM, no fluidez (los scripts no están en el camino del vídeo), y costaría una segunda configuración
+      que mantener y el doble de tests. Si alguna vez molesta, el camino es bisecar qué script se lleva los 9 puntos
+      y arreglar ese, no construir dos reproductores.
+
+## H49 · Idiomas: castellano, inglés y francés (diseño: docs/IDIOMAS.md)
+Regla de Ser: sistema en castellano o francés → ese idioma; inglés o cualquier otro → inglés. Medido antes de
+empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de las páginas), o sea ~3.600 traducidas.
+- [ ] G1 Maquinaria: `locales/en.json` y `fr.json` (la cadena castellana ES la clave, así que no hay `es.json` y lo
+      no traducido cae al castellano), `mu/i18n.lua`, `mpvd/i18n.py`, y la detección en `bin/mpv-uos`, que es el
+      único sitio que decide: pasa `uosc-languages` (uosc ya está traducido, no se duplica) y `mu-core-lang`.
+- [ ] G2 Preferencias → Idioma (automático / castellano / English / Français), recordado en mu-prefs.
+- [ ] G3 Lo primero que se ve: mu-core, mu-menu (menú, paleta, ayuda, inicio) y mu-modes.
+- [ ] G4 Los módulos grandes: ytdl, iptv, subs, record, share, library, music.
+- [ ] G5 Los mensajes de mpvd que salen en el OSD.
+- [ ] G6 Las páginas servidas (sala, mando, descargas), que siguen al **navegador del invitado**, no al sistema del
+      anfitrión: las abre otra persona y puede estar en otro idioma.
+- [ ] G7 Repaso de las traducciones (el francés, con ojo).
+
+## H50 · El sitio web del proyecto (solucionesconscientes.es/atalaya)
+- [ ] F1 La página pública: qué es, las características importantes, capturas, cómo instalarlo. Para alguien que no
+      conoce el proyecto y decide en treinta segundos si le interesa.
+- [ ] F2 La página exhaustiva (GitHub o donde convenga): absolutamente todos los detalles, las tecnologías que usa,
+      la arquitectura, las decisiones y sus porqués.
 
 ## H42 · Una sola puerta para abrir y descargar (análisis: docs/ANALISIS-SALA-E-INTERFAZ.md §B.2.3) — ADR-077
 - [x] A1 Una entrada «Abrir o descargar» que acepte cualquier cosa: un enlace, varios enlaces pegados, una lista de

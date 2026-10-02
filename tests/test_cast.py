@@ -20,6 +20,7 @@ from mpvd.cast.service import Media, relay_argv, tv_can_play
 from mpvd.client import MpvdClient
 from mpvd.config import Settings
 from mpvd.server import MpvdServer
+from tests.conftest import APP
 
 DESCRIPTION = """<?xml version="1.0"?>
 <root xmlns="urn:schemas-upnp-org:device-1-0">
@@ -311,7 +312,7 @@ def test_mu_cast_send_and_come_back(tv, daemon_env, media_dir):
         assert st["devices"][0]["name"] == "[TV] Salón"
         nav = h.wait_property("user-data/mu/nav", lambda v: bool(v) and v.get("title", "").endswith("Enviar a la tele"),
                               timeout=10)
-        assert nav["title"].startswith("MPV-UOS › ")
+        assert nav["title"].startswith(f"{APP} › ")
 
         base = {"menu_id": "{root}", "is_pointer": False, "alt": False, "ctrl": False, "shift": False}
 

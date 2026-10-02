@@ -8,7 +8,7 @@ import struct
 import subprocess
 
 from mpvd import brand
-from tests.conftest import ROOT
+from tests.conftest import APP, ROOT
 
 WWW = ROOT / "mpvd" / "remote" / "www"
 LOGO = ROOT / "docs" / "marca" / "logo-anillo.svg"
@@ -36,7 +36,7 @@ def test_brand_falls_back_when_the_file_is_broken(tmp_path, monkeypatch):
     monkeypatch.setenv("MPV_UOS_ROOT", str(tmp_path))
     brand.brand.cache_clear()
     try:
-        assert brand.app_name() == "MPV-UOS"
+        assert brand.app_name() == brand.DEFAULTS["name"]   # sin brand.json, los valores de serie
         (tmp_path / "brand.json").write_text('{"name": "Sintonía", "colors": {"amber": "#000000"}}', encoding="utf-8")
         brand.brand.cache_clear()
         assert brand.app_name() == "Sintonía" and brand.app_id() == "mpv-uos"
@@ -60,7 +60,7 @@ def test_logo_is_the_app_and_pwa_icon():
     assert manifest["theme_color"].lower() == "#0d1320"
     for name in ("logo-anillo.svg", "logo-sin-fondo.svg", "logo-mono.svg"):
         svg = (ROOT / "docs" / "marca" / name).read_text(encoding="utf-8")
-        assert 'aria-label="MPV-UOS"' in svg and "Sintonía" not in svg   # the name is still pending
+        assert f'aria-label="{APP}"' in svg and "Sintonía" not in svg
     assert "<rect" not in (ROOT / "docs" / "marca" / "logo-sin-fondo.svg").read_text(encoding="utf-8")
     # service worker and HTTP routes know the PNGs
     assert "/icon-192.png" in (WWW / "sw.js").read_text(encoding="utf-8")
@@ -80,3 +80,15 @@ def test_lua_brand_module_reads_brand_json_and_converts_colours(tmp_path):
     m = re.search(r"BRAND (\S+) (\S+) (\S+)", out.stdout + out.stderr)
     assert m, out.stdout + out.stderr
     assert (m.group(1), m.group(2), m.group(3)) == ("Prueba", "prueba", "332211")
+
+
+def test_la_direccion_del_proyecto_sale_de_brand_json():
+    """H41 · la dirección del sitio web es identidad, así que vive en brand.json como el nombre, y de ahí la leen
+    tanto mpvd como los scripts. En el reproductor se ve en la Ayuda y en Preferencias."""
+    site = json.loads((ROOT / "brand.json").read_text(encoding="utf-8"))["site"]
+    assert site.startswith("https://") and brand.app_site() == site
+    lua = (ROOT / "mpv-config" / "script-modules" / "mu" / "brand.lua").read_text(encoding="utf-8")
+    assert "'site'" in lua and site in lua          # el valor de serie, por si no se puede leer el fichero
+    menu = (ROOT / "mpv-config" / "scripts" / "mu-menu" / "main.lua").read_text(encoding="utf-8")
+    assert "brand.site" in menu and site not in menu, "en el menú se lee de brand, no se escribe a mano"
+    assert site in (ROOT / "README.md").read_text(encoding="utf-8")

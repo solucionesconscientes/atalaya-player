@@ -43,6 +43,11 @@ def test_install_and_uninstall(prefix):
     desktop = base / "share" / "applications" / "mpv-uos.desktop"
     icon = base / "share" / "icons" / "hicolor" / "scalable" / "apps" / "mpv-uos.svg"
     assert launcher.is_file() and os.access(launcher, os.X_OK), out
+    # H41 · segundo nombre para la orden, sacado de brand «folder» en minúsculas: `atalaya` además de `mpv-uos`.
+    # El identificador técnico no cambia al renombrar la aplicación, pero lo que se teclea sí puede.
+    folder = json.loads((ROOT / "brand.json").read_text(encoding="utf-8"))["folder"]
+    alias = base / "bin" / folder.lower().replace(" ", "-")
+    assert alias.is_symlink() and alias.resolve() == launcher.resolve(), out
     symbolic = base / "share" / "icons" / "hicolor" / "symbolic" / "apps" / "mpv-uos-symbolic.svg"
     assert desktop.is_file() and icon.is_file() and symbolic.is_file()
     # H33: the approved logo «C · Anillo» and its monochrome variant; the name comes from brand.json
@@ -65,6 +70,7 @@ def test_install_and_uninstall(prefix):
     other.write_text("[Desktop Entry]\nType=Application\nName=Otra\nExec=true\n", encoding="utf-8")
     run(env, "--uninstall")
     assert not launcher.exists() and not desktop.exists() and not icon.exists() and other.exists()
+    assert not alias.exists(), "el segundo nombre también se quita al desinstalar"
     assert not symbolic.exists()
 
 

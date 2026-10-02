@@ -20,7 +20,7 @@ import pytest
 from mpvd import handoff
 from mpvd.remote.downloads import disk_usage
 from mpvd.rpc import RpcError
-from tests.conftest import start_mpv
+from tests.conftest import APP, APP_FOLDER, start_mpv
 from tests.test_remote import RemoteClient
 
 FAKE = Path(__file__).parent / "fixtures" / "ytdlp" / "fake_ytdlp.py"
@@ -45,8 +45,8 @@ def test_download_links_roundtrip_and_rejects():
 
 
 def test_disk_usage_walks_up_to_an_existing_folder_and_joins_filesystems(tmp_path):
-    video = tmp_path / "Vídeos" / "MPV-UOS"          # not created yet: its parent's filesystem is reported
-    audio = tmp_path / "Música" / "MPV-UOS"
+    video = tmp_path / "Vídeos" / APP_FOLDER          # not created yet: its parent's filesystem is reported
+    audio = tmp_path / "Música" / APP_FOLDER
     rows = disk_usage({"video": video, "audio": audio})
     assert len(rows) == 1 and rows[0]["kinds"] == ["video", "audio"] and rows[0]["path"] == str(video)
     real = shutil.disk_usage(tmp_path)
@@ -103,7 +103,7 @@ def test_panel_page_auth_add_and_live_tasks(panel_env):
     anon = RemoteClient(c.base)
     # the page is public (like the PWA), the API needs the remote's cookie
     status, html = anon.req("/downloads")
-    assert status == 200 and b"Descargas MPV-UOS" in html and b"/downloads.js" in html
+    assert status == 200 and f"Descargas {APP}".encode() in html and b"/downloads.js" in html
     status, js = anon.req("/downloads.js")
     assert status == 200 and b"/events/tasks" in js and b"mpv-uos://download?url=" in js
     status, pwa = anon.req("/")

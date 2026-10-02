@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from mpvd.notes import link
-from tests.conftest import start_mpv
+from tests.conftest import APP, start_mpv
 from tests.test_nav import press, wait_nav
 
 MU_OPTS = "--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5"
@@ -62,13 +62,13 @@ def test_my_notes_menu_edit_delete_export_and_links(notes_mpv, media_dir, tmp_pa
 
     # menu: this video + the list of all
     h.command("script-binding", "mu_notes/notes-menu")
-    wait_nav(h, "mu-notes", "MPV-UOS › Mis notas")
+    wait_nav(h, "mu-notes", f"{APP} › Mis notas")
     st = notes_state(h, lambda v: v.get("view") == "root" and "Mi película" in titles(v))
     assert titles(st)[0] == "Notas de este vídeo"
     row = next(i for i in st["items"] if i["title"] == "Mi película")
     assert row["hint"] == "2 notas"
     ev(h, "mu-notes-event", {"type": "activate", "index": 3, "value": row["value"]})
-    wait_nav(h, "mu-notes", "MPV-UOS › Mis notas › Mi película")
+    wait_nav(h, "mu-notes", f"{APP} › Mis notas › Mi película")
     st = notes_state(h, lambda v: v.get("view") == "file" and "Primera nota" in titles(v))
     assert [i["hint"] for i in st["items"][:2]] == ["0:03", "0:10"] and "Exportar junto al vídeo" in titles(st)
 
@@ -104,9 +104,9 @@ def test_my_notes_menu_edit_delete_export_and_links(notes_mpv, media_dir, tmp_pa
 
     # ⌫ walks back: the list of all notes, then the main menu
     press(h, "BS")
-    wait_nav(h, "mu-notes", "MPV-UOS › Mis notas")
+    wait_nav(h, "mu-notes", f"{APP} › Mis notas")
     press(h, "BS")
-    wait_nav(h, "mu-menu", "MPV-UOS")
+    wait_nav(h, "mu-menu", APP)
     press(h, "ESC")
     h.wait_property("user-data/uosc/menu/type", lambda v: not v, timeout=10)
 
