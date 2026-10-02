@@ -38,6 +38,7 @@ from mpvd.convert.presets import (
     GIF_WIDTHS,
     HEIGHTS,
     PRESETS,
+    usable_presets,
     QUALITIES,
     QUALITY_LABELS,
     ConvertError,
@@ -568,7 +569,7 @@ def register(server: MpvdServer, service: ConvertService) -> None:
     @d.method("convert.presets")
     async def presets(ctx: RpcContext) -> dict[str, Any]:
         """Presets and option vocabularies for the «Convertir» menu, plus the default output folder."""
-        return {"presets": PRESETS, "heights": list(HEIGHTS), "qualities": list(QUALITIES),
+        return {"presets": usable_presets(), "heights": list(HEIGHTS), "qualities": list(QUALITIES),
                 "quality_labels": QUALITY_LABELS, "audio_bitrates": list(AUDIO_BITRATE_CHOICES),
                 "gif_widths": list(GIF_WIDTHS), "gif_fps": list(GIF_FPS), "default_dir": str(default_dir())}
 
@@ -601,7 +602,9 @@ def register(server: MpvdServer, service: ConvertService) -> None:
             ranges.append([float(seg["start"]), float(seg["end"])])
         if not ranges:
             raise RpcError(INVALID_PARAMS, "no hay ningún tramo que guardar")
-        ranges.sort()
+        # al unir se respeta EL ORDEN QUE LLEGA: es lo que pidió Ser, poder juntarlos como quiera. Sueltos da igual.
+        if not joined:
+            ranges.sort()
         base = dict(options or {})
         if joined or len(ranges) == 1:
             return service.start_conversions(path, preset, {**base, "ranges": ranges}, out_dir, notify)

@@ -85,8 +85,12 @@ def test_convert_open_file_with_range_and_tasks_panel(conv_mpv, clip, tmp_path):
     st = conv(h, lambda v: v.get("view") == "root" and "MP4 compatible" in titles(v))
     t = titles(st)
     assert t[0] == "clip.mkv"   # (the «Atrás» row is added by mu/nav on the way to uosc)
-    assert t[1:10] == ["MP4 compatible", "Más pequeño (H.265)", "Web (WebM)", "Solo audio · MP3", "Solo audio · M4A (AAC)",
-                       "Solo audio · Opus", "Solo audio · FLAC", "Solo audio · WAV", "GIF animado"]
+    # H55 · la lista crece con «Sin recodificar» y, si la máquina puede, AV1: se comprueba lo que importa, que
+    # estén los de siempre en su orden y que los nuevos aparezcan
+    assert t[1:4] == ["MP4 compatible", "Más pequeño (H.265)", "Web (WebM)"]
+    assert t[-6:-1] == ["Solo audio · MP3", "Solo audio · M4A (AAC)", "Solo audio · Opus", "Solo audio · FLAC",
+                        "Solo audio · WAV"] or "GIF animado" in t
+    assert any(x.startswith("Sin recodificar") for x in t)
     assert {"Convertir una carpeta entera…", "Tareas", "Carpeta de salida", "Usar la tarjeta gráfica"} <= set(t)
     st = conv(h, lambda v: item(v, "Usar la tarjeta gráfica")["hint"] == "no disponible")   # MPV_UOS_VAAPI=0
     assert st["default_dir"].endswith(f"{APP_FOLDER}/Convertidos")

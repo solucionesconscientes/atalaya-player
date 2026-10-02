@@ -223,3 +223,55 @@ def test_browser_chat_as_text_and_public_room(share_env, clip):  # noqa: F811
         d.call("share.close")
     finally:
         b.close()
+
+
+def test_el_invitado_con_el_control_manda_de_verdad(share_env, clip):  # noqa: F811
+    """H55 · Ser dice que desde el navegador «sigo sin poder controlarlo correctamente, lo único que funciona bien
+    es silenciar» (que es local). Aquí se prueban los tres mandos con un navegador y un mpv de verdad: pausa,
+    −10 s y la barra. Lo que se mira es el EFECTO en el reproductor del anfitrión y en el vídeo del invitado."""
+    h, d = share_env
+    h.command("loadfile", str(clip))
+    h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=20)
+    h.command("seek", "20", "absolute+exact")
+    h.command("set", "pause", "no")
+    res = d.call("share.create")
+    b = Browser()
+    try:
+        b.nav(res["url"])
+        b.wait("!document.getElementById('join').classList.contains('hidden')")
+        b.js("document.getElementById('name').value = 'Navegador'; "
+             "document.getElementById('join-form').requestSubmit(); true")
+        b.wait("!document.getElementById('room').classList.contains('hidden')")
+        b.wait(f"{VIDEO}.readyState >= 1", timeout=40)
+
+        # H55 · en una sala privada entra pudiendo controlar: es lo que significa «ver juntos»
+        assert b.js("document.getElementById('play').disabled") is False
+        assert b.js("document.getElementById('seek').disabled") is False
+
+        # y si el anfitrión lo quita, se apagan Y SE DICE POR QUÉ (antes parecían rotos)
+        d.call("share.open_control", {"on": False})
+        b.wait("document.getElementById('play').disabled", timeout=20)
+        b.wait("document.getElementById('why-view').textContent.indexOf('solo puedes ver') >= 0", timeout=10)
+        d.call("share.open_control", {"on": True})
+        b.wait("!document.getElementById('play').disabled", timeout=20)
+
+        # 1. pausa
+        b.js("document.getElementById('play').click(); true")
+        h.wait_property("pause", lambda v: v is True, timeout=20)
+        b.wait(f"{VIDEO}.paused", timeout=20)
+        b.js("document.getElementById('play').click(); true")
+        h.wait_property("pause", lambda v: v is False, timeout=20)
+
+        # 2. −10 s
+        antes = h.get("time-pos")
+        b.js("document.getElementById('back10').click(); true")
+        h.wait_property("time-pos", lambda v: isinstance(v, (int, float)) and v < antes - 5, timeout=20)
+
+        # 3. la barra: llevar al segundo ~5 moviéndola y soltándola
+        b.js("var s = document.getElementById('seek'); s.value = Math.round(1000 * 5 / 30); "
+             "s.dispatchEvent(new Event('change')); true")
+        h.wait_property("time-pos", lambda v: isinstance(v, (int, float)) and v < 9, timeout=25)
+        # y el vídeo del invitado acaba donde está el anfitrión, no clavado
+        b.wait(f"{VIDEO}.currentTime < 12", timeout=60)
+    finally:
+        b.close()

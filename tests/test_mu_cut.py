@@ -237,3 +237,127 @@ def test_solo_se_guardan_los_tramos_elegidos(cut_mpv, media_dir, tmp_path):
         ["ffprobe", "-v", "error", "-show_format", "-of", "json", got["output"]],
         capture_output=True, text=True, check=True).stdout)["format"]["duration"])
     assert abs(dur - 7.0) < 0.6, f"duración {dur}, esperada 7 (3 + 4)"
+
+
+def test_se_cambia_el_orden_y_se_unen_en_ese_orden(cut_mpv):
+    """H55 · «cambiar el orden, y juntar 2 o más en el orden deseado». Mientras no toques nada entran por tiempo;
+    en cuanto subes uno, el orden es tuyo y es el que se usa al unirlos."""
+    h, _d = cut_mpv
+    for a, b in ((3.0, 6.0), (10.0, 13.0), (20.0, 23.0)):
+        mark_at(h, a)
+        mark_at(h, b)
+    v = cut_state(h, lambda v: v["count"] == 3)
+    assert [s["a"] for s in v["segments"]] == [3.0, 10.0, 20.0] and v["manual"] is False
+
+    h.command("script-binding", "mu_cut/cut-menu")
+    cut_state(h, lambda v: v["view"] == "root" and any("Guardar" in t for t in titles_cut(v)))
+    # subir el tercero: pasa a ser el segundo y el orden deja de ser por tiempo
+    ev_cut(h, {"type": "activate", "index": 1, "action": "up", "value": {"action": "toggle", "index": 3}})
+    v = cut_state(h, lambda v: v["manual"] is True)
+    assert [s["a"] for s in v["segments"]] == [3.0, 20.0, 10.0]
+
+    # y marcar otro ya NO lo recoloca por tiempo: manda el orden que has puesto
+    # (los dos puntos, bien separados: `mark_at` espera con 1,5 s de tolerancia y dos marcas juntas se descartan)
+    mark_at(h, 25.0)
+    mark_at(h, 28.0)
+    v = cut_state(h, lambda v: v["count"] == 4)
+    assert [s["a"] for s in v["segments"]] == [3.0, 20.0, 10.0, 25.0]
+    assert h.script_errors() == [], h.script_errors()
+
+
+def test_unidos_respetan_el_orden_elegido(cut_mpv, media_dir, tmp_path):
+    """El trozo del final puesto primero tiene que salir primero en el archivo."""
+    _h, d = cut_mpv
+    out = tmp_path / "orden"
+    res = d.call("convert.cut", {
+        "path": str(media_dir / "video30.mkv"),
+        "segments": [{"start": 20, "end": 24}, {"start": 2, "end": 5}],   # al revés a propósito
+        "preset": "mp4", "joined": True, "options": {"speed": "fast"}, "out_dir": str(out),
+    }, timeout=60)
+    item = res["items"][0]
+    fin = time.monotonic() + 180
+    while time.monotonic() < fin:
+        got = d.call("convert.get", {"id": item["id"]})
+        if got["status"] in ("done", "error", "cancelled"):
+            break
+        time.sleep(0.5)
+    assert got["status"] == "done", got
+    dur = float(json.loads(subprocess.run(
+        ["ffprobe", "-v", "error", "-show_format", "-of", "json", got["output"]],
+        capture_output=True, text=True, check=True).stdout)["format"]["duration"])
+    assert abs(dur - 7.0) < 0.6
+
+
+def test_los_formatos_salen_de_mpvd_y_sin_recodificar_no_une(cut_mpv):
+    """H55 · «¿por qué no metemos más?». Hay dos nuevos: «Sin recodificar» (instantáneo y sin pérdida) y AV1 si
+    esta máquina puede. La lista la manda mpvd, que quita lo que su ffmpeg no sabe hacer, y «Sin recodificar» no
+    ofrece unir, porque pegar trozos obliga a recodificar."""
+    h, d = cut_mpv
+    ids = [p["id"] for p in d.call("convert.presets")["presets"]]
+    assert "copy" in ids and "mp4" in ids
+    for a, b in ((3.0, 6.0), (10.0, 13.0)):
+        mark_at(h, a)
+        mark_at(h, b)
+    cut_state(h, lambda v: v["count"] == 2)
+
+    h.command("script-binding", "mu_cut/cut-menu")
+    v = cut_state(h, lambda v: any(t.startswith("Guardar los 2 elegidos unidos") for t in titles_cut(v)))
+    fila = next(i for i, t in enumerate(titles_cut(v), start=1) if t == "Formato")
+    ev_cut(h, {"type": "activate", "index": fila, "value": {"view": "format"}})
+    v = cut_state(h, lambda v: v["view"] == "format"
+                  and any("Sin recodificar" in t for t in titles_cut(v)))
+    fila = next(i for i, t in enumerate(titles_cut(v), start=1) if "Sin recodificar" in t)
+    ev_cut(h, {"type": "activate", "index": fila, "value": {"preset": "copy"}})
+
+    v = cut_state(h, lambda v: v["preset"] == "copy" and v["view"] == "root"
+                  and any("Para unirlos hace falta recodificar" in t for t in titles_cut(v)))
+    assert not any("unidos en uno" in t for t in titles_cut(v))
+    assert h.script_errors() == [], h.script_errors()
+
+
+def test_sin_recodificar_es_instantaneo_y_no_pierde_calidad(cut_mpv, media_dir, tmp_path):
+    """Un corte copiando los flujos conserva los códecs del original (aquí H.264 + AAC) y tarda una fracción."""
+    _h, d = cut_mpv
+    out = tmp_path / "copia"
+    res = d.call("convert.cut", {"path": str(media_dir / "video30.mkv"),
+                                 "segments": [{"start": 2, "end": 8}], "preset": "copy", "out_dir": str(out)},
+                 timeout=60)
+    item = res["items"][0]
+    fin = time.monotonic() + 120
+    while time.monotonic() < fin:
+        got = d.call("convert.get", {"id": item["id"]})
+        if got["status"] in ("done", "error", "cancelled"):
+            break
+        time.sleep(0.3)
+    assert got["status"] == "done", got
+    meta = json.loads(subprocess.run(["ffprobe", "-v", "error", "-show_streams", "-of", "json", got["output"]],
+                                     capture_output=True, text=True, check=True).stdout)
+    assert {st["codec_name"] for st in meta["streams"]} == {"h264", "aac"}
+    assert got["output"].endswith(".mkv")
+
+
+def test_guardar_desde_el_menu_crea_los_archivos(cut_mpv, tmp_path):
+    """H56 · Ser: «al dar guardar los 3 elegidos en uno, no hace nada, y por separado tampoco». Hasta ahora se
+    probaba la LLAMADA (convert.cut) pero no el BOTÓN, que es lo que él pulsa."""
+    h, d = cut_mpv
+    for a, b in ((3.0, 6.0), (10.0, 13.0)):
+        mark_at(h, a)
+        mark_at(h, b)
+    cut_state(h, lambda v: v["count"] == 2)
+
+    h.command("script-binding", "mu_cut/cut-menu")
+    v = cut_state(h, lambda v: any(t.startswith("Guardar los 2 elegidos por separado") for t in titles_cut(v)))
+    fila = next(i for i, t in enumerate(titles_cut(v), start=1) if t.startswith("Guardar los 2 elegidos por sep"))
+    ev_cut(h, {"type": "activate", "index": fila, "value": {"action": "save"}})
+
+    fin = time.monotonic() + 180
+    hechos = []
+    while time.monotonic() < fin:
+        hechos = [t for t in d.call("convert.list") if t.get("status") == "done"]
+        if len(hechos) >= 2:
+            break
+        time.sleep(0.5)
+    assert len(hechos) >= 2, d.call("convert.list")
+    for t in hechos[:2]:
+        assert Path(t["output"]).is_file(), t
+    assert h.script_errors() == [], h.script_errors()

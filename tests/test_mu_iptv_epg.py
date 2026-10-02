@@ -125,7 +125,9 @@ def test_now_hints_guide_and_schedule_from_the_guide(tv):
                                                                                  "name": "Canal Uno"}})
     wait_view(h, "guide:" + chans["Canal Uno"])
     guide = wait_menu(h, lambda v: v.get("title") == "Guía · Canal Uno" and len(v["items"]) >= 3)
-    top = guide["items"]
+    # la guía intercala una fila de día («Mañana, sábado 3») cuando un programa cae pasada medianoche, y eso
+    # pasa o no según la hora a la que se ejecute el test: se quitan las filas que no son programas
+    top = [r for r in guide["items"] if r.get("items") or (r.get("value") or {}).get("play")]
     assert top[0]["title"].endswith("Noticias Uno") and top[0]["hint"].startswith("ahora · quedan")
     assert top[1]["title"].endswith("Película Uno") and top[1]["hint"] == "después"
     subs = {r["title"]: r for r in top[1]["items"]}

@@ -158,6 +158,9 @@ class Guest:
     last_seen: float = field(default_factory=time.time)
     streams: int = 0               # open event streams (0 = not connected right now)
     kicked: bool = False
+    # H55 · una credencial, no una persona: la que se da para abrir esto en VLC o en mpv. No sale en la lista de
+    # invitados, no ocupa plaza y no se anuncia, porque no hay nadie detrás a quien saludar.
+    hidden: bool = False
     chat_times: list[float] = field(default_factory=list)
     react_times: list[float] = field(default_factory=list)
 
@@ -191,6 +194,9 @@ class Room:
     locked: bool = False            # too many wrong tokens: the link no longer works until rotate()
     closed: bool = False
     max_guests: int = MAX_GUESTS
+    # H55 · en una sala privada has invitado tú a quien entra, así que por defecto puede pausar y saltar: es lo
+    # que significa «ver juntos». Se puede quitar desde el menú. En una sala pública nunca: ahí solo se mira.
+    open_control: bool = True
     mode: str = MODE_PRIVATE
     viewer_seq: int = 0
 
@@ -236,7 +242,7 @@ class Room:
         return bool(token) and hmac.compare_digest(token.encode("utf-8", "replace"), self.token.encode())
 
     def join(self, token: Any, name: Any, ip: str, limiter: AttemptLimiter | None = None,
-             now: float | None = None) -> Guest:
+             now: float | None = None, hidden: bool = False) -> Guest:
         now = time.time() if now is None else now
         if self.closed:
             raise JoinError(410, "la sala está cerrada")
@@ -257,17 +263,19 @@ class Room:
             if limiter is not None and limiter.fail(ip, now):
                 raise JoinError(429, "demasiados intentos: espera unos minutos")
             raise JoinError(403, "enlace no válido o caducado")
-        active = [g for g in self.guests.values() if not g.kicked]
+        active = [g for g in self.guests.values() if not g.kicked and not g.hidden]
         if len(active) >= self.max_guests:
             # viewers who closed the page do not say goodbye: their seats go to the new ones. Also in a private room,
             # where every new join (another device, a cleared cookie, wifi dropping) used to take a seat for ever
             for g in active:
                 if g.streams == 0 and now - g.last_seen > STALE_SECONDS:
                     self.guests.pop(g.id, None)
-            active = [g for g in self.guests.values() if not g.kicked]
+            active = [g for g in self.guests.values() if not g.kicked and not g.hidden]
         if len(active) >= self.max_guests:
             raise JoinError(403, "la sala está llena")
-        if self.public_mode:
+        if hidden:
+            clean = str(name or "Reproductor")[:24]
+        elif self.public_mode:
             self.viewer_seq += 1
             clean = f"Espectador {self.viewer_seq}"
         else:
@@ -278,7 +286,9 @@ class Room:
         if limiter is not None:
             limiter.success(ip)
         self.fails, self.fail_times = 0, []      # somebody got in with the right link: the counter starts over
-        guest = Guest(id=secrets.token_hex(8), name=clean, ip=ip, joined_at=now, last_seen=now)
+        guest = Guest(id=secrets.token_hex(8), name=clean, ip=ip, joined_at=now, last_seen=now, hidden=hidden)
+        if self.open_control and not self.public_mode and not hidden:
+            guest.perm = PERM_CONTROL
         self.guests[guest.id] = guest
         return guest
 
@@ -340,14 +350,14 @@ class Room:
         return g
 
     def active_guests(self) -> list[Guest]:
-        return sorted((g for g in self.guests.values() if not g.kicked), key=lambda g: g.joined_at)
+        return sorted((g for g in self.guests.values() if not g.kicked and not g.hidden), key=lambda g: g.joined_at)
 
     def pending(self) -> list[Guest]:
         return [g for g in self.active_guests() if g.pending]
 
     def viewers(self) -> int:
         """Guests watching right now (an open event stream)."""
-        return sum(1 for g in self.guests.values() if not g.kicked and g.connected)
+        return sum(1 for g in self.guests.values() if not g.kicked and not g.hidden and g.connected)
 
     def public(self, now: float | None = None) -> dict[str, Any]:
         now = time.time() if now is None else now

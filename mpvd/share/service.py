@@ -85,6 +85,7 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' 
 RELAY_SLACK = 2.0            # s de margen en los bordes de lo que la retransmisión ya tiene
 RELAY_RESTART_GRACE = 3.0    # s: varios saltos seguidos son uno solo, para no rehacerla a cada tirón
 PLAYLIST_WAIT = 15.0         # s como mucho esperando a que ffmpeg escriba la lista antes de anunciarla
+INVITE_WAIT = 10.0           # s como mucho esperando a que haya algo que compartir antes de dar la invitación
 
 TUNNEL_WARM_MAX = float(os.environ.get("MPVD_SHARE_TUNNEL_WARM") or 240.0)
 TUNNEL_PROBE_EVERY = 2.0
@@ -137,6 +138,8 @@ class RoomRuntime:
     jobs: set[asyncio.Task[Any]] = field(default_factory=set)
     relay_restart: float = 0.0                                  # monotonic time of the last relay restart (H54)
     player_guest: str = ""                                      # H54: the credential handed out for VLC/mpv
+    invited: bool = False                                       # H55: the invitation text has been handed over
+    born: float = 0.0                                           # monotonic time the room opened
     dir: Path = Path()
 
 
@@ -194,7 +197,8 @@ class ShareService:
         return self.rt
 
     async def create(self, session_id: str | None, ttl: float = ROOM_TTL, mode: str = MODE_PRIVATE,
-                     max_viewers: int = DEFAULT_VIEWERS, internet: bool = False) -> dict[str, Any]:
+                     max_viewers: int = DEFAULT_VIEWERS, internet: bool = False,
+                     control: bool = True) -> dict[str, Any]:
         if mode not in MODES:
             raise RpcError(INVALID_PARAMS, f"mode debe ser {' o '.join(MODES)}")
         if self.rt is not None and self.rt.room.alive():
@@ -217,6 +221,7 @@ class ShareService:
                 log.warning("port %d busy (%s): using a free one", self.port_pref, exc)
                 await self.http.start(self.host, 0)
         room = Room.new(session.id, ttl, min_ttl=self.min_ttl, mode=mode, max_viewers=max_viewers)
+        room.open_control = bool(control)
         rt = RoomRuntime(room=room, session_id=session.id, dir=self.root / room.id)
         self.rt = rt
         self.tunnel_error = ""
@@ -231,6 +236,7 @@ class ShareService:
             self.tunnel_task = asyncio.create_task(self._open_tunnel(rt), name="share-tunnel-open")
         if self.host in ("0.0.0.0", "") and self.tunnel is None:
             self.firewall = await asyncio.to_thread(firewall_hint, self.http.port, lan_ip(), "compartir")
+        rt.born = time.monotonic()
         rt.task = asyncio.create_task(self._poll(rt), name=f"share-room-{room.id}")
         log.info("%s room %s open on %s (session %s)", mode, room.id, self.base_url(), session.id)
         return await self.link()
@@ -267,7 +273,7 @@ class ShareService:
         self.pending_url = None
         self.tunnel_state = "ready"
         log.info("tunnel ready: %s", url)
-        self._host_push(rt, "link-ready", "", url=self.base_url() + rt.room.link_path())
+        self._maybe_invite(rt)
 
     async def _wait_public(self, url: str, rt: RoomRuntime) -> bool:
         if os.environ.get("MPVD_SHARE_TUNNEL_PROBE") == "0":
@@ -282,6 +288,24 @@ class ShareService:
             await asyncio.sleep(TUNNEL_PROBE_EVERY)
         return False
 
+    def set_open_control(self, on: bool) -> dict[str, Any]:
+        """H55 · «los invitados pueden controlar», para los que están y para los que vengan."""
+        rt = self._room()
+        if rt.room.public_mode:
+            raise RpcError(INVALID_PARAMS, "en una sala pública solo se puede ver")
+        rt.room.open_control = bool(on)
+        for g in rt.room.active_guests():
+            if g.id == rt.player_guest:
+                continue
+            nuevo = PERM_CONTROL if on else PERM_VIEW
+            if g.perm != nuevo:
+                g.perm, g.pending = nuevo, False
+                self._send_to(rt, g.id, "perm", {"perm": g.perm, "pending": False})
+        self._notice(rt, "Ya podéis controlar la reproducción" if on else "Solo el anfitrión controla",
+                     kind="perm", host_osd=False)
+        self._guests_changed(rt)
+        return self.status()
+
     def player_link(self) -> dict[str, Any]:
         """H54 · un enlace que SÍ abre VLC o mpv.
 
@@ -294,16 +318,50 @@ class ShareService:
         who = room.guests.get(rt.player_guest) if rt.player_guest else None
         if who is None:
             try:
-                who = room.join(room.token, "Reproductor", "127.0.0.1")
+                who = room.join(room.token, "Reproductor", "127.0.0.1", hidden=True)
             except JoinError as exc:
                 raise RpcError(UNAVAILABLE, exc.message) from None
             rt.player_guest = who.id
-            self._guests_changed(rt)
         base = self.base_url()
         best = self._player_url(rt, who.id, base)
         if best is None:
             raise RpcError(NOT_FOUND, "ahora mismo no hay nada que llevarse a otro reproductor")
         return {**best, "m3u": f"{base}/s/{room.id}/file.m3u?k={room.cookie_value(who.id)}"}
+
+    def invite_text(self) -> str:
+        """H55 · los DOS enlaces en un solo pegado, con qué hace cada uno.
+
+        No se puede copiar dos cosas a la vez, y pedirle a quien comparte que mande dos mensajes es pedirle que se
+        acuerde de algo que no tiene por qué saber. Esto se pega de una vez en un mensaje y quien lo recibe elige."""
+        rt = self.rt
+        if rt is None or not rt.room.alive():
+            return ""
+        lineas = ["Para ver juntos, elige una de las dos:", "",
+                  "· En el navegador (móvil u ordenador): se ve a la vez, con chat y con mandos si te doy el "
+                  "control. Es la fácil.",
+                  "  " + self.base_url() + rt.room.link_path()]
+        with contextlib.suppress(Exception):
+            best = self.player_link()
+            if best.get("url"):
+                lineas += ["",
+                           "· En VLC, mpv u otro reproductor: calidad original, sin recomprimir y con los saltos "
+                           "al instante, pero sin chat ni sincronía.",
+                           "  " + str(best["url"])]
+        return "\n".join(lineas)
+
+    def _maybe_invite(self, rt: RoomRuntime) -> None:
+        """Cuando la sala sirve de verdad —el túnel contesta y hay algo que compartir— se entrega la invitación.
+        Una sola vez: copiar dos veces en el portapapeles sería peor que no copiar."""
+        if rt.invited or self.rt is not rt or not rt.room.alive():
+            return
+        if self.tunnel_state in ("starting", "warming"):
+            return
+        listo = rt.media.get("kind") not in ("preparing", None)
+        if not listo and time.monotonic() - rt.born < INVITE_WAIT:
+            return
+        rt.invited = True
+        self._host_push(rt, "link-ready", "", url=self.base_url() + rt.room.link_path(),
+                        invite=self.invite_text())
 
     async def link(self) -> dict[str, Any]:
         rt = self._room()
@@ -386,7 +444,7 @@ class ShareService:
             "pending_url": self.pending_url,
             # whether «se puede entrar desde internet» can even be offered (cloudflared installed)
             "tunnel_available": tunnel_mod.find_cloudflared(self.server.root) is not None,
-            "mode": None, "viewers": 0, "max_viewers": 0, "chat": [],
+            "mode": None, "viewers": 0, "max_viewers": 0, "chat": [], "open_control": False,
             "guest_of": self.guest.state.public() if self.guest is not None else None,
         }
         if open_ and rt is not None:
@@ -395,7 +453,7 @@ class ShareService:
                         "pending": [g.public() for g in rt.room.pending()], "media": self._media_public(rt),
                         "notices": list(rt.notices)[-5:], "title": rt.raw.get("media-title") or "",
                         "mode": rt.room.mode, "viewers": rt.room.viewers(), "max_viewers": rt.room.max_guests,
-                        "chat": list(rt.chat)[-10:]})
+                        "chat": list(rt.chat)[-10:], "open_control": rt.room.open_control})
         return out
 
     def _session(self, rt: RoomRuntime) -> Session | None:
@@ -683,6 +741,8 @@ class ShareService:
                     reason = "tick"
                 rt.raw = raw
                 last_mono = now
+                if not rt.invited:
+                    self._maybe_invite(rt)
                 if reason:
                     rt.state = self._state_msg(raw, reason)
                     rt.sent_at = now
@@ -748,6 +808,7 @@ class ShareService:
     def _send_media(self, rt: RoomRuntime) -> None:
         rt.media_sent = time.monotonic()
         self._broadcast("media", self._media_public(rt))
+        self._maybe_invite(rt)
 
     def _schedule_media(self, rt: RoomRuntime, raw: dict[str, Any]) -> None:
         path = raw.get("path")
@@ -1321,7 +1382,7 @@ def register(server: MpvdServer, service: ShareService) -> None:
     @d.method("share.create")
     async def create(ctx: RpcContext, ttl_hours: float = ROOM_TTL / 3600, session: str | None = None,
                      mode: str = MODE_PRIVATE, max_viewers: int = DEFAULT_VIEWERS,
-                     internet: bool = False) -> dict[str, Any]:
+                     internet: bool = False, control: bool = True) -> dict[str, Any]:
         """Open a room for the caller's player (or return the one already open): link + QR modules.
         mode=private (named guests, control on request, chat) or public («solo ver»: anyone with the link,
         anonymous, at most max_viewers, no control and no chat).
@@ -1332,12 +1393,26 @@ def register(server: MpvdServer, service: ShareService) -> None:
             viewers = int(max_viewers)
         except (TypeError, ValueError):
             raise RpcError(INVALID_PARAMS, "max_viewers debe ser un número") from None
-        return await service.create(sid, float(ttl_hours) * 3600, str(mode), viewers, bool(internet))
+        return await service.create(sid, float(ttl_hours) * 3600, str(mode), viewers, bool(internet),
+                                    bool(control))
 
     @d.method("share.link")
     async def link(ctx: RpcContext) -> dict[str, Any]:
         """Link and QR of the open room."""
         return await service.link()
+
+    @d.method("share.open_control")
+    async def open_control(ctx: RpcContext, on: bool = True) -> dict[str, Any]:
+        """H55 · que los invitados puedan pausar y saltar (o solo mirar), ahora y al entrar."""
+        return service.set_open_control(bool(on))
+
+    @d.method("share.invite")
+    async def invite(ctx: RpcContext) -> dict[str, Any]:
+        """H56 · los dos enlaces explicados, para copiarlos cuando quieras y no solo cuando la sala se abre."""
+        texto = service.invite_text()
+        if not texto:
+            raise RpcError(NOT_FOUND, "no hay ninguna sala abierta")
+        return {"text": texto, "url": service.base_url() + service._room().room.link_path()}
 
     @d.method("share.player_link")
     async def player_link(ctx: RpcContext) -> dict[str, Any]:

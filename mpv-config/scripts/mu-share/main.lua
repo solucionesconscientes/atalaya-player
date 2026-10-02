@@ -48,7 +48,7 @@ options.read_options(opts, 'mu-share')
 -- «Que se pueda entrar desde internet» (H25, cambiado en H51): ENCENDIDO por defecto. Una sala es para ver algo
 -- con alguien que no está aquí; si solo vale dentro de casa, no sirve para lo que se pide. El túnel sigue viviendo
 -- exactamente lo que vive la sala, y se puede apagar desde el menú.
-local P = prefs.ns('mu-share', { internet = true })
+local P = prefs.ns('mu-share', { internet = true, control = true })
 
 local state = {
   status = nil, view = '', stack = {}, items = {}, force_open = false,
@@ -421,7 +421,12 @@ views.root = function()
     elseif tunel == 'failed' then
       copiar_hint = 'solo dentro de tu red'
     end
-    items[#items + 1] = { title = 'Copiar el enlace', icon = 'content_copy', hint = copiar_hint,
+    -- H56 · lo primero, los DOS enlaces explicados: es lo que se pega en un mensaje. Que esté aquí además de
+    -- copiarse solo al abrir la sala importa, porque si no pillas ese momento parece que no ha copiado nada.
+    items[#items + 1] = { title = 'Copiar los enlaces', icon = 'content_copy',
+                          hint = 'navegador y VLC, con lo que hace cada uno · ' .. copiar_hint,
+                          value = { action = 'copy-invite' } }
+    items[#items + 1] = { title = 'Copiar solo el del navegador', icon = 'link', hint = copiar_hint,
                           value = { action = 'copy' } }
     if tunel == 'starting' or tunel == 'warming' then
       items[#items + 1] = { title = 'Abriendo la puerta a internet…', icon = 'hourglass_top', muted = true,
@@ -447,6 +452,12 @@ views.root = function()
       local guests = st.guests or {}
       local online = 0
       for _, g in ipairs(guests) do if g.connected then online = online + 1 end end
+      -- H55 · lo que hace que «ver juntos» sea ver juntos: que puedan pausar y saltar ellos. Encendido por
+      -- defecto en una sala privada, donde a quien entra lo has invitado tú.
+      local libre = st.open_control ~= false
+      items[#items + 1] = { title = 'Los invitados pueden controlar', icon = libre and 'lock_open' or 'lock',
+                            active = libre, value = { action = 'open-control' },
+                            hint = libre and 'pueden pausar y saltar' or 'solo pueden mirar' }
       items[#items + 1] = { title = 'Invitados', icon = 'group', value = { view = 'guests' },
                             hint = string.format('%d en la sala · %d conectados', #guests, online) }
       for _, g in ipairs(st.pending or {}) do
@@ -713,7 +724,8 @@ end
 
 local function create_room(then_menu, mode)
   if not rpc.connected() then osd('Compartir: mpvd no está conectado'); return end
-  local params = { ttl_hours = opts.ttl_hours, internet = P:get('internet') == true }
+  local params = { ttl_hours = opts.ttl_hours, internet = P:get('internet') == true,
+                   control = P:get('control') ~= false }
   if mode == 'public' then params.mode = 'public'; params.max_viewers = opts.max_viewers end
   rpc.call('share.create', params, function(err, res)
     if err then fail(err, 'no se pudo crear la sala'); return end
@@ -722,13 +734,13 @@ local function create_room(then_menu, mode)
     publish()
     -- H51 · ya no sale el QR por su cuenta. Lo normal es compartir con quien NO está delante, así que lo que hace
     -- falta es el enlace, y en la mano: se copia solo. El QR sigue estando en el menú y en alt+Q.
+    -- H55 · no se copia nada todavía: mpvd avisa (`link-ready`) cuando la sala sirve de verdad —el túnel contesta
+    -- y hay algo que compartir— y entonces copia LOS DOS enlaces explicados, el del navegador y el de VLC/mpv.
     local st = res.status or {}
     if st.tunnel_state == 'starting' or st.tunnel_state == 'warming' then
-      -- y NO se copia todavía: cloudflared da la dirección mucho antes de que enrute (medido, unos 60 s de más),
-      -- así que copiarla ahora sería darte un enlace muerto. Se copia sola en cuanto conteste.
       osd('Sala abierta · abriendo la puerta a internet, suele tardar un minuto. Te aviso y te copio el enlace', 6)
     else
-      copy_text(res.url, 'el enlace de la sala')
+      osd('Sala abierta · preparando lo que se va a ver; te copio los enlaces en un momento', 4)
     end
     if then_menu then reopen_current() else uosc.close(MENU) end
   end, 30)
@@ -915,6 +927,21 @@ local function menu_action(v)
     toggle_qr()        -- alterna: si está puesto, lo quita (antes solo lo mostraba y no había forma de sacarlo)
   elseif v.action == 'copy' then
     copy_text(state.status and state.status.url or '')
+  elseif v.action == 'copy-invite' then
+    rpc.call('share.invite', nil, function(err, res)
+      if err then fail(err, 'enlaces de la sala'); return end
+      copy_text(res.text or res.url or '', 'los enlaces de la sala (navegador y VLC)')
+    end, 20)
+  elseif v.action == 'open-control' then
+    local libre = (state.status or {}).open_control ~= false
+    P:set('control', not libre)
+    rpc.call('share.open_control', { on = not libre }, function(err, st2)
+      if err then fail(err, 'control de los invitados'); reopen_current(); return end
+      state.status = st2
+      osd(libre and 'Los invitados ya solo pueden mirar' or 'Los invitados ya pueden pausar y saltar')
+      publish()
+      reopen_current()
+    end)
   elseif v.action == 'copy-player' then
     rpc.call('share.player_link', nil, function(err, res)
       if err then fail(err, 'enlace para otro reproductor'); return end
@@ -1079,9 +1106,12 @@ mp.register_script_message('mu-event', function(payload)
     return
   end
   if ev.kind == 'link-ready' then
-    -- H51 · AHORA sí: la dirección de internet ya contesta de verdad, así que el enlace vale y se copia
-    copy_text(ev.url or (state.status or {}).url or '', 'el enlace de la sala')
-    state.last_notice = 'Enlace copiado: ya se puede entrar desde internet'
+    -- H51/H55 · AHORA sí: la sala sirve. Se copian los dos enlaces de una vez, con lo que hace cada uno, porque
+    -- el portapapeles es uno solo y mandar dos mensajes es acordarse de algo que no tienes por qué saber.
+    local texto = ev.invite
+    if type(texto) ~= 'string' or texto == '' then texto = ev.url or (state.status or {}).url or '' end
+    copy_text(texto, 'los enlaces de la sala (navegador y VLC)')
+    state.last_notice = 'Enlaces copiados: pégalos en un mensaje'
     publish()
     if state.view == 'root' then reopen_current() end
     return

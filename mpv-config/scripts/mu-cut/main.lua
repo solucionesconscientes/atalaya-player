@@ -32,7 +32,10 @@ options.read_options(opts, 'mu-cut')
 -- what you save them as; remembered, like the recording format (H43)
 local P = prefs.ns('mu-cut', { preset = 'mp4' })
 
+-- H55 · la lista la manda mpvd (`convert.presets`), que además quita los que ESTA máquina no puede hacer (AV1
+-- necesita SVT-AV1 y no está en todos los ffmpeg). Esto de aquí es solo el respaldo mientras mpvd no contesta.
 local FORMATS = {
+  { id = 'copy', title = 'Sin recodificar (rapidísimo)', hint = 'calidad intacta · corta por fotograma clave' },
   { id = 'mp4', title = 'Vídeo · MP4', hint = 'se abre en cualquier sitio' },
   { id = 'small', title = 'Vídeo · más pequeño (H.265)', hint = 'ocupa la mitad, tarda más' },
   { id = 'web', title = 'Vídeo · WebM', hint = 'para páginas web' },
@@ -41,8 +44,10 @@ local FORMATS = {
   { id = 'opus', title = 'Solo audio · Opus', hint = 'el más pequeño' },
   { id = 'flac', title = 'Solo audio · FLAC', hint = 'sin pérdida' },
 }
+local SIN_RECODIFICAR = 'copy'    -- el único que no puede unir tramos: pegar obliga a recodificar
 
-local state = { segments = {}, pending = nil, view = '', stack = {}, items = {}, last_error = '', saving = false }
+local state = { segments = {}, pending = nil, view = '', stack = {}, items = {}, last_error = '', saving = false,
+                manual = false, last_save = nil }
 
 local function osd(text, secs) mp.osd_message(text, secs or opts.osd_seconds) end
 
@@ -84,10 +89,12 @@ local function publish()
   local segs = {}
   for i, s in ipairs(state.segments) do segs[i] = { a = s.a, b = s.b, on = s.on ~= false } end
   mp.set_property_native('user-data/mu/cut', {
+    manual = state.manual == true,
     segments = segs, count = #segs, chosen = #chosen(), pending = state.pending or -1, total = total_seconds(),
     chosen_total = chosen_seconds(),
     preset = P:get('preset'), view = state.view, items = state.items, last_error = state.last_error,
-    saving = state.saving,
+    saving = state.saving, saved = state.last_save and state.last_save.n or 0,
+    saved_dir = state.last_save and state.last_save.dir or '',
   })
 end
 
@@ -113,6 +120,13 @@ local function set_buttons()
       or (n > 0 and string.format('Tramos: %d (%s) · alt+x marca otro', n, clock(total_seconds())))
       or 'Elegir un tramo desde aquí (alt+x)',
     command = { 'script-binding', SCRIPT .. '/cut-mark' },
+  })
+  -- H55 · un icono al lado que lleva a la lista: lo que se hace con los tramos (elegirlos, ordenarlos, guardarlos
+  -- sueltos o unidos) estaba solo detrás de una tecla y del menú, y no se encontraba.
+  uosc.set_button('mu-cut-list', {
+    icon = 'format_list_numbered', hide = n == 0, badge = n > 0 and tostring(#chosen()) or nil,
+    tooltip = string.format('Tus %d tramos: elegir, ordenar y guardar (ctrl+l)', n),
+    command = { 'script-binding', SCRIPT .. '/cut-menu' },
   })
   local a = mp.get_property_number('ab-loop-a')
   local b = mp.get_property_number('ab-loop-b')
@@ -163,7 +177,9 @@ local function mark()
     return
   end
   state.segments[#state.segments + 1] = { a = a, b = b, on = true }
-  table.sort(state.segments, function(x, y) return x.a < y.a end)
+  -- mientras no los hayas reordenado tú, entran en orden de tiempo, que es lo que se espera; en cuanto mueves uno
+  -- el orden pasa a ser el tuyo y no se vuelve a tocar (es el orden en el que se pegan al unirlos)
+  if not state.manual then table.sort(state.segments, function(x, y) return x.a < y.a end) end
   osd(string.format('Tramo %d: %s → %s (%s)', #state.segments, clock(a), clock(b), clock(b - a)))
   refresh()
 end
@@ -257,8 +273,12 @@ local function save(joined)
         return
       end
       local n = (type(res) == 'table' and res.count) or 0
-      osd(joined and string.format('Un archivo con %d tramos, en Tareas', #segs)
-            or string.format('%d archivo(s) en camino, en Tareas', n))
+      local dir = (type(res) == 'table' and res.out_dir) or ''
+      state.last_save = { n = n, dir = dir }
+      -- H56 · decir DÓNDE van y que se puede seguir: antes esto se guardaba en silencio en una carpeta que no
+      -- habías visto nunca, y desde fuera era indistinguible de «no ha hecho nada».
+      osd((joined and string.format('Uniendo %d tramos → ', #segs) or string.format('Guardando %d tramos → ', n))
+            .. (dir ~= '' and dir or 'tu carpeta de convertidos') .. '  ·  puedes seguirlo en Tareas', 7)
       publish()
       reopen()
     end, 30)
@@ -279,7 +299,15 @@ views.root = function()
     items[#items + 1] = { title = 'Empezar un tramo aquí', icon = 'content_cut', hint = clock(now()) .. ' · alt+x',
                           value = { action = 'mark' } }
   end
-  if n > 0 then
+  if n > 0 and not current_path() then
+    -- H56 · lo que se está viendo no es un archivo de este equipo (TV, radio, un vídeo de internet): guardar no
+    -- puede funcionar, así que se dice AQUÍ y no después de pulsar, que es cuando parece que no hace nada.
+    items[#items + 1] = { title = 'Esto no se puede guardar a trozos', icon = 'info', muted = true,
+                          selectable = false, separator = true,
+                          hint = 'es la TV o un vídeo de internet, no un archivo tuyo' }
+    items[#items + 1] = { title = 'Para quedarte con un trozo de esto, usa Grabar', icon = 'fiber_manual_record',
+                          hint = 'alt+r', value = { action = 'record' } }
+  elseif n > 0 then
     local el = #chosen()
     if el == 0 then
       items[#items + 1] = { title = 'No has elegido ningún tramo', icon = 'info', muted = true,
@@ -292,13 +320,22 @@ views.root = function()
                             hint = string.format('%s · %s', format_label(),
                                                  el == 1 and clock(chosen_seconds()) or (el .. ' archivos')),
                             value = { action = 'save' }, separator = true }
-      if el > 1 then
+      if el > 1 and P:get('preset') == SIN_RECODIFICAR then
+        items[#items + 1] = { title = 'Para unirlos hace falta recodificar: cambia el formato', icon = 'info',
+                              muted = true, selectable = false, hint = 'ahora: ' .. format_label() }
+      elseif el > 1 then
         items[#items + 1] = { title = string.format('Guardar los %d elegidos unidos en uno', el), icon = 'merge',
-                              hint = string.format('%s · %s', format_label(), clock(chosen_seconds())),
+                              hint = string.format('%s · %s · en el orden de esta lista', format_label(),
+                                                   clock(chosen_seconds())),
                               value = { action = 'save-joined' } }
       end
     end
     items[#items + 1] = { title = 'Formato', icon = 'tune', hint = format_label(), value = { view = 'format' } }
+    if n > 1 then
+      items[#items + 1] = { title = 'Enter elige o descarta · las flechas de cada fila lo suben o lo bajan',
+                            icon = 'info', muted = true, selectable = false,
+                            hint = state.manual and 'orden tuyo' or 'orden por tiempo' }
+    end
     -- H54 · una fila por tramo, con casilla: Enter lo elige o lo deja fuera, y los botones de la derecha hacen
     -- lo demás. Antes la fila era un submenú y no había forma de exportar unos sí y otros no.
     for i, s in ipairs(state.segments) do
@@ -308,7 +345,9 @@ views.root = function()
         hint = clock(s.b - s.a) .. (on and '' or ' · fuera'),
         icon = on and 'check_box' or 'check_box_outline_blank', active = on, muted = not on,
         separator = i == 1, value = { action = 'toggle', index = i },
-        actions = { { name = 'go', icon = 'play_arrow', label = 'Ir ahí' },
+        actions = { { name = 'up', icon = 'arrow_upward', label = 'Subirlo' },
+                    { name = 'down', icon = 'arrow_downward', label = 'Bajarlo' },
+                    { name = 'go', icon = 'play_arrow', label = 'Ir ahí' },
                     { name = 'loop', icon = 'repeat', label = 'Repetir este' },
                     { name = 'drop', icon = 'delete', label = 'Quitarlo' } },
       }
@@ -317,11 +356,31 @@ views.root = function()
                           icon = el == n and 'check_box_outline_blank' or 'check_box',
                           value = { action = 'toggle-all' }, separator = true }
     items[#items + 1] = { title = 'Vaciar la lista', icon = 'delete_sweep', value = { action = 'clear' } }
+    if state.last_save then
+      items[#items + 1] = { title = 'Ver cómo van en Tareas', icon = 'checklist', value = { action = 'tasks' },
+                            hint = state.last_save.dir ~= '' and state.last_save.dir or nil, separator = true }
+    end
   else
     items[#items + 1] = { title = 'Marca un principio y un final y el tramo aparece en la línea de tiempo',
                           icon = 'info', muted = true, selectable = false, separator = true }
   end
   show(ROOT_TITLE, items)
+end
+
+local function ask_formats(done)
+  if not rpc.connected() then done() return end
+  rpc.call('convert.presets', nil, function(err, res)
+    if not err and type(res) == 'table' and type(res.presets) == 'table' and #res.presets > 0 then
+      local list = {}
+      for _, pr in ipairs(res.presets) do
+        if pr.id ~= 'gif' then
+          list[#list + 1] = { id = pr.id, title = pr.label or pr.id, hint = pr.hint or '' }
+        end
+      end
+      if #list > 0 then FORMATS = list end
+    end
+    done()
+  end, 15)
 end
 
 views.format = function()
@@ -355,6 +414,15 @@ local function act(v)
     local todos = #chosen() == #state.segments
     for _, seg in ipairs(state.segments) do seg.on = not todos end
     reopen()
+  elseif v.action == 'up' or v.action == 'down' then
+    local i = v.index
+    local j = v.action == 'up' and i - 1 or i + 1
+    if state.segments[i] and state.segments[j] then
+      state.segments[i], state.segments[j] = state.segments[j], state.segments[i]
+      state.manual = true     -- a partir de aquí el orden es tuyo, y es el que se usa al unirlos
+      refresh()
+    end
+    reopen()
   elseif v.action == 'go' then
     local s = state.segments[v.index]
     if s then mp.commandv('seek', s.a, 'absolute+exact'); uosc.close(MENU) end
@@ -370,6 +438,14 @@ local function act(v)
   elseif v.action == 'drop' then
     drop(v.index)
     reopen()
+  elseif v.action == 'tasks' then
+    local crumbs = {}
+    for _, c in ipairs(N.parent.crumbs or {}) do crumbs[#crumbs + 1] = c end
+    crumbs[#crumbs + 1] = ROOT_TITLE
+    nav.open_child('mu_convert', 'convert-menu', crumbs, state.view)
+  elseif v.action == 'record' then
+    uosc.close(MENU)
+    mp.commandv('script-binding', 'mu_record/record-menu')
   elseif v.action == 'clear' then
     clear_all()
     reopen()
@@ -400,7 +476,10 @@ mp.register_script_message(EVENT, function(json)
     act({ action = ev.action, index = ev.value.index })
     return
   end
-  if ev.value.view then open_view({ name = ev.value.view }) else act(ev.value) end
+  if ev.value.view == 'format' then
+    ask_formats(function() open_view({ name = 'format' }) end)
+  elseif ev.value.view then open_view({ name = ev.value.view })
+  else act(ev.value) end
 end)
 
 local function open_root()
@@ -412,6 +491,7 @@ end
 -- a new file has nothing to do with the pieces of the previous one
 mp.register_event('start-file', function()
   state.segments = {}
+  state.manual = false
   state.pending = nil
   state.last_error = ''
   set_buttons()

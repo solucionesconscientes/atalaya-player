@@ -34,7 +34,7 @@ def test_clean_name():
 def test_join_expiry_and_close():
     r = Room.new(now=0.0, ttl=3600)
     g = r.join(r.token, "Ana", "10.0.0.2", now=10.0)
-    assert g.perm == rooms.PERM_VIEW and not g.pending and g.name == "Ana"
+    assert g.perm == rooms.PERM_CONTROL and not g.pending and g.name == "Ana"   # H55: en privada se entra pudiendo
     assert r.join(r.token, "Ana", "10.0.0.3", now=11.0).name == "Ana (2)"
     with pytest.raises(JoinError) as e:
         r.join(r.token, "Luis", "10.0.0.4", now=3600.0)
@@ -111,7 +111,10 @@ def test_cookies_are_per_room_and_die_with_it():
 
 
 def test_permissions_request_grant_revoke_deny_kick():
+    # H55 · con el control abierto (lo normal) no hay nada que pedir: esto prueba el camino de cuando el anfitrión
+    # se lo queda, que sigue existiendo y es el de una sala pública o el del interruptor apagado
     r = Room.new()
+    r.open_control = False
     g = r.join(r.token, "Ana", "ip")
     assert not g.can_control
     assert r.request_control(g.id) is True and g.pending
@@ -238,3 +241,21 @@ def test_a_private_room_frees_the_seats_of_guests_who_left():
     later = 1000.0 + rooms.STALE_SECONDS + 5
     caro = room.join(room.token, "Caro", "192.168.1.11", None, now=later)
     assert caro.name == "Caro" and a.id not in room.guests
+
+
+def test_en_privada_se_entra_pudiendo_controlar_y_en_publica_no():
+    """H55 · a una sala privada entra quien tú has invitado, así que entra con los mandos: es lo que significa «ver
+    juntos». En una pública nunca. Y la credencial para VLC no es nadie: ni sale en la lista ni ocupa plaza."""
+    priv = Room.new()
+    assert priv.join(priv.token, "Ana", "ip").can_control
+    priv.open_control = False
+    assert not priv.join(priv.token, "Bea", "ip").can_control
+
+    pub = Room.new(mode="public", max_viewers=3)
+    pub.open_control = True                      # aunque se pida, en pública no
+    assert not pub.join(pub.token, "", "ip").can_control
+
+    oculto = priv.join(priv.token, "Reproductor", "127.0.0.1", hidden=True)
+    assert oculto.hidden and not oculto.can_control
+    assert [g.name for g in priv.active_guests()] == ["Ana", "Bea"]
+    assert oculto.id in priv.guests                 # existe para firmar su enlace, pero no es un invitado

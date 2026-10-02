@@ -17,6 +17,7 @@ import pytest
 from mpvd.client import MpvdClient
 from mpvd.config import Settings
 from mpvd.convert import hw as hw_mod
+from mpvd.convert.presets import available_encoders
 from mpvd.rpc import RpcError
 from mpvd.server import MpvdServer
 from tests.conftest import APP_FOLDER
@@ -103,8 +104,12 @@ def test_mp4_range_resolution_subtitles_retry_remove_and_tasks(env, clip):
 
     async def fn(server, c):
         presets = await c.call("convert.presets")
-        assert [p["id"] for p in presets["presets"]] == ["mp4", "small", "web", "mp3", "m4a", "opus", "flac", "wav",
-                                                         "gif"]
+        # H55 · «copy» (sin recodificar) y «av1» son nuevos; av1 solo si este ffmpeg trae SVT-AV1, porque ofrecer
+        # un formato que la máquina no puede hacer es peor que no ofrecerlo
+        ids = [p["id"] for p in presets["presets"]]
+        assert ids[:3] == ["mp4", "small", "web"] and "copy" in ids
+        assert ids[-6:] == ["mp3", "m4a", "opus", "flac", "wav", "gif"]
+        assert ("av1" in ids) == ("libsvtav1" in available_encoders())
         assert presets["heights"] == [0, 1080, 720, 480] and presets["default_dir"].endswith(f"{APP_FOLDER}/Convertidos")
         res = await c.call("convert.start", {"path": str(clip), "preset": "mp4", "out_dir": str(out_dir),
                                              "options": {**FAST, "height": 480, "start": 1.0, "end": 3.5}})

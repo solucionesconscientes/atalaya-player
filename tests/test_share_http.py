@@ -149,7 +149,9 @@ def test_room_join_sync_relay_permissions_and_close(share_env, clip):
     h.command("loadfile", str(clip))
     h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=20)
 
-    res = d.call("share.create", {"ttl_hours": 1})
+    # H55 · aquí se prueba el camino de «el anfitrión se queda los mandos», que sigue existiendo;
+    # que por defecto se entre pudiendo controlar lo cubre test_share_rooms y el test del navegador
+    res = d.call("share.create", {"ttl_hours": 1, "control": False})
     url = res["url"]
     assert url.startswith("http://127.0.0.1:") and "/s/" in url and "#k=" in url
     base, rest = url.split("/s/", 1)

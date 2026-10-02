@@ -220,7 +220,17 @@ En *Tramos* (`ctrl+l`, o *Herramientas → Tramos*) está lo que se hace con ell
 - **Guardar los N por separado** → un archivo por tramo, llamado `<película> [inicio-fin].<formato>`.
 - **Guardar los N unidos en uno** → un solo archivo con todos pegados, en una sola pasada; se llama
   `<película> [N tramos].<formato>`.
-- **Formato**: vídeo (MP4, H.265 más pequeño, WebM) o **solo audio** (M4A, MP3, Opus, FLAC). Se recuerda.
+- **Formato**: la lista la da el propio programa según lo que tu ffmpeg sepa hacer, y se recuerda:
+  - **Sin recodificar**: instantáneo y **sin perder un bit**, porque copia los flujos tal cual (medido: 0,07 s para
+    un corte de 6 s, frente a recodificarlo). A cambio el corte empieza en el fotograma clave anterior —pueden
+    entrar unos segundos de más— y **no puede unir** tramos: pegarlos obliga a recodificar.
+  - **Vídeo**: MP4 (H.264, se abre en cualquier sitio), H.265 (la mitad de tamaño), **AV1** (lo más nuevo, el que
+    menos ocupa, pero el que más tarda) y WebM.
+  - **Solo audio**: M4A, MP3, Opus, FLAC o WAV.
+- **El icono de la lista** (junto a ✂, con el número de tramos) lleva directo a todo esto; también `ctrl+l`.
+- **Puedes cambiar el orden** con las flechas de cada fila. Mientras no toques nada van por tiempo; en cuanto subes
+  o bajas uno, el orden es el tuyo — y es **el orden en el que se pegan al unirlos**, así que puedes montar el
+  final primero si quieres.
 - **Eliges cuáles exportas.** Cada tramo entra marcado; pulsando Enter sobre su fila lo dejas fuera (y lo
   devuelves). Lo que se guarda es lo marcado, así que puedes quedarte con tres de cinco, o unir solo dos de ellos.
   *Elegirlos todos* / *Dejar fuera todos* hace la selección de golpe.
@@ -395,6 +405,14 @@ inmediato.
   (no se nota); si la diferencia es grande, salta. Es la misma cuenta que hace la página, para que quien entra por
   el navegador y quien entra por el reproductor vean lo mismo en el mismo momento.
 - El enlace caduca (24 h como mucho), se puede cambiar por uno nuevo y deja de valer al cerrar la sala.
+- **Al crear la sala se copian LOS DOS enlaces de una vez**, con una línea diciendo para qué es cada uno: el del
+  navegador (fácil, con chat y mandos) y el de VLC/mpv (calidad original, sin chat). Pégalo en un mensaje y quien
+  lo reciba elige. No se copia hasta que la sala sirve de verdad, así que puede tardar unos segundos (o un minuto
+  si va por internet).
+- **Los invitados pueden pausar y saltar desde el primer momento.** En una sala privada a quien entra lo has
+  invitado tú, así que entra pudiendo controlar: eso es lo que significa «ver juntos». Si prefieres llevar tú los
+  mandos, apaga *Compartir → Los invitados pueden controlar*; a ellos se les dice por qué no pueden y tienen el
+  botón de pedirlo. En una sala **pública** nunca se puede controlar.
 - **Para VLC, mpv u otro reproductor, hace falta OTRO enlace**, y esto no es un capricho: el enlace de la sala
   lleva su contraseña en el fragmento (`#k=…`), y un navegador **nunca** manda el fragmento al servidor —que es
   justo lo que la mantiene fuera de los registros—, así que un reproductor que abra ese enlace no puede

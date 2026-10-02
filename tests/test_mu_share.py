@@ -64,7 +64,7 @@ def test_menu_create_guests_permissions_close(mu_share):
     url = v["url"]
 
     h.command("script-binding", "mu_share/share-menu")
-    v = share(h, lambda v: "Cerrar la sala" in titles(v) and "Copiar el enlace" in titles(v))
+    v = share(h, lambda v: "Cerrar la sala" in titles(v) and "Copiar los enlaces" in titles(v))
     # H35 · la fila del QR es un interruptor de verdad: con el QR puesto ofrece quitarlo (antes solo ofrecía mostrarlo,
     # y no había ninguna forma de sacarlo de la pantalla)
     assert "Ocultar el código QR" in titles(v) and "Invitados" in titles(v)
@@ -84,21 +84,28 @@ def test_menu_create_guests_permissions_close(mu_share):
     ev(h, {"type": "activate", "index": 4, "value": {"view": "guests"}})
     wait_nav(h, "mu-share", f"{APP} › Compartir › Invitados")
     v = share(h, lambda v: v["view"] == "guests" and "Ana" in titles(v))
-    assert v["items"][0]["hint"].startswith("solo ver")
+    # H55 · en una sala privada se entra pudiendo controlar; aquí se prueba quitárselo y devolvérselo
+    assert v["items"][0]["hint"].startswith("controla")
     ev(h, {"type": "activate", "index": 2, "value": {"view": "guest", "id": gid}})
     wait_nav(h, "mu-share", f"{APP} › Compartir › Invitados › Ana")
-    share(h, lambda v: v["view"] == "guest" and "Dar el control" in titles(v))
-    ev(h, {"type": "activate", "index": 1, "value": {"perm": "control", "id": gid}})
     share(h, lambda v: v["view"] == "guest" and "Quitar el control" in titles(v))
-    assert d.call("share.status")["guests"][0]["perm"] == "control"
     ev(h, {"type": "activate", "index": 1, "value": {"perm": "view", "id": gid}})
-    share(h, lambda v: "Dar el control" in titles(v))
+    share(h, lambda v: v["view"] == "guest" and "Dar el control" in titles(v))
     assert d.call("share.status")["guests"][0]["perm"] == "view"
+    ev(h, {"type": "activate", "index": 1, "value": {"perm": "control", "id": gid}})
+    share(h, lambda v: "Quitar el control" in titles(v))
+    assert d.call("share.status")["guests"][0]["perm"] == "control"
     # ⌫ goes back one level at a time
     press(h, "BS")
     share(h, lambda v: v["view"] == "guests" and v["depth"] == 2)
     press(h, "BS")
     share(h, lambda v: v["view"] == "root" and v["depth"] == 1)
+    # H55 · el camino de pedir el control solo existe cuando el anfitrión se los ha quedado: se los quita con el
+    # interruptor nuevo y a partir de ahí es el flujo de siempre
+    v = share(h, lambda v: "Los invitados pueden controlar" in titles(v))
+    fila = next(i for i, t in enumerate(titles(v), start=1) if t == "Los invitados pueden controlar")
+    ev(h, {"type": "activate", "index": fila, "value": {"action": "open-control"}})
+    d.wait(lambda: d.call("share.status")["guests"][0]["perm"] == "view", timeout=10)
     # a request while the menu is open: the yes/no menu, dismissed → still pending in the list
     assert ana.req("api/request", {})[0] == 200
     v = share(h, lambda v: v["asking"] == gid and v["pending"] == 1)
@@ -111,7 +118,9 @@ def test_menu_create_guests_permissions_close(mu_share):
     # close from the menu
     h.command("script-binding", "mu_share/share-menu")
     share(h, lambda v: "Cerrar la sala" in titles(v))
-    ev(h, {"type": "activate", "index": 7, "value": {"action": "close"}})
+    fila = next(i for i, t in enumerate(titles(share(h, lambda v: "Cerrar la sala" in titles(v))), start=1)
+                if t == "Cerrar la sala")
+    ev(h, {"type": "activate", "index": fila, "value": {"action": "close"}})
     v = share(h, lambda v: v["open"] is False and v["qr_visible"] is False)
     share(h, lambda v: "Crear una sala para ver juntos" in titles(v))
     with pytest.raises(urllib.error.URLError):  # the share server stops with the room
@@ -228,10 +237,43 @@ def test_copiar_el_enlace_escribe_en_el_portapapeles(mu_share):
     v = share(h, lambda v: v["open"] and v["url"] != "")
     url = v["url"]
 
+    h.command("set_property", "clipboard/text", "sonda")   # H56: al abrir la sala ya se copió la invitación
     h.command("script-binding", "mu_share/share-menu")
-    v = share(h, lambda v: "Copiar el enlace" in titles(v))
-    fila = next(i for i, t in enumerate(titles(v), start=1) if t == "Copiar el enlace")
+    v = share(h, lambda v: "Copiar solo el del navegador" in titles(v))
+    fila = next(i for i, t in enumerate(titles(v), start=1) if t == "Copiar solo el del navegador")
     ev(h, {"type": "activate", "index": fila, "value": {"action": "copy"}})
     share(h, lambda v: v.get("copied") == url)
     assert h.get("clipboard/text") == url
+    assert h.script_errors() == [], h.script_errors()
+
+
+def test_copiar_el_enlace_para_vlc_desde_el_menu(mu_share):
+    """H55 · Ser: «el enlace para mpv y vlc no me lo deja copiar, no sé si se crea o no». Aquí se pulsa la fila de
+    verdad y se mira qué acaba en el portapapeles."""
+    h, d = mu_share
+    try:
+        h.command("set_property", "clipboard/text", "sonda")
+        assert h.get("clipboard/text") == "sonda"
+    except Exception:  # noqa: BLE001
+        pytest.skip("este mpv no tiene backend de portapapeles (sesión sin pantalla)")
+
+    h.command("script-binding", "mu_share/share-menu")
+    share(h, lambda v: "Crear una sala para ver juntos" in titles(v))
+    ev(h, {"type": "activate", "index": 1, "value": {"action": "create"}})
+    share(h, lambda v: v["open"] and v["url"] != "")
+
+    # H55 · al crear la sala se copian LOS DOS enlaces, explicados, en cuanto hay algo que compartir
+    texto = h.wait_property("clipboard/text", lambda t: isinstance(t, str) and "/file?" in t, timeout=90)
+    assert "En el navegador" in texto and "En VLC, mpv" in texto
+    assert texto.count("http") == 2 and "#k=" in texto
+    share(h, lambda v: (v.get("last_notice") or "").startswith("Enlaces copiados"))
+
+    # y la fila suelta sigue estando, para cuando solo quieras ese
+    h.command("set_property", "clipboard/text", "sonda")
+    h.command("script-binding", "mu_share/share-menu")
+    v = share(h, lambda v: "Copiar el enlace para VLC o mpv" in titles(v))
+    fila = next(i for i, t in enumerate(titles(v), start=1) if t == "Copiar el enlace para VLC o mpv")
+    ev(h, {"type": "activate", "index": fila, "value": {"action": "copy-player"}})
+    enlace = h.wait_property("clipboard/text", lambda t: isinstance(t, str) and "/file?" in t, timeout=20)
+    assert "k=" in enlace and enlace.startswith("http") and "\n" not in enlace
     assert h.script_errors() == [], h.script_errors()

@@ -214,6 +214,19 @@ Avisos para quien siga, todos aprendidos a golpes en esta iteración:
   dar por roto algo, repítelo solo.
 
 ## Registro por iteración
+### Iteración 11 · 2026-10-02 · H55 y H56 · Tercera prueba de Ser — hecho
+- **Error de método, y es el que más conviene recordar**: di por buena la tanda H55 y contesté a Ser **antes de que
+  terminara su `check.sh`**. Terminó con **once fallos**. Lo que Ser encontró luego era exactamente eso. Una tanda
+  no está hecha hasta que la batería ha terminado.
+- **H55**: los invitados de una sala privada entran pudiendo controlar (los mandos del navegador NO estaban rotos,
+  se comprobó con un navegador real; lo que fallaba era que el permiso había que concederlo y estaba escondido);
+  los dos enlaces se copian juntos y explicados; los tramos tienen icono propio, se reordenan y se unen en ese
+  orden; y dos formatos nuevos, «Sin recodificar» (0,07 s por corte, sin pérdida) y AV1.
+- **H56**: el invitado fantasma «Reproductor» ocupaba plaza y rompía salas con tope; guardar tramos funcionaba pero
+  no se veía; la TV entraba pausada porque `pause` es global en mpv; y seis tests encodaban el contrato viejo.
+- **Aviso**: hay tres tests sensibles a la carga que fallan en la pasada completa y pasan aislados (`test_books`,
+  `test_mu_feeds`, `test_prefs`), y uno que fallaba **según la hora del día** (la guía de TV), ya arreglado.
+
 ### Iteración 10 · 2026-10-02 · H54 · Segunda prueba de Ser — hecho
 - **«Si tira el vídeo para atrás se queda en el mismo minuto y tampoco tiene play/pause»: un solo fallo, y era la
   cara mala de C5.** La retransmisión empieza donde está el anfitrión y **solo contiene desde ahí**, así que al

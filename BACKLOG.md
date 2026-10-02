@@ -503,6 +503,27 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
 - [x] G4 **Elegir qué tramos se exportan**, uno a uno; *unir* solo cuando hay más de uno elegido; las acciones de
       cada tramo pasan a los botones de su fila.
 
+## H55 · Tercera prueba de Ser (2026-10-02) — ADR-092 · [x]
+- [x] H1 Los invitados de una sala **privada entran pudiendo controlar** (`open_control`, con interruptor en el
+      menú). Los mandos funcionaban —probado con un navegador de verdad—, lo que fallaba era que había que
+      concederlos y eso estaba escondido. Con el control quitado, la página **dice por qué** están apagados.
+- [x] H2 Al crear la sala se copian **los dos enlaces explicados** en un solo pegado, cuando la sala sirve de
+      verdad. El de VLC no salía porque se pedía antes de que hubiera nada que compartir.
+- [x] H3 Los tramos tienen **su propio icono** en la barra (con el número), se pueden **reordenar** con las flechas
+      de cada fila, y **unir respeta ese orden** (se quitó la exigencia de que fueran en orden).
+- [x] H4 Dos formatos nuevos: **Sin recodificar** (0,07 s para un corte de 6 s, sin pérdida; no puede unir) y
+      **AV1** si el ffmpeg de la máquina lo trae. La lista sale de mpvd, que quita lo que no puede hacer.
+
+## H56 · Lo que rompió H55, y lo que no se veía (2026-10-02) — ADR-093 · [x]
+- [x] I1 El invitado «Reproductor» (credencial del enlace de VLC) pasa a ser `hidden`: no sale en la lista, no
+      ocupa plaza y no se cuenta como espectador. Rompía la entrada en salas con tope.
+- [x] I2 Guardar tramos **dice a dónde van** y ofrece «Ver cómo van en Tareas»; y si lo que se ve es la TV o un
+      vídeo de internet, se dice **en el menú** que eso no se corta, con el camino que sí sirve.
+- [x] I3 «Copiar los enlaces» es una fila del menú, para no depender de pillar la copia automática.
+- [x] I4 La TV y la radio **arrancan solas**: `pause` es global en mpv y sobrevivía al cambio de canal.
+- [x] I5 Seis tests adaptados al contrato nuevo de permisos (conservando el camino de pedir/conceder) y uno que
+      fallaba **según la hora**: la guía intercala una fila de día cuando el siguiente programa cae tras medianoche.
+
 ## H53 · El «modo sencillo» no encoge la barra (encontrado el 2026-10-02) — [ ]
 - [ ] F1 `mu-modes` escribe `uosc-controls` al entrar en modo sencillo, pero **uosc solo lee esa opción al
       arrancar** (`Controls:init_options()` solo corre en `init()`, y ningún elemento escucha cambios de opciones).

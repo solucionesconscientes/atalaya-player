@@ -27,6 +27,14 @@ PRESETS: list[dict[str, Any]] = [
      "ext": ".mp4", "vcodec": "hevc"},
     {"id": "web", "label": "Web (WebM)", "hint": "VP9 + Opus para páginas web", "kind": "video", "ext": ".webm",
      "vcodec": "vp9"},
+    # H55 · AV1: lo más nuevo, y para el mismo aspecto ocupa bastante menos que H.265. A cambio tarda más en una
+    # CPU modesta, por eso no es el que viene puesto. Solo se ofrece si este ffmpeg trae SVT-AV1.
+    {"id": "av1", "label": "AV1 (el que menos ocupa)", "hint": "lo más nuevo · tarda más de codificar",
+     "kind": "video", "ext": ".mp4", "vcodec": "av1"},
+    # Y el contrario: no tocar nada. Corta por fotograma clave (puede empezar un poco antes), es instantáneo y no
+    # pierde ni un bit. MKV porque acepta cualquier códec que venga.
+    {"id": "copy", "label": "Sin recodificar (rapidísimo)", "hint": "calidad intacta · corta por fotograma clave",
+     "kind": "video", "ext": ".mkv"},
     {"id": "mp3", "label": "Solo audio · MP3", "hint": "el más compatible", "kind": "audio", "ext": ".mp3"},
     {"id": "m4a", "label": "Solo audio · M4A (AAC)", "hint": "móviles y Apple", "kind": "audio", "ext": ".m4a"},
     {"id": "opus", "label": "Solo audio · Opus", "hint": "el más pequeño", "kind": "audio", "ext": ".opus"},
@@ -35,6 +43,31 @@ PRESETS: list[dict[str, Any]] = [
     {"id": "gif", "label": "GIF animado", "hint": "sin sonido · máx. 60 s", "kind": "gif", "ext": ".gif"},
 ]
 PRESET_BY_ID = {p["id"]: p for p in PRESETS}
+
+# Codificadores que no están en todos los ffmpeg. Se mira una vez y se recuerda: ofrecer un formato que esta
+# máquina no puede hacer es peor que no ofrecerlo (H55).
+NEEDS_ENCODER = {"av1": "libsvtav1"}
+_encoders: set[str] | None = None
+
+
+def available_encoders(ffmpeg: str | None = None) -> set[str]:
+    global _encoders  # noqa: PLW0603
+    if _encoders is None:
+        try:
+            binario = ffmpeg or shutil.which("ffmpeg") or "ffmpeg"
+            out = subprocess.run([binario, "-hide_banner", "-encoders"],
+                                 capture_output=True, text=True, timeout=20, check=False).stdout
+        except (OSError, subprocess.SubprocessError):
+            out = ""
+        _encoders = {line.split()[1] for line in out.splitlines()
+                     if line.startswith(" ") and len(line.split()) > 1}
+    return _encoders
+
+
+def usable_presets(ffmpeg: str | None = None) -> list[dict[str, Any]]:
+    """Los formatos que ESTA máquina puede hacer de verdad."""
+    have = available_encoders(ffmpeg)
+    return [p for p in PRESETS if NEEDS_ENCODER.get(str(p["id"]), "") in ("", *have)]
 
 HEIGHTS = (0, 1080, 720, 480)                 # 0 = original
 QUALITIES = ("high", "normal", "small")
@@ -51,7 +84,8 @@ MAX_RANGES = 50                               # H52 · tramos que se pueden unir
 # video quality → CRF (x264/x265/VP9) or constant QP (VA-API): «normal» is each encoder's usual default
 CRF = {"h264": {"high": 20, "normal": 23, "small": 28},
        "hevc": {"high": 24, "normal": 28, "small": 32},
-       "vp9": {"high": 31, "normal": 35, "small": 40}}
+       "vp9": {"high": 31, "normal": 35, "small": 40},
+       "av1": {"high": 28, "normal": 34, "small": 42}}      # SVT-AV1 usa una escala más alta que x264/x265
 VAAPI_QP = {"h264": {"high": 20, "normal": 24, "small": 29}, "hevc": {"high": 22, "normal": 26, "small": 31}}
 # audio bitrate (kbps) by quality: audio-only presets and the audio of video presets
 AUDIO_KBPS = {"mp3": {"high": 256, "normal": 192, "small": 128},
@@ -59,6 +93,7 @@ AUDIO_KBPS = {"mp3": {"high": 256, "normal": 192, "small": 128},
               "opus": {"high": 160, "normal": 128, "small": 64},
               "aac": {"high": 192, "normal": 160, "small": 128},     # audio of mp4 video
               "libopus": {"high": 160, "normal": 128, "small": 96}}  # audio of webm/mkv video
+SVTAV1_PRESET = {"normal": "8", "fast": "12"}   # 0 = lentísimo y pequeñísimo, 13 = lo más rápido
 X264_PRESET = {"normal": "fast", "fast": "ultrafast"}
 X265_PRESET = {"normal": "fast", "fast": "ultrafast"}
 VP9_SPEED = {"normal": ["-deadline", "good", "-cpu-used", "4"], "fast": ["-deadline", "realtime", "-cpu-used", "8"]}
@@ -154,15 +189,15 @@ class ConvertSpec:
         if self.ranges:
             if self.preset == "gif" and len(self.ranges) > 1:
                 raise ConvertError("un GIF se hace de un solo tramo")
+            if self.preset == "copy" and len(self.ranges) > 1:
+                raise ConvertError("«Sin recodificar» no puede unir tramos: para pegarlos hay que recodificar")
             if len(self.ranges) > MAX_RANGES:
                 raise ConvertError(f"como mucho {MAX_RANGES} tramos de una vez")
-            last = -1.0
+            # H55 · NO se exige que vayan en orden: «juntar 2 o más en el orden deseado» es justo poder darle la
+            # vuelta a un trozo o repetirlo. `trim`+`concat` los pega en el orden en que llegan.
             for a, b in self.ranges:
                 if a < 0 or b <= a:
                     raise ConvertError("cada tramo tiene que acabar después de empezar")
-                if a < last:
-                    raise ConvertError("los tramos tienen que ir en orden y sin solaparse")
-                last = b
 
     @property
     def meta(self) -> dict[str, Any]:
@@ -376,6 +411,8 @@ def cpu_video_args(spec: ConvertSpec, vcodec: str) -> list[str]:
     elif vcodec == "hevc":
         args = ["-c:v", "libx265", "-preset", X265_PRESET[spec.speed], "-crf", str(CRF["hevc"][spec.quality]),
                 "-x265-params", "log-level=error"]
+    elif vcodec == "av1":
+        args = ["-c:v", "libsvtav1", "-preset", SVTAV1_PRESET[spec.speed], "-crf", str(CRF["av1"][spec.quality])]
     else:  # vp9: constant quality (-b:v 0), row multithreading
         args = ["-c:v", "libvpx-vp9", "-crf", str(CRF["vp9"][spec.quality]), "-b:v", "0", "-row-mt", "1",
                 *VP9_SPEED[spec.speed]]
@@ -387,6 +424,21 @@ def video_audio_args(spec: ConvertSpec, ext: str) -> list[str]:
     if ext == ".mp4":
         return ["-c:a", "aac", "-b:a", f"{_audio_kbps(spec, 'aac')}k"]
     return ["-c:a", "libopus", "-b:a", f"{_audio_kbps(spec, 'libopus')}k"]
+
+
+def copy_plan(spec: ConvertSpec, src: Path, out: Path, info: SourceInfo, ffmpeg: str = "ffmpeg") -> Plan:
+    """H55 · «Sin recodificar»: se copian los flujos tal cual a un MKV. Instantáneo y sin perder nada.
+
+    El precio, que se dice en la propia etiqueta: un corte empieza en el fotograma clave anterior, porque sin
+    recodificar no se puede partir por en medio de un grupo de imágenes; pueden entrar unos segundos de más."""
+    start, length = effective_range(spec, info.duration)
+    span = length if length is not None else max(0.0, info.duration - start)
+    cmd = [*base_args(ffmpeg), *input_args(src, start, length), "-map", "0", "-c", "copy",
+           "-map_metadata", "0", str(out)]
+    avisos = []
+    if start > 0 or length is not None:
+        avisos.append("sin recodificar el corte empieza en el fotograma clave anterior: pueden entrar segundos de más")
+    return Plan([cmd], [1.0], span, avisos, "copy")
 
 
 def join_plan(spec: ConvertSpec, src: Path, out: Path, info: SourceInfo, ffmpeg: str = "ffmpeg") -> Plan:
@@ -460,6 +512,8 @@ def build_plan(spec: ConvertSpec, src: Path, out: Path, info: SourceInfo, hw: Hw
                ffmpeg: str = "ffmpeg", palette: Path | None = None) -> Plan:
     """Exact ffmpeg command(s) converting ``src`` into ``out`` (never overwrites: ``-n``)."""
     spec.validate()
+    if spec.preset == "copy":
+        return copy_plan(spec, src, out, info, ffmpeg)
     if len(spec.ranges) > 1:
         return join_plan(spec, src, out, info, ffmpeg)
     start, length = effective_range(spec, info.duration)

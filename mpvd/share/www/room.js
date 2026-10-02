@@ -235,6 +235,15 @@
   function updatePerm() {
     var can = perm === 'control' && mode !== 'public';
     ['play', 'back10', 'fwd10', 'seek'].forEach(function (id) { $(id).disabled = !can; });
+    // H55 · unos botones apagados sin decir por qué parecen rotos: con el control quitado se dice, y el botón de
+    // pedirlo queda al lado.
+    var why = $('why-view');
+    if (why) {
+      why.textContent = can ? '' : (mode === 'public'
+        ? 'Esta sala es de solo ver: los mandos los lleva quien la ha abierto.'
+        : 'Ahora mismo solo puedes ver. Pide el control para pausar y saltar.');
+      show('why-view', !can);
+    }
     show('ask', !can && mode !== 'public');
     $('ask').disabled = pending;
     $('ask').textContent = pending ? 'Esperando al anfitrión…' : 'Pedir el control';

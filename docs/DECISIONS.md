@@ -981,3 +981,49 @@
   fila lo deja fuera; lo que se guarda es lo marcado, y *unir* solo se ofrece cuando hay más de uno elegido, porque
   unir uno no es unir nada. Las acciones por tramo (ir, repetir, quitar) pasan a los botones de la fila, que es lo
   que libera el Enter para lo que más se usa.
+
+- ADR-092 · Control para los invitados, los dos enlaces de una vez, tramos ordenables y dos formatos más (H55).
+  **Sustituye** la parte de ADR-030 que hacía entrar a todo invitado en «solo ver», y amplía ADR-089 y ADR-091.
+  **(1) En una sala privada se entra pudiendo controlar.** Ser decía que desde el navegador «sigo sin poder
+  controlarlo correctamente, lo único que funciona bien es silenciar» —y silenciar es lo único que NO necesita
+  permiso—. Se comprobó con un navegador de verdad conduciendo pausa, −10 s y la barra: **los tres funcionan**. Lo
+  que fallaba era el permiso: había que pedirlo y que el anfitrión lo concediera en un sí/no que se cierra solo a
+  los 30 s. A una sala privada entra quien tú has invitado, así que ahora entra con el control; el interruptor
+  *Los invitados pueden controlar* lo quita, y entonces la página **dice por qué** los botones están apagados, en
+  vez de dejarlos muertos. En una sala pública sigue sin poder controlarse nadie.
+  **(2) Los dos enlaces en un solo pegado.** El de VLC «no se dejaba copiar» porque se pedía justo al crear la
+  sala, cuando todavía no hay nada que compartir y la llamada falla. Ahora la invitación se entrega **cuando la
+  sala sirve de verdad** (el túnel contesta y hay medio preparado) y lleva los dos enlaces con una línea sobre qué
+  hace cada uno. Un solo pegado, porque el portapapeles es uno y acordarse de mandar dos mensajes no es cosa de
+  quien comparte.
+  **(3) Los tramos se ordenan.** Icono propio en la barra con el número (estaban solo detrás de una tecla y del
+  menú, y «es difícil encontrarlo»), flechas por fila para subir y bajar, y **unir respeta ese orden**: hubo que
+  quitar de la validación la exigencia de que los tramos fueran en orden y sin solaparse, que era mía y sobraba —
+  `trim`+`concat` pega lo que le den en el orden que le den, y poder montar el final primero es justo lo pedido.
+  **(4) Dos formatos más, y uno importa de verdad.** «Sin recodificar» copia los flujos tal cual: **0,07 s para un
+  corte de 6 s** y sin perder un bit, frente a recodificarlo entero; el precio, dicho en la propia etiqueta, es que
+  empieza en el fotograma clave anterior y que **no puede unir** (pegar obliga a recodificar). Y **AV1** por
+  SVT-AV1 para quien quiera el mínimo tamaño. La lista de formatos pasa a salir de mpvd, que **quita los que esta
+  máquina no puede hacer**: ofrecer un formato imposible es peor que no ofrecerlo. Nota sobre **grabar**, que Ser
+  preguntaba: ahí no hay códec que elegir y no es una carencia — grabar **copia el flujo tal cual**, así que el
+  códec es el que venga por la antena o por la red, y lo único elegible es el envase (MKV acepta todo, MP4 solo
+  algunos). Es lo que permite grabar sin gastar CPU y sin perder calidad en un portátil de cuatro núcleos.
+
+- ADR-093 · De la tercera prueba: lo que estaba roto era mío, y lo que «no hacía nada» no se veía (H56).
+  **Corrige** ADR-092, cuya tanda se dio por buena antes de que terminara su batería de pruebas: aquella pasada
+  acabó con **once fallos** y se publicó igualmente. La lección está anotada en PROGRESS y vale más que el ADR: una
+  tanda no está hecha hasta que `check.sh` ha terminado, y contestar antes es contestar sobre algo que no se sabe.
+  **(1) El invitado fantasma.** Para firmar el enlace de VLC se creaba un invitado llamado «Reproductor»… que
+  aparecía en la lista, ocupaba plaza y se contaba como espectador, y en una sala pública con tope de visitantes
+  rompía la entrada de los demás. Ahora es `hidden`: existe para firmar y para nada más.
+  **(2) «Guardar los tramos no hace nada».** Hacía: los archivos se creaban. Lo que no había era **señal** —iban a
+  una carpeta que nadie ha visto nunca y, al unir, se recodificaba en silencio—. Ahora se dice a dónde van y hay
+  una fila para ver cómo van. Y había un caso en que de verdad no hacía nada: **con la TV o un vídeo de internet**,
+  que no son archivos de este equipo; eso se avisaba con un OSD de un segundo *después* de pulsar, y ahora se dice
+  **en el menú, antes**, con el camino que sí sirve (Grabar).
+  **(3) La TV pedía darle al play.** `pause` es una propiedad **global** de mpv y sobrevive al cambio de archivo:
+  si venías de pausar algo, el canal entraba pausado. Al elegir un canal lo que quieres es verlo.
+  **(4) Tests que encodaban contratos viejos.** Media docena asumían que un invitado entra en «solo ver»; se han
+  adaptado conservando el camino de pedir/conceder el control, que sigue existiendo cuando el anfitrión se los
+  queda. Y uno fallaba **según la hora del día**: la guía de TV intercala una fila de día cuando el programa
+  siguiente cae pasada medianoche, así que a partir de cierta hora el índice bailaba.

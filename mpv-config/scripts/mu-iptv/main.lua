@@ -101,6 +101,9 @@ local function load_url(url, file_options)
   if type(state.current) == 'table' then state.current.url = url end  -- mu-core names failures by this URL
   local res = mp.command_native({ 'loadfile', url, 'replace', -1, file_options or {} })
   if res == nil then msg.warn('loadfile failed for ' .. url) end
+  -- H56 · `pause` es global en mpv y sobrevive al cambio de archivo: si venías de pausar algo o de la pantalla de
+  -- inicio, el canal entraba pausado y había que darle al play. Eligiendo un canal lo que quieres es verlo.
+  mp.set_property_bool('pause', false)
   state.entry_id = type(res) == 'table' and res.playlist_entry_id or nil
   if watch_stall then watch_stall(url) end
   publish()
