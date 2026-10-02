@@ -857,7 +857,7 @@
   inglés y francés, con el idioma del sistema decidiéndolo (es/fr → ese; inglés o cualquier otro → inglés). Medido
   antes de diseñar: **~1.800 cadenas visibles** (1.151 en los scripts Lua, ~520 en mpvd, ~56 en el JS de las páginas
   servidas), o sea ~3.600 traducidas. El diseño entero está en **docs/IDIOMAS.md**; aquí lo que se decidió y por qué.
-  **(1) La cadena en castellano es la clave**: `t('Abrir o descargar')`, no `menu.open.title`. Es lo que hace viable
+  **(1) La cadena en castellano es la clave**: `tr('Abrir o descargar')`, no `menu.open.title`. Es lo que hace viable
   migrar 1.800 cadenas: el código sigue legible (se ve el texto donde está), el castellano no necesita catálogo
   porque es la identidad, la extracción es mecánica y —lo importante— si alguien cambia el texto castellano y olvida
   el catálogo, la cadena **cae al castellano**, nunca a una clave cruda ni a un hueco en blanco. **(2) Un solo sitio

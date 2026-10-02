@@ -41,13 +41,22 @@ local function load_catalogue(lang)
   return type(data) == 'table' and data or {}
 end
 
--- `lang`: 'es' | 'en' | 'fr', or a locale/'' to work it out from the environment.
+-- What the launcher decided, read straight from mpv's script-opts. It has to be read here and not handed over by
+-- mu-core: **every mpv script runs in its own Lua state**, so this module is a different instance in each one and
+-- nothing mu-core sets would reach the rest.
+local function from_script_opts()
+  local all = mp.get_property_native('options/script-opts') or {}
+  local value = all['mu-core-lang']
+  return (type(value) == 'string' and value ~= '') and value or nil
+end
+
+-- `lang`: 'es' | 'en' | 'fr', or a locale/'' to work it out from the launcher and then from the environment.
 function M.set(lang)
   local code = SUPPORTED[tostring(lang or '')] and lang or nil
   if not code then
-    local env = (lang ~= nil and lang ~= '') and lang
+    local env = (lang ~= nil and lang ~= '') and lang or from_script_opts()
       or os.getenv('LC_ALL') or os.getenv('LC_MESSAGES') or os.getenv('LANG') or ''
-    code = M.from_locale(env)
+    code = SUPPORTED[tostring(env)] and env or M.from_locale(env)
   end
   M.lang = code
   catalogue = load_catalogue(code)

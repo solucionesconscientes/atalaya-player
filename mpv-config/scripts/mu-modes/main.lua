@@ -10,6 +10,7 @@ local mp = require('mp')
 local msg = require('mp.msg')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
+local tr = require('mu.i18n').t
 local prefs = require('mu.prefs')
 
 local SCRIPT = mp.get_script_name()
@@ -55,12 +56,12 @@ local function set_mini(on)
     mp.set_property_native('border', false)
     mp.set_property_native('ontop', true)
     state.mini = true
-    osd('Mini reproductor (vuelve con la misma tecla)')
+    osd(tr('Mini reproductor (vuelve con la misma tecla)'))
   else
     for k, v in pairs(saved.mini or {}) do mp.set_property_native(k, v) end
     saved.mini = nil
     state.mini = false
-    osd('Ventana normal')
+    osd(tr('Ventana normal'))
   end
   publish()
 end
@@ -85,8 +86,7 @@ local function set_salon(on, quiet)
         publish()
       end)
     end
-    if not quiet then osd('Modo salón: letra grande y pantalla completa' ..
-      ' · un mando (gamepad) también sirve') end
+    if not quiet then osd(tr('Modo salón: letra grande y pantalla completa · un mando (gamepad) también sirve')) end
   else
     for k, v in pairs(saved.salon or {}) do mp.set_property_native(k, v) end
     for k, v in pairs(saved.salon_uosc or {}) do
@@ -95,7 +95,7 @@ local function set_salon(on, quiet)
     saved.salon, saved.salon_uosc = nil, nil
     state.salon, state.gamepad = false, ''
     if rpc.connected() then rpc.call('gamepad.stop', {}, function() end) end
-    if not quiet then osd('Modo salón desactivado') end
+    if not quiet then osd(tr('Modo salón desactivado')) end
   end
   P:set('salon', state.salon)
   publish()
@@ -109,13 +109,13 @@ local function set_simple(on, quiet)
     saved.simple = uosc_current('controls', '')
     uosc_opt('controls', SIMPLE_CONTROLS)
     state.simple = true
-    if not quiet then osd('Modo sencillo: menú corto y barra mínima') end
+    if not quiet then osd(tr('Modo sencillo: menú corto y barra mínima')) end
   else
     if (saved.simple or '') == '' then mp.commandv('change-list', 'script-opts', 'remove', 'uosc-controls')
     else uosc_opt('controls', saved.simple) end
     saved.simple = nil
     state.simple = false
-    if not quiet then osd('Modo sencillo desactivado: menú completo') end
+    if not quiet then osd(tr('Modo sencillo desactivado: menú completo')) end
   end
   P:set('simple', state.simple)
   publish()
@@ -139,7 +139,7 @@ local GAMEPAD_ACTIONS = {
 mp.register_script_message('mu-event', function(payload)
   local ev = require('mp.utils').parse_json(payload or '')
   if type(ev) ~= 'table' or ev.event ~= 'gamepad' then return end
-  if ev.status == 'lost' then state.gamepad = ''; publish(); osd('Mando desconectado') return end
+  if ev.status == 'lost' then state.gamepad = ''; publish(); osd(tr('Mando desconectado')) return end
   local fn = GAMEPAD_ACTIONS[ev.action or '']
   if fn and state.salon then fn() end
 end)

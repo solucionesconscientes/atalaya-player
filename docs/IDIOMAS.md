@@ -18,7 +18,7 @@ otro, en inglés.**
 ## Decisiones
 
 ### 1. La cadena en castellano **es** la clave
-`t('Abrir o descargar')` busca esa cadena en el catálogo del idioma activo. No hay claves tipo `menu.open.title`.
+`tr('Abrir o descargar')` busca esa cadena en el catálogo del idioma activo. No hay claves tipo `menu.open.title`.
 
 Por qué, que es la decisión que hace viable migrar 1.800 cadenas:
 - El código sigue **legible**: se ve el texto real donde está, no un identificador que hay que ir a buscar.
@@ -34,7 +34,14 @@ El lanzador mira el entorno, resuelve `es` / `fr` / `en` y lo pasa a los dos lad
 
 Así el idioma está decidido **antes** de que cargue el primer script, y no hay un momento en que la pantalla de
 inicio salga en un idioma y cambie al siguiente. mpvd lo resuelve por su cuenta con `locale` (y así también acierta
-en Windows, donde el entorno no lleva nada).
+en Windows, donde el entorno no lleva nada). El lanzador de Windows (`bin/mpv-uos.ps1`) hace lo mismo y además mira
+`Get-UICulture`; hay un test que comprueba que los dos construyen la misma orden.
+
+**Corrección importante, aprendida al implementarlo:** el diseño decía que mu-core resolvería el idioma y los demás
+scripts lo leerían de él. **No funciona**, porque cada script de mpv corre en su **propio estado Lua**: `mu.i18n` es
+una instancia distinta en cada uno y lo que fije mu-core no llega a nadie. Así que es el **módulo** el que lee la
+opción del lanzador, de `options/script-opts`, en cada script donde se carga. Se vio con el menú saliendo en
+castellano con el reproductor en inglés, y es la clase de cosa que un test de un solo script no habría cogido.
 
 Una preferencia en *Preferencias → Idioma* lo fuerza (automático / castellano / English / Français), porque alguien
 con el sistema en inglés puede querer el reproductor en castellano. Se recuerda en mu-prefs.
@@ -44,10 +51,25 @@ JSON plano `{"cadena en castellano": "translation"}`, leído por `mu/i18n.lua` y
 JSON porque los dos lados ya lo parsean (precedente: `brand.json`) y porque se puede revisar y corregir a mano sin
 herramientas.
 
+### 3.b La preferencia y el extractor, con sus trampas
+- **La preferencia** (*Preferencias → Idioma*) la guarda mu-prefs en `prefs.json`, que es un fichero plano, así que
+  **el lanzador puede leerla** y hacerla ganar al entorno. Se aplica **al reiniciar**: las cadenas se resuelven al
+  cargar los scripts, y fingir que cambian en caliente sería mentira.
+- **El extractor** (`tools/i18n_extract.py`) solo envuelve posiciones conocidas, y recoge además los dos primeros
+  argumentos de los constructores de filas de mu-menu (`cmd`, `bind`, `sub`, `child`, `toggle`), que **traducen por
+  dentro**: así las 54 llamadas siguen leyéndose en castellano y hay un solo sitio que puede equivocarse.
+- **Trampa del filtro de teclas**: un `hint` es muchas veces el nombre de una tecla (`ctrl+b`, `alt+R · alt+I`, `?`),
+  y eso no es texto. El primer filtro descartaba «lo corto», y se tragó **«Grabar» y «Salir»**. La regla correcta:
+  es una tecla si lleva modificador, si es un solo carácter o si es uno de los nombres de tecla de mpv. Ser corto no
+  basta.
+- **Trampa del título como clave**: el modo sencillo elegía sus categorías por el **título**, que es justo lo que
+  cambia de idioma. Cada categoría tiene ahora un `id` estable. Antes de traducir un script conviene buscar
+  comparaciones y accesos por título.
+
 ### 4. Las frases compuestas se arreglan al extraerlas
 Hay cadenas construidas con `..` y con `string.format`. Una frase partida en trozos no se puede traducir: el orden
 de las palabras cambia entre idiomas. Así que al extraer, lo que esté concatenado pasa a una sola cadena con
-posiciones: `t('%d archivos en la lista'):format(n)`. Es la parte que no se puede automatizar y la que lleva el
+posiciones: `tr('%d archivos en la lista'):format(n)`. Es la parte que no se puede automatizar y la que lleva el
 tiempo.
 
 ### 5. Las páginas servidas siguen al **navegador del invitado**, no al sistema del anfitrión

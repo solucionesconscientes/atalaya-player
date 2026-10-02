@@ -11,6 +11,7 @@ local uosc = require('mu.uosc')
 local brand = require('mu.brand')
 local prefs = require('mu.prefs')
 local nav = require('mu.nav')
+local tr = require('mu.i18n').t
 local clip = require('mu.clip')
 
 local SCRIPT = mp.get_script_name()
@@ -145,7 +146,7 @@ local function try_resume()
       state.position = entry.position
       state.resumed = true
       publish()
-      osd('▶ Continuando en ' .. fmt_time(entry.position)
+      osd(tr('▶ Continuando en %s'):format(fmt_time(entry.position))
         .. (state.duration > 0 and (' / ' .. fmt_time(state.duration)) or ''))
     end
     register_play()
@@ -272,14 +273,14 @@ end
 
 local function recent_item(r)
   local hint
-  if r.finished then hint = 'visto'
+  if r.finished then hint = tr('visto')
   elseif r.duration and r.duration > 0 then hint = fmt_time(r.position) .. ' / ' .. fmt_time(r.duration)
   elseif r.position and r.position > 0 then hint = fmt_time(r.position) end
   return {
     title = r.title ~= '' and r.title or r.path, hint = hint,
     icon = r.kind == 'url' and 'public' or 'movie', value = { open = r.path, position = r.position, resume = r.resume },
     muted = r.finished or nil, bold = r.resume or nil,
-    actions = { { name = 'forget', icon = 'delete', label = 'Olvidar' } },
+    actions = { { name = 'forget', icon = 'delete', label = tr('Olvidar') } },
   }
 end
 
@@ -291,45 +292,54 @@ local function with_recents(limit, unfinished, cb)
   end, 10)
 end
 
--- item builders: a command, a key binding, another view of this menu, another script's menu one level down
+-- Item builders: a command, a key binding, another view of this menu, another script's menu one level down.
+-- H49 · the title and the hint are translated HERE, not at the 54 call sites: the calls stay readable in Spanish
+-- (`cmd('Menú completo', 'quita el modo sencillo', …)`) and there is one place that can get it wrong. A hint that
+-- is a key name ('ctrl+b', '?') simply has no entry in the catalogue and comes back as it is.
 local function cmd(title, hint, icon, command, extra)
-  local it = { title = title, hint = hint, icon = icon, value = { cmd = command } }
+  local it = { title = tr(title), hint = tr(hint), icon = icon, value = { cmd = command } }
   for k, v in pairs(extra or {}) do it[k] = v end
   return it
 end
 local function bind(title, hint, icon, name, extra) return cmd(title, hint, icon, { 'script-binding', name }, extra) end
 local function sub(title, hint, icon, view, extra)
-  local it = { title = title, hint = hint, icon = icon, value = { view = view } }
+  local it = { title = tr(title), hint = tr(hint), icon = icon, value = { view = view } }
   for k, v in pairs(extra or {}) do it[k] = v end
   return it
 end
 local function child(title, hint, icon, script, entry, extra)
-  local it = { title = title, hint = hint, icon = icon, value = { child = { script = script, entry = entry } } }
+  local it = { title = tr(title), hint = tr(hint), icon = icon,
+               value = { child = { script = script, entry = entry } } }
   for k, v in pairs(extra or {}) do it[k] = v end
   return it
 end
 local function toggle(title, on, icon, pref, extra)
-  local it = { title = title, hint = on and 'sí' or 'no', icon = icon, active = on, value = { pref = pref } }
+  local it = { title = tr(title), hint = on and tr('sí') or tr('no'), icon = icon, active = on,
+               value = { pref = pref } }
   for k, v in pairs(extra or {}) do it[k] = v end
   return it
 end
 
 -- The main menu: eight categories (H15). TV y radio and Descargas open their module directly; the others are views
 -- here that lead into the modules one level down (their "Atrás" comes back to the category).
+-- `id`: con qué se reconoce una categoría en el código. H49: antes era el título, que es justo lo que cambia de
+-- idioma, así que el modo sencillo habría dejado de encontrar las suyas en cuanto se tradujera el menú.
 local CATEGORIES = {
-  { title = 'Abrir o descargar', icon = 'folder_open', hint = 'enlace, archivo, lista, biblioteca', view = 'open' },
-  { title = 'TV y radio', icon = 'live_tv', hint = 'alt+t', child = { 'mu_iptv', 'tv-menu' } },
-  { title = 'Descargas y conversión', icon = 'download', hint = 'alt+y', child = { 'mu_ytdl', 'ytdl-menu' } },
-  { title = 'Subtítulos', icon = 'subtitles', view = 'subs' },
-  { title = 'Imagen y sonido', icon = 'tune', view = 'av' },
-  { title = 'Grabar', icon = 'fiber_manual_record', hint = 'capturas, directos, tramos', child = { 'mu_record', 'record-menu' } },
-  { title = 'Herramientas', icon = 'handyman', hint = 'intro, estudio, mando…', view = 'tools' },
-  { title = 'Preferencias', icon = 'settings', view = 'prefs' },
+  { id = 'open', title = tr('Abrir o descargar'), icon = 'folder_open',
+    hint = tr('enlace, archivo, lista, biblioteca'), view = 'open' },
+  { id = 'tv', title = tr('TV y radio'), icon = 'live_tv', hint = tr('alt+t'), child = { 'mu_iptv', 'tv-menu' } },
+  { id = 'downloads', title = tr('Descargas y conversión'), icon = 'download', hint = tr('alt+y'),
+    child = { 'mu_ytdl', 'ytdl-menu' } },
+  { id = 'subs', title = tr('Subtítulos'), icon = 'subtitles', view = 'subs' },
+  { id = 'av', title = tr('Imagen y sonido'), icon = 'tune', view = 'av' },
+  { id = 'record', title = tr('Grabar'), icon = 'fiber_manual_record', hint = tr('capturas, directos, tramos'),
+    child = { 'mu_record', 'record-menu' } },
+  { id = 'tools', title = tr('Herramientas'), icon = 'handyman', hint = tr('intro, estudio, mando…'), view = 'tools' },
+  { id = 'prefs', title = tr('Preferencias'), icon = 'settings', view = 'prefs' },
 }
 
 -- Modo sencillo (mu-modes, H27): only what a first-time user needs, plus a way back to the full menu.
-local SIMPLE = { ['Abrir o descargar'] = true, ['TV y radio'] = true, ['Subtítulos'] = true,
-                 ['Preferencias'] = true }
+local SIMPLE = { open = true, tv = true, subs = true, prefs = true }
 local modes = {}
 
 -- C8 · una línea que diga siempre qué se está haciendo por detrás. El texto lo compone mpvd (pending.status) y lo
@@ -338,7 +348,7 @@ local work_text = ''
 
 local function work_row()
   if work_text == '' then return nil end
-  return { title = 'Trabajando por detrás', hint = work_text, icon = 'hourglass_top',
+  return { title = tr('Trabajando por detrás'), hint = work_text, icon = 'hourglass_top',
            value = { child = { script = 'mu_subs', entry = 'subs-menu' } } }
 end
 
@@ -347,7 +357,7 @@ end
 local function recap_row()
   if mp.get_property_native('idle-active') then return nil end
   if (mp.get_property('path') or '') == '' then return nil end
-  return { title = 'Resumen e índice', hint = 'qué me he perdido · secciones con su minuto', icon = 'history_edu',
+  return { title = tr('Resumen e índice'), hint = tr('qué me he perdido · secciones con su minuto'), icon = 'history_edu',
            value = { child = { script = 'mu_recap', entry = 'recap-menu' } } }
 end
 
@@ -355,7 +365,7 @@ local function root_items()
   local items = {}
   if modes.simple then
     for _, c in ipairs(CATEGORIES) do
-      if SIMPLE[c.title] then
+      if SIMPLE[c.id] then
         if c.view then table.insert(items, sub(c.title, c.hint, c.icon, c.view))
         else table.insert(items, child(c.title, c.hint, c.icon, c.child[1], c.child[2])) end
       end
@@ -380,7 +390,7 @@ local function root_items()
   local w = work_row()
   if w then table.insert(items, w) end
   items[#items].separator = true
-  table.insert(items, { title = 'Buscar comandos, canales y recientes…', hint = 'alt+p', icon = 'search',
+  table.insert(items, { title = tr('Buscar comandos, canales y recientes…'), hint = tr('alt+p'), icon = 'search',
                         value = { view = 'palette' } })
   table.insert(items, bind('Ayuda: teclas principales', '?', 'help_outline', SCRIPT .. '/help'))
   table.insert(items, bind('Salir', 'q', 'logout', 'mu_core/quit-ask'))
@@ -389,15 +399,15 @@ end
 
 views.root = function()
   local items = root_items()
-  show(brand.name, items, { footnote = 'Enter abre · ⌫ o ← atrás · Esc cierra · ? ayuda' })
+  show(brand.name, items, { footnote = tr('Enter abre · ⌫ o ← atrás · Esc cierra · ? ayuda') })
   with_recents(opts.recents_in_root, true, function(_, rows)
     if not still('root') or #rows == 0 then return end
     local list = {}
     for _, r in ipairs(rows) do table.insert(list, recent_item(r)) end
-    table.insert(list, { title = 'Todos los recientes…', icon = 'history', value = { view = 'recents' } })
-    table.insert(items, 1, { title = 'Continuar viendo', hint = tostring(#rows), icon = 'history', items = list,
+    table.insert(list, { title = tr('Todos los recientes…'), icon = 'history', value = { view = 'recents' } })
+    table.insert(items, 1, { title = tr('Continuar viendo'), hint = tostring(#rows), icon = 'history', items = list,
                              separator = true })
-    show(brand.name, items, { footnote = 'Enter abre · ⌫ o ← atrás · Esc cierra · ? ayuda' })
+    show(brand.name, items, { footnote = tr('Enter abre · ⌫ o ← atrás · Esc cierra · ? ayuda') })
   end)
 end
 
@@ -405,7 +415,7 @@ end
 -- pegar, buscar en YouTube, suscripciones) ya no son filas de este menú: viven dentro de la caja y en el teclado
 -- (`o`, `ctrl+u`, `ctrl+f`, `ctrl+v`). Lo que queda aquí no son puertas, son sitios donde mirar.
 views.open = function()
-  show('Abrir o descargar', {
+  show(tr('Abrir o descargar'), {
     child('Abrir o descargar…', 'un enlace, varios, una lista, un archivo', 'add_link', 'mu_ytdl', 'ytdl-gate',
           { separator = true }),
     child('Biblioteca', 'ctrl+b', 'video_library', 'mu_library', 'library-menu'),
@@ -417,7 +427,7 @@ views.open = function()
 end
 
 views.subs = function()
-  show('Subtítulos', {
+  show(tr('Subtítulos'), {
     bind('Elegir pista de subtítulos', 's', 'subtitles', 'uosc/subtitles'),
     bind('Cargar un archivo de subtítulos', 'alt+s', 'upload_file', 'uosc/load-subtitles'),
     cmd('Mostrar u ocultar', 'v', 'visibility', { 'cycle', 'sub-visibility' }, { separator = true }),
@@ -429,7 +439,7 @@ views.subs = function()
 end
 
 views.av = function()
-  show('Imagen y sonido', {
+  show(tr('Imagen y sonido'), {
     bind('Pista de audio', 'a', 'graphic_eq', 'uosc/audio'),
     bind('Salida de sonido', nil, 'speaker', 'uosc/audio-device'),
     cmd('Silenciar', 'm', 'volume_off', { 'cycle', 'mute' }, { separator = true }),
@@ -445,7 +455,7 @@ views.av = function()
 end
 
 views.tools = function()
-  show('Herramientas', {
+  show(tr('Herramientas'), {
     sub('Buscar comandos, canales y recientes…', 'alt+p', 'search', 'palette'),
     child('Saltar intro y créditos', 'alt+j', 'skip_next', 'mu_intro', 'intro-menu'),
     child('Estudio: repetir, velocidad, notas', 'alt+e', 'school', 'mu_study', 'study-menu'),
@@ -460,13 +470,13 @@ views.tools = function()
     cmd('Repetir la lista', nil, 'repeat_on', { 'cycle-values', 'loop-playlist', 'inf', 'no' }),
     bind('Orden aleatorio de la lista', nil, 'shuffle', 'uosc/shuffle'),
     bind('Mostrar en la carpeta', 'alt+o', 'folder', 'uosc/show-in-directory', { separator = true }),
-    { title = 'Estado del reproductor', icon = 'monitor_heart', value = { action = 'status' } },
+    { title = tr('Estado del reproductor'), icon = 'monitor_heart', value = { action = 'status' } },
     bind('Todas las teclas', nil, 'keyboard', 'uosc/keybinds'),
   })
 end
 
 views.prefs = function()
-  show('Preferencias', {
+  show(tr('Preferencias'), {
     toggle('Continuar viendo donde lo dejé', opts.resume, 'history', 'resume'),
     toggle('Pausar con un clic en el vídeo', opts.click_pause, 'touch_app', 'click_pause', { separator = true }),
     cmd('Mini reproductor', modes.mini and 'sí' or 'alt+F', 'picture_in_picture_alt',
@@ -475,11 +485,11 @@ views.prefs = function()
         { 'script-binding', 'mu_modes/salon-toggle' }, { active = modes.salon }),
     cmd('Modo sencillo: menú corto', modes.simple and 'sí' or 'no', 'filter_list',
         { 'script-binding', 'mu_modes/simple-toggle' }, { active = modes.simple, separator = true }),
-    { title = 'Restablecer preferencias…', hint = 'se guarda una copia', icon = 'restart_alt',
+    { title = tr('Restablecer preferencias…'), hint = tr('se guarda una copia'), icon = 'restart_alt',
       value = { cmd = { 'script-message-to', 'mu_prefs', 'reset-ask' } } },
     bind('Abrir la carpeta de configuración', 'ctrl+alt+o', 'folder_open', 'uosc/open-config-directory'),
-    { title = 'Ayuda y novedades en ' .. brand.site:gsub('^https?://', ''), icon = 'language',
-      value = { site = true }, actions = { { name = 'copy', icon = 'content_copy', label = 'Copiar la dirección' } } },
+    { title = tr('Ayuda y novedades en %s'):format(brand.site:gsub('^https?://', '')), icon = 'language',
+      value = { site = true }, actions = { { name = 'copy', icon = 'content_copy', label = tr('Copiar la dirección') } } },
   })
 end
 
@@ -514,21 +524,21 @@ views.help = function()
   -- identidad, y desde aquí se abre en el navegador o se copia (Tab) para llevársela a otro aparato.
   table.insert(items, { title = brand.name .. ' en internet', hint = brand.site:gsub('^https?://', ''),
                         icon = 'language', value = { site = true },
-                        actions = { { name = 'copy', icon = 'content_copy', label = 'Copiar la dirección' } } })
-  show('Ayuda', items, { footnote = 'Esc cierra · Tab copia la dirección' })
+                        actions = { { name = 'copy', icon = 'content_copy', label = tr('Copiar la dirección') } } })
+  show(tr('Ayuda'), items, { footnote = tr('Esc cierra · Tab copia la dirección') })
 end
 
 views.recents = function()
-  show('Recientes', uosc.loading_items())
+  show(tr('Recientes'), uosc.loading_items())
   with_recents(50, false, function(err, rows)
     if not still('recents') then return end   -- closed with Esc while mpvd answered: do not reopen the menu
-    if err then show('Recientes', uosc.message_items(fail(err, 'watch.recents'), 'error')) return end
+    if err then show(tr('Recientes'), uosc.message_items(fail(err, 'watch.recents'), 'error')) return end
     local items = {}
     for _, r in ipairs(rows) do table.insert(items, recent_item(r)) end
     if #items == 0 then items = uosc.message_items('Todavía no has visto nada con ' .. brand.name, 'history')
-    else table.insert(items, { title = 'Borrar historial', icon = 'delete_sweep', value = { clear = true }, separator = true,
+    else table.insert(items, { title = tr('Borrar historial'), icon = 'delete_sweep', value = { clear = true }, separator = true,
                                actions = {} }) end
-    show('Recientes', items, { footnote = 'Enter continúa · Tab olvida · ⌫ atrás' })
+    show(tr('Recientes'), items, { footnote = tr('Enter continúa · Tab olvida · ⌫ atrás') })
   end)
 end
 
@@ -562,7 +572,7 @@ views.start = function(args)
       if not seen[strip_file(r.path)] then table.insert(top, recent_item(r)) end
     end
     if #top == 0 then return end
-    local all = { { title = 'Continuar viendo', icon = 'history', selectable = false, muted = true, align = 'center' } }
+    local all = { { title = tr('Continuar viendo'), icon = 'history', selectable = false, muted = true, align = 'center' } }
     for _, it in ipairs(top) do table.insert(all, it) end
     for i, it in ipairs(items) do
       if i == 1 then it.separator = true end
@@ -598,114 +608,116 @@ end)
 -- command palette
 
 local CURATED = {
-  { title = 'Pausa / reproducir', cmd = 'cycle pause', key = 'espacio', kw = 'play pause pausar reproducir parar' },
-  { title = 'Pantalla completa', cmd = 'cycle fullscreen', key = 'f', kw = 'fullscreen maximizar' },
-  { title = 'Silenciar', cmd = 'cycle mute', key = 'm', kw = 'mute sonido silencio' },
-  { title = 'Subir volumen', cmd = 'add volume 2', key = '0', kw = 'volume up mas alto' },
-  { title = 'Bajar volumen', cmd = 'add volume -2', key = '9', kw = 'volume down mas bajo' },
-  { title = 'Velocidad +10 %', cmd = 'multiply speed 1.1', key = ']', kw = 'speed rapido acelerar' },
-  { title = 'Velocidad −10 %', cmd = 'multiply speed 1/1.1', key = '[', kw = 'speed lento frenar' },
-  { title = 'Velocidad normal', cmd = 'set speed 1.0', key = 'BS' },
-  { title = 'Capítulo siguiente', cmd = 'add chapter 1', key = '!' },
-  { title = 'Capítulo anterior', cmd = 'add chapter -1', key = '@' },
-  { title = 'Siguiente de la lista', cmd = 'playlist-next', key = '>', kw = 'next siguiente' },
-  { title = 'Anterior de la lista', cmd = 'playlist-prev', key = '<', kw = 'previous anterior' },
-  { title = 'Bucle A-B', cmd = 'ab-loop', key = 'l' },
-  { title = 'Repetir archivo', cmd = 'cycle-values loop-file inf no', key = 'L' },
-  { title = 'Subtítulos: mostrar / ocultar', cmd = 'cycle sub-visibility', key = 'v', kw = 'subtitles subs' },
-  { title = 'Subtítulos: retrasar +100 ms', cmd = 'add sub-delay 0.1', key = 'x' },
-  { title = 'Subtítulos: adelantar 100 ms', cmd = 'add sub-delay -0.1', key = 'z' },
-  { title = 'Audio: retrasar +100 ms', cmd = 'add audio-delay 0.1', key = 'ctrl++' },
-  { title = 'Audio: adelantar 100 ms', cmd = 'add audio-delay -0.1', key = 'ctrl+-' },
-  { title = 'Estadísticas', cmd = 'script-binding stats/display-stats-toggle', key = 'I' },
-  { title = 'Consola de mpv', cmd = 'script-binding console/enable', key = '`' },
-  { title = 'Mostrar progreso', cmd = 'show-progress', key = 'o' },
-  { title = 'Rotar vídeo 90°', cmd = 'cycle-values video-rotate 90 180 270 0' },
-  { title = 'Desentrelazar', cmd = 'cycle deinterlace', key = 'd' },
-  { title = 'Guardar posición y salir', cmd = 'quit-watch-later', key = 'Q' },
-  { title = 'Restablecer preferencias', cmd = 'script-message-to mu_prefs reset-ask' },
+  { title = tr('Pausa / reproducir'), cmd = 'cycle pause', key = 'espacio', kw = 'play pause pausar reproducir parar' },
+  { title = tr('Pantalla completa'), cmd = 'cycle fullscreen', key = 'f', kw = 'fullscreen maximizar' },
+  { title = tr('Silenciar'), cmd = 'cycle mute', key = 'm', kw = 'mute sonido silencio' },
+  { title = tr('Subir volumen'), cmd = 'add volume 2', key = '0', kw = 'volume up mas alto' },
+  { title = tr('Bajar volumen'), cmd = 'add volume -2', key = '9', kw = 'volume down mas bajo' },
+  { title = tr('Velocidad +10 %'), cmd = 'multiply speed 1.1', key = ']', kw = 'speed rapido acelerar' },
+  { title = tr('Velocidad −10 %'), cmd = 'multiply speed 1/1.1', key = '[', kw = 'speed lento frenar' },
+  { title = tr('Velocidad normal'), cmd = 'set speed 1.0', key = 'BS' },
+  { title = tr('Capítulo siguiente'), cmd = 'add chapter 1', key = '!' },
+  { title = tr('Capítulo anterior'), cmd = 'add chapter -1', key = '@' },
+  { title = tr('Siguiente de la lista'), cmd = 'playlist-next', key = '>', kw = 'next siguiente' },
+  { title = tr('Anterior de la lista'), cmd = 'playlist-prev', key = '<', kw = 'previous anterior' },
+  { title = tr('Bucle A-B'), cmd = 'ab-loop', key = 'l' },
+  { title = tr('Repetir archivo'), cmd = 'cycle-values loop-file inf no', key = 'L' },
+  { title = tr('Subtítulos: mostrar / ocultar'), cmd = 'cycle sub-visibility', key = 'v', kw = 'subtitles subs' },
+  { title = tr('Subtítulos: retrasar +100 ms'), cmd = 'add sub-delay 0.1', key = 'x' },
+  { title = tr('Subtítulos: adelantar 100 ms'), cmd = 'add sub-delay -0.1', key = 'z' },
+  { title = tr('Audio: retrasar +100 ms'), cmd = 'add audio-delay 0.1', key = 'ctrl++' },
+  { title = tr('Audio: adelantar 100 ms'), cmd = 'add audio-delay -0.1', key = 'ctrl+-' },
+  { title = tr('Estadísticas'), cmd = 'script-binding stats/display-stats-toggle', key = 'I' },
+  { title = tr('Consola de mpv'), cmd = 'script-binding console/enable', key = '`' },
+  { title = tr('Mostrar progreso'), cmd = 'show-progress', key = 'o' },
+  { title = tr('Rotar vídeo 90°'), cmd = 'cycle-values video-rotate 90 180 270 0' },
+  { title = tr('Desentrelazar'), cmd = 'cycle deinterlace', key = 'd' },
+  { title = tr('Guardar posición y salir'), cmd = 'quit-watch-later', key = 'Q' },
+  { title = tr('Restablecer preferencias'), cmd = 'script-message-to mu_prefs reset-ask' },
   -- Los títulos de las teclas. Hasta H46 los daba el comentario `#!` de input.conf, que de paso construía
   -- un segundo menú; ahora viven aquí, en un solo sitio y en español. La tecla no se escribe: se lee.
-  { title = 'Abrir URL o ruta copiada (portapapeles)', cmd = 'loadfile "${clipboard/text}" replace' },
-  { title = 'Abrir URL…', cmd = 'script-binding mu_ytdl/open-url' },
-  { title = 'Abrir archivo', cmd = 'script-binding uosc/open-file' },
-  { title = 'Abrir carpeta de configuración', cmd = 'script-binding uosc/open-config-directory' },
-  { title = 'Abrir o descargar (enlace, archivo, lista, carpeta)', cmd = 'script-binding mu_ytdl/ytdl-gate' },
-  { title = 'Audio › Pistas de audio', cmd = 'script-binding uosc/audio' },
-  { title = 'Audiolibros › Adelante 30 s', cmd = 'script-binding mu_books/forward-30' },
-  { title = 'Audiolibros › Atrás 30 s', cmd = 'script-binding mu_books/back-30' },
-  { title = 'Audiolibros y podcasts (capítulos, marcadores, temporizador)',
+  { title = tr('Abrir URL o ruta copiada (portapapeles)'), cmd = 'loadfile "${clipboard/text}" replace' },
+  { title = tr('Abrir URL…'), cmd = 'script-binding mu_ytdl/open-url' },
+  { title = tr('Abrir archivo'), cmd = 'script-binding uosc/open-file' },
+  { title = tr('Abrir carpeta de configuración'), cmd = 'script-binding uosc/open-config-directory' },
+  { title = tr('Abrir o descargar (enlace, archivo, lista, carpeta)'), cmd = 'script-binding mu_ytdl/ytdl-gate' },
+  { title = tr('Audio › Pistas de audio'), cmd = 'script-binding uosc/audio' },
+  { title = tr('Audiolibros › Adelante 30 s'), cmd = 'script-binding mu_books/forward-30' },
+  { title = tr('Audiolibros › Atrás 30 s'), cmd = 'script-binding mu_books/back-30' },
+  { title = tr('Audiolibros y podcasts (capítulos, marcadores, temporizador)'),
     cmd = 'script-binding mu_books/books-menu' },
-  { title = 'Biblioteca (películas, series, seguir viendo, carpetas)', cmd = 'script-binding mu_library/library-menu' },
-  { title = 'Buscar en YouTube', cmd = 'script-binding mu_ytdl/yt-search' },
-  { title = 'Captura de pantalla', cmd = 'async screenshot' },
-  { title = 'Capítulos', cmd = 'script-binding uosc/chapters' },
-  { title = 'Compartir › Mostrar / ocultar el QR de la sala', cmd = 'script-binding mu_share/share-qr' },
-  { title = 'Compartir › Ver juntos (sala, invitados, cerrar)', cmd = 'script-binding mu_share/share-menu' },
-  { title = 'Convertir › Convertir vídeo o audio (archivo o carpeta)', cmd = 'script-binding mu_convert/convert-menu' },
-  { title = 'Convertir › Tareas (descargas y conversiones)', cmd = 'script-binding mu_convert/tasks-menu' },
-  { title = 'Ediciones', cmd = 'script-binding uosc/editions' },
-  { title = 'Enviar a la tele (DLNA: elegir tele, pausar, seguir aquí)', cmd = 'script-binding mu_cast/cast-menu' },
-  { title = 'Estudio › Exportar clip del bucle A-B / línea', cmd = 'script-binding mu_study/clip' },
-  { title = 'Estudio › Menú (repetir, velocidad inteligente, notas, clips)', cmd = 'script-binding mu_study/study-menu' },
-  { title = 'Estudio › Nota con enlace de tiempo', cmd = 'script-binding mu_study/note' },
-  { title = 'Estudio › Repetir la línea anterior', cmd = 'script-binding mu_study/repeat-prev' },
-  { title = 'Estudio › Repetir la línea de subtítulo actual', cmd = 'script-binding mu_study/repeat-line' },
-  { title = 'Estudio › Repetir la línea siguiente', cmd = 'script-binding mu_study/repeat-next' },
-  { title = 'Estudio › Velocidad inteligente (acelera silencios)', cmd = 'script-binding mu_study/smart-speed' },
-  { title = 'Grabar › Grabar desde ahora / detener (directo, vídeo o archivo)', cmd = 'script-binding mu_record/record-toggle' },
-  { title = 'Letra de la canción (y ¿qué canción es?)', cmd = 'script-binding mu_lyrics/lyrics-menu' },
-  { title = 'Lista de reproducción', cmd = 'script-binding uosc/playlist' },
-  { title = 'MPV-UOS › Ayuda (teclas principales)', cmd = 'script-binding mu_menu/help' },
-  { title = 'MPV-UOS › Buscar comandos, canales y recientes', cmd = 'script-binding mu_menu/palette' },
-  { title = 'MPV-UOS › Menú principal', cmd = 'script-binding mu_menu/root' },
-  { title = 'MPV-UOS › Recientes / continuar viendo', cmd = 'script-binding mu_menu/recents' },
-  { title = 'Mando a distancia › Menú (estado, móviles, olvidar)', cmd = 'script-binding mu_remote/remote-menu' },
-  { title = 'Mando a distancia › Mostrar / ocultar QR para el móvil', cmd = 'script-binding mu_remote/remote-qr' },
-  { title = 'Mis notas (saltar al minuto, editar, borrar, exportar)', cmd = 'script-binding mu_notes/notes-menu' },
-  { title = 'Modos › Mini reproductor (ventana pequeña encima)', cmd = 'script-binding mu_modes/mini-toggle' },
-  { title = 'Mostrar en la carpeta', cmd = 'script-binding uosc/show-in-directory' },
-  { title = 'Música (artistas, álbumes, géneros, listas, cola)', cmd = 'script-binding mu_music/music-menu' },
-  { title = 'Repetir › Repetir este archivo', cmd = 'cycle-values loop-file "inf" "no"' },
-  { title = 'Resumen e índice › ¿Qué me he perdido? (lo que se dijo)', cmd = 'script-binding mu_recap/recap' },
-  { title = 'Resumen e índice › Índice del vídeo (secciones, cada una a su minuto)', cmd = 'script-binding mu_recap/outline' },
-  { title = 'Salir', cmd = 'script-binding mu_core/quit-ask' },
-  { title = 'Saltar intro / créditos', cmd = 'script-binding mu_intro/skip' },
-  { title = 'Saltar intro / créditos › Menú (segmentos, automático)', cmd = 'script-binding mu_intro/intro-menu' },
-  { title = 'Sonido e imagen › Menú (filtros, diagnóstico)', cmd = 'script-binding mu_av/av-menu' },
-  { title = 'Sonido e imagen › Modo noche', cmd = 'script-binding mu_av/av-night' },
-  { title = 'Subtítulos › Cargar archivo de subtítulos', cmd = 'script-binding uosc/load-subtitles' },
-  { title = 'Subtítulos › Crear con IA: iniciar / detener', cmd = 'script-binding mu_subs/subs-toggle' },
-  { title = 'Subtítulos › Cuadrar la pista con la voz', cmd = 'script-binding mu_subs/subs-resync' },
-  { title = 'Subtítulos › Guardar subtítulos (SRT)', cmd = 'script-binding mu_subs/subs-save' },
-  { title = 'Subtítulos › Mostrar / ocultar los secundarios', cmd = 'cycle secondary-sub-visibility' },
-  { title = 'Subtítulos › Panel (pistas, internet, crear con IA)', cmd = 'script-binding mu_subs/subs-menu' },
-  { title = 'Subtítulos › Pistas de subtítulos', cmd = 'script-binding uosc/subtitles' },
-  { title = 'Suscripciones › Canales, listas y podcasts (añadir, reglas)',
+  { title = tr('Biblioteca (películas, series, seguir viendo, carpetas)'), cmd = 'script-binding mu_library/library-menu' },
+  { title = tr('Buscar en YouTube'), cmd = 'script-binding mu_ytdl/yt-search' },
+  { title = tr('Captura de pantalla'), cmd = 'async screenshot' },
+  { title = tr('Capítulos'), cmd = 'script-binding uosc/chapters' },
+  { title = tr('Compartir › Mostrar / ocultar el QR de la sala'), cmd = 'script-binding mu_share/share-qr' },
+  { title = tr('Compartir › Ver juntos (sala, invitados, cerrar)'), cmd = 'script-binding mu_share/share-menu' },
+  { title = tr('Convertir › Convertir vídeo o audio (archivo o carpeta)'), cmd = 'script-binding mu_convert/convert-menu' },
+  { title = tr('Convertir › Tareas (descargas y conversiones)'), cmd = 'script-binding mu_convert/tasks-menu' },
+  { title = tr('Ediciones'), cmd = 'script-binding uosc/editions' },
+  { title = tr('Enviar a la tele (DLNA: elegir tele, pausar, seguir aquí)'), cmd = 'script-binding mu_cast/cast-menu' },
+  { title = tr('Estudio › Exportar clip del bucle A-B / línea'), cmd = 'script-binding mu_study/clip' },
+  { title = tr('Estudio › Menú (repetir, velocidad inteligente, notas, clips)'), cmd = 'script-binding mu_study/study-menu' },
+  { title = tr('Estudio › Nota con enlace de tiempo'), cmd = 'script-binding mu_study/note' },
+  { title = tr('Estudio › Repetir la línea anterior'), cmd = 'script-binding mu_study/repeat-prev' },
+  { title = tr('Estudio › Repetir la línea de subtítulo actual'), cmd = 'script-binding mu_study/repeat-line' },
+  { title = tr('Estudio › Repetir la línea siguiente'), cmd = 'script-binding mu_study/repeat-next' },
+  { title = tr('Estudio › Velocidad inteligente (acelera silencios)'), cmd = 'script-binding mu_study/smart-speed' },
+  { title = tr('Grabar › Grabar desde ahora / detener (directo, vídeo o archivo)'),
+    cmd = 'script-binding mu_record/record-toggle' },
+  { title = tr('Letra de la canción (y ¿qué canción es?)'), cmd = 'script-binding mu_lyrics/lyrics-menu' },
+  { title = tr('Lista de reproducción'), cmd = 'script-binding uosc/playlist' },
+  { title = tr('%s › Ayuda (teclas principales)'):format(brand.name), cmd = 'script-binding mu_menu/help' },
+  { title = tr('%s › Buscar comandos, canales y recientes'):format(brand.name), cmd = 'script-binding mu_menu/palette' },
+  { title = tr('%s › Menú principal'):format(brand.name), cmd = 'script-binding mu_menu/root' },
+  { title = tr('%s › Recientes / continuar viendo'):format(brand.name), cmd = 'script-binding mu_menu/recents' },
+  { title = tr('Mando a distancia › Menú (estado, móviles, olvidar)'), cmd = 'script-binding mu_remote/remote-menu' },
+  { title = tr('Mando a distancia › Mostrar / ocultar QR para el móvil'), cmd = 'script-binding mu_remote/remote-qr' },
+  { title = tr('Mis notas (saltar al minuto, editar, borrar, exportar)'), cmd = 'script-binding mu_notes/notes-menu' },
+  { title = tr('Modos › Mini reproductor (ventana pequeña encima)'), cmd = 'script-binding mu_modes/mini-toggle' },
+  { title = tr('Mostrar en la carpeta'), cmd = 'script-binding uosc/show-in-directory' },
+  { title = tr('Música (artistas, álbumes, géneros, listas, cola)'), cmd = 'script-binding mu_music/music-menu' },
+  { title = tr('Repetir › Repetir este archivo'), cmd = 'cycle-values loop-file "inf" "no"' },
+  { title = tr('Resumen e índice › ¿Qué me he perdido? (lo que se dijo)'), cmd = 'script-binding mu_recap/recap' },
+  { title = tr('Resumen e índice › Índice del vídeo (secciones, cada una a su minuto)'),
+    cmd = 'script-binding mu_recap/outline' },
+  { title = tr('Salir'), cmd = 'script-binding mu_core/quit-ask' },
+  { title = tr('Saltar intro / créditos'), cmd = 'script-binding mu_intro/skip' },
+  { title = tr('Saltar intro / créditos › Menú (segmentos, automático)'), cmd = 'script-binding mu_intro/intro-menu' },
+  { title = tr('Sonido e imagen › Menú (filtros, diagnóstico)'), cmd = 'script-binding mu_av/av-menu' },
+  { title = tr('Sonido e imagen › Modo noche'), cmd = 'script-binding mu_av/av-night' },
+  { title = tr('Subtítulos › Cargar archivo de subtítulos'), cmd = 'script-binding uosc/load-subtitles' },
+  { title = tr('Subtítulos › Crear con IA: iniciar / detener'), cmd = 'script-binding mu_subs/subs-toggle' },
+  { title = tr('Subtítulos › Cuadrar la pista con la voz'), cmd = 'script-binding mu_subs/subs-resync' },
+  { title = tr('Subtítulos › Guardar subtítulos (SRT)'), cmd = 'script-binding mu_subs/subs-save' },
+  { title = tr('Subtítulos › Mostrar / ocultar los secundarios'), cmd = 'cycle secondary-sub-visibility' },
+  { title = tr('Subtítulos › Panel (pistas, internet, crear con IA)'), cmd = 'script-binding mu_subs/subs-menu' },
+  { title = tr('Subtítulos › Pistas de subtítulos'), cmd = 'script-binding uosc/subtitles' },
+  { title = tr('Suscripciones › Canales, listas y podcasts (añadir, reglas)'),
     cmd = 'script-binding mu_feeds/feeds-menu' },
-  { title = 'TV y radio › Buscar canal o emisora', cmd = 'script-binding mu_iptv/tv-search' },
-  { title = 'TV y radio › Canal anterior', cmd = 'script-binding mu_iptv/zap-prev' },
-  { title = 'TV y radio › Canal siguiente', cmd = 'script-binding mu_iptv/zap-next' },
-  { title = 'TV y radio › Guía del canal que estás viendo', cmd = 'script-binding mu_iptv/tv-guide' },
-  { title = 'TV y radio › Menú de canales', cmd = 'script-binding mu_iptv/tv-menu' },
-  { title = 'Ver › Calidad del stream', cmd = 'script-binding uosc/stream-quality' },
-  { title = 'Ver › Relación de aspecto', cmd = 'cycle-values video-aspect-override "16:9" "4:3" "2.35:1" "-1"' },
-  { title = 'Vídeos de internet › Calidad', cmd = 'script-binding mu_ytdl/ytdl-quality' },
-  { title = 'Vídeos de internet › Descargar', cmd = 'script-binding mu_ytdl/ytdl-download' },
-  { title = 'Vídeos de internet › Descargas', cmd = 'script-binding mu_ytdl/ytdl-downloads' },
-  { title = 'Vídeos de internet › Menú (calidad, descargas)', cmd = 'script-binding mu_ytdl/ytdl-menu' },
-  { title = 'Vídeos de internet › Solo audio / vídeo', cmd = 'script-binding mu_ytdl/ytdl-toggle-audio' },
+  { title = tr('TV y radio › Buscar canal o emisora'), cmd = 'script-binding mu_iptv/tv-search' },
+  { title = tr('TV y radio › Canal anterior'), cmd = 'script-binding mu_iptv/zap-prev' },
+  { title = tr('TV y radio › Canal siguiente'), cmd = 'script-binding mu_iptv/zap-next' },
+  { title = tr('TV y radio › Guía del canal que estás viendo'), cmd = 'script-binding mu_iptv/tv-guide' },
+  { title = tr('TV y radio › Menú de canales'), cmd = 'script-binding mu_iptv/tv-menu' },
+  { title = tr('Ver › Calidad del stream'), cmd = 'script-binding uosc/stream-quality' },
+  { title = tr('Ver › Relación de aspecto'), cmd = 'cycle-values video-aspect-override "16:9" "4:3" "2.35:1" "-1"' },
+  { title = tr('Vídeos de internet › Calidad'), cmd = 'script-binding mu_ytdl/ytdl-quality' },
+  { title = tr('Vídeos de internet › Descargar'), cmd = 'script-binding mu_ytdl/ytdl-download' },
+  { title = tr('Vídeos de internet › Descargas'), cmd = 'script-binding mu_ytdl/ytdl-downloads' },
+  { title = tr('Vídeos de internet › Menú (calidad, descargas)'), cmd = 'script-binding mu_ytdl/ytdl-menu' },
+  { title = tr('Vídeos de internet › Solo audio / vídeo'), cmd = 'script-binding mu_ytdl/ytdl-toggle-audio' },
 }
 
 local ACTIONS = {
-  { title = 'Actualizar listas de TV y radio', icon = 'refresh', action = 'iptv.refresh' },
-  { title = 'Buscar actualización de yt-dlp', icon = 'system_update_alt', action = 'ytdl.update.check' },
-  { title = 'Ver descargas', icon = 'downloading', cmd = { 'script-binding', 'mu_ytdl/ytdl-downloads' } },
-  { title = 'Panel de descargas en el navegador', icon = 'open_in_browser',
+  { title = tr('Actualizar listas de TV y radio'), icon = 'refresh', action = 'iptv.refresh' },
+  { title = tr('Buscar actualización de yt-dlp'), icon = 'system_update_alt', action = 'ytdl.update.check' },
+  { title = tr('Ver descargas'), icon = 'downloading', cmd = { 'script-binding', 'mu_ytdl/ytdl-downloads' } },
+  { title = tr('Panel de descargas en el navegador'), icon = 'open_in_browser',
     cmd = { 'script-message-to', 'mu_remote', 'mu-remote-downloads' } },
-  { title = 'Suscripciones', icon = 'subscriptions', cmd = { 'script-binding', 'mu_feeds/feeds-menu' } },
-  { title = 'Estado de mpvd', icon = 'monitor_heart', action = 'status' },
-  { title = 'Relanzar mpvd', icon = 'restart_alt', cmd = { 'script-message-to', 'mu_core', 'mu-ensure' } },
+  { title = tr('Suscripciones'), icon = 'subscriptions', cmd = { 'script-binding', 'mu_feeds/feeds-menu' } },
+  { title = tr('Estado de mpvd'), icon = 'monitor_heart', action = 'status' },
+  { title = tr('Relanzar mpvd'), icon = 'restart_alt', cmd = { 'script-message-to', 'mu_core', 'mu-ensure' } },
 
 }
 
@@ -768,10 +780,10 @@ end
 
 local function palette_menu(items, query)
   return {
-    type = PALETTE, title = 'Escribe un comando, canal, vídeo reciente o algo del diálogo', items = items,
+    type = PALETTE, title = tr('Escribe un comando, canal, vídeo reciente o algo del diálogo'), items = items,
     callback = { SCRIPT, EVENT },
     search_style = 'palette', search_debounce = 150, on_search = 'callback', on_close = 'callback',
-    search_suggestion = query, footnote = 'Enter ejecuta / reproduce · ⌫ cierra',
+    search_suggestion = query, footnote = tr('Enter ejecuta / reproduce · ⌫ cierra'),
   }
 end
 
@@ -809,7 +821,7 @@ local function action_items(query, limit)
   local items = {}
   for _, a in ipairs(ACTIONS) do
     if #words == 0 or score(fold(a.title), words) then
-      table.insert(items, { title = a.title, icon = a.icon, value = { action = a.action, cmd = a.cmd }, hint = 'mpvd' })
+      table.insert(items, { title = a.title, icon = a.icon, value = { action = a.action, cmd = a.cmd }, hint = tr('mpvd') })
       if #items >= limit then break end
     end
   end
@@ -849,7 +861,7 @@ local function run_palette(query)
     for _, r in ipairs(recents) do table.insert(rc, recent_item(r)) end
     section('Recientes', rc, out)
     if query ~= '' then
-      section('YouTube', { { title = 'Buscar «' .. query .. '» en YouTube', icon = 'travel_explore',
+      section('YouTube', { { title = tr('Buscar «%s» en YouTube'):format(query), icon = 'travel_explore',
         value = { cmd = { 'script-message-to', 'mu_ytdl', 'mu-ytdl-search', query } } } }, out)
     end
     section('mpvd', action_items(query, query == '' and 2 or limit), out)
@@ -897,7 +909,7 @@ end
 
 views.palette = function()
   state.palette_query = ''
-  local menu = palette_menu(uosc.loading_items('Buscando…'), '')
+  local menu = palette_menu(uosc.loading_items(tr('Buscando…')), '')
   uosc.open(menu)
   run_palette('')
 end
@@ -907,23 +919,24 @@ end
 
 local function run_action(name)
   if name == 'iptv.refresh' then
-    osd('Actualizando listas de TV y radio…')
+    osd(tr('Actualizando listas de TV y radio…'))
     rpc.call('iptv.refresh', nil, function(err, res)
-      if err then osd('Listas: ' .. fail(err, 'iptv.refresh')) return end
+      if err then osd(tr('Listas: %s'):format(fail(err, 'iptv.refresh'))) return end
       local n = 0
       for _, s in ipairs(type(res) == 'table' and res or {}) do n = n + (tonumber(s.channels) or 0) end
-      osd('Listas actualizadas: ' .. n .. ' canales')
+      osd(tr('Listas actualizadas: %d canales'):format(n))
     end, 180)
   elseif name == 'ytdl.update.check' then
     rpc.call('ytdl.update.check', { force = true }, function(err, st)
-      if err then osd('yt-dlp: ' .. fail(err, 'ytdl.update.check')) return end
-      if st.error and st.error ~= '' then osd('yt-dlp: ' .. st.error)
-      elseif st.update_available then osd('Disponible yt-dlp ' .. st.latest .. ' (instalado ' .. (st.installed or '?') .. ')')
-      else osd('yt-dlp al día (' .. (st.installed or '?') .. ')') end
+      if err then osd(tr('yt-dlp: %s'):format(fail(err, 'ytdl.update.check'))) return end
+      if st.error and st.error ~= '' then osd(tr('yt-dlp: %s'):format(st.error))
+      elseif st.update_available then
+        osd(tr('Disponible yt-dlp %s (instalado %s)'):format(st.latest, st.installed or '?'))
+      else osd(tr('yt-dlp al día (%s)'):format(st.installed or '?')) end
     end, 60)
   elseif name == 'status' then
     rpc.call('capabilities', nil, function(err, caps)
-      if err then osd('mpvd: ' .. fail(err, 'capabilities')) return end
+      if err then osd(tr('mpvd: %s'):format(fail(err, 'capabilities'))) return end
       local services = {}
       for k in pairs(caps.services or {}) do table.insert(services, k) end
       table.sort(services)
@@ -961,7 +974,7 @@ mp.register_script_message(EVENT, function(json)
         local open = platform == 'windows' and 'explorer' or (platform == 'darwin' and 'open' or 'xdg-open')
         mp.command_native_async({ name = 'subprocess', args = { open, brand.site }, detach = true,
                                   playback_only = false }, function() end)
-        osd('Abriendo ' .. brand.site)
+        osd(tr('Abriendo %s'):format(brand.site))
         uosc.close(MENU)
       end
     elseif v.pref then
@@ -1056,21 +1069,21 @@ end)
 -- bindings, button, start screen
 
 local function open_root()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   state.force_open = true
   open_view({ name = 'root' })
 end
 
 local function open_palette()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   open_view({ name = 'palette' })
 end
 
 -- opens a view of the main menu with the root below it (so "Atrás" leads to the main menu)
 local function open_under_root(view)
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = { { name = 'root', title = nav.HOME } }
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = view })

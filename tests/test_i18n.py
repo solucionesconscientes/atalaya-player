@@ -14,6 +14,7 @@ import pytest
 
 from mpvd import i18n
 from tests.conftest import ROOT, start_mpv
+from tests.test_mu_iptv import tv  # noqa: F401
 
 LANZADOR = ROOT / "bin" / "mpv-uos"
 
@@ -106,3 +107,70 @@ def test_los_scripts_reciben_el_idioma_y_lo_publican(daemon_env):
         assert st["lang"] == "en", "sin que nadie lo diga, lo saca del entorno: alemán → inglés"
     finally:
         h.stop()
+
+
+@pytest.mark.parametrize(("lang", "esperados"), [
+    ("es", ("Abrir o descargar", "TV y radio", "Preferencias", "Salir")),
+    ("en", ("Open or download", "TV and radio", "Preferences", "Quit")),
+    ("fr", ("Ouvrir ou télécharger", "TV et radio", "Préférences", "Quitter")),
+])
+def test_el_menu_sale_en_el_idioma_que_toca(tv, lang, esperados):  # noqa: F811
+    """La prueba de verdad: el menú principal, en los tres idiomas, con el reproductor en marcha."""
+    _tv_mpv, d, _rec = tv
+    h = start_mpv(d.runtime_dir, [f"--script-opts=mu-core-lang={lang},mu-core-watchdog_seconds=2"], env=d.env)
+    try:
+        h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("uosc"), timeout=40)
+        h.command("script-binding", "mu_menu/root")
+        st = h.wait_property("user-data/mu/menu", lambda v: bool(v) and v.get("view") == "root" and v.get("items"),
+                             timeout=20)
+        titulos = [i["title"] for i in st["items"]]
+        for esperado in esperados:
+            assert esperado in titulos, (lang, esperado, titulos)
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_una_cadena_sin_traducir_sale_en_castellano_no_en_blanco(tv):  # noqa: F811
+    """El peor caso tiene que ser «se ve en español». Se comprueba con el reproductor en inglés y una cadena que
+    está a propósito fuera del catálogo (los nombres de las teclas, que no se traducen)."""
+    _tv_mpv, d, _rec = tv
+    h = start_mpv(d.runtime_dir, ["--script-opts=mu-core-lang=en,mu-core-watchdog_seconds=2"], env=d.env)
+    try:
+        h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("uosc"), timeout=40)
+        h.command("script-binding", "mu_menu/root")
+        st = h.wait_property("user-data/mu/menu", lambda v: bool(v) and v.get("view") == "root" and v.get("items"),
+                             timeout=20)
+        # «TV y radio» lleva el nombre de su tecla como pista: no se traduce y sale tal cual, no vacío
+        fila = next(i for i in st["items"] if i["title"] == "TV and radio")
+        assert fila["hint"] == "alt+t"
+        assert all(i["title"].strip() for i in st["items"]), "ninguna fila puede quedarse sin título"
+    finally:
+        h.stop()
+
+
+def test_los_catalogos_estan_completos_y_al_dia():
+    """Guarda contra el olvido más fácil: tocar una cadena del código y dejar el catálogo cojo. El extractor es la
+    fuente —recorre los scripts— y aquí se comprueba que lo que encuentra está traducido a los dos idiomas."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("ex", ROOT / "tools" / "i18n_extract.py")
+    ex = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ex)
+
+    # los scripts ya traducidos (H49 va por etapas: aquí solo los que tienen `mu.i18n`)
+    hechos = [p for p in sorted((ROOT / "mpv-config" / "scripts").glob("mu-*/main.lua"))
+              if "require('mu.i18n')" in p.read_text(encoding="utf-8")]
+    assert hechos, "ningún script usa mu.i18n todavía"
+    encontradas: set[str] = set()
+    for f in hechos:
+        _, found, glued = ex.process(f)
+        encontradas |= set(found)
+        assert not glued, f"{f.name}: frases pegadas con `..`, que no se pueden traducir a trozos: {glued}"
+
+    for lang in ("en", "fr"):
+        cat = json.loads((ROOT / "locales" / f"{lang}.json").read_text(encoding="utf-8"))
+        faltan = sorted(encontradas - set(cat))
+        assert not faltan, f"locales/{lang}.json: faltan {len(faltan)} cadenas, p. ej. {faltan[:5]}"
+        sobran = sorted(set(cat) - encontradas)
+        assert not sobran, f"locales/{lang}.json: {len(sobran)} que ya no están en el código: {sobran[:5]}"

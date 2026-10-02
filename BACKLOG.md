@@ -393,11 +393,15 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
 ## H49 · Idiomas: castellano, inglés y francés (diseño: docs/IDIOMAS.md)
 Regla de Ser: sistema en castellano o francés → ese idioma; inglés o cualquier otro → inglés. Medido antes de
 empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de las páginas), o sea ~3.600 traducidas.
-- [ ] G1 Maquinaria: `locales/en.json` y `fr.json` (la cadena castellana ES la clave, así que no hay `es.json` y lo
-      no traducido cae al castellano), `mu/i18n.lua`, `mpvd/i18n.py`, y la detección en `bin/mpv-uos`, que es el
-      único sitio que decide: pasa `uosc-languages` (uosc ya está traducido, no se duplica) y `mu-core-lang`.
-- [ ] G2 Preferencias → Idioma (automático / castellano / English / Français), recordado en mu-prefs.
-- [ ] G3 Lo primero que se ve: mu-core, mu-menu (menú, paleta, ayuda, inicio) y mu-modes.
+- [x] G1 Maquinaria: `locales/en.json` y `fr.json` (la cadena castellana ES la clave, así que no hay `es.json` y lo
+      no traducido cae al castellano), `mu/i18n.lua`, `mpvd/i18n.py`, `tools/i18n_extract.py` y la detección en los
+      **dos** lanzadores (bash y PowerShell), que pasan `uosc-languages` (uosc ya está traducido, no se duplica) y
+      `mu-core-lang`. OJO: cada script de mpv tiene su propio estado Lua, así que el idioma lo lee el módulo de
+      `options/script-opts` en cada script; que lo fijara mu-core no servía de nada.
+- [ ] G2 Preferencias → Idioma (automático / castellano / English / Français). `prefs.json` es plano, así que el
+      lanzador puede leerlo y hacerlo ganar al entorno; se aplica al reiniciar.
+- [x] G3 Lo primero que se ve: mu-menu (menú, paleta, ayuda, inicio, preferencias) y mu-modes, con **196 cadenas**
+      traducidas a inglés y francés y un test que arranca el reproductor en los tres idiomas.
 - [ ] G4 Los módulos grandes: ytdl, iptv, subs, record, share, library, music.
 - [ ] G5 Los mensajes de mpvd que salen en el OSD.
 - [ ] G6 Las páginas servidas (sala, mando, descargas), que siguen al **navegador del invitado**, no al sistema del
