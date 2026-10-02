@@ -524,6 +524,22 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
 - [x] I5 Seis tests adaptados al contrato nuevo de permisos (conservando el camino de pedir/conceder) y uno que
       fallaba **según la hora**: la guía intercala una fila de día cuando el siguiente programa cae tras medianoche.
 
+## H57 · Programar que SUENE, no solo que grabe (2026-10-02) — ADR-094 · [x]
+- [x] J1 Las programaciones tienen **modo**: `record` (lo de siempre), `play` (a esa hora se enciende y suena) o
+      `both`. Reutiliza toda la maquinaria de H40: franja, despertador y suspender/apagar al terminar.
+- [x] J2 **Si no hay reproductor abierto, se abre uno.** Es lo que da sentido a «a las 7:00 que suene la radio»:
+      el equipo está suspendido, el despertador lo levanta y no hay ninguna ventana.
+- [x] J3 Se puede programar **una canción, una carpeta, una lista o una dirección**, no solo un canal: se envuelve
+      como canal de pega (`media_channel`) y hereda todo.
+- [x] J4 Fila *Qué hacer en esa franja* en el menú de programaciones, recordada.
+- [ ] J5 Listas guardadas con nombre, que es lo que falta para que programar música sea cómodo (docs/IDEAS.md 1.4).
+
+## H58 · Repaso de funcionalidades e interfaz — docs/IDEAS.md · [ ]
+- [ ] K1 Que se vea lo que pasa por detrás: indicador en la barra mientras hay trabajo, que lleve a Tareas.
+- [ ] K2 Una opción que no puede funcionar ahora no se ofrece como si pudiera (repasar el resto del menú).
+- [ ] K3 Volumen parejo (ReplayGain) y temporizador para dormirse en todo, no solo en audiolibros.
+- [ ] K4 «La charla de una hora en quince minutos»: transcripción + significado + corte, que ya están los tres.
+
 ## H53 · El «modo sencillo» no encoge la barra (encontrado el 2026-10-02) — [ ]
 - [ ] F1 `mu-modes` escribe `uosc-controls` al entrar en modo sencillo, pero **uosc solo lee esa opción al
       arrancar** (`Controls:init_options()` solo corre en `init()`, y ningún elemento escucha cambios de opciones).

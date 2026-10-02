@@ -14,7 +14,11 @@ local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local nav = require('mu.nav')
 local clip = require('mu.clip')
+local prefs = require('mu.prefs')
 local N = nav.new()
+
+-- H57 · qué se hace en una franja programada: grabarlo (lo de siempre), ponerlo o las dos. Se recuerda.
+local P = prefs.ns('mu-iptv', { sched_mode = 'record' })
 
 local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-iptv-event'
@@ -851,8 +855,19 @@ local function minutes(seconds)
   return math.floor(m / 60) .. ' h' .. (m % 60 > 0 and string.format(' %02d', m % 60) or '')
 end
 
+-- H57 · qué se hace en la franja: grabarlo, verlo/oírlo, o las dos cosas. Se recuerda, como el formato de grabar.
+local MODES = {
+  { id = 'record', title = 'Grabarlo', hint = 'queda el archivo', icon = 'fiber_manual_record' },
+  { id = 'play', title = 'Ponerlo', hint = 'se enciende y suena a esa hora', icon = 'play_circle' },
+  { id = 'both', title = 'Las dos cosas', hint = 'se ve y además queda grabado', icon = 'library_add' },
+}
+local function mode_label(id)
+  for _, m in ipairs(MODES) do if m.id == id then return m.title end end
+  return 'Grabarlo'
+end
+
 local function schedule_params(channel_id, start, stop, title, programme)
-  local p = { channel = channel_id, start = start, stop = stop, title = title }
+  local p = { channel = channel_id, start = start, stop = stop, title = title, mode = P:get('sched_mode') or 'record' }
   if programme then
     p.programme = programme
     p.margin_before, p.margin_after = opts.epg_margin_before, opts.epg_margin_after
@@ -864,7 +879,9 @@ end
 local function schedule_add(params, after)
   rpc.call('iptv.schedule.add', params, function(err, rec)
     if err then osd('No se pudo programar: ' .. fail(err, 'iptv.schedule.add')) return end
-    osd('⏺ Grabación programada: ' .. (rec.title or '') .. ' · ' .. (rec.label or ''))
+    local verbo = (rec.mode == 'play' and '▶ Programado') or (rec.mode == 'both' and '⏺▶ Programado')
+      or '⏺ Grabación programada'
+    osd(verbo .. ': ' .. (rec.title or '') .. ' · ' .. (rec.label or ''))
     if after then after(rec) end
   end)
 end
@@ -981,8 +998,11 @@ views.schedule = function(args)
   rpc.call('iptv.schedule.list', nil, function(err, res)
     if state.view ~= view then return end
     if err then show(title, uosc.message_items(fail(err, 'iptv.schedule.list'), 'error')) return end
+    -- H57 · lo mismo sirve para grabar y para que SUENE: el modo es una fila y se recuerda
+    local modo = P:get('sched_mode') or 'record'
     local items = {
-      { title = 'Programar grabación…', hint = 'canal, inicio y fin', icon = 'add', value = { view = 'sched_new' } },
+      { title = 'Programar una franja…', hint = 'canal, inicio y fin', icon = 'add', value = { view = 'sched_new' } },
+      { title = 'Qué hacer en esa franja', icon = 'tune', hint = mode_label(modo), value = { view = 'sched_mode' } },
     }
     local list = res.items or {}
     for i, r in ipairs(list) do
@@ -1023,6 +1043,19 @@ end
 
 -- «Programar grabación…»: pick the channel (the one playing, favourites, recents; any other: Tab › Programar
 -- grabación… in its list), then type the times.
+views.sched_mode = function()
+  local cur = P:get('sched_mode') or 'record'
+  local items = {}
+  for _, m in ipairs(MODES) do
+    items[#items + 1] = { title = m.title, hint = m.hint, icon = m.id == cur and 'radio_button_checked'
+                          or 'radio_button_unchecked', active = m.id == cur, value = { sched_mode = m.id } }
+  end
+  items[#items + 1] = { title = 'Ponerlo enciende el reproductor a esa hora, aunque esté cerrado', icon = 'info',
+                        muted = true, selectable = false, separator = true,
+                        hint = 'con el despertador, también si el equipo está suspendido' }
+  show('Qué hacer en esa franja', items)
+end
+
 views.sched_new = function()
   local title = 'Programar grabación'
   if not require_mpvd(title) then return end
@@ -1277,6 +1310,11 @@ mp.register_script_message(EVENT, function(json)
         state.force_open = true  -- the palette is replaced by the list
         open_view({ name = 'schedule' })
       end)
+    elseif v.sched_mode then
+      P:set('sched_mode', v.sched_mode)
+      table.remove(state.stack)
+      state.view = 'schedule'
+      reopen_current()
     elseif v.sched_pref then
       -- H40/F1: lo guarda mpvd, así que vale también con el reproductor cerrado
       local d = state.sched_defaults or { wake = false, after = 'nothing' }

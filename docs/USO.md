@@ -202,6 +202,24 @@ abre **o no suena** (8 s; `mu-iptv-stall_seconds`). Si un canal entrelazado se v
   carpeta. Nunca se sobrescribe un archivo («(2)» si ya existe) y lo que queda a medias al cerrar sigue al volver.
 - Destino por defecto: `~/Vídeos/Atalaya/Convertidos` (se cambia en *Carpeta de salida*).
 
+## 2b. Programar una franja: grabarla, ponerla, o las dos
+En *TV y radio → Grabaciones programadas* eliges la franja (canal, hora de inicio y de fin) y, en **Qué hacer en
+esa franja**:
+
+| | |
+|---|---|
+| **Grabarlo** | Lo de siempre: queda el archivo |
+| **Ponerlo** | A esa hora se enciende y suena, y para a la hora de fin |
+| **Las dos cosas** | Se ve y además queda grabado |
+
+«Ponerlo» **abre el reproductor si no hay ninguno**, que es lo que hace falta para que funcione de verdad: con el
+despertador activado (*Despertar el equipo 5 min antes*), el equipo puede estar suspendido, levantarse solo y
+ponerte las noticias. Y al terminar la franja se aplica lo de siempre: nada, suspender o apagar.
+
+No es solo para canales: se puede programar **una canción, una carpeta, una lista o una dirección**. Hereda todo
+—despertador, franja y apagado—, así que vale igual para «la radio a las 7:00» que para «esta lista mientras
+cenamos, y al acabar suspende».
+
 ## 3c. Tramos: quedarte con trozos de lo que estás viendo
 En la barra hay tres iconos nuevos, que son los que se pulsan **con la película andando** (el porqué de cada uno
 está en `docs/INTERFAZ.md`):

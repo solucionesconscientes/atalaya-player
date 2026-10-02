@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import datetime as dt
 import json
 import logging
@@ -35,7 +36,7 @@ from typing import TYPE_CHECKING, Any
 from mpvd.asr.audio import ffmpeg_path
 from mpvd.power import WAKE_MARGIN, inhibit_prefix
 from mpvd.iptv.model import HLS_LAVF_DEFAULTS, Channel
-from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, RpcError
+from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
     from mpvd.iptv.service import IptvService
@@ -44,13 +45,14 @@ if TYPE_CHECKING:
 log = logging.getLogger("mpvd.iptv.schedule")
 
 NOTIFY = "mu_iptv"
-ACTIVE = ("scheduled", "recording")
+ACTIVE = ("scheduled", "recording", "playing")
 FINAL = ("done", "failed", "missed", "cancelled")
-LABELS = {"scheduled": "programada", "recording": "grabando", "done": "hecha", "failed": "fallida",
-          "missed": "perdida", "cancelled": "cancelada"}
+LABELS = {"scheduled": "programada", "recording": "grabando", "playing": "sonando", "done": "hecha",
+          "failed": "fallida", "missed": "perdida", "cancelled": "cancelada"}
 MAX_DURATION = 12 * 3600.0
 MAX_WAKE = 30.0  # the scheduler re-checks the clock at least this often (suspend, clock changes)
 RETRY_DELAY = 5.0
+PLAYER_WAIT = 60.0           # s esperando a que el reproductor recién abierto se registre (H57)
 MAX_PARTS = 30
 RW_TIMEOUT_US = 15_000_000
 
@@ -71,6 +73,9 @@ class Recording:
     origin: str = "manual"  # "manual" | "epg"
     wake: bool = False      # H40/F1: poner el despertador del equipo 5 min antes
     after: str = "nothing"  # H40/F1: al terminar → nothing | suspend | shutdown
+    # H57 · qué se hace en esa franja: grabar (lo de siempre), reproducir —que el equipo se encienda y ponga el
+    # canal, la emisora o la lista— o las dos cosas a la vez.
+    mode: str = "record"    # record | play | both
     programme: dict[str, Any] | None = None
     created_at: float = field(default_factory=time.time)
     started_at: float | None = None
@@ -135,6 +140,22 @@ def ffmpeg_args(ch: dict[str, Any], out: Path, seconds: float) -> list[str]:
         cmd += ["-vn"]
     cmd += ["-sn", "-dn", "-c", "copy", "-t", f"{max(1.0, seconds):.3f}", "-f", "matroska", str(out)]
     return cmd
+
+
+def media_channel(path: str, title: str | None = None) -> Channel:
+    """H57 · una canción, una carpeta, una lista o una dirección, envuelta como canal para poder programarla.
+
+    Así el despertador, la franja horaria, el «suspender al terminar» y la lista de programaciones funcionan igual
+    para la radio de las 7:00 que para la lista que quieres oír mientras cenas, sin duplicar nada."""
+    raw = os.path.expanduser(str(path).strip())
+    if not raw:
+        raise RpcError(INVALID_PARAMS, "no hay nada que reproducir")
+    local = Path(raw)
+    if not re.match(r"^[a-zA-Z][\w+.-]*://", raw) and not local.exists():
+        raise RpcError(INVALID_PARAMS, f"no existe: {raw}")
+    nombre = (title or (local.name if local.exists() else raw)).strip() or "Programado"
+    return Channel(id="media:" + hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:12],
+                   name=nombre[:120], url=raw, kind="media", source="manual")
 
 
 def channel_snapshot(ch: Channel) -> dict[str, Any]:
@@ -452,7 +473,19 @@ class ScheduleService:
 
     async def _run(self, rec: Recording) -> None:
         try:
-            await self._record(rec)
+            if rec.mode == "play":
+                await self._play(rec)
+            elif rec.mode == "both":
+                # grabar y ver a la vez: la grabación manda (es la que puede fallar y la que deja un archivo)
+                tocar = asyncio.create_task(self._play(rec), name=f"mpvd-play-{rec.id}")
+                try:
+                    await self._record(rec)
+                finally:
+                    tocar.cancel()
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await tocar
+            else:
+                await self._record(rec)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - never kill the scheduler
@@ -462,6 +495,55 @@ class ScheduleService:
             self._tasks.pop(rec.id, None)
             self._procs.pop(rec.id, None)
             self._poke()
+
+    # -- H57 · reproducir en una franja ------------------------------------------------------------------
+
+    async def _player(self) -> Any:
+        """Un reproductor donde poner esto: el que esté abierto o, si no hay ninguno, uno nuevo.
+
+        Abrirlo importa: lo que da sentido a «a las 7:00 que suene la radio» es que el equipo esté suspendido, se
+        despierte con el despertador del propio programa (H40) y encuentre que no hay ninguna ventana abierta."""
+        sessions = [x for x in self.server.sessions.all() if x.connected]
+        if sessions:
+            return sessions[0]
+        launcher = Path(self.server.root) / "bin" / ("mpv-uos.ps1" if sys.platform == "win32" else "mpv-uos")
+        if not launcher.is_file():
+            raise RpcError(UNAVAILABLE, "no hay ningún reproductor abierto y no se encuentra bin/mpv-uos")
+        cmd = ["pwsh", "-NoProfile", "-File", str(launcher)] if sys.platform == "win32" else [str(launcher)]
+        log.info("schedule: no hay reproductor abierto, se abre uno (%s)", launcher)
+        await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.DEVNULL,
+                                             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+        fin = time.monotonic() + PLAYER_WAIT
+        while time.monotonic() < fin:
+            await asyncio.sleep(0.5)
+            abiertos = [x for x in self.server.sessions.all() if x.connected]
+            if abiertos:
+                return abiertos[0]
+        raise RpcError(UNAVAILABLE, "el reproductor no ha llegado a abrirse")
+
+    async def _play(self, rec: Recording) -> None:
+        """Pone lo programado y lo deja sonando hasta la hora de fin."""
+        rec.status = "playing" if rec.mode == "play" else rec.status
+        rec.started_at = rec.started_at or time.time()
+        self.save()
+        self._push(rec)
+        s = await self._player()
+        url = str(rec.channel.get("url") or "")
+        if not url:
+            raise RpcError(INVALID_PARAMS, "no hay nada que reproducir")
+        await s.client.command("loadfile", url, "replace", timeout=20)
+        await s.client.set_property("pause", False, timeout=10)
+        while not self._closing and rec.id not in self._stopping:
+            queda = rec.end - time.time()
+            if queda <= 0:
+                break
+            await asyncio.sleep(min(queda, 1.0))
+        with contextlib.suppress(Exception):
+            # al acabar la franja se para, que es lo que se ha pedido; si además había que suspender o apagar, de
+            # eso se encarga `after` como en cualquier grabación
+            await s.client.command("stop", timeout=10)
+        if rec.mode == "play":
+            self._finish(rec, "done", "")
 
     async def _record(self, rec: Recording) -> None:
         rec.status = "recording"
@@ -567,7 +649,8 @@ class ScheduleService:
 
     def add(self, ch: Channel, start: float, stop: float, title: str | None = None, margin_before: float = 0.0,
             margin_after: float = 0.0, programme: dict[str, Any] | None = None, folder: str | None = None,
-            now: float | None = None, wake: bool | None = None, after: str | None = None) -> Recording:
+            now: float | None = None, wake: bool | None = None, after: str | None = None,
+            mode: str = "record") -> Recording:
         now = time.time() if now is None else now
         start, stop = float(start), float(stop)
         margin_before = max(0.0, min(float(margin_before or 0), 3600.0))
@@ -578,7 +661,9 @@ class ScheduleService:
             raise RpcError(INVALID_PARAMS, "esa hora ya ha pasado")
         if stop - start > MAX_DURATION:
             raise RpcError(INVALID_PARAMS, "como mucho 12 horas seguidas")
-        if ch.drm:
+        if mode not in ("record", "play", "both"):
+            raise RpcError(INVALID_PARAMS, "modo: record, play o both")
+        if ch.drm and mode != "play":
             raise RpcError(INVALID_PARAMS, "este canal está protegido (DRM) y no se puede grabar")
         for other in self.items.values():  # the same programme twice
             if other.status in ACTIVE and other.channel.get("id") == ch.id and abs(other.start - start) < 1 \
@@ -592,7 +677,7 @@ class ScheduleService:
         rec = Recording(id=uuid.uuid4().hex[:10], channel=channel_snapshot(ch), title=(title or ch.name).strip(),
                         start=start, stop=stop, margin_before=margin_before, margin_after=margin_after,
                         dir=folder or "", origin="epg" if programme else "manual", programme=programme,
-                        wake=bool(wake), after=after)
+                        wake=bool(wake), after=after, mode=mode)
         self.items[rec.id] = rec
         self.save()
         self._poke()
@@ -688,18 +773,29 @@ def register(server: MpvdServer, service: ScheduleService) -> None:
         return service.iptv.get(channel)
 
     @d.method("iptv.schedule.add")
-    async def add(ctx: RpcContext, channel: str, start: float, stop: float, title: str | None = None,
-                  margin_before: float = 0.0, margin_after: float = 0.0, programme: dict[str, Any] | None = None,
-                  dir: str | None = None, wake: bool | None = None,
-                  after: str | None = None) -> dict[str, Any]:  # noqa: A002
+    async def add(ctx: RpcContext, channel: str | None = None, start: float = 0.0, stop: float = 0.0,
+                  title: str | None = None, margin_before: float = 0.0, margin_after: float = 0.0,
+                  programme: dict[str, Any] | None = None, dir: str | None = None, wake: bool | None = None,
+                  after: str | None = None, mode: str = "record",
+                  media: str | None = None) -> dict[str, Any]:  # noqa: A002
         """Schedule a recording of a channel (epoch seconds; optional margins in seconds and folder).
 
         Sin ``wake``/``after``, se usan los de `iptv.schedule.defaults`.
         ``wake``: poner el despertador del equipo 5 min antes (solo despierta de la suspensión; si hace falta una regla
         de sudo, la grabación se programa igual y se dice por qué no hay despertador). ``after``: nothing | suspend |
         shutdown al terminar, con los tres seguros y el aviso cancelable de mpvd/power.py."""
-        ch = await resolve(channel)
-        rec = service.add(ch, start, stop, title, margin_before, margin_after, programme, dir, wake=wake, after=after)
+        # H57 · `media` es una canción, una carpeta o una lista de este equipo (o una dirección): se envuelve como
+        # un canal de pega para reutilizar todo lo que ya sabe el programador (franja, despertador, apagado).
+        if media:
+            if mode == "record":
+                mode = "play"
+            ch = media_channel(str(media), title)
+        elif channel:
+            ch = await resolve(channel)
+        else:
+            raise RpcError(INVALID_PARAMS, "hace falta un canal o algo que reproducir")
+        rec = service.add(ch, start, stop, title, margin_before, margin_after, programme, dir, wake=wake,
+                          after=after, mode=mode)
         return rec.public() | {"label": describe(rec.start, rec.stop)}
 
     @d.method("iptv.schedule.defaults")

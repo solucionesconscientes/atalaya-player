@@ -1027,3 +1027,19 @@
   adaptado conservando el camino de pedir/conceder el control, que sigue existiendo cuando el anfitrión se los
   queda. Y uno fallaba **según la hora del día**: la guía de TV intercala una fila de día cuando el programa
   siguiente cae pasada medianoche, así que a partir de cierta hora el índice bailaba.
+
+- ADR-094 · Una franja programada puede grabar, poner o las dos cosas (H57). **Amplía** ADR de H21 y H40, que
+  dieron por supuesto que programar una hora era programar **una grabación**. Ser pidió lo contrario: «a X hora se
+  enciende el canal de TV o radio, finaliza la emisión a la hora deseada y si es preciso suspensión o apagado», y
+  lo mismo con canciones o listas. **Lo importante es lo que NO se hizo**: no hay un sistema nuevo de alarmas. El
+  programador de grabaciones ya tenía franja horaria, despertador por RTC, los tres seguros de apagado y una lista
+  con su menú; lo único que le faltaba era un campo `mode` (`record` | `play` | `both`). Dos decisiones dentro:
+  **(1) Si no hay reproductor abierto, mpvd abre uno.** Sin esto la función no sirve para lo que se pide: lo que da
+  sentido a «a las 7:00 que suene la radio» es justamente que el equipo esté suspendido, que el despertador lo
+  levante y que no haya ninguna ventana abierta. mpvd conoce la raíz del proyecto, así que lanza `bin/mpv-uos` y
+  espera a que la sesión se registre, con un tope; si no llega, la programación se marca como fallida y dice por
+  qué, en vez de quedarse en silencio.
+  **(2) Una canción o una lista se envuelven como «canal».** `media_channel()` construye un canal de pega con una
+  URL o una ruta, de modo que la música hereda sin tocar nada el despertador, la franja, el apagado al terminar, la
+  lista de programaciones y su menú. La alternativa —un segundo programador para medios locales— habría duplicado
+  lo más delicado del programa (el que decide apagar el equipo) para no ganar nada.

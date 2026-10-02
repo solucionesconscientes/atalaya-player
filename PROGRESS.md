@@ -191,6 +191,8 @@ tiempo), los dos hechos. Lo que queda, por orden:
 4. **La web (H50)**, diseñada en `docs/SITIO-WEB.md`. Las capturas las puedo hacer yo (comprobado); faltan dos
    decisiones de Ser: qué se ve de fondo en ellas y si el repo se hace público.
 
+Para programar música con comodidad falta **H57/J5**: listas guardadas con nombre (docs/IDEAS.md 1.4).
+
 Pendientes menores del código: **H44/C8** (remux `-c copy` a fMP4/WebM para el navegador) y **H53**, encontrado de
 paso: el *modo sencillo* dice «barra mínima» pero **no encoge la barra**, porque uosc solo lee `controls` al
 arrancar. Comprobado con capturas; el arreglo y el porqué están en el BACKLOG.
@@ -214,6 +216,20 @@ Avisos para quien siga, todos aprendidos a golpes en esta iteración:
   dar por roto algo, repítelo solo.
 
 ## Registro por iteración
+### Iteración 12 · 2026-10-02/03 · H57 · Programar que SUENE, y el repaso de ideas — hecho
+- **Programar una franja ya no es solo grabar**: `mode` = grabar | ponerlo | las dos. No hay sistema nuevo: el
+  programador de H40 ya tenía franja, despertador por RTC y los seguros de suspender/apagar; le faltaba el campo.
+- **Si no hay reproductor abierto, mpvd abre uno.** Sin eso la función no sirve para lo que se pide: lo que da
+  sentido a «a las 7:00 que suene la radio» es que el equipo esté suspendido, el despertador lo levante y no haya
+  ninguna ventana. Si no llega a abrirse, la programación se marca fallida y dice por qué.
+- **Una canción o una lista se envuelven como «canal»** (`media_channel`), así heredan despertador, franja, apagado
+  y la lista de programaciones sin duplicar lo más delicado del programa.
+- **docs/IDEAS.md**: repaso pedido por Ser de lo que tienen otros reproductores y aquí falta, lo que no tiene
+  nadie, y mejoras de interfaz. Lo que yo haría primero: que se vea lo que pasa por detrás, avisar antes y no
+  después, volumen parejo y temporizador de sueño general, listas guardadas, y «la charla de una hora en quince
+  minutos» (transcripción + significado + corte, que ya están los tres).
+- **Lección aplicada esta vez**: no se contesta hasta que `check.sh` termina.
+
 ### Iteración 11 · 2026-10-02 · H55 y H56 · Tercera prueba de Ser — hecho
 - **Error de método, y es el que más conviene recordar**: di por buena la tanda H55 y contesté a Ser **antes de que
   terminara su `check.sh`**. Terminó con **once fallos**. Lo que Ser encontró luego era exactamente eso. Una tanda
