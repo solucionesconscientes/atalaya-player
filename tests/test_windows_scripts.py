@@ -96,7 +96,7 @@ def test_ps1_launcher_passes_the_same_key_options_as_bash():
     for token in [*options, "--player-operation-mode=pseudo-gui", "--idle=yes", "--player-operation-mode=",
                   "--no-idle", "--start=", "mpv-uos://download?", "mpv-uos://open?", "MPV_UOS_ROOT",
                   "MPV_UOS_DATA_DIR", "MPV_UOS_SOCKET", "MPV_UOS_MPV", "PYTHONPATH", "watch_later", "mpv-config",
-                  "^[0-9]+(\\.[0-9]+)?$"]:
+                  "^[0-9]+(\\.[0-9]+)?$", "mu-share-join="]:
         assert token in bash, token
         assert token in ps1, f"{token} missing in bin/mpv-uos.ps1"
     assert "--\\{" in bash and "--\\}" in bash and "'--{'" in ps1 and "'--}'" in ps1   # per-file option groups

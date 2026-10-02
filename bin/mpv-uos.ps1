@@ -43,9 +43,11 @@ function Split-MuArguments {
   # mpv-uos://download?url=... (browser, H23) -> Downloads; mpv-uos://open?path=...&t=... («Mis notas», H17) become
   # per-file groups (--{ --start=<t> <path> --}) placed before the first `--`, exactly like bin/mpv-uos.
   param([string[]]$Arguments)
-  $downloads = @(); $plain = @(); $links = @()
+  $downloads = @(); $plain = @(); $links = @(); $join = ''
   foreach ($a in $Arguments) {
     if ($a.StartsWith('mpv-uos://download?')) { $downloads += $a; continue }
+    # H44/C6 · un enlace de sala (…/s/<sala>#k=<token>) no se reproduce: se entra en ella. Igual que bin/mpv-uos.
+    if ($join -eq '' -and $a -match '^https?://.+/s/[\w-]+#k=.') { $join = $a; continue }
     if ($a.StartsWith('mpv-uos://open?')) {
       $p = ''; $t = ''
       foreach ($kv in $a.Substring($a.IndexOf('?') + 1).Split('&')) {
@@ -67,13 +69,13 @@ function Split-MuArguments {
     }
     if (-not $placed) { $out += $links }
   }
-  return @{ Downloads = $downloads; Arguments = $out }
+  return @{ Downloads = $downloads; Arguments = $out; Join = $join }
 }
 
 function Get-MuExtraArguments {
   # Always stay open when idle (a file that fails to load must not close the player); without files/URLs open the
   # window like the Start menu shortcut does, unless the caller chose --idle or an operation mode.
-  param([string[]]$Arguments)
+  param([string[]]$Arguments, [string]$Join = '')
   $hasTarget = $false; $hasMode = $false; $hasIdle = $false; $afterDd = $false
   foreach ($a in $Arguments) {
     if ($afterDd) { $hasTarget = $true; continue }
@@ -91,6 +93,7 @@ function Get-MuExtraArguments {
   # → ese; inglés o cualquier otro → inglés. MPV_UOS_LANG lo fuerza.
   $extra += @("--script-opts-append=mu-core-lang=$(Get-MuLanguage)",
               "--script-opts-append=uosc-languages=$(Get-MuLanguage),slang,en")
+  if ($Join) { $extra += "--script-opts-append=mu-share-join=$Join" }
   return $extra
 }
 
@@ -178,7 +181,7 @@ if ($split.Downloads.Count -gt 0) {
 }
 
 $mpvArgs = @("--config-dir=$ConfigDir", "--input-ipc-server=$Pipe", "--watch-later-dir=$WatchLater")
-$mpvArgs += Get-MuExtraArguments -Arguments $split.Arguments
+$mpvArgs += Get-MuExtraArguments -Arguments $split.Arguments -Join $split.Join
 $mpvArgs += $split.Arguments
 if ($DryRun) {
   [ordered]@{ mpv = @($MpvBin) + $mpvArgs; mpvd = $null; pipe = $Pipe; env = $exported } | ConvertTo-Json -Compress -Depth 4

@@ -872,3 +872,28 @@
   `CLAUDE.md` sobre idiomas no cambia: sigue siendo código y comentarios en inglés, documentación y commits en
   castellano; lo que se traduce es lo que ve quien usa el programa. Y una preferencia permite forzar el idioma,
   porque alguien con el sistema en inglés puede querer el reproductor en castellano.
+
+- ADR-088 · Entrar en una sala desde el reproductor, con el fichero original y la cuenta de la página (H44/C6).
+  **Completa** ADR-082, que dejó servido el fichero original pero sin nadie que lo pidiera desde el propio
+  reproductor. **Qué había**: `mu-share` solo sabía ser **anfitrión**. Para ver juntos, el invitado abría la sala en
+  el navegador y ahí lo que llega es el relay: H.264 recodificado, saltos lentos y la CPU del anfitrión trabajando.
+  La vía «abrir en tu reproductor» existía (C2/C3), pero era copiar un enlace a mano y pegarlo en mpv: el resultado
+  era un vídeo suelto, sin pausas compartidas ni saltos. **Qué se hace**, y las tres decisiones que lleva dentro:
+  **(1) El trabajo va a mpvd, no a Lua.** Entrar, mantener abierto el canal de eventos y corregir la deriva son
+  cosas de red y de reloj; el hilo de Lua no puede bloquearse y no tiene con qué hablar HTTP. `mpvd/share/guest.py`
+  hace el `api/join`, abre el SSE y manda `seek`, `pause` y `speed` al mpv que pidió entrar, por el IPC que ya
+  existía. El script Lua solo pide el enlace, enseña el estado y sale. **(2) El invitado reproduce el ORIGINAL**
+  (`/s/<sala>/file?k=…`), no el relay que recibe el navegador: es la razón de ser de esto. Calidad original, todos
+  los códecs, saltos instantáneos y cero CPU del anfitrión. El relay solo se usa cuando no hay otra cosa (un
+  directo). **(3) La corrección de deriva es la MISMA cuenta que hace la página**, portada constante a constante de
+  `www/sync.js`, con un test que ejecuta las dos y compara: dos implementaciones separándose serían dos experiencias
+  distintas en la misma sala, y es justo el tipo de diferencia que nadie ve hasta que alguien dice «yo lo tengo
+  cuatro segundos por delante». Un salto grande (>1,5 s) se corrige saltando; uno pequeño (>0,15 s), reproduciendo
+  hasta un 8 % más rápido o más lento, que no se nota. De paso, dos cosas que hacían falta: las rutas `media/` y
+  `subs/` aceptan ahora la credencial en la query (`?k=`) igual que `file`, porque **un reproductor de verdad no
+  manda cookies** y sin eso un directo no se podía seguir; y el aviso de «esa sala es tuya» se afina para que
+  bloquee solo al anfitrión consigo mismo, no a **otro** reproductor del mismo equipo —que es exactamente cómo se
+  prueba esto en casa, y cómo lo usará quien tenga dos pantallas. El enlace entra por los tres sitios por los que
+  puede llegar: el lanzador (`bin/mpv-uos <enlace>` abre el reproductor ya dentro, y no se lo pasa a mpv, que se lo
+  daría a yt-dlp para descargar una página web), la puerta única de H42 (pegarlo en *Abrir o descargar* ofrece
+  «Entrar en esa sala» en vez de reproducir o descargar) y *Compartir → Entrar en una sala de otro…*.

@@ -25,16 +25,19 @@ De tu segunda prueba salieron cinco hitos. **Están los cinco**, menos una pieza
   línea en un terminal) y lo ve **como es**, sin recomprimir nada: primer fotograma en 0,36 s y saltos en 0,07 s. De
   paso se arregló un fallo real: el servidor cargaba el fichero **entero en memoria** por cada petición (una película
   de 4 GB habrían sido 4 GB).
+- **H44/C6 · y ahora el invitado puede entrar desde Atalaya Player, no solo desde el navegador.** Es la forma buena
+  de ver juntos: le llega **tu archivo original** (calidad original, cualquier códec, saltos instantáneos, tu equipo
+  sin recomprimir nada) y su reproductor **sigue solo** tus pausas, tus saltos y tu velocidad. Si se separa unas
+  décimas, va un poco más rápido o más lento hasta ponerse a la par, sin que se note; si la diferencia es grande,
+  salta. Para entrar le vale el mismo enlace de siempre, por donde quiera: pegándolo en *Abrir o descargar*, en
+  *Compartir → Entrar en una sala de otro…*, o pasándoselo al programa (`mpv-uos "<enlace>"`), que abre el
+  reproductor ya dentro de la sala.
 - **H46 · Un solo menú.** Había un segundo menú escondido en `ctrl+m` con **119 entradas** y cuatro cosas repetidas.
   Fuera. Antes de quitarlo se revisó entrada por entrada: dos cosas vivían solo allí (*repetir la lista* y *orden
   aleatorio*) y se trajeron al menú bueno.
 
 ### Lo que falta y por qué
-- **El nombre (H41)**: lo decides tú. Está en `brand.json` y en ningún otro sitio.
-- **H44/C6 · unirse a la sala desde MPV-UOS** (no solo desde el navegador): es la única forma de que «ver juntos» sea
-  **exacto y a calidad original**, porque los dos extremos serían código nuestro y el mpv del invitado seguiría tus
-  pausas y saltos por el canal que ya existe. No está hecho. Hoy, con el `.m3u`, el invitado ve la película perfecta
-  pero se sincroniza a mano (la página le dice por dónde vas, con un botón para copiar esa posición).
+- **El nombre (H41)**: decidido por ti, **Atalaya Player**. Está en `brand.json` y en ningún otro sitio.
 - **H44/C8** (nuevo, menor): remux `-c copy` en vez de recodificar para el navegador. Ahorraría CPU de tu equipo
   (9,64 s para 115 min frente a 2,2× tiempo real), pero ya no arregla nada roto: con C5 la espera desapareció.
 
@@ -47,6 +50,11 @@ mpv-uos tests/fixtures/media/video30.mkv  # alt+r graba · en «Grabar» cambia 
 mpv-uos                                   # alt+t → «Programar una grabación…» y elige una RADIO
 mpv-uos ~/Vídeos/alguna-pelicula.mkv      # alt+W crea la sala; en el móvil, «Abrir en mi reproductor»
 alt+m                                     # el menú: ocho categorías; ctrl+m ya no abre nada
+
+# entrar en una sala desde el propio reproductor (H44/C6), con DOS ventanas en este mismo equipo:
+mpv-uos ~/Vídeos/alguna-pelicula.mkv      # ventana 1: alt+W → crear la sala → «Copiar el enlace»
+mpv-uos "<el enlace copiado>"             # ventana 2: abre ya dentro; pausa/salta en la 1 y mira la 2
+#   (o en la ventana 2: ctrl+o y pegar el enlace → «Entrar en esa sala»)
 ```
 
 ## Resumen final para Ser (2026-10-01, iteración 6)
@@ -171,21 +179,27 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-Iteración 7 (2026-10-02): hechos **H42, H43, H45, H44 y H46** en ese orden, con sus ADR (077-083). Lo que queda, por
-orden de valor:
+**El programa está terminado: le toca probarlo a Ser.** Con H44/C6 (ADR-088) ya no queda nada de H42-H46 que sea
+«construir»; lo que falta es su prueba, y el orden que propuso Ser, que es el bueno:
 
-1. **H44/C6 · unirse a la sala desde MPV-UOS.** Es lo único de H42-H46 que falta y es la pieza que convierte «abrir en
-   tu reproductor» en «ver juntos exacto a calidad original». Lo que hay que hacer, concreto: `mu-share` solo sabe ser
-   **anfitrión** (`views.guest` es la ficha de un invitado *vista desde* el anfitrión, no el modo invitado). Hace falta
-   (a) que `bin/mpv-uos` reconozca una URL de sala `http(s)://…/s/<id>#k=<token>` y la pase a un modo invitado en vez
-   de a yt-dlp; (b) un `share.join {url}` en mpvd que haga el `api/join`, guarde la cookie y abra el SSE de
-   `/s/<id>/events`; (c) que ese modo cargue `…/s/<id>/file?k=<credencial>` (ya existe, H44/C2) y aplique del SSE
-   `pos`, `paused` y `speed` al mpv del invitado con la misma corrección de deriva que hace `sync.js`. Lo barato es que
-   los dos extremos son nuestros: el formato de los eventos está en `mpvd/share/service.py::_state_msg` y la
-   corrección, ya escrita y probada, en `mpvd/share/www/sync.js`.
-2. **H44/C8 · remux `-c copy`** a fMP4/WebM para el navegador cuando los códecs lo permitan, en vez de recodificar:
-   9,64 s para 115 min frente a 2,2× tiempo real. Ahorra CPU del anfitrión; no arregla nada roto.
-3. **H41 · el nombre**: decisión de Ser, en `brand.json`.
+1. **Ser prueba** (la receta a mano está arriba). Antes de sentarse necesita, porque sin esto tres de las cosas que
+   va a probar no arrancan: la línea de sudoers de `rtcwake` (está en NEEDS_HUMAN.md), `ufw` abierto para 8790
+   (mando del móvil) y 8791 (salas en su wifi), y la cuenta de OpenSubtitles en *Biblioteca → Ajustes* si quiere
+   probar la descarga de subtítulos.
+2. **Arreglar lo que salga de su prueba.** De las dos anteriores salieron nueve y cinco hitos; habrá más.
+3. **Traducir (H49/G4-G7) — y esto va LO ÚLTIMO de todo**, no por pereza sino porque multiplica por tres cualquier
+   cambio posterior: quedan ~1.600 cadenas (los 20 módulos grandes, los ~520 mensajes de mpvd, las páginas servidas
+   siguiendo el `Accept-Language` del invitado y un repaso del francés), y cada frase que cambie después hay que
+   tocarla en tres idiomas. La maquinaria ya está (G1-G3): `mu/i18n.lua`, `mpvd/i18n.py`, `tools/i18n_extract.py`,
+   `locales/en.json` y `fr.json`, y el menú entero ya traducido.
+4. **La web (H50)**, diseñada en `docs/SITIO-WEB.md` y sin construir. Las **capturas sí las puedo hacer yo**:
+   comprobado el 2026-10-02 lanzando el reproductor con `--geometry=1280x720`, abriendo el menú por IPC y
+   `screenshot window` (el PNG sale con el menú encima del vídeo). Faltan dos decisiones de Ser: qué se ve de fondo
+   en las capturas (con una película real sale su biblioteca en «Continuar viendo») y si el repo se hace público.
+   El vídeo de 40 s no sale de ahí: `screenshot` da fotogramas sueltos, no una grabación de pantalla.
+
+Lo único que queda del propio código, y es menor: **H44/C8**, remux `-c copy` a fMP4/WebM para el navegador cuando
+los códecs lo permitan (9,64 s para 115 min frente a 2,2× tiempo real). Ahorra CPU del anfitrión; no arregla nada.
 
 Avisos para quien siga, todos aprendidos a golpes en esta iteración:
 - **uosc deriva el id de un submenú de su TÍTULO** (`elements/Menu.lua:192`). Dos filas hermanas con el mismo título
@@ -202,6 +216,30 @@ Avisos para quien siga, todos aprendidos a golpes en esta iteración:
   dar por roto algo, repítelo solo.
 
 ## Registro por iteración
+### Iteración 8 · 2026-10-02 · H44/C6 · Entrar en la sala desde el reproductor — hecho
+- **El modo invitado vive en mpvd** (`mpvd/share/guest.py`, nuevo), no en Lua: entrar, mantener el canal de eventos
+  abierto y corregir la deriva son red y reloj, y el hilo de Lua no puede bloquearse ni habla HTTP. El script Lua
+  pide el enlace, enseña en qué sala estás y sale. mpvd manda `seek`, `pause` y `speed` al mpv que pidió entrar, por
+  el IPC que ya existía.
+- **El invitado reproduce el fichero ORIGINAL** (`/s/<sala>/file?k=…`), no el relay del navegador: es la razón de
+  ser de esto (calidad original, todos los códecs, saltos instantáneos, cero CPU del anfitrión). El relay solo se
+  usa cuando no hay otra cosa (un directo).
+- **La corrección de deriva es la misma cuenta que la página**, portada constante a constante de `www/sync.js`, con
+  un test que **ejecuta las dos con node y las compara**. Dos implementaciones separándose serían dos experiencias
+  distintas en la misma sala, y es el tipo de diferencia que nadie ve hasta que alguien dice «yo lo tengo cuatro
+  segundos por delante».
+- **Dos cosas que hicieron falta y no estaban previstas**: (1) las rutas `media/` y `subs/` aceptan ahora la
+  credencial en la query (`?k=`) igual que `file`, porque **un reproductor de verdad no manda cookies** y sin eso un
+  directo no se puede seguir; (2) el aviso «esa sala es tuya» bloqueaba a **cualquier** reproductor del mismo
+  equipo, cuando lo que hay que impedir es que el anfitrión se siga a sí mismo. Se afinó a la sesión del anfitrión:
+  dos ventanas en el mismo PC es justo como se prueba esto, y como lo usará quien tenga dos pantallas.
+- **El enlace entra por los tres sitios por los que puede llegar**: el lanzador (`bin/mpv-uos "<enlace>"` abre ya
+  dentro y **no** se lo pasa a mpv, que se lo daría a yt-dlp para descargar una página web; igual en `mpv-uos.ps1`,
+  con el test de paridad ampliado), la puerta única de H42 (pegarlo ofrece *Entrar en esa sala* en vez de
+  reproducir o descargar) y *Compartir → Entrar en una sala de otro…*. `mu/clip.lua` gana `read()`/`first_line()`.
+- Tests: `tests/test_share_guest.py` (el enlace, la paridad con sync.js bajo node, dos mpv de verdad entrando y
+  siguiéndose, el lanzador y el menú de punta a punta).
+
 ### Iteración 7 · 2026-10-02 · H42-H46 · La interfaz y la sala — hecho (falta H44/C6)
 - **H42 · Una sola puerta** (ADR-077). `mu-ytdl` vista `gate` (`ctrl+o`, y primera fila de *Abrir o descargar*):
   clasifica lo pegado —varios enlaces, uno, uno sin esquema, una ruta, una carpeta, un `.txt`/`.list`/`.urls`/`.csv`

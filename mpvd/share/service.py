@@ -23,6 +23,7 @@ import logging
 import mimetypes
 import os
 import re
+import socket
 import secrets
 import time
 from collections import deque
@@ -41,6 +42,7 @@ from mpvd.remote import qr
 from mpvd.remote.http import HttpError, HttpServer, Request, Response, sse_event
 from mpvd.remote.service import firewall_hint, lan_ip
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
+from mpvd.share import guest as guest_mod
 from mpvd.share import hls
 from mpvd.share.live import LiveService
 from mpvd.share.live import register as register_live
@@ -132,6 +134,7 @@ class ShareService:
         self.limiter = AttemptLimiter()
         self.min_ttl = float(os.environ.get("MPVD_SHARE_MIN_TTL") or MIN_TTL)  # tests: rooms that expire in seconds
         self.rt: RoomRuntime | None = None
+        self.guest: guest_mod.GuestSession | None = None   # H44/C6: la sala en la que ESTE equipo ha entrado
         self.tunnel: Tunnel | None = None       # a Cloudflare quick tunnel while a room asked for the internet
         self.public_url: str | None = None      # base URL given by the tunnel while a room is open
         self.tunnel_error = ""                  # why there is no tunnel, for the menu to say it
@@ -278,6 +281,7 @@ class ShareService:
             # whether «se puede entrar desde internet» can even be offered (cloudflared installed)
             "tunnel_available": tunnel_mod.find_cloudflared(self.server.root) is not None,
             "mode": None, "viewers": 0, "max_viewers": 0, "chat": [],
+            "guest_of": self.guest.state.public() if self.guest is not None else None,
         }
         if open_ and rt is not None:
             out.update({"url": self.base_url() + rt.room.link_path(), "room": rt.room.public(),
@@ -296,6 +300,60 @@ class ShareService:
         rt = self.rt
         if kind == "closed" and rt is not None and rt.session_id == session.id:
             self._spawn(rt, self.close("player"))
+        g = self.guest
+        if kind == "closed" and g is not None and g.session.id == session.id:
+            self.guest = None
+            g.stopped = True
+            if g.task is not None:
+                g.task.cancel()
+
+    # -- H44/C6 · entrar en la sala de otro ----------------------------------------------------------------
+
+    async def join_room(self, session: Session, url: str, name: str | None) -> dict[str, Any]:
+        """Join the room the invitation points at and follow the host from this player."""
+        link = guest_mod.parse_link(url)
+        if link is None:
+            raise RpcError(INVALID_PARAMS, "eso no es un enlace de sala (…/s/<sala>#k=…)")
+        # el anfitrión no puede ser invitado de sí mismo (se seguiría a sí mismo); OTRO reproductor de este equipo
+        # sí puede entrar, y es justo el caso de probarlo en casa con dos ventanas
+        if (self.rt is not None and self.rt.room.alive() and self.rt.room.id == link.room
+                and self.rt.session_id == session.id):
+            raise RpcError(INVALID_PARAMS, "esa sala es tuya: ya la estás viendo")
+        await self.leave_room()
+        who = (name or "").strip() or socket.gethostname() or "Invitado"
+        g = guest_mod.GuestSession(self, session, link, who[:24])
+        try:
+            out = await g.join()
+        except guest_mod.GuestError as exc:
+            raise RpcError(INVALID_PARAMS, str(exc)) from None
+        except (OSError, asyncio.TimeoutError) as exc:
+            raise RpcError(INVALID_PARAMS, f"no se puede llegar a la sala: {exc}") from None
+        self.guest = g
+        log.info("share guest joined %s as %s", link.room, who)
+        return out
+
+    async def leave_room(self) -> dict[str, Any]:
+        g = self.guest
+        self.guest = None
+        if g is None:
+            return {"joined": False}
+        with contextlib.suppress(Exception):
+            await g.leave()
+        return {"joined": False, "left": g.link.room}
+
+    def notify_guest(self, g: guest_mod.GuestSession, kind: str, text: str) -> None:
+        """Tell the player's own mu-share what is happening in the room we are visiting."""
+        if self.guest is not g and kind != "left":
+            return
+        s = g.session
+        if s is None or not s.connected:
+            return
+        if kind == "left":
+            self.guest = None
+        self._seq += 1
+        payload = {"event": "share-guest", "kind": kind, "text": text, "guest_of": g.state.public(),
+                   "status": self.status()}
+        s.push_event(TARGET, f"share-guest:{self._seq}", kind, payload, final=True)
 
     def _spawn(self, rt: RoomRuntime, coro: Any) -> asyncio.Task[Any]:
         t = asyncio.create_task(coro)
@@ -843,6 +901,15 @@ class ShareService:
             raise HttpError(401, "no estás en la sala: abre el enlace de invitación")
         return guest
 
+    def _guest_or_key(self, rt: RoomRuntime, req: Request) -> Any:
+        """Guest of a GET for media: the cookie or the SAME signed value in the query (``?k=``). A real player —mpv,
+        VLC, Atalaya Player as a guest (H44/C6)— does not send our cookie, and the credential is per guest, does not
+        open the room and dies with it."""
+        guest = rt.room.guest_from_cookie(req.cookies.get(COOKIE) or req.query.get("k"))
+        if guest is None:
+            raise HttpError(401, "no estás en la sala: abre el enlace de invitación")
+        return guest
+
     async def handle(self, req: Request) -> Response:
         path = req.path
         if req.method in ("GET", "HEAD") and path.startswith("/static/"):
@@ -890,9 +957,7 @@ class ShareService:
             # H44/C2-C3 · el fichero original, para el reproductor del invitado. mpv o VLC no mandan nuestra cookie,
             # así que el enlace lleva el MISMO valor firmado en la query (`?k=`): es de ese invitado, no sirve para
             # entrar en la sala y caduca con ella. La ruta real del fichero no se publica en ningún sitio.
-            who = room.guest_from_cookie(req.cookies.get(COOKIE) or req.query.get("k"))
-            if who is None:
-                raise HttpError(401, "no estás en la sala: abre el enlace de invitación")
+            who = self._guest_or_key(rt, req)
             local = rt.media.get("local")
             if not local or rt.media.get("kind") != "file":
                 raise HttpError(404, "lo que se está viendo no es un archivo de este equipo")
@@ -908,6 +973,20 @@ class ShareService:
             name = str(rt.media.get("name") or "video")
             ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
             return self._file(Path(str(local)), ctype, "private, max-age=3600", req)
+        if (rest.startswith("media/") or rest.startswith("subs/")) and req.method in ("GET", "HEAD"):
+            self._guest_or_key(rt, req)
+            if rest.startswith("subs/"):
+                name = rest[len("subs/"):]
+                if not SUB_RE.match(name):
+                    raise HttpError(404)
+                return self._file(rt.dir / "subs" / name, "text/vtt; charset=utf-8", "no-cache", req)
+            _, sid, name = (rest.split("/") + ["", ""])[:3]
+            st = rt.streams.get(sid)
+            if st is None or not SEG_RE.match(name):
+                raise HttpError(404)
+            if name == hls.PLAYLIST:
+                return self._file(st.dir / name, "application/vnd.apple.mpegurl", "no-cache", req)
+            return self._file(st.dir / name, "video/mp2t", "private, max-age=3600", req)
         guest = self._guest_from(rt, req)
         if rest == "api/filelink":
             # H44/C3 · el enlace del fichero original para ESTE invitado, con su credencial firmada en la query
@@ -951,19 +1030,6 @@ class ShareService:
             return Response.json({"ok": True}, **{"Set-Cookie": f"{COOKIE}=; Path=/s/{room.id}; Max-Age=0"})
         if rest == "api/relay" and req.method == "POST":
             return Response.json(await self.relay())
-        if rest.startswith("media/") and req.method in ("GET", "HEAD"):
-            _, sid, name = (rest.split("/") + ["", ""])[:3]
-            st = rt.streams.get(sid)
-            if st is None or not SEG_RE.match(name):
-                raise HttpError(404)
-            if name == hls.PLAYLIST:
-                return self._file(st.dir / name, "application/vnd.apple.mpegurl", "no-cache", req)
-            return self._file(st.dir / name, "video/mp2t", "private, max-age=3600", req)
-        if rest.startswith("subs/") and req.method in ("GET", "HEAD"):
-            name = rest[len("subs/"):]
-            if not SUB_RE.match(name):
-                raise HttpError(404)
-            return self._file(rt.dir / "subs" / name, "text/vtt; charset=utf-8", "no-cache", req)
         raise HttpError(404 if req.method == "GET" else 405)
 
     async def _events(self, rt: RoomRuntime, guest: Any) -> AsyncIterator[bytes]:
@@ -1091,6 +1157,21 @@ def register(server: MpvdServer, service: ShareService) -> None:
     async def kick(ctx: RpcContext, guest: str) -> dict[str, Any]:
         """Expel a guest (their cookie stops working; they would need the link again)."""
         return service.kick(guest)
+
+    @d.method("share.join")
+    async def join(ctx: RpcContext, url: str, name: str | None = None,
+                   session: str | None = None) -> dict[str, Any]:
+        """H44/C6 · enter somebody else's room from this player: the original file, in sync with the host.
+        `url` is the invitation (…/s/<room>#k=<token>); `name` is how the others see you (the hostname by default)."""
+        s = server.sessions.get(session) if session else ctx.session
+        if s is None:
+            raise RpcError(INVALID_PARAMS, "hace falta un reproductor")
+        return await service.join_room(s, str(url), name)
+
+    @d.method("share.leave")
+    async def leave(ctx: RpcContext) -> dict[str, Any]:
+        """Leave the room this player had joined (the others are told, the speed goes back to normal)."""
+        return await service.leave_room()
 
     @d.method("share.chat")
     async def chat(ctx: RpcContext, text: str) -> dict[str, Any]:

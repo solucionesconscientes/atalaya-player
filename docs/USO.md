@@ -343,6 +343,17 @@ dentro de tu red (wifi de casa); para que entren desde fuera, enciende *Que se p
   + Opus con el índice al final, que es justo lo que peor lleva), se ve la retransmisión y se te dice por qué.
 - **La retransmisión empieza donde vas tú**, no en el segundo 0: quien entra en el minuto 40 ya no espera a que el
   empaquetado llegue hasta ahí (eran ~18 minutos). La página lo dice: «Empezamos donde va el anfitrión».
+- **Entrar en la sala de otro desde Atalaya Player** (y no desde el navegador): es la mejor forma de ver juntos,
+  porque te llega el **archivo original** del anfitrión en vez de la retransmisión, y tu reproductor sigue solo sus
+  pausas, sus saltos y su velocidad. Tres formas de dárselo, todas con el mismo enlace que te han pasado:
+  - pégalo en *Abrir o descargar* (`ctrl+o`): te ofrecerá *Entrar en esa sala*;
+  - *Compartir → Entrar en una sala de otro…* (si lo tienes copiado, la primera fila ya es ese enlace);
+  - desde un terminal o un acceso directo: `bin/mpv-uos "<enlace>"` abre el reproductor **ya dentro** de la sala.
+
+  Mientras estés dentro, *Compartir* te dice en qué sala estás y por dónde va, y tiene *Salir de la sala*. Si te
+  separas del anfitrión por unas décimas, el reproductor va un poco más rápido o más lento hasta ponerse a la par
+  (no se nota); si la diferencia es grande, salta. Es la misma cuenta que hace la página, para que quien entra por
+  el navegador y quien entra por el reproductor vean lo mismo en el mismo momento.
 - El enlace caduca (24 h como mucho), se puede cambiar por uno nuevo y deja de valer al cerrar la sala.
 - **Que se pueda entrar desde internet.** En *Compartir* hay un interruptor con ese nombre, **apagado** por defecto y que
   se recuerda. Encendido, al crear la sala Atalaya Player abre un *túnel rápido de Cloudflare* (sin cuenta ni configuración) y el

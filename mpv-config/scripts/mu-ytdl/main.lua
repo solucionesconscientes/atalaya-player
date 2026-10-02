@@ -1171,6 +1171,11 @@ local function gate_classify(text)
     return { kind = 'links', urls = urls, count = #urls, title = plural(#urls, 'enlace', 'enlaces') }
   end
   if #urls == 1 then
+    -- H44/C6 · una invitación a una sala (…/s/<sala>#k=<token>) no se reproduce ni se descarga: se entra en ella.
+    -- Es lo que más a mano llega por aquí, porque llega pegado desde el móvil como cualquier otro enlace.
+    if urls[1]:match('^https?://[^%s]+/s/[%w_-]+#k=.') then
+      return { kind = 'room', url = urls[1], count = 1 }
+    end
     return { kind = 'url', url = urls[1], count = 1, list = looks_like_list(urls[1]) }
   end
   local bare = as_url(typed)                 -- «youtube.com/…» sin esquema
@@ -1190,7 +1195,9 @@ end
 
 local function gate_row(what, from_clipboard)
   local title, hint, icon
-  if what.kind == 'links' then
+  if what.kind == 'room' then
+    title, hint, icon = 'Entrar en esa sala', 'ver juntos con quien te lo ha pasado', 'login'
+  elseif what.kind == 'links' then
     title, icon = 'Seguir con ' .. (what.title or plural(what.count, 'enlace', 'enlaces')), 'checklist'
   elseif what.kind == 'url' then
     title = what.list and 'Seguir con esa lista o canal' or 'Seguir con ese enlace'
@@ -1695,6 +1702,11 @@ local function on_event(source, json)
         if err then return end
         rpc.call('ytdl.settings.set', { auto_update = not s.auto_update }, function() open_view({ name = 'status' }, false) end)
       end)
+    elseif v.gate and v.gate.kind == 'room' then
+      -- una sala no tiene esa pregunta: se entra. Lo hace mu-share, que es quien sabe de salas.
+      close_menus()
+      osd('Entrando en la sala…')
+      mp.commandv('script-message-to', 'mu_share', 'mu-share-join', v.gate.url)
     elseif v.gate then
       -- A2 · de la caja a la única pregunta. La caja se queda debajo en la pila: ⌫ vuelve a ella con el texto puesto.
       open_view({ name = 'what', args = { what = v.gate } })

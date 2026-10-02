@@ -39,6 +39,19 @@ function M.copy(text, done)
   return false
 end
 
+-- read() → what is in the clipboard right now, or ''. mpv 0.41 reads it natively; a build or a session without a
+-- backend simply has nothing to give, and that is not an error: the caller asks for the text instead.
+function M.read()
+  local ok, text = pcall(mp.get_property, 'clipboard/text')
+  return (ok and type(text) == 'string') and text or ''
+end
+
+-- first_line() → the first non-empty line, trimmed: what someone pastes is usually one link with a newline stuck
+-- to it, and every caller was trimming it by hand.
+function M.first_line()
+  return (M.read():match('^%s*([^\r\n]*)') or ''):gsub('%s+$', '')
+end
+
 -- The notice to show on the OSD: the same wording everywhere, and when there is no clipboard at all the text
 -- itself, so that it can still be read off the screen.
 function M.notice(ok, text, what)

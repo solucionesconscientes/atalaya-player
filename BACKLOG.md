@@ -440,7 +440,7 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
 - [x] B4 Al volver a pulsar el botón de grabar, termina sin preguntar nada (ya hecho en H35; comprobado con la fila
       de formato nueva: el botón sigue llevando a `record-toggle` mientras se graba).
 
-## H44 · La sala: fichero original y el reproductor del invitado (§A) — ADR-082 · [~] falta C6
+## H44 · La sala: fichero original y el reproductor del invitado (§A) — ADR-082, ADR-088 · [x] falta C8 (menor)
 - [x] C1 Handler Range que lee por trozos (256 kB) en vez de `path.read_bytes()`. El test sirve 300 MB enteros y mide
       el RSS del proceso. El comportamiento del Range se conserva exactamente.
 - [x] C2 Ruta `GET /s/<sala>/file` con el fichero original; la ruta real no se publica (`_media_public` quita
@@ -455,9 +455,12 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
       no es el problema.
 - [x] C5 El relay empieza donde está el anfitrión (`-ss` antes del `-i`), el stream recuerda el `offset` y la página
       lo descuenta y lo dice («Empezamos donde va el anfitrión»). En un directo no se pone `-ss`.
-- [ ] C6 Unirse a la sala desde MPV-UOS (no solo desde el navegador): el mpv del invitado sigue pausa, saltos y
-      velocidad por el SSE que ya existe. Es la única forma de «ver juntos» exacto a calidad original. **Pendiente**:
-      hoy `mu-share` solo sabe ser anfitrión (`views.guest` es la ficha de un invitado vista desde el anfitrión).
+- [x] C6 Unirse a la sala desde Atalaya Player (ADR-088): `mpvd/share/guest.py` entra, abre el SSE y sigue pausa,
+      saltos y velocidad con **la misma cuenta que la página** (`sync.js`, portada con test que compara las dos).
+      El invitado reproduce el **fichero original** (`?k=`), no el relay: calidad original, saltos instantáneos y
+      cero CPU del anfitrión. El enlace entra por el lanzador (`bin/mpv-uos <enlace>`, también en Windows), por la
+      puerta única de H42 y por *Compartir → Entrar en una sala de otro…*. Las rutas `media/` y `subs/` aceptan la
+      credencial en la query, porque un reproductor de verdad no manda cookies.
 - [x] C7 ADR: WebTorrent como no-objetivo, con los números (ADR-082).
 - [ ] C8 (nuevo, menor) Remux `-c copy` a fMP4/WebM para el navegador cuando los códecs lo permitan, en vez del relay
       recodificando: 9,64 s para 115 min frente a 2,2× tiempo real. Ahorra CPU del anfitrión; no arregla nada roto.

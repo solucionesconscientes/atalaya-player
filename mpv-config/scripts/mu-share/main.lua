@@ -41,6 +41,7 @@ local opts = {
   chat_osd = true,       -- show chat messages and reactions over the video
   chat_seconds = 8,      -- how long each chat line stays on screen
   chat_lines = 5,        -- lines on screen at most
+  join = '',             -- H44/C6: invitation the launcher found in the command line; entered as soon as mpvd answers
 }
 options.read_options(opts, 'mu-share')
 
@@ -78,6 +79,13 @@ local function live_public()
            mode = run.mode or '', error = run.error or '' }
 end
 
+-- H44/C6 · la sala en la que hemos entrado como invitados, en corto (lo mismo que enseña el menú)
+local function guest_public(g)
+  if type(g) ~= 'table' then return { room = '', host = '', connected = false, kind = '' } end
+  local room = g.room or {}
+  return { room = room.id or '', host = room.host or '', connected = g.connected == true, kind = g.kind or '' }
+end
+
 local function publish()
   local st = state.status or {}
   mp.set_property_native('user-data/mu/share', {
@@ -89,7 +97,7 @@ local function publish()
     lan_only = st.lan_only ~= false, port = st.port or 0, mode = st.mode or '', viewers = st.viewers or 0,
     max_viewers = st.max_viewers or 0, last_chat = state.last_chat or { who = '', text = '', kind = '' },
     chat_visible = state.chat_visible, chat_osd = opts.chat_osd, input = state.input and state.input.mode or '',
-    live = live_public(),
+    live = live_public(), guest_of = guest_public(st.guest_of),
   })
 end
 
@@ -354,11 +362,33 @@ local MEDIA_TEXT = {
   none = 'nada todavía',
 }
 
+-- H44/C6 · «dónde va» la sala en la que hemos entrado, para la fila de estado
+local function guest_hint(g)
+  if not g then return '' end
+  if g.error and g.error ~= '' then return g.error end
+  if not g.connected then return 'reconectando…' end
+  local where = g.pos and reloj(g.pos) or nil
+  return (g.paused and 'en pausa' or 'viendo') .. (where and (' · ' .. where) or '')
+end
+
 views.root = function()
   local st = state.status or {}
   local items = {}
+  local inside = st.guest_of
   if not rpc.connected() then
     items = uosc.message_items('mpvd no está conectado: espera unos segundos', 'error')
+  elseif inside then
+    -- estamos de invitados en la sala de otro: eso es lo único que importa aquí
+    local host = (inside.room or {}).host
+    items[#items + 1] = { title = 'Estás en la sala' .. (host and (' de ' .. host) or ''), icon = 'groups',
+                          hint = guest_hint(inside), muted = true, selectable = false }
+    if inside.title and inside.title ~= '' then
+      items[#items + 1] = { title = inside.title, icon = 'movie', muted = true, selectable = false,
+                            hint = inside.kind == 'file' and 'el archivo original del anfitrión' or nil }
+    end
+    items[#items + 1] = { title = 'Salir de la sala', icon = 'logout', value = { action = 'leave' } }
+    items[#items + 1] = { title = 'Mientras estés dentro, el reproductor sigue al anfitrión', icon = 'info',
+                          muted = true, selectable = false, hint = 'pausa, saltos y velocidad' }
   elseif not st.open then
     items[#items + 1] = { title = 'Crear una sala para ver juntos', icon = 'group_add', value = { action = 'create' },
                           hint = 'enlace y QR' }
@@ -435,11 +465,32 @@ views.root = function()
     items[#items + 1] = { title = expires_text(st.room) .. ' · solo tu red', icon = 'schedule', muted = true,
                           selectable = false }
   end
-  if rpc.connected() then
+  if rpc.connected() and not inside then
+    items[#items + 1] = { title = 'Entrar en una sala de otro…', icon = 'login', value = { view = 'join' },
+                          hint = 'te han pasado un enlace', separator = true }
     items[#items + 1] = { title = 'Emitir en directo…', icon = 'sensors', value = { view = 'live' },
-                          hint = live_hint(), separator = true }
+                          hint = live_hint() }
   end
   show(ROOT_TITLE, items)
+end
+
+views.join = function()
+  local pegado = clip.first_line()
+  local es_sala = pegado:match('^https?://[^%s]+/s/[%w_-]+#k=.') ~= nil
+  local items = {}
+  if es_sala then
+    items[#items + 1] = { title = 'Entrar con el enlace copiado', icon = 'content_paste_go',
+                          hint = (#pegado > 60 and (pegado:sub(1, 57) .. '…') or pegado),
+                          value = { action = 'join-clipboard' } }
+  end
+  items[#items + 1] = { title = 'Escribir o pegar el enlace…', icon = 'edit', value = { action = 'join-write' } }
+  if not es_sala and pegado ~= '' then
+    items[#items + 1] = { title = 'Lo que tienes copiado no es un enlace de sala', icon = 'info', muted = true,
+                          selectable = false, hint = 'tiene que acabar en #k=…' }
+  end
+  items[#items + 1] = { title = 'Verás lo mismo que el anfitrión, a la vez y con su archivo original', icon = 'info',
+                        muted = true, selectable = false, separator = true }
+  show('Entrar en una sala', items)
 end
 
 views.chat = function()
@@ -655,18 +706,21 @@ local function copy_text(text)
 end
 
 -- text box (a uosc palette whose query is the text): a chat message or the address of another server
-local INPUT_TITLES = { chat = 'Mensaje para los invitados', server = 'Dirección del servidor (rtmp:// o rtmps://)' }
+local INPUT_TITLES = { chat = 'Mensaje para los invitados', server = 'Dirección del servidor (rtmp:// o rtmps://)',
+                       join = 'Enlace de la sala' }
 
 local function input_menu(query)
   state.input.query = query or ''
   local mode = state.input.mode
   local items
   if query ~= '' then
-    items = { { title = (mode == 'chat' and 'Enviar: ' or 'Usar: ') .. query, icon = 'check', value = { save = query } } }
+    local verb = (mode == 'chat' and 'Enviar: ') or (mode == 'join' and 'Entrar: ') or 'Usar: '
+    items = { { title = verb .. query, icon = 'check', value = { save = query } } }
   else
-    items = { { title = mode == 'chat' and 'Escribe el mensaje y pulsa Enter'
-                or 'Escribe o pega la dirección (por ejemplo rtmp://mi-servidor/live)', icon = 'edit',
-                selectable = false, muted = true } }
+    local empty = 'Escribe o pega la dirección (por ejemplo rtmp://mi-servidor/live)'
+    if mode == 'chat' then empty = 'Escribe el mensaje y pulsa Enter'
+    elseif mode == 'join' then empty = 'Pega aquí el enlace que te han pasado (termina en #k=…)' end
+    items = { { title = empty, icon = 'edit', selectable = false, muted = true } }
   end
   return { type = INPUT, title = INPUT_TITLES[mode], items = items, callback = { SCRIPT, INPUT_EVENT },
     search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
@@ -686,12 +740,43 @@ local function reopen_forced()
   open_view(spec, false)
 end
 
+-- ---------------------------------------------------------------------------------------------
+-- H44/C6 · entrar en la sala de OTRO. Lo pesado (entrar, el canal de eventos y seguir al anfitrión) lo hace mpvd:
+-- aquí solo se pide el enlace, se enseña en qué estado está y se sale.
+
+local function join_room(url)
+  url = tostring(url or ''):gsub('^%s+', ''):gsub('%s+$', '')
+  if url == '' then osd('No hay ningún enlace'); reopen_forced(); return end
+  osd('Entrando en la sala…')
+  rpc.call('share.join', { url = url }, function(err, res)
+    if err then fail(err, 'entrar en la sala'); reopen_forced(); return end
+    osd('Ya estás en la sala' .. ((res and res.room and res.room.host) and (' de ' .. res.room.host) or ''))
+    refresh_status(reopen_forced)
+  end, 30)
+end
+
+local function join_from_clipboard()
+  local url = clip.first_line()
+  if url == '' then osd('El portapapeles está vacío'); reopen_current(); return end
+  join_room(url)
+end
+
+local function leave_room()
+  rpc.call('share.leave', {}, function(err)
+    if err then fail(err, 'salir de la sala'); reopen_current(); return end
+    osd('Has salido de la sala')
+    refresh_status(reopen_forced)
+  end)
+end
+
 local function input_done(mode, text)
   if mode == 'chat' then
     rpc.call('share.chat', { text = text }, function(err)
       if err then fail(err, 'chat') end
       refresh_status(reopen_forced)
     end)
+  elseif mode == 'join' then
+    join_room(text)
   elseif mode == 'server' then
     rpc.call('live.configure', { server = text }, function(err, st)
       if err then fail(err, 'servidor'); reopen_forced(); return end
@@ -771,6 +856,13 @@ local function menu_action(v)
     osd(on and 'Compartir: la próxima sala también se podrá abrir desde internet'
           or 'Compartir: las salas solo se abrirán en tu red')
     reopen_current()
+  elseif v.action == 'join-write' then
+    open_input('join')
+  elseif v.action == 'join-clipboard' then
+    uosc.close(MENU)
+    join_from_clipboard()
+  elseif v.action == 'leave' then
+    leave_room()
   elseif v.action == 'chat-write' then
     open_input('chat')
   elseif v.action == 'server-write' then
@@ -923,6 +1015,13 @@ mp.register_script_message('mu-event', function(payload)
     if state.view == 'live' or state.view == 'root' then reopen_current() end
     return
   end
+  if ev.event == 'share-guest' then
+    if type(ev.status) == 'table' then state.status = ev.status end
+    if ev.text and ev.text ~= '' then state.last_notice = ev.text; osd(ev.text) end
+    publish()
+    if state.view == 'root' or state.view == 'join' then reopen_current() end
+    return
+  end
   if ev.event ~= 'share' then return end
   if type(ev.status) == 'table' then state.status = ev.status end
   if ev.kind == 'chat' then
@@ -951,8 +1050,26 @@ mp.register_script_message('mu-event', function(payload)
   end
 end)
 
+-- H44/C6 · `bin/mpv-uos https://…/s/<sala>#k=<token>` abre el reproductor YA DENTRO de la sala: el lanzador saca el
+-- enlace de la lista de cosas que reproducir y lo deja aquí. Hay que esperar a que mpvd conteste (el reproductor
+-- arranca antes que el demonio), y hacerlo una sola vez.
+if opts.join ~= '' then
+  local pending = opts.join
+  local function when_ready(_, core)
+    if pending == '' or type(core) ~= 'table' or core.mpvd ~= 'connected' then return end
+    local url = pending
+    pending = ''
+    mp.unobserve_property(when_ready)   -- por la función, no por un identificador (manual de mpv)
+    join_room(url)
+  end
+  mp.observe_property('user-data/mu/core', 'native', when_ready)
+end
+
 N:binding('share-menu', open_root)
 mp.add_key_binding(nil, 'share-qr', toggle_qr)
 mp.register_script_message('mu-share-hide', hide_qr)
+-- `script-message-to mu_share mu-share-join <enlace>`: la puerta única de mu-ytdl manda aquí lo que resulta ser
+-- una invitación, y así el enlace se pega en el mismo sitio que todo lo demás (H42).
+mp.register_script_message('mu-share-join', function(url) join_room(url or '') end)
 publish()
 msg.info('mu-share loaded')

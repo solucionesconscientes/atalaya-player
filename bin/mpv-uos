@@ -90,6 +90,24 @@ fi
 # player without a word; idle keeps the window, shows the error and the home screen. Without files/URLs, open
 # the window like the desktop entry does, unless the caller chose --idle or an operation mode.
 extra=()
+
+# Entrar en una sala (H44/C6): un enlace de invitación (…/s/<sala>#k=<token>) NO es algo que reproducir. Si se lo
+# pasáramos a mpv, yt-dlp intentaría descargar una página HTML. Se saca de la lista y se le deja a mu-share, que
+# entra por mpvd en cuanto el demonio contesta. El token va en el fragmento, así que nunca sale de este equipo
+# hasta que mpvd lo manda en el cuerpo de la petición, igual que hace la página.
+join_url=""; rest=()
+for a in "$@"; do
+  case "$a" in
+    http://*/s/*#k=*|https://*/s/*#k=*)
+      if [ -z "$join_url" ]; then join_url="$a"; else rest+=("$a"); fi ;;
+    *) rest+=("$a") ;;
+  esac
+done
+if [ -n "$join_url" ]; then
+  set -- ${rest[@]+"${rest[@]}"}
+  extra+=("--script-opts-append=mu-share-join=$join_url")
+fi
+
 has_target=0; has_mode=0; has_idle=0; after_dd=0
 for a in "$@"; do
   if [ "$after_dd" = 1 ]; then has_target=1; continue; fi
