@@ -182,9 +182,9 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
 Ser probó el reproductor el 2026-10-02 y de ahí salieron **H51** (compartir) y **H52** (la barra y la línea de
 tiempo), los dos hechos. Lo que queda, por orden:
 
-1. **Que Ser vuelva a probar**, sobre todo lo nuevo: crear una sala (el enlace se copia solo y tarda un minuto en
-   servir, que ahora se dice), cambiar de película con alguien dentro, abrirlo en VLC desde la página, y los tramos
-   (`ctrl+x` dos veces, `ctrl+l` para guardarlos sueltos o unidos) y las notas (`n`).
+1. **Que Ser vuelva a probar.** De su segunda prueba salió H54, ya hecho: saltar hacia atrás en una sala, el
+   enlace para VLC (*Compartir → Copiar el enlace para VLC o mpv*; el de la sala NO puede valer para eso) y elegir
+   qué tramos se exportan.
 2. **Arreglar lo que salga.**
 3. **Traducir (H49/G4-G7) — lo último de todo**, porque multiplica por tres cualquier cambio posterior: quedan
    ~1.600 cadenas, y las de H51 y H52 se suman a ellas.
@@ -214,6 +214,25 @@ Avisos para quien siga, todos aprendidos a golpes en esta iteración:
   dar por roto algo, repítelo solo.
 
 ## Registro por iteración
+### Iteración 10 · 2026-10-02 · H54 · Segunda prueba de Ser — hecho
+- **«Si tira el vídeo para atrás se queda en el mismo minuto y tampoco tiene play/pause»: un solo fallo, y era la
+  cara mala de C5.** La retransmisión empieza donde está el anfitrión y **solo contiene desde ahí**, así que al
+  saltar a un minuto anterior ese minuto no existe y la corrección de deriva empujaba el vídeo al segundo 0 de la
+  retransmisión una y otra vez: no estaba roto, estaba siendo recolocado sin parar. Ahora, si el salto cae fuera
+  de lo que hay, **la retransmisión se rehace ahí** (con 3 s de gracia para que varios tirones cuenten como uno).
+- **Y una de propina**: una retransmisión recién rehecha se anunciaba antes de que su lista existiera, y quien
+  reenganchaba se llevaba un 404. Ya no se anuncia hasta que se puede pedir.
+- **«El enlace no se puede reproducir en mpv o vlc»: no tiene arreglo por ahí, y conviene saber por qué.** El
+  enlace de la sala lleva su contraseña en el FRAGMENTO (`#k=`), y un navegador no manda nunca el fragmento al
+  servidor —que es justo lo que la mantiene fuera de los registros—, así que un reproductor no puede
+  identificarse. El enlace que sí vale existía solo en la página del invitado; ahora el anfitrión lo tiene en
+  *Compartir → Copiar el enlace para VLC o mpv*. Comprobado lanzando **un mpv de verdad** contra él.
+- **«No veo la forma de elegir los que exportas»**: cada tramo entra marcado y Enter sobre su fila lo deja fuera;
+  se guarda lo marcado, y *unir* solo se ofrece con más de uno elegido. Las acciones de cada tramo pasan a los
+  botones de su fila.
+- **Aviso repetido, que ya me ha mordido dos veces**: el estado se publica ANTES que las filas del menú, así que
+  un test que espere por un contador puede ver filas viejas. Esperar siempre por la fila.
+
 ### Iteración 9 · 2026-10-02 · H51 y H52 · De la prueba de Ser — hecho
 - **H51 · compartir (ADR-089).** De cuatro quejas, **tres eran el mismo fallo**: el minuto de espera no era
   lentitud sino un **enlace muerto**. Medido tres veces: `cloudflared` imprime la dirección a los 5,6-7,7 s y

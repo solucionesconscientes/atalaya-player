@@ -80,6 +80,12 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' 
        "base-uri 'none'; form-action 'self'")
 # H51 · cuánto se espera a que la dirección del túnel empiece a enrutar de verdad (medido: 60 s de más sobre los
 # 6-8 s que tarda cloudflared en dárnosla). MPVD_SHARE_TUNNEL_PROBE=0 la da por buena sin preguntar (tests).
+# H54 · la retransmisión empieza donde está el anfitrión (C5) y solo contiene DESDE ahí: si luego se salta a un
+# minuto que no está dentro, el invitado no puede verlo por mucho que espere. Entonces se rehace en esa posición.
+RELAY_SLACK = 2.0            # s de margen en los bordes de lo que la retransmisión ya tiene
+RELAY_RESTART_GRACE = 3.0    # s: varios saltos seguidos son uno solo, para no rehacerla a cada tirón
+PLAYLIST_WAIT = 15.0         # s como mucho esperando a que ffmpeg escriba la lista antes de anunciarla
+
 TUNNEL_WARM_MAX = float(os.environ.get("MPVD_SHARE_TUNNEL_WARM") or 240.0)
 TUNNEL_PROBE_EVERY = 2.0
 TUNNEL_PROBE_TIMEOUT = 5.0
@@ -129,6 +135,8 @@ class RoomRuntime:
     chat_seq: int = 0
     task: asyncio.Task[None] | None = None
     jobs: set[asyncio.Task[Any]] = field(default_factory=set)
+    relay_restart: float = 0.0                                  # monotonic time of the last relay restart (H54)
+    player_guest: str = ""                                      # H54: the credential handed out for VLC/mpv
     dir: Path = Path()
 
 
@@ -273,6 +281,29 @@ class ShareService:
                 return True
             await asyncio.sleep(TUNNEL_PROBE_EVERY)
         return False
+
+    def player_link(self) -> dict[str, Any]:
+        """H54 · un enlace que SÍ abre VLC o mpv.
+
+        El enlace de la sala no puede servir para eso, y no es un fallo que se pueda arreglar: su token va en el
+        fragmento (`#k=`), y un navegador NUNCA manda el fragmento al servidor; es justo lo que lo mantiene fuera
+        de los registros. La página ya ofrece el enlace bueno a cada invitado; esto es lo mismo para el anfitrión,
+        que es quien reparte. Se reutiliza mientras la sala viva, para no llenarla de invitados de pega."""
+        rt = self._room()
+        room = rt.room
+        who = room.guests.get(rt.player_guest) if rt.player_guest else None
+        if who is None:
+            try:
+                who = room.join(room.token, "Reproductor", "127.0.0.1")
+            except JoinError as exc:
+                raise RpcError(UNAVAILABLE, exc.message) from None
+            rt.player_guest = who.id
+            self._guests_changed(rt)
+        base = self.base_url()
+        best = self._player_url(rt, who.id, base)
+        if best is None:
+            raise RpcError(NOT_FOUND, "ahora mismo no hay nada que llevarse a otro reproductor")
+        return {**best, "m3u": f"{base}/s/{room.id}/file.m3u?k={room.cookie_value(who.id)}"}
 
     async def link(self) -> dict[str, Any]:
         rt = self._room()
@@ -642,6 +673,12 @@ class ShareService:
                         if not self._recent_guest(rt, "seek"):
                             self._notice(rt, f"El anfitrión ha saltado a {clock(raw['time-pos'])}", kind="seek",
                                          host_osd=False)
+                        # H54 · si el salto cae fuera de lo que la retransmisión tiene, se rehace ahí
+                        if (now - rt.relay_restart > RELAY_RESTART_GRACE
+                                and self._relay_misses(rt, float(raw["time-pos"]))):
+                            rt.relay_restart = now
+                            log.info("share: relay rehecho en %.1fs (el salto cae fuera)", raw["time-pos"])
+                            self._schedule_media(rt, raw)
                 if not reason and (not rt.state or (not raw.get("pause") and now - rt.sent_at >= HEARTBEAT)):
                     reason = "tick"
                 rt.raw = raw
@@ -664,6 +701,28 @@ class ShareService:
         m.pop("path", None)
         m.pop("local", None)   # H44/C2: la ruta real del fichero no se publica; se sirve por /s/<sala>/file
         return m
+
+    def _relay_misses(self, rt: RoomRuntime, pos: float) -> bool:
+        """¿La retransmisión que están viendo los invitados contiene este segundo?
+
+        Lo que hay se extiende desde donde arrancó (`offset`) hasta lo que lleve producido; antes de su principio
+        no hay NADA, y por eso un salto hacia atrás dejaba al invitado clavado en el minuto donde arrancó —la
+        corrección de deriva lo empujaba una y otra vez al segundo 0 de la retransmisión, que se ve como un vídeo
+        congelado y sin play—. Un directo no cuenta: ahí no se salta."""
+        for prefix, key in (("", "stream"), ("relay_", "relay_stream")):
+            sid = rt.media.get(key)
+            st = rt.streams.get(sid) if sid else None
+            if st is None or not isinstance(st.duration, (int, float)):
+                continue
+            start = float(rt.media.get(prefix + "offset") or st.offset or 0.0)
+            if pos < start - RELAY_SLACK:
+                return True
+            if rt.media.get(prefix + "complete"):
+                continue
+            ready = float(rt.media.get(prefix + "ready") or 0.0)
+            if pos > start + ready + RELAY_SLACK:
+                return True
+        return False
 
     def _media_progress(self, rt: RoomRuntime) -> None:
         changed = False
@@ -821,6 +880,14 @@ class ShareService:
                            offset=max((i.start for i in inputs), default=0.0))
         st.start()
         rt.streams[sid] = st
+        # H54 · no se anuncia una retransmisión que todavía no se puede pedir: ffmpeg tarda un momento en escribir
+        # la lista, y quien la pidiera antes se llevaría un 404. Se nota al REHACERLA (el invitado ya está viendo
+        # algo y reengancha al instante); en el primer arranque lo tapaba el «preparando».
+        wait_until = time.monotonic() + PLAYLIST_WAIT
+        while time.monotonic() < wait_until and not st.playlist.exists():
+            if st.status == "failed":
+                break
+            await asyncio.sleep(0.1)
         while len(rt.streams) > MAX_STREAMS:
             old_id = next(iter(rt.streams))
             old = rt.streams.pop(old_id)
@@ -1271,6 +1338,12 @@ def register(server: MpvdServer, service: ShareService) -> None:
     async def link(ctx: RpcContext) -> dict[str, Any]:
         """Link and QR of the open room."""
         return await service.link()
+
+    @d.method("share.player_link")
+    async def player_link(ctx: RpcContext) -> dict[str, Any]:
+        """H54 · el enlace de lo que se está viendo para abrirlo en VLC, mpv u otro reproductor. El enlace de la
+        sala no vale para eso: su token va en el fragmento y un navegador no lo manda nunca al servidor."""
+        return service.player_link()
 
     @d.method("share.rotate")
     async def rotate(ctx: RpcContext) -> dict[str, Any]:

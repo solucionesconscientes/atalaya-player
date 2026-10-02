@@ -493,6 +493,16 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
 - [x] E5 La barra, **agrupada por significado y ordenada por frecuencia**; «solo audio» sale de ella (sigue en
       `alt+a` y en el menú). Diseño y razonamiento en `docs/INTERFAZ.md`.
 
+## H54 · Segunda prueba de Ser (2026-10-02) — ADR-091 · [x]
+- [x] G1 Un salto fuera de lo que la retransmisión contiene la **rehace en esa posición**. Era la causa de «se
+      queda en el mismo minuto y tampoco tiene play/pause»: hacia atrás no hay nada que enseñar y la corrección de
+      deriva reposicionaba el vídeo sin parar. Con 3 s de gracia para no rehacerla a cada tirón.
+- [x] G2 Una retransmisión **no se anuncia hasta que su lista existe** (si no, 404 al reenganchar).
+- [x] G3 **`share.player_link`** y fila *Copiar el enlace para VLC o mpv*: el enlace de la sala no puede servir
+      para un reproductor (su token va en el fragmento y el navegador no lo manda nunca). Probado con un mpv real.
+- [x] G4 **Elegir qué tramos se exportan**, uno a uno; *unir* solo cuando hay más de uno elegido; las acciones de
+      cada tramo pasan a los botones de su fila.
+
 ## H53 · El «modo sencillo» no encoge la barra (encontrado el 2026-10-02) — [ ]
 - [ ] F1 `mu-modes` escribe `uosc-controls` al entrar en modo sencillo, pero **uosc solo lee esa opción al
       arrancar** (`Controls:init_options()` solo corre en `init()`, y ningún elemento escucha cambios de opciones).

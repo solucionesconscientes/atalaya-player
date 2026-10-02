@@ -958,3 +958,26 @@
   **(6) Las teclas no roban ninguna de mpv.** `ctrl+x` (el «cortar» de todo el mundo) marca, `ctrl+l` abre la
   lista, `n` anota y `l` pasa de `ab-loop` a repetir el tramo elegido, que es estrictamente más. Se descartó `x`
   porque mpv la trae puesta para el retardo de subtítulos.
+
+- ADR-091 · La sala sigue los saltos, un enlace que sí abre VLC, y elegir qué tramos se exportan (H54).
+  **Completa** ADR-082/C5 y ADR-089, y **amplía** ADR-090. De la segunda prueba de Ser salieron tres cosas.
+  **(1) Un salto hacia atrás dejaba al invitado congelado.** Es la cara mala de C5: la retransmisión empieza
+  **donde está el anfitrión** y solo contiene desde ahí, así que al saltar a un minuto anterior ese minuto **no
+  existe** en lo que el invitado está viendo; la corrección de deriva lo empujaba una y otra vez al segundo 0 de la
+  retransmisión, que se ve exactamente como lo describió Ser: «se queda en el mismo minuto, y tampoco tiene
+  play/pause» —el vídeo no estaba roto, estaba siendo reposicionado veinte veces por segundo—. Ahora, cuando el
+  salto cae fuera de lo que hay (antes del principio, o más allá de lo producido), **la retransmisión se rehace en
+  esa posición**, con tres segundos de gracia para que varios tirones seguidos cuenten como uno. Y de paso: una
+  retransmisión **no se anuncia hasta que su lista existe**, porque al rehacerla el invitado reengancha al instante
+  y se llevaba un 404; en el primer arranque eso lo tapaba el «preparando».
+  **(2) El enlace de la sala no puede abrir VLC, y no tiene arreglo.** Su contraseña va en el **fragmento**
+  (`#k=…`) y un navegador no manda jamás el fragmento al servidor —que es precisamente lo que la mantiene fuera de
+  los registros del servidor—, así que un reproductor que abra ese enlace no tiene con qué identificarse.
+  Comprobado que el enlace que sí damos **lo abre mpv de verdad** (test con un mpv real, no con un cliente HTTP de
+  mentira). Lo que faltaba era que el anfitrión lo tuviera a mano: *Compartir → Copiar el enlace para VLC o mpv*
+  (`share.player_link`), que crea una credencial llamada «Reproductor» y la reutiliza mientras viva la sala en vez
+  de llenarla de invitados de pega.
+  **(3) Los tramos se eligen uno a uno.** Guardar era todo o nada. Ahora cada tramo entra marcado y Enter sobre su
+  fila lo deja fuera; lo que se guarda es lo marcado, y *unir* solo se ofrece cuando hay más de uno elegido, porque
+  unir uno no es unir nada. Las acciones por tramo (ir, repetir, quitar) pasan a los botones de la fila, que es lo
+  que libera el Enter para lo que más se usa.

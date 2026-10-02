@@ -166,3 +166,74 @@ def test_una_nota_sale_en_la_linea_de_tiempo(cut_mpv):
     # y sigue conviviendo con los capítulos de la película
     assert any(t == "Capítulo dos" for _, t in chapters(h))
     assert h.script_errors() == [], h.script_errors()
+
+
+def ev_cut(h, event: dict) -> None:
+    base = {"menu_id": "{root}", "is_pointer": False, "alt": False, "ctrl": False, "shift": False}
+    h.command("script-message-to", "mu_cut", "mu-cut-event", json.dumps({**base, **event}))
+
+
+def titles_cut(v: dict) -> list[str]:
+    return [i["title"] for i in v.get("items") or []]
+
+
+def test_se_eligen_los_tramos_que_se_exportan(cut_mpv):
+    """H54 · «no veo la forma de elegir los que exportas». Cada tramo entra elegido y se deja fuera con Enter
+    sobre su fila; lo que se guarda son solo los elegidos, y con uno solo no se ofrece unir."""
+    h, _d = cut_mpv
+    for a, b in ((3.0, 6.0), (10.0, 13.0), (20.0, 23.0)):
+        mark_at(h, a)
+        mark_at(h, b)
+    v = cut_state(h, lambda v: v["count"] == 3)
+    assert v["chosen"] == 3 and all(s["on"] for s in v["segments"])
+
+    h.command("script-binding", "mu_cut/cut-menu")
+    v = cut_state(h, lambda v: v["view"] == "root" and any(t.startswith("Guardar los 3 elegidos por separado")
+                                                           for t in titles_cut(v)))
+    assert any(t.startswith("Guardar los 3 elegidos unidos") for t in titles_cut(v))
+
+    # dejar fuera el segundo
+    ev_cut(h, {"type": "activate", "index": 1, "value": {"action": "toggle", "index": 2}})
+    v = cut_state(h, lambda v: v["chosen"] == 2
+                  and any(t.startswith("Guardar los 2 elegidos") for t in titles_cut(v)))
+    assert [s["on"] for s in v["segments"]] == [True, False, True]
+    assert abs(v["chosen_total"] - 6.0) < 0.5 and abs(v["total"] - 9.0) < 0.5
+
+    # con uno solo elegido no se ofrece unir: no hay nada que unir
+    ev_cut(h, {"type": "activate", "index": 1, "value": {"action": "toggle", "index": 3}})
+    v = cut_state(h, lambda v: v["chosen"] == 1 and "Guardar el tramo elegido" in titles_cut(v))
+    assert not any("unidos" in t for t in titles_cut(v))
+
+    # «elegirlos todos» los devuelve
+    fila = next(i for i, t in enumerate(titles_cut(v), start=1) if t == "Elegirlos todos")
+    ev_cut(h, {"type": "activate", "index": fila, "value": {"action": "toggle-all"}})
+    v = cut_state(h, lambda v: v["chosen"] == 3 and "Dejar fuera todos" in titles_cut(v))
+
+    # y los botones de la derecha de una fila siguen funcionando (llegan como `action`)
+    ev_cut(h, {"type": "activate", "index": 1, "action": "drop", "value": {"action": "toggle", "index": 2}})
+    v = cut_state(h, lambda v: v["count"] == 2)
+    assert [(s["a"], s["b"]) for s in v["segments"]] == [(3.0, 6.0), (20.0, 23.0)]
+    assert h.script_errors() == [], h.script_errors()
+
+
+def test_solo_se_guardan_los_tramos_elegidos(cut_mpv, media_dir, tmp_path):
+    """Lo que se exporta es lo elegido, no todo: dos de tres tramos unidos dan la suma de esos dos."""
+    _h, d = cut_mpv
+    out = tmp_path / "elegidos"
+    res = d.call("convert.cut", {
+        "path": str(media_dir / "video30.mkv"),
+        "segments": [{"start": 2, "end": 5}, {"start": 20, "end": 24}],   # el de en medio se quedó fuera
+        "preset": "mp4", "joined": True, "options": {"speed": "fast"}, "out_dir": str(out),
+    }, timeout=60)
+    item = res["items"][0]
+    fin = time.monotonic() + 180
+    while time.monotonic() < fin:
+        got = d.call("convert.get", {"id": item["id"]})
+        if got["status"] in ("done", "error", "cancelled"):
+            break
+        time.sleep(0.5)
+    assert got["status"] == "done", got
+    dur = float(json.loads(subprocess.run(
+        ["ffprobe", "-v", "error", "-show_format", "-of", "json", got["output"]],
+        capture_output=True, text=True, check=True).stdout)["format"]["duration"])
+    assert abs(dur - 7.0) < 0.6, f"duración {dur}, esperada 7 (3 + 4)"

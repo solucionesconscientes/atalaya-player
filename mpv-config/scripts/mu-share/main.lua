@@ -431,6 +431,11 @@ views.root = function()
       items[#items + 1] = { title = 'Sin puerta a internet: ' .. st.tunnel_error, icon = 'info', muted = true,
                             selectable = false, hint = 'la sala funciona en tu red' }
     end
+    -- H54 · el enlace de la sala NO puede abrirse en VLC ni en mpv: su token va en el fragmento (#k=) y un
+    -- navegador no manda nunca el fragmento al servidor. Este es el que sí vale, y da calidad original.
+    items[#items + 1] = { title = 'Copiar el enlace para VLC o mpv', icon = 'play_circle',
+                          hint = 'calidad original · el de la sala solo vale en el navegador',
+                          value = { action = 'copy-player' } }
     items[#items + 1] = { title = state.qr_visible and 'Ocultar el código QR' or 'Mostrar el código QR',
                           icon = state.qr_visible and 'qr_code_scanner' or 'qr_code_2', active = state.qr_visible,
                           hint = state.qr_visible and 'también con alt+Q' or 'para quien esté delante',
@@ -910,6 +915,11 @@ local function menu_action(v)
     toggle_qr()        -- alterna: si está puesto, lo quita (antes solo lo mostraba y no había forma de sacarlo)
   elseif v.action == 'copy' then
     copy_text(state.status and state.status.url or '')
+  elseif v.action == 'copy-player' then
+    rpc.call('share.player_link', nil, function(err, res)
+      if err then fail(err, 'enlace para otro reproductor'); return end
+      copy_text(res.url, 'el enlace para VLC o mpv')
+    end, 20)
   elseif v.action == 'copy-fw' then
     local fw = state.status and state.status.firewall
     copy_text(fw and fw.command or '')

@@ -64,11 +64,28 @@ local function total_seconds()
   return t
 end
 
+-- H54 · los elegidos, que son los que se guardan. Al marcar un tramo entra elegido; se quitan uno a uno con Enter
+-- sobre su fila. Antes era todo o nada: no había forma de exportar unos sí y otros no.
+local function chosen()
+  local out = {}
+  for i, s in ipairs(state.segments) do
+    if s.on ~= false then out[#out + 1] = { i = i, a = s.a, b = s.b } end
+  end
+  return out
+end
+
+local function chosen_seconds()
+  local t = 0
+  for _, s in ipairs(chosen()) do t = t + (s.b - s.a) end
+  return t
+end
+
 local function publish()
   local segs = {}
-  for i, s in ipairs(state.segments) do segs[i] = { a = s.a, b = s.b } end
+  for i, s in ipairs(state.segments) do segs[i] = { a = s.a, b = s.b, on = s.on ~= false } end
   mp.set_property_native('user-data/mu/cut', {
-    segments = segs, count = #segs, pending = state.pending or -1, total = total_seconds(),
+    segments = segs, count = #segs, chosen = #chosen(), pending = state.pending or -1, total = total_seconds(),
+    chosen_total = chosen_seconds(),
     preset = P:get('preset'), view = state.view, items = state.items, last_error = state.last_error,
     saving = state.saving,
   })
@@ -145,7 +162,7 @@ local function mark()
     refresh()
     return
   end
-  state.segments[#state.segments + 1] = { a = a, b = b }
+  state.segments[#state.segments + 1] = { a = a, b = b, on = true }
   table.sort(state.segments, function(x, y) return x.a < y.a end)
   osd(string.format('Tramo %d: %s → %s (%s)', #state.segments, clock(a), clock(b), clock(b - a)))
   refresh()
@@ -222,10 +239,11 @@ end
 local function save(joined)
   local path = current_path()
   if not path then osd('Solo se pueden guardar tramos de un archivo de tu equipo'); return end
-  if #state.segments == 0 then osd('No hay ningún tramo elegido'); return end
+  local elegidos = chosen()
+  if #elegidos == 0 then osd('No has elegido ningún tramo'); return end
   if not rpc.connected() then osd('mpvd no está conectado'); return end
   local segs = {}
-  for _, s in ipairs(state.segments) do segs[#segs + 1] = { start = s.a, ['end'] = s.b } end
+  for _, s in ipairs(elegidos) do segs[#segs + 1] = { start = s.a, ['end'] = s.b } end
   state.saving = true
   publish()
   osd(joined and 'Uniendo los tramos…' or 'Guardando los tramos…')
@@ -262,26 +280,43 @@ views.root = function()
                           value = { action = 'mark' } }
   end
   if n > 0 then
-    items[#items + 1] = { title = string.format('Guardar los %d por separado', n), icon = 'content_copy',
-                          hint = string.format('%s · %d archivos', format_label(), n),
-                          value = { action = 'save' }, separator = true }
-    items[#items + 1] = { title = string.format('Guardar los %d unidos en uno', n), icon = 'merge',
-                          hint = string.format('%s · %s', format_label(), clock(total_seconds())),
-                          value = { action = 'save-joined' } }
+    local el = #chosen()
+    if el == 0 then
+      items[#items + 1] = { title = 'No has elegido ningún tramo', icon = 'info', muted = true,
+                            selectable = false, separator = true,
+                            hint = 'marca abajo los que quieras guardar' }
+    else
+      items[#items + 1] = { title = el == 1 and 'Guardar el tramo elegido'
+                              or string.format('Guardar los %d elegidos por separado', el),
+                            icon = 'content_copy',
+                            hint = string.format('%s · %s', format_label(),
+                                                 el == 1 and clock(chosen_seconds()) or (el .. ' archivos')),
+                            value = { action = 'save' }, separator = true }
+      if el > 1 then
+        items[#items + 1] = { title = string.format('Guardar los %d elegidos unidos en uno', el), icon = 'merge',
+                              hint = string.format('%s · %s', format_label(), clock(chosen_seconds())),
+                              value = { action = 'save-joined' } }
+      end
+    end
     items[#items + 1] = { title = 'Formato', icon = 'tune', hint = format_label(), value = { view = 'format' } }
+    -- H54 · una fila por tramo, con casilla: Enter lo elige o lo deja fuera, y los botones de la derecha hacen
+    -- lo demás. Antes la fila era un submenú y no había forma de exportar unos sí y otros no.
     for i, s in ipairs(state.segments) do
+      local on = s.on ~= false
       items[#items + 1] = {
         title = string.format('%d · %s → %s', i, clock(s.a), clock(s.b)),
-        hint = clock(s.b - s.a), icon = 'schedule', id = 'seg' .. i, separator = i == 1,
-        items = {
-          { title = 'Ir ahí', icon = 'play_arrow', value = { action = 'go', index = i } },
-          { title = 'Repetir este', icon = 'repeat', value = { action = 'loop', index = i } },
-          { title = 'Quitarlo', icon = 'delete', value = { action = 'drop', index = i } },
-        },
+        hint = clock(s.b - s.a) .. (on and '' or ' · fuera'),
+        icon = on and 'check_box' or 'check_box_outline_blank', active = on, muted = not on,
+        separator = i == 1, value = { action = 'toggle', index = i },
+        actions = { { name = 'go', icon = 'play_arrow', label = 'Ir ahí' },
+                    { name = 'loop', icon = 'repeat', label = 'Repetir este' },
+                    { name = 'drop', icon = 'delete', label = 'Quitarlo' } },
       }
     end
-    items[#items + 1] = { title = 'Vaciar la lista', icon = 'delete_sweep', value = { action = 'clear' },
-                          separator = true }
+    items[#items + 1] = { title = el == n and 'Dejar fuera todos' or 'Elegirlos todos',
+                          icon = el == n and 'check_box_outline_blank' or 'check_box',
+                          value = { action = 'toggle-all' }, separator = true }
+    items[#items + 1] = { title = 'Vaciar la lista', icon = 'delete_sweep', value = { action = 'clear' } }
   else
     items[#items + 1] = { title = 'Marca un principio y un final y el tramo aparece en la línea de tiempo',
                           icon = 'info', muted = true, selectable = false, separator = true }
@@ -312,6 +347,14 @@ local function act(v)
     save(false)
   elseif v.action == 'save-joined' then
     save(true)
+  elseif v.action == 'toggle' then
+    local seg = state.segments[v.index]
+    if seg then seg.on = (seg.on == false) end
+    reopen()          -- sin publish aquí: reopen ya publica, y hacerlo antes deja ver filas viejas con datos nuevos
+  elseif v.action == 'toggle-all' then
+    local todos = #chosen() == #state.segments
+    for _, seg in ipairs(state.segments) do seg.on = not todos end
+    reopen()
   elseif v.action == 'go' then
     local s = state.segments[v.index]
     if s then mp.commandv('seek', s.a, 'absolute+exact'); uosc.close(MENU) end
@@ -352,6 +395,11 @@ mp.register_script_message(EVENT, function(json)
   end
   if kind == 'close' then state.view = ''; state.stack = {}; publish(); return end
   if ev.type ~= 'activate' or type(ev.value) ~= 'table' then return end
+  -- los botones de la derecha de una fila llegan como `action`; el Enter de la fila, como su `value`
+  if ev.action and ev.value.index then
+    act({ action = ev.action, index = ev.value.index })
+    return
+  end
   if ev.value.view then open_view({ name = ev.value.view }) else act(ev.value) end
 end)
 

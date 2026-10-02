@@ -221,7 +221,10 @@ En *Tramos* (`ctrl+l`, o *Herramientas → Tramos*) está lo que se hace con ell
 - **Guardar los N unidos en uno** → un solo archivo con todos pegados, en una sola pasada; se llama
   `<película> [N tramos].<formato>`.
 - **Formato**: vídeo (MP4, H.265 más pequeño, WebM) o **solo audio** (M4A, MP3, Opus, FLAC). Se recuerda.
-- Cada tramo tiene lo suyo: *Ir ahí*, *Repetir este* y *Quitarlo*.
+- **Eliges cuáles exportas.** Cada tramo entra marcado; pulsando Enter sobre su fila lo dejas fuera (y lo
+  devuelves). Lo que se guarda es lo marcado, así que puedes quedarte con tres de cinco, o unir solo dos de ellos.
+  *Elegirlos todos* / *Dejar fuera todos* hace la selección de golpe.
+- Cada tramo tiene lo suyo en los botones de la derecha de su fila: *Ir ahí*, *Repetir este* y *Quitarlo*.
 
 Todo va a la cola de *Tareas*, como las demás conversiones, así que puedes seguir viendo mientras se hace. Dos
 avisos honestos: al **unir** tramos hay que recodificar (un corte y pegado no puede copiar los flujos tal cual), y
@@ -392,6 +395,14 @@ inmediato.
   (no se nota); si la diferencia es grande, salta. Es la misma cuenta que hace la página, para que quien entra por
   el navegador y quien entra por el reproductor vean lo mismo en el mismo momento.
 - El enlace caduca (24 h como mucho), se puede cambiar por uno nuevo y deja de valer al cerrar la sala.
+- **Para VLC, mpv u otro reproductor, hace falta OTRO enlace**, y esto no es un capricho: el enlace de la sala
+  lleva su contraseña en el fragmento (`#k=…`), y un navegador **nunca** manda el fragmento al servidor —que es
+  justo lo que la mantiene fuera de los registros—, así que un reproductor que abra ese enlace no puede
+  identificarse. El enlace bueno está en dos sitios: en la página del invitado, *Abrir en mi reproductor*, y en tu
+  menú, **Compartir → Copiar el enlace para VLC o mpv**. Ese sí da calidad original.
+- **Si saltas hacia atrás, la retransmisión se rehace donde vayas.** La retransmisión solo contiene *desde* donde
+  arrancó, así que al ir a un minuto anterior no habría nada que enseñar: ahora se vuelve a preparar ahí sola. Se
+  nota un par de segundos de «preparando» y sigue.
 - **El código QR ya no sale solo.** Está en *Compartir → Mostrar el código QR* y en `alt+Q`, para cuando quien va a
   entrar está delante de ti con el móvil. Para todo lo demás, lo que sirve es el enlace, y ese ya lo tienes copiado.
 - **Que se pueda entrar desde internet.** En *Compartir* hay un interruptor con ese nombre, **encendido** por defecto y que

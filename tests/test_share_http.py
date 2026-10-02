@@ -579,3 +579,94 @@ def test_cualquier_cosa_se_puede_abrir_en_el_reproductor_del_invitado(share_env,
     sola = Guest(base, room)
     assert sola.req(sin_credencial)[0] == 401
     ana.close()
+
+
+def test_un_salto_atras_rehace_la_retransmision(share_env, clip):
+    """H54 · el fallo que encontró Ser: con el control dado, al tirar el vídeo hacia atrás «en el dispositivo de la
+    otra persona se queda en el mismo minuto, y tampoco tiene play/pause».
+
+    La causa es C5: la retransmisión arranca DONDE ESTÁ el anfitrión y solo contiene desde ahí. Al saltar a un
+    minuto anterior, ese minuto no existe en lo que el invitado está viendo, y la corrección de deriva lo empujaba
+    una y otra vez al segundo 0 de la retransmisión: un vídeo congelado que no responde. Ahora se rehace allí."""
+    h, d = share_env
+    h.command("loadfile", str(clip))
+    h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=20)
+    h.command("seek", "30", "absolute+exact")
+    h.wait_property("time-pos", lambda v: isinstance(v, (int, float)) and v > 28, timeout=20)
+
+    res = d.call("share.create", {"ttl_hours": 1})
+    base, rest = res["url"].split("/s/", 1)
+    room = rest.split("#")[0]
+    ana = Guest(base, room)
+    ana.req("api/join", {"token": res["token"], "name": "Ana"})
+    ana.listen()
+    media = ana.wait(lambda e, x: e == "media" and x.get("kind") == "file" and x.get("relay_url"), timeout=60)
+    # la retransmisión empieza donde va el anfitrión (C5), no en el segundo 0
+    assert media["relay_offset"] > 25, media["relay_offset"]
+    primera = media["relay_stream"]
+
+    # el invitado con el control tira hacia atrás, a un minuto que la retransmisión NO tiene
+    d.call("share.permission", {"guest": ana.req("api/me")[1]["guest"]["id"], "perm": "control"})
+    status, _, _ = ana.req("api/cmd", {"cmd": "seek", "seconds": 3})
+    assert status == 200
+    h.wait_property("time-pos", lambda v: isinstance(v, (int, float)) and v < 8, timeout=20)
+
+    nueva = ana.wait(lambda e, x: e == "media" and x.get("kind") == "file"
+                     and x.get("relay_stream") not in (None, primera), timeout=90)
+    assert nueva["relay_offset"] < 8, f"la retransmisión sigue empezando en {nueva['relay_offset']}"
+    # y lo que se sirve de verdad es la nueva
+    assert ana.req(nueva["relay_url"])[0] == 200
+    ana.close()
+
+
+def test_el_enlace_para_otro_reproductor_lo_abre_mpv_de_verdad(share_env, clip, tmp_path):
+    """H54 · Ser dice que «el enlace no se puede reproducir en mpv o vlc, solo en el navegador». Aquí se comprueba
+    con un mpv DE VERDAD: el enlace de «Abrir en mi reproductor» tiene que cargar y dar la duración del original."""
+    h, d = share_env
+    h.command("loadfile", str(clip))
+    h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=20)
+    res = d.call("share.create", {"ttl_hours": 1})
+    base, rest = res["url"].split("/s/", 1)
+    room = rest.split("#")[0]
+    ana = Guest(base, room)
+    ana.req("api/join", {"token": res["token"], "name": "Ana"})
+    ana.listen()
+    ana.wait(lambda e, x: e == "media" and x.get("kind") == "file", timeout=60)
+    enlace = ana.req("api/filelink")[1]["url"]
+    assert enlace.startswith("http") and "k=" in enlace
+
+    out = subprocess.run(["mpv", "--no-config", "--vo=null", "--ao=null", "--frames=1",
+                          "--msg-level=all=error", enlace], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, f"mpv no pudo con el enlace: {out.stderr[-400:]}"
+
+    # y el .m3u que se baja de la página lleva ese mismo enlace, que es lo que abre VLC con doble clic
+    m3u = ana.req("file.m3u")[1].decode()
+    assert enlace.split("?")[0] in m3u
+    ana.close()
+
+
+def test_el_anfitrion_tiene_un_enlace_que_abre_vlc_o_mpv(share_env, clip):
+    """H54 · lo que le faltaba a Ser: él copia el enlace de la SALA, y ese no puede abrirse en un reproductor —su
+    token va en el fragmento y el navegador no lo manda nunca—. `share.player_link` da el que sí, y se reutiliza."""
+    h, d = share_env
+    h.command("loadfile", str(clip))
+    h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=20)
+    res = d.call("share.create", {"ttl_hours": 1})
+    base, rest = res["url"].split("/s/", 1)
+    room = rest.split("#")[0]
+    sonda = Guest(base, room)
+    sonda.req("api/join", {"token": res["token"], "name": "Sonda"})
+    sonda.listen()
+    sonda.wait(lambda e, x: e == "media" and x.get("kind") == "file", timeout=60)
+
+    uno = d.call("share.player_link")
+    assert uno["kind"] == "file" and "k=" in uno["url"] and uno["url"].startswith("http")
+    assert d.call("share.player_link")["url"] == uno["url"], "cada vez crea un invitado nuevo"
+
+    out = subprocess.run(["mpv", "--no-config", "--vo=null", "--ao=null", "--frames=1",
+                          "--msg-level=all=error", uno["url"]], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, f"mpv no pudo con el enlace del anfitrión: {out.stderr[-400:]}"
+    # el .m3u también lleva su credencial, que es lo que abre VLC con doble clic
+    status, m3u, _ = sonda.req(uno["m3u"])
+    assert status == 200 and b"#EXTM3U" in m3u
+    sonda.close()
