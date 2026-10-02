@@ -358,6 +358,7 @@ def test_emission_error_never_shows_the_key(clips):
 @pytest.fixture
 def live_env(daemon_env, clips):
     daemon_env.extra_env.update({"MPVD_SHARE_HOST": "127.0.0.1", "MPVD_SHARE_PORT": "0", "MPV_UOS_VAAPI": "0",
+                                 "MPV_UOS_CLOUDFLARED": "0",
                                  "MPV_UOS_YTDLP_AUTO_UPDATE": "0", "MPVD_LIVE_CLIPBOARD_PROP": "user-data/test/clip"})
     h = start_mpv(daemon_env.runtime_dir, [MU_OPTS, "--keep-open=yes", "--pause=yes", str(clips["long"])],
                   env=daemon_env.env)

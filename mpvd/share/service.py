@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
+import hmac
 import logging
 import mimetypes
 import os
@@ -26,6 +28,8 @@ import re
 import socket
 import secrets
 import time
+import urllib.error
+import urllib.request
 from collections import deque
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -33,7 +37,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from mpvd import __version__
-from mpvd.brand import app_name
+from mpvd.brand import app_id, app_name
 from mpvd.share import tunnel as tunnel_mod
 from mpvd.control import pick_session
 from mpvd.convert import hw as hw_mod
@@ -74,6 +78,12 @@ STATIC = {"room.js": "text/javascript; charset=utf-8", "sync.js": "text/javascri
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
        "media-src 'self' blob: https: http:; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; "
        "base-uri 'none'; form-action 'self'")
+# H51 · cuánto se espera a que la dirección del túnel empiece a enrutar de verdad (medido: 60 s de más sobre los
+# 6-8 s que tarda cloudflared en dárnosla). MPVD_SHARE_TUNNEL_PROBE=0 la da por buena sin preguntar (tests).
+TUNNEL_WARM_MAX = float(os.environ.get("MPVD_SHARE_TUNNEL_WARM") or 240.0)
+TUNNEL_PROBE_EVERY = 2.0
+TUNNEL_PROBE_TIMEOUT = 5.0
+
 FILE_CHUNK = 256 * 1024          # H44/C1: bytes read per chunk when serving a file (measured: 2 MB of RSS)
 SEG_RE = re.compile(r"^(index\.m3u8|seg_\d{5}\.ts)$")
 SUB_RE = re.compile(r"^[a-f0-9]{8}\.vtt$")
@@ -136,7 +146,14 @@ class ShareService:
         self.rt: RoomRuntime | None = None
         self.guest: guest_mod.GuestSession | None = None   # H44/C6: la sala en la que ESTE equipo ha entrado
         self.tunnel: Tunnel | None = None       # a Cloudflare quick tunnel while a room asked for the internet
-        self.public_url: str | None = None      # base URL given by the tunnel while a room is open
+        self.public_url: str | None = None      # base URL of the tunnel ONCE IT REALLY ANSWERS
+        # H51 · cloudflared hands over the address long before it routes: measured three times on 2026-10-02, it
+        # printed it at 5,6-7,7 s and the address did not answer until 65-69 s. Announcing it at the first moment
+        # means handing out a dead link for a minute, which is what happened. While it warms up it lives here and
+        # the room keeps using its local address, so nothing ever points at something that does not work yet.
+        self.pending_url: str | None = None
+        self.tunnel_state = "off"               # off | starting | warming | ready | failed
+        self.tunnel_task: asyncio.Task[None] | None = None
         self.tunnel_error = ""                  # why there is no tunnel, for the menu to say it
         self.root = server.settings.cache_dir / "share"
         self.firewall: dict[str, Any] | None = None
@@ -194,20 +211,68 @@ class ShareService:
         room = Room.new(session.id, ttl, min_ttl=self.min_ttl, mode=mode, max_viewers=max_viewers)
         rt = RoomRuntime(room=room, session_id=session.id, dir=self.root / room.id)
         self.rt = rt
-        self.tunnel = self._make_tunnel() if internet else None
         self.tunnel_error = ""
+        self.public_url = None
+        self.pending_url = None
+        self.tunnel = self._make_tunnel() if internet else None
+        self.tunnel_state = "off" if not internet else ("starting" if self.tunnel is not None else "failed")
+        # H51 · la sala se abre YA y el túnel se abre detrás. Antes se esperaba aquí a cloudflared, así que no
+        # aparecía nada —ni enlace ni QR— durante los 6-8 s que tarda en hablar, y lo que aparecía después no
+        # servía hasta un minuto más tarde.
         if self.tunnel is not None:
-            try:
-                self.public_url = await self.tunnel.start(self.http.port)
-            except Exception as exc:  # noqa: BLE001 - the room still works in the LAN
-                log.warning("tunnel %s failed: %s", getattr(self.tunnel, "name", "?"), exc)
-                self.tunnel_error = str(exc)
-                self.public_url = None
-        if self.host in ("0.0.0.0", "") and not self.public_url:
+            self.tunnel_task = asyncio.create_task(self._open_tunnel(rt), name="share-tunnel-open")
+        if self.host in ("0.0.0.0", "") and self.tunnel is None:
             self.firewall = await asyncio.to_thread(firewall_hint, self.http.port, lan_ip(), "compartir")
         rt.task = asyncio.create_task(self._poll(rt), name=f"share-room-{room.id}")
         log.info("%s room %s open on %s (session %s)", mode, room.id, self.base_url(), session.id)
         return await self.link()
+
+    async def _open_tunnel(self, rt: RoomRuntime) -> None:
+        """Open the tunnel and do not call the public address good until it answers (H51)."""
+        tun = self.tunnel
+        if tun is None:
+            return
+        try:
+            url = await tun.start(self.http.port)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - the room still works in the LAN
+            log.warning("tunnel %s failed: %s", getattr(tun, "name", "?"), exc)
+            self.tunnel_error = str(exc)
+            self.tunnel_state = "failed"
+            self._host_push(rt, "link", "No se ha podido abrir la puerta a internet; la sala sigue en tu red")
+            return
+        if self.rt is not rt or rt.room.closed:
+            return
+        self.pending_url = url
+        self.tunnel_state = "warming"
+        self._host_push(rt, "link", "Abriendo la puerta a internet… (suele tardar un minuto)")
+        ok = await self._wait_public(url, rt)
+        if self.rt is not rt or rt.room.closed:
+            return
+        if not ok:
+            self.tunnel_state = "failed"
+            self.tunnel_error = "la dirección de internet no ha llegado a contestar"
+            self._host_push(rt, "link", "La dirección de internet no contesta; la sala sigue en tu red")
+            return
+        self.public_url = url
+        self.pending_url = None
+        self.tunnel_state = "ready"
+        log.info("tunnel ready: %s", url)
+        self._host_push(rt, "link-ready", "", url=self.base_url() + rt.room.link_path())
+
+    async def _wait_public(self, url: str, rt: RoomRuntime) -> bool:
+        if os.environ.get("MPVD_SHARE_TUNNEL_PROBE") == "0":
+            return True
+        probe = f"{url.rstrip('/')}/s/{rt.room.id}"
+        deadline = time.monotonic() + TUNNEL_WARM_MAX
+        while time.monotonic() < deadline:
+            if self.rt is not rt or rt.room.closed:
+                return False
+            if await asyncio.to_thread(url_answers, probe):
+                return True
+            await asyncio.sleep(TUNNEL_PROBE_EVERY)
+        return False
 
     async def link(self) -> dict[str, Any]:
         rt = self._room()
@@ -244,10 +309,19 @@ class ShareService:
                 await st.stop()
             self.rt = None
             await asyncio.sleep(0.3)  # let the event streams deliver «closed»
-            if self.tunnel is not None and self.public_url:
+            # H51 · se para SIEMPRE que haya túnel, no solo cuando ya contestaba: uno a medio abrir también es un
+            # proceso de cloudflared con una puerta hacia fuera, y la promesa es que no vive más que la sala.
+            if self.tunnel_task is not None:
+                self.tunnel_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await self.tunnel_task
+                self.tunnel_task = None
+            if self.tunnel is not None:
                 with contextlib.suppress(Exception):
                     await self.tunnel.stop()
             self.public_url = None
+            self.pending_url = None
+            self.tunnel_state = "off"
             await self.http.stop()
             # a guest asking for a relay right now is inside a handler of that server: only once it is down can no new
             # ffmpeg appear. Whatever started meanwhile is stopped here, and only then does the folder go.
@@ -277,7 +351,8 @@ class ShareService:
             "url": None, "room": None, "guests": [], "pending": [], "media": None, "notices": [],
             "firewall": self.firewall if open_ else None, "tunnel": getattr(self.tunnel, "name", None),
             "public_url": self.public_url, "lan_only": self.public_url is None,
-            "tunnel_error": self.tunnel_error,
+            "tunnel_error": self.tunnel_error, "tunnel_state": self.tunnel_state,
+            "pending_url": self.pending_url,
             # whether «se puede entrar desde internet» can even be offered (cloudflared installed)
             "tunnel_available": tunnel_mod.find_cloudflared(self.server.root) is not None,
             "mode": None, "viewers": 0, "max_viewers": 0, "chat": [],
@@ -659,8 +734,14 @@ class ShareService:
                 # Si además lo lleva el navegador (H.264/AAC en MP4), esa es la vía de la página; si no, se hace el
                 # relay de siempre para el navegador y se ofrecen las dos cosas a la vez.
                 probe = await asyncio.to_thread(hls.probe, hls.Input(str(local)))
-                media = {"kind": "file", "url": f"/s/{rt.room.id}/file", "source": "local", "local": str(local),
-                         "name": local.name, "size": local.stat().st_size,
+                # H51 · un testigo POR PELÍCULA en la URL. Sin él `/s/<sala>/file` es la misma cadena para
+                # todas, y quien la está reproduciendo —el navegador, el modo invitado, VLC— no tiene forma de
+                # saber que el anfitrión ha cambiado de película: se queda con la anterior. Se deriva del secreto
+                # de la sala para no publicar nada de la ruta real.
+                token = hmac.new(rt.room.secret, str(local).encode("utf-8", "replace"), hashlib.sha256) \
+                    .hexdigest()[:12]
+                media = {"kind": "file", "url": f"/s/{rt.room.id}/file?v={token}", "v": token, "source": "local",
+                         "local": str(local), "name": local.name, "size": local.stat().st_size,
                          "duration": hls.duration_of(probe) or None}
                 if not hls.browser_playable(probe, local):
                     at = self._host_pos(rt)
@@ -901,6 +982,34 @@ class ShareService:
             raise HttpError(401, "no estás en la sala: abre el enlace de invitación")
         return guest
 
+    def _file_link(self, rt: RoomRuntime, guest_id: str) -> str:
+        """The original file for ONE guest: their signed credential plus the per-film token, so a real player
+        that is handed this link sees a different URL when the host changes film."""
+        v = rt.media.get("v")
+        return (f"/s/{rt.room.id}/file?k={rt.room.cookie_value(guest_id)}"
+                + (f"&v={v}" if v else ""))
+
+    def _player_url(self, rt: RoomRuntime, guest_id: str, base: str) -> dict[str, Any] | None:
+        """H51 · lo que se le da a un reproductor de verdad (mpv, VLC, otro Atalaya), sea lo que sea que haya puesto
+        el anfitrión. Antes esto solo existía para un archivo suyo, así que con la TV o con un vídeo de internet el
+        invitado se quedaba encerrado en el navegador, que es justo lo que no queremos: en su reproductor lo ve a
+        calidad original y los saltos son instantáneos."""
+        kind = rt.media.get("kind")
+        if kind == "file" and rt.media.get("local"):
+            return {"url": base + self._file_link(rt, guest_id), "kind": "file",
+                    "quality": "El archivo original del anfitrión, tal cual: calidad original y saltos al instante."}
+        if kind == "direct":
+            url = str(rt.media.get("url") or "")
+            return {"url": url, "kind": "direct",
+                    "quality": "El vídeo original de la web, directo: ni pasa por este equipo."} if url else None
+        if kind == "hls":
+            path = str(rt.media.get("url") or "")
+            if not path.startswith("/"):
+                return None
+            return {"url": f"{base}{path}?k={rt.room.cookie_value(guest_id)}", "kind": "hls",
+                    "quality": "La retransmisión del anfitrión (es un directo o un vídeo de internet)."}
+        return None
+
     def _guest_or_key(self, rt: RoomRuntime, req: Request) -> Any:
         """Guest of a GET for media: the cookie or the SAME signed value in the query (``?k=``). A real player —mpv,
         VLC, Atalaya Player as a guest (H44/C6)— does not send our cookie, and the credential is per guest, does not
@@ -953,7 +1062,20 @@ class ShareService:
             self._guests_changed(rt)
             return Response.json({"ok": True, "guest": guest.public(), "room": room.public()},
                                  **{"Set-Cookie": cookie})
-        if rest in ("file", "file.m3u") and req.method in ("GET", "HEAD"):
+        if rest == "file.m3u" and req.method in ("GET", "HEAD"):
+            # un .m3u de una línea: doble clic lo abre en VLC o en mpv en Windows, macOS y Linux. Vale para
+            # cualquier cosa que esté puesta, no solo para un archivo del anfitrión (H51).
+            who = self._guest_or_key(rt, req)
+            base = self.public_url or f"http://{req.headers.get('host', '')}"
+            best = self._player_url(rt, who.id, base)
+            if best is None:
+                raise HttpError(404, "ahora mismo no hay nada que llevarse a otro reproductor")
+            titulo = str(rt.media.get("title") or rt.media.get("name") or "")
+            body = f"#EXTM3U\n#EXTINF:-1,{titulo}\n{best['url']}\n"
+            return Response(200, {"Content-Type": "audio/x-mpegurl; charset=utf-8", "Cache-Control": "no-store",
+                                  "Content-Disposition": 'attachment; filename="sala.m3u"'},
+                            body.encode("utf-8"))
+        if rest == "file" and req.method in ("GET", "HEAD"):
             # H44/C2-C3 · el fichero original, para el reproductor del invitado. mpv o VLC no mandan nuestra cookie,
             # así que el enlace lleva el MISMO valor firmado en la query (`?k=`): es de ese invitado, no sirve para
             # entrar en la sala y caduca con ella. La ruta real del fichero no se publica en ningún sitio.
@@ -961,15 +1083,6 @@ class ShareService:
             local = rt.media.get("local")
             if not local or rt.media.get("kind") != "file":
                 raise HttpError(404, "lo que se está viendo no es un archivo de este equipo")
-            link = f"/s/{room.id}/file?k={room.cookie_value(who.id)}"
-            if rest == "file.m3u":
-                # un .m3u de una línea: doble clic lo abre en VLC o en mpv en Windows, macOS y Linux
-                base = self.public_url or f"http://{req.headers.get('host', '')}"
-                body = ("#EXTM3U\n#EXTINF:-1," + str(rt.media.get("title") or rt.media.get("name") or "")
-                        + "\n" + base + link + "\n")
-                return Response(200, {"Content-Type": "audio/x-mpegurl; charset=utf-8", "Cache-Control": "no-store",
-                                      "Content-Disposition": 'attachment; filename="sala.m3u"'},
-                                body.encode("utf-8"))
             name = str(rt.media.get("name") or "video")
             ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
             return self._file(Path(str(local)), ctype, "private, max-age=3600", req)
@@ -985,16 +1098,29 @@ class ShareService:
             if st is None or not SEG_RE.match(name):
                 raise HttpError(404)
             if name == hls.PLAYLIST:
-                return self._file(st.dir / name, "application/vnd.apple.mpegurl", "no-cache", req)
+                key = req.query.get("k")
+                if not key:
+                    return self._file(st.dir / name, "application/vnd.apple.mpegurl", "no-cache", req)
+                # H51 · con credencial en la query (mpv, VLC) hay que ponérsela también a cada trozo: la lista los
+                # nombra en relativo, el reproductor los pediría a pelo y se llevaría un 401 en el primero.
+                try:
+                    text = (st.dir / name).read_text(encoding="utf-8")
+                except OSError:
+                    raise HttpError(404) from None
+                lines = [ln if (not ln or ln.startswith("#")) else f"{ln}?k={key}" for ln in text.split("\n")]
+                return Response(200, {"Content-Type": "application/vnd.apple.mpegurl; charset=utf-8",
+                                      "Cache-Control": "no-cache"}, "\n".join(lines).encode("utf-8"))
             return self._file(st.dir / name, "video/mp2t", "private, max-age=3600", req)
         guest = self._guest_from(rt, req)
         if rest == "api/filelink":
-            # H44/C3 · el enlace del fichero original para ESTE invitado, con su credencial firmada en la query
-            if rt.media.get("kind") != "file":
-                raise HttpError(404, "lo que se está viendo no es un archivo de este equipo")
+            # H44/C3 + H51 · lo que este invitado puede abrir en SU reproductor, sea un archivo del anfitrión, un
+            # vídeo de internet o una retransmisión. La credencial firmada va en la query porque mpv y VLC no
+            # mandan nuestra cookie.
             base = self.public_url or f"http://{req.headers.get('host', '')}"
-            link = f"/s/{room.id}/file?k={room.cookie_value(guest.id)}"
-            return Response.json({"url": base + link, "m3u": f"{base}/s/{room.id}/file.m3u"})
+            best = self._player_url(rt, guest.id, base)
+            if best is None:
+                raise HttpError(404, "ahora mismo no hay nada que llevarse a otro reproductor")
+            return Response.json({**best, "m3u": f"{base}/s/{room.id}/file.m3u"})
         if rest == "api/me":
             return Response.json({"guest": guest.public(), "room": room.public(), "state": rt.state or None,
                                   "media": self._media_public(rt), "notices": list(rt.notices)[-5:],
@@ -1101,6 +1227,19 @@ class ShareService:
         except MpvIpcError as exc:
             raise HttpError(400, str(exc)) from exc
         return {"ok": True, "cmd": cmd}
+
+
+def url_answers(url: str) -> bool:
+    """Does this address route yet? Any HTTP answer counts, including a 4xx: what is being checked is that the
+    tunnel carries the request, not what it replies."""
+    req = urllib.request.Request(url, method="GET", headers={"User-Agent": f"{app_id()}-probe"})
+    try:
+        with urllib.request.urlopen(req, timeout=TUNNEL_PROBE_TIMEOUT):
+            return True
+    except urllib.error.HTTPError:
+        return True
+    except Exception:  # noqa: BLE001 - DNS todavía sin propagar, 530 de Cloudflare, timeout…
+        return False
 
 
 def register(server: MpvdServer, service: ShareService) -> None:

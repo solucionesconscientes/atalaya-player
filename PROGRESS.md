@@ -179,27 +179,25 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-**El programa está terminado: le toca probarlo a Ser.** Con H44/C6 (ADR-088) ya no queda nada de H42-H46 que sea
-«construir»; lo que falta es su prueba, y el orden que propuso Ser, que es el bueno:
+Ser probó el reproductor el 2026-10-02 y de ahí salieron **H51** (compartir) y **H52** (la barra y la línea de
+tiempo), los dos hechos. Lo que queda, por orden:
 
-1. **Ser prueba** (la receta a mano está arriba). Antes de sentarse necesita, porque sin esto tres de las cosas que
-   va a probar no arrancan: la línea de sudoers de `rtcwake` (está en NEEDS_HUMAN.md), `ufw` abierto para 8790
-   (mando del móvil) y 8791 (salas en su wifi), y la cuenta de OpenSubtitles en *Biblioteca → Ajustes* si quiere
-   probar la descarga de subtítulos.
-2. **Arreglar lo que salga de su prueba.** De las dos anteriores salieron nueve y cinco hitos; habrá más.
-3. **Traducir (H49/G4-G7) — y esto va LO ÚLTIMO de todo**, no por pereza sino porque multiplica por tres cualquier
-   cambio posterior: quedan ~1.600 cadenas (los 20 módulos grandes, los ~520 mensajes de mpvd, las páginas servidas
-   siguiendo el `Accept-Language` del invitado y un repaso del francés), y cada frase que cambie después hay que
-   tocarla en tres idiomas. La maquinaria ya está (G1-G3): `mu/i18n.lua`, `mpvd/i18n.py`, `tools/i18n_extract.py`,
-   `locales/en.json` y `fr.json`, y el menú entero ya traducido.
-4. **La web (H50)**, diseñada en `docs/SITIO-WEB.md` y sin construir. Las **capturas sí las puedo hacer yo**:
-   comprobado el 2026-10-02 lanzando el reproductor con `--geometry=1280x720`, abriendo el menú por IPC y
-   `screenshot window` (el PNG sale con el menú encima del vídeo). Faltan dos decisiones de Ser: qué se ve de fondo
-   en las capturas (con una película real sale su biblioteca en «Continuar viendo») y si el repo se hace público.
-   El vídeo de 40 s no sale de ahí: `screenshot` da fotogramas sueltos, no una grabación de pantalla.
+1. **Que Ser vuelva a probar**, sobre todo lo nuevo: crear una sala (el enlace se copia solo y tarda un minuto en
+   servir, que ahora se dice), cambiar de película con alguien dentro, abrirlo en VLC desde la página, y los tramos
+   (`ctrl+x` dos veces, `ctrl+l` para guardarlos sueltos o unidos) y las notas (`n`).
+2. **Arreglar lo que salga.**
+3. **Traducir (H49/G4-G7) — lo último de todo**, porque multiplica por tres cualquier cambio posterior: quedan
+   ~1.600 cadenas, y las de H51 y H52 se suman a ellas.
+4. **La web (H50)**, diseñada en `docs/SITIO-WEB.md`. Las capturas las puedo hacer yo (comprobado); faltan dos
+   decisiones de Ser: qué se ve de fondo en ellas y si el repo se hace público.
 
-Lo único que queda del propio código, y es menor: **H44/C8**, remux `-c copy` a fMP4/WebM para el navegador cuando
-los códecs lo permitan (9,64 s para 115 min frente a 2,2× tiempo real). Ahorra CPU del anfitrión; no arregla nada.
+Pendientes menores del código: **H44/C8** (remux `-c copy` a fMP4/WebM para el navegador) y **H53**, encontrado de
+paso: el *modo sencillo* dice «barra mínima» pero **no encoge la barra**, porque uosc solo lee `controls` al
+arrancar. Comprobado con capturas; el arreglo y el porqué están en el BACKLOG.
+
+Lo que Ser tiene que hacer una vez, y sin lo cual no puede probar bien: la línea de sudoers de `rtcwake`, `ufw`
+abierto para 8790 (mando) y 8791 (salas, solo si no usa internet), y la cuenta de OpenSubtitles para los
+subtítulos. Los comandos exactos están en NEEDS_HUMAN.md.
 
 Avisos para quien siga, todos aprendidos a golpes en esta iteración:
 - **uosc deriva el id de un submenú de su TÍTULO** (`elements/Menu.lua:192`). Dos filas hermanas con el mismo título
@@ -216,6 +214,31 @@ Avisos para quien siga, todos aprendidos a golpes en esta iteración:
   dar por roto algo, repítelo solo.
 
 ## Registro por iteración
+### Iteración 9 · 2026-10-02 · H51 y H52 · De la prueba de Ser — hecho
+- **H51 · compartir (ADR-089).** De cuatro quejas, **tres eran el mismo fallo**: el minuto de espera no era
+  lentitud sino un **enlace muerto**. Medido tres veces: `cloudflared` imprime la dirección a los 5,6-7,7 s y
+  **no enruta hasta 65-69 s**; la dábamos por buena en el primer momento. Ahora la sala se abre al instante con su
+  dirección local, el túnel va detrás (por eso tampoco salía el QR hasta pasados esos segundos: misma causa) y la
+  dirección pública se sondea hasta que contesta; solo entonces se copia y se avisa. El enlace se copia **solo** al
+  crear la sala y el QR deja de plantarse en pantalla. Internet pasa a estar **encendido por defecto**, y por eso
+  `tools/vendor.sh` instala ya `cloudflared`: un ajuste encendido que no puede cumplirse es peor que no tenerlo.
+- **H51 · «en el invitado no cambia la película»: dos fallos distintos.** La dirección del archivo era
+  `/s/<sala>/file` —la misma cadena para TODAS las películas—, así que nadie podía saber que había otra cosa; y en
+  la página `useRelay` se ponía a `true` y **no volvía nunca**, de modo que tras una película que el navegador no
+  abre, la siguiente que sí abría se quedaba sin dirección y el invitado veía la anterior para siempre.
+- **H51 · «solo desde el navegador, no desde VLC o mpv»**: *Abrir en mi reproductor* solo existía para un archivo
+  del anfitrión. Ahora vale también para la TV y los vídeos de internet, y para eso hubo que reescribir la lista
+  HLS con la credencial **en cada trozo**: los nombra en relativo y un reproductor se habría llevado un 401.
+- **H52 · la barra y la línea de tiempo (ADR-090).** Botones de **tramos** (con el número de insignia), **bucle** y
+  **nota**; lo elegido se pinta en la línea de tiempo y las notas salen como rombos. Los tramos se guardan sueltos
+  o **unidos en uno** (una sola pasada de ffmpeg, `trim`+`concat`), en vídeo o solo audio. La barra se agrupa por
+  significado y «solo audio» sale de ella. Diseño razonado en `docs/INTERFAZ.md`.
+- **Lo que condicionó el diseño, comprobado y no supuesto**: la barra de uosc **no se puede rehacer en caliente**
+  (`Controls:init_options()` solo corre en `init()`), así que un «modo edición» exigiría parchear uosc; y
+  `chapter-list` —lo que uosc dibuja— **ya lo escribía mu-subs**, así que ahora tiene un dueño único, `mu-marks`.
+- **Aviso para quien siga**: no edites el código mientras corre `tools/check.sh`. Lo hice y la pasada se llenó de
+  fallos que no existían; los tests cargan los scripts del disco.
+
 ### Iteración 8 · 2026-10-02 · H44/C6 · Entrar en la sala desde el reproductor — hecho
 - **El modo invitado vive en mpvd** (`mpvd/share/guest.py`, nuevo), no en Lua: entrar, mantener el canal de eventos
   abierto y corregir la deriva son red y reloj, y el hilo de Lua no puede bloquearse ni habla HTTP. El script Lua

@@ -586,6 +586,32 @@ def register(server: MpvdServer, service: ConvertService) -> None:
         («small»: mp4/mkv), audio_bitrate, audio_track, gif_width, gif_fps, hw (auto/cpu/vaapi), speed (normal/fast)."""
         return service.start_conversions(path, preset, options, out_dir, notify, recursive)
 
+    @d.method("convert.cut")
+    async def cut(ctx: RpcContext, path: str, segments: list[dict[str, Any]], preset: str = "mp4",
+                  joined: bool = False, options: dict[str, Any] | None = None,
+                  out_dir: str | None = None, notify: str | None = None) -> dict[str, Any]:
+        """H52 · save the chosen ranges of a file. `segments` are {start, end} in seconds.
+
+        `joined=False` makes one file per segment (each named `<archivo> [inicio-fin].ext`); `joined=True` makes a
+        single file with all of them stuck together, in one pass of ffmpeg."""
+        ranges = []
+        for seg in segments or []:
+            if not isinstance(seg, dict) or seg.get("start") is None or seg.get("end") is None:
+                raise RpcError(INVALID_PARAMS, "cada tramo necesita start y end")
+            ranges.append([float(seg["start"]), float(seg["end"])])
+        if not ranges:
+            raise RpcError(INVALID_PARAMS, "no hay ningún tramo que guardar")
+        ranges.sort()
+        base = dict(options or {})
+        if joined or len(ranges) == 1:
+            return service.start_conversions(path, preset, {**base, "ranges": ranges}, out_dir, notify)
+        items, out = [], ""
+        for a, b in ranges:
+            res = service.start_conversions(path, preset, {**base, "start": a, "end": b}, out_dir, notify)
+            items += res["items"]
+            out = res["out_dir"]
+        return {"count": len(items), "items": items, "out_dir": out, "group": ""}
+
     @d.method("convert.list")
     async def list_(ctx: RpcContext, include_finished: bool = True) -> list[dict[str, Any]]:
         """Conversion queue and history (running first, then queued, then newest finished)."""

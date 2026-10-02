@@ -336,8 +336,22 @@
 
   // -- what to play -----------------------------------------------------------------------------------------
 
+  // H51 · qué película es esta, para distinguir «la misma con más relay listo» de «el anfitrión ha cambiado de
+  // película». Para un archivo es el testigo que manda el servidor (la URL es siempre /s/<sala>/file); para un
+  // vídeo de internet, su dirección, que NO cambia cuando además se pide el relay.
+  function mediaKey(m) { return (m.kind || '') + '|' + (m.v || m.url || ''); }
+  var currentKey = '';
+
   function onMedia(m) {
     media = m;
+    // Película nueva: las decisiones tomadas para la anterior no valen. Antes `useRelay` se ponía a true y no
+    // volvía nunca: si después venía una película que el navegador SÍ abre, se buscaba un relay_url que ya no
+    // existía, la dirección quedaba vacía y el invitado se quedaba con la película anterior para siempre.
+    if (m.kind !== 'preparing' && mediaKey(m) !== currentKey) {
+      currentKey = mediaKey(m);
+      useRelay = (m.kind === 'file') && (m.browser !== 'direct');
+      ended = false;
+    }
     var url = '';
     if (m.kind === 'hls') url = m.url;
     // H44/C4 · un archivo del anfitrión: el original tal cual cuando este navegador puede con él, y si no el relay.
@@ -350,7 +364,6 @@
                                              '»… puede tardar un minuto');
     else if (m.kind === 'none') overlay(m.reason ? 'No se puede compartir esto: ' + m.reason : 'Nada en reproducción');
     if (m.kind === 'hls' && m.status === 'failed') overlay('La retransmisión ha fallado: ' + (m.error || ''));
-    if (m.kind === 'file' && m.browser !== 'direct' && !useRelay) useRelay = true;
     if (url && url !== source) attach(url);
     setSubs(m.subs);
     ownPlayer(m);
@@ -365,26 +378,37 @@
   var fileFor = '';
 
   function ownPlayer(m) {
-    var on = m && m.kind === 'file';
+    // H51 · ya no es solo para un archivo del anfitrión: la TV y los vídeos de internet también se pueden abrir en
+    // tu reproductor (la retransmisión o la dirección original), que es donde se ven a calidad original.
+    var on = m && (m.kind === 'file' || m.kind === 'direct' || m.kind === 'hls');
     show('own', !!on);
     if (!on) { fileLink = ''; fileFor = ''; return; }
-    $('own-name').textContent = m.name || '';
-    if (fileFor !== (m.name || '')) {
+    $('own-name').textContent = m.name || m.title || '';
+    if (fileFor !== mediaKey(m)) {
       // el enlace lleva una credencial de ESTE invitado (mpv y VLC no mandan la cookie de la sala), así que no
       // puede ir en el aviso que se reparte a todos: se pide aquí, una vez por archivo.
-      fileFor = m.name || '';
+      fileFor = mediaKey(m);
       api('api/filelink').then(function (r) {
         fileLink = r.url || '';
         $('own-cmd').textContent = 'mpv "' + fileLink + '"';
         $('own-m3u').href = r.m3u || '#';
-      }).catch(function () { fileFor = ''; });
+      }).catch(function () { fileFor = ''; show('own', false); });
     }
+    $('own-why').textContent = whyOwnPlayer(m);
+  }
+
+  // Por qué merece la pena llevárselo a tu reproductor, que no es lo mismo según lo que esté puesto.
+  function whyOwnPlayer(m) {
+    if (m.kind === 'hls') {
+      return 'Es un directo o un vídeo de internet: te llevas la retransmisión del anfitrión, y tu reproductor '
+        + 'aguanta formatos que este navegador no abre.';
+    }
+    if (m.kind === 'direct') return 'El vídeo original de la web, directo: ni pasa por el equipo del anfitrión.';
     if (m.browser !== 'direct') {
-      $('own-why').textContent = 'Este vídeo no está en un formato que tu navegador abra tal cual, así que aquí lo '
-        + 'ves recomprimido. En tu reproductor lo verás como es.';
-    } else {
-      $('own-why').textContent = 'Calidad original, sin recomprimir nada, y los saltos son instantáneos.';
+      return 'Este vídeo no está en un formato que tu navegador abra tal cual, así que aquí lo ves recomprimido. '
+        + 'En tu reproductor lo verás como es.';
     }
+    return 'Calidad original, sin recomprimir nada, y los saltos son instantáneos.';
   }
 
   function copyText(text, what) {

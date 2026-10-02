@@ -126,7 +126,8 @@ def clip(tmp_path_factory) -> Path:
 @pytest.fixture
 def share_env(daemon_env):
     daemon_env.extra_env.update({"MPVD_SHARE_HOST": "127.0.0.1", "MPVD_SHARE_PUBLIC_HOST": "127.0.0.1",
-                                 "MPVD_SHARE_PORT": "0", "MPV_UOS_VAAPI": "0", "MPV_UOS_YTDLP_AUTO_UPDATE": "0"})
+                                 "MPVD_SHARE_PORT": "0", "MPV_UOS_VAAPI": "0", "MPV_UOS_YTDLP_AUTO_UPDATE": "0",
+                                 "MPV_UOS_CLOUDFLARED": "0"})
     h = start_mpv(daemon_env.runtime_dir, [MU_OPTS, "--keep-open=yes", "--pause=yes"], env=daemon_env.env)
     try:
         h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected" and v.get("uosc"),
@@ -187,7 +188,10 @@ def test_room_join_sync_relay_permissions_and_close(share_env, clip):
     # Matroska con H.264 + AAC, que el navegador no abre, así que además va el relay de siempre
     media = ana.wait(lambda e, x: e == "media" and x.get("kind") == "file" and x.get("relay_complete"), timeout=60)
     assert media["browser"] == "relay" and media["relay_mode"] == "copy"
-    assert media["url"] == f"/s/{room}/file" and media["name"] == "peli.mkv" and media["size"] > 0
+    # H51 · la URL lleva un testigo POR PELÍCULA: sin él era la misma cadena para todas y quien la estaba
+    # reproduciendo no se enteraba de que el anfitrión había cambiado de película
+    assert media["url"] == f"/s/{room}/file?v={media['v']}" and len(media["v"]) == 12
+    assert media["name"] == "peli.mkv" and media["size"] > 0
     # ni la ruta real del fichero ni nada que la delate salen en el aviso que se reparte
     assert "path" not in media and "local" not in media
     status, m3u8, headers = ana.req(media["relay_url"])
@@ -498,3 +502,80 @@ def test_no_relay_is_started_for_a_room_that_is_already_closed(tmp_path):
     with pytest.raises(RuntimeError, match="cerrado"):
         asyncio.run(server.share._start_stream(rt, [hls_mod.Input(str(tmp_path / "x.mkv"))], None))
     assert not (tmp_path / "sala").exists()
+
+
+def test_al_cambiar_de_pelicula_el_invitado_recibe_otra_direccion(share_env, clip, media_dir):
+    """H51 · el fallo que encontró Ser: «si en el reproductor principal cambio de peli, en el invitado no cambia,
+    sigue la misma». La dirección del archivo original era `/s/<sala>/file` para TODAS las películas, así que la
+    cadena no cambiaba y ni el navegador ni VLC ni el modo invitado tenían forma de saber que había otra cosa."""
+    h, d = share_env
+    h.command("loadfile", str(clip))
+    h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=20)
+    res = d.call("share.create", {"ttl_hours": 1})
+    base, rest = res["url"].split("/s/", 1)
+    room = rest.split("#")[0]
+
+    ana = Guest(base, room)
+    ana.req("api/join", {"token": res["token"], "name": "Ana"})
+    ana.listen()
+    primera = ana.wait(lambda e, x: e == "media" and x.get("kind") == "file", timeout=60)
+    assert primera["name"] == "peli.mkv"
+    # el enlace para su reproductor lleva el mismo testigo
+    enlace1 = ana.req("api/filelink")[1]["url"]
+    assert f"v={primera['v']}" in enlace1
+
+    h.command("loadfile", str(media_dir / "video30.mkv"))
+    h.wait_property("path", lambda v: isinstance(v, str) and v.endswith("video30.mkv"), timeout=20)
+    segunda = ana.wait(lambda e, x: e == "media" and x.get("kind") == "file" and x.get("name") == "video30.mkv",
+                       timeout=60)
+    assert segunda["v"] != primera["v"], "la misma dirección para dos películas distintas"
+    assert segunda["url"] != primera["url"]
+    assert f"v={segunda['v']}" in ana.req("api/filelink")[1]["url"]
+
+    # y volver a la primera devuelve su testigo: se deriva de la película, no de un contador
+    h.command("loadfile", str(clip))
+    tercera = ana.wait(lambda e, x: e == "media" and x.get("kind") == "file" and x.get("name") == "peli.mkv",
+                       timeout=60)
+    assert tercera["v"] == primera["v"]
+    ana.close()
+
+
+def test_cualquier_cosa_se_puede_abrir_en_el_reproductor_del_invitado(share_env, clip):
+    """H51 · la otra queja de Ser: «sólo se puede ver desde el navegador, no desde vlc o mpv». El bloque «Abrir en
+    mi reproductor» solo existía para un archivo del anfitrión; con la TV o un vídeo de internet el invitado se
+    quedaba encerrado en el navegador. Y para una retransmisión hace falta además que la credencial llegue a cada
+    trozo: la lista los nombra en relativo y el reproductor los pediría a pelo."""
+    h, d = share_env
+    h.command("loadfile", str(clip))
+    h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=20)
+    res = d.call("share.create", {"ttl_hours": 1})
+    base, rest = res["url"].split("/s/", 1)
+    room = rest.split("#")[0]
+    ana = Guest(base, room)
+    ana.req("api/join", {"token": res["token"], "name": "Ana"})
+    ana.listen()
+    media = ana.wait(lambda e, x: e == "media" and x.get("kind") == "file" and x.get("relay_complete"), timeout=60)
+
+    # 1. un archivo del anfitrión: el original
+    status, link, _ = ana.req("api/filelink")
+    assert status == 200 and link["kind"] == "file" and "original" in link["quality"]
+    assert link["url"].endswith(f"&v={media['v']}") or f"v={media['v']}" in link["url"]
+    status, m3u, headers = ana.req("file.m3u")
+    assert status == 200 and headers["Content-Type"].startswith("audio/x-mpegurl")
+    assert link["url"] in m3u.decode()
+
+    # 2. la retransmisión, que es lo que hay cuando el anfitrión ve la TV o un vídeo de internet: la lista le llega
+    #    al reproductor con la credencial puesta EN CADA TROZO, y esos trozos se sirven de verdad
+    playlist = media["relay_url"] + "?k=" + ana.cookie.split("=", 1)[1]
+    status, body, headers = ana.req(playlist)
+    assert status == 200 and headers["Content-Type"].startswith("application/vnd.apple.mpegurl")
+    texto = body.decode()
+    trozos = [ln for ln in texto.splitlines() if ln and not ln.startswith("#")]
+    assert trozos and all("?k=" in ln for ln in trozos), texto[:300]
+    suelto = media["relay_url"].rsplit("/", 1)[0] + "/" + trozos[0]
+    sin_credencial = media["relay_url"].rsplit("/", 1)[0] + "/" + trozos[0].split("?")[0]
+    assert ana.req(suelto)[0] == 200
+    # y sin ella sigue sin servir a cualquiera: la credencial no es decorado
+    sola = Guest(base, room)
+    assert sola.req(sin_credencial)[0] == 401
+    ana.close()

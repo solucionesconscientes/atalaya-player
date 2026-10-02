@@ -45,9 +45,10 @@ local opts = {
 }
 options.read_options(opts, 'mu-share')
 
--- «Que se pueda entrar desde internet» (H25): apagado por defecto. Es lo único que saca la sala de casa, así que se
--- pregunta una vez y se recuerda; el túnel solo vive mientras la sala está abierta.
-local P = prefs.ns('mu-share', { internet = false })
+-- «Que se pueda entrar desde internet» (H25, cambiado en H51): ENCENDIDO por defecto. Una sala es para ver algo
+-- con alguien que no está aquí; si solo vale dentro de casa, no sirve para lo que se pide. El túnel sigue viviendo
+-- exactamente lo que vive la sala, y se puede apagar desde el menú.
+local P = prefs.ns('mu-share', { internet = true })
 
 local state = {
   status = nil, view = '', stack = {}, items = {}, force_open = false,
@@ -410,10 +411,30 @@ views.root = function()
     end
   else
     local public = st.mode == 'public'
-    items[#items + 1] = { title = state.qr_visible and 'Ocultar el código QR' or 'Mostrar el enlace y el código QR',
+    -- H51 · lo primero es el enlace, que es lo que se manda a quien no está aquí; el QR baja a segundo plano
+    local tunel = st.tunnel_state or 'off'
+    local copiar_hint = 'listo para pegar'
+    if tunel == 'starting' or tunel == 'warming' then
+      copiar_hint = 'todavía no sirve fuera de tu red · se copia solo en cuanto conteste'
+    elseif tunel == 'ready' then
+      copiar_hint = 'se puede entrar desde internet'
+    elseif tunel == 'failed' then
+      copiar_hint = 'solo dentro de tu red'
+    end
+    items[#items + 1] = { title = 'Copiar el enlace', icon = 'content_copy', hint = copiar_hint,
+                          value = { action = 'copy' } }
+    if tunel == 'starting' or tunel == 'warming' then
+      items[#items + 1] = { title = 'Abriendo la puerta a internet…', icon = 'hourglass_top', muted = true,
+                            selectable = false,
+                            hint = tunel == 'starting' and 'arrancando' or 'esperando a que la dirección conteste' }
+    elseif tunel == 'failed' and (st.tunnel_error or '') ~= '' then
+      items[#items + 1] = { title = 'Sin puerta a internet: ' .. st.tunnel_error, icon = 'info', muted = true,
+                            selectable = false, hint = 'la sala funciona en tu red' }
+    end
+    items[#items + 1] = { title = state.qr_visible and 'Ocultar el código QR' or 'Mostrar el código QR',
                           icon = state.qr_visible and 'qr_code_scanner' or 'qr_code_2', active = state.qr_visible,
-                          hint = state.qr_visible and 'también con alt+Q' or nil, value = { action = 'qr' } }
-    items[#items + 1] = { title = 'Copiar el enlace', icon = 'content_copy', value = { action = 'copy' } }
+                          hint = state.qr_visible and 'también con alt+Q' or 'para quien esté delante',
+                          value = { action = 'qr' } }
     if public then
       items[#items + 1] = { title = 'Sala pública (solo ver)', icon = 'public', muted = true, selectable = false,
                             hint = string.format('%d viendo · máximo %d', st.viewers or 0, st.max_viewers or 0) }
@@ -462,7 +483,8 @@ views.root = function()
     items[#items + 1] = { title = 'Enlace nuevo', hint = 'el anterior deja de valer', icon = 'autorenew',
                           value = { action = 'rotate' }, separator = true }
     items[#items + 1] = { title = 'Cerrar la sala', icon = 'close', value = { action = 'close' } }
-    items[#items + 1] = { title = expires_text(st.room) .. ' · solo tu red', icon = 'schedule', muted = true,
+    local donde = (st.tunnel_state == 'ready') and 'desde internet' or 'solo tu red'
+    items[#items + 1] = { title = expires_text(st.room) .. ' · ' .. donde, icon = 'schedule', muted = true,
                           selectable = false }
   end
   if rpc.connected() and not inside then
@@ -675,6 +697,15 @@ local function kick(id)
   end)
 end
 
+-- H42/A4: por mu.clip, y con el respaldo de wl-copy/xclip que antes solo tenía mu-iptv
+local function copy_text(text, what)
+  clip.copy(text, function(ok)
+    state.copied = ok and text or ''
+    publish()
+    osd(clip.notice(ok, text, what))
+  end)
+end
+
 local function create_room(then_menu, mode)
   if not rpc.connected() then osd('Compartir: mpvd no está conectado'); return end
   local params = { ttl_hours = opts.ttl_hours, internet = P:get('internet') == true }
@@ -682,7 +713,18 @@ local function create_room(then_menu, mode)
   rpc.call('share.create', params, function(err, res)
     if err then fail(err, 'no se pudo crear la sala'); return end
     state.last_error = ''
-    show_qr(res)
+    state.status = res.status or state.status
+    publish()
+    -- H51 · ya no sale el QR por su cuenta. Lo normal es compartir con quien NO está delante, así que lo que hace
+    -- falta es el enlace, y en la mano: se copia solo. El QR sigue estando en el menú y en alt+Q.
+    local st = res.status or {}
+    if st.tunnel_state == 'starting' or st.tunnel_state == 'warming' then
+      -- y NO se copia todavía: cloudflared da la dirección mucho antes de que enrute (medido, unos 60 s de más),
+      -- así que copiarla ahora sería darte un enlace muerto. Se copia sola en cuanto conteste.
+      osd('Sala abierta · abriendo la puerta a internet, suele tardar un minuto. Te aviso y te copio el enlace', 6)
+    else
+      copy_text(res.url, 'el enlace de la sala')
+    end
     if then_menu then reopen_current() else uosc.close(MENU) end
   end, 30)
 end
@@ -693,15 +735,6 @@ local function toggle_qr()
   rpc.call('share.link', nil, function(err, res)
     if err then create_room(false); return end
     show_qr(res)
-  end)
-end
-
--- H42/A4: por mu.clip, y con el respaldo de wl-copy/xclip que antes solo tenía mu-iptv
-local function copy_text(text)
-  clip.copy(text, function(ok)
-    state.copied = ok and text or ''
-    publish()
-    osd(clip.notice(ok, text))
   end)
 end
 
@@ -1027,6 +1060,20 @@ mp.register_script_message('mu-event', function(payload)
   if ev.kind == 'chat' then
     chat_push(ev.chat)
     if state.view == 'chat' then reopen_current() end
+    return
+  end
+  if ev.kind == 'link' then
+    if ev.text and ev.text ~= '' then state.last_notice = ev.text; osd(ev.text, 5) end
+    publish()
+    if state.view == 'root' then reopen_current() end
+    return
+  end
+  if ev.kind == 'link-ready' then
+    -- H51 · AHORA sí: la dirección de internet ya contesta de verdad, así que el enlace vale y se copia
+    copy_text(ev.url or (state.status or {}).url or '', 'el enlace de la sala')
+    state.last_notice = 'Enlace copiado: ya se puede entrar desde internet'
+    publish()
+    if state.view == 'root' then reopen_current() end
     return
   end
   if ev.kind == 'notice' and ev.text and ev.text ~= '' then

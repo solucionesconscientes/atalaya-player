@@ -202,6 +202,32 @@ abre **o no suena** (8 s; `mu-iptv-stall_seconds`). Si un canal entrelazado se v
   carpeta. Nunca se sobrescribe un archivo («(2)» si ya existe) y lo que queda a medias al cerrar sigue al volver.
 - Destino por defecto: `~/Vídeos/Atalaya/Convertidos` (se cambia en *Carpeta de salida*).
 
+## 3c. Tramos: quedarte con trozos de lo que estás viendo
+En la barra hay tres iconos nuevos, que son los que se pulsan **con la película andando** (el porqué de cada uno
+está en `docs/INTERFAZ.md`):
+
+| Icono | Qué hace | Tecla |
+|---|---|---|
+| ✂ **Tramos** | 1ª pulsación «desde aquí», 2ª «hasta aquí». El número de tramos elegidos sale en el icono | `ctrl+x` |
+| ⟳ **Bucle** | Repite el tramo elegido; sin nada elegido, es el bucle A-B de siempre | `l` |
+| ✎ **Nota** | Caja de texto; la nota se guarda con el minuto en el que estás | `n` |
+
+**Lo que eliges se ve en la línea de tiempo**: mientras marcas, A y B; una vez cerrado, el tramo queda pintado en
+azul de principio a fin. Las notas salen como rombos con su texto al pasar por encima. Todo eso convive con los
+capítulos de la película, que no se pierden; al cambiar de archivo, las marcas se van.
+
+En *Tramos* (`ctrl+l`, o *Herramientas → Tramos*) está lo que se hace con ellos:
+- **Guardar los N por separado** → un archivo por tramo, llamado `<película> [inicio-fin].<formato>`.
+- **Guardar los N unidos en uno** → un solo archivo con todos pegados, en una sola pasada; se llama
+  `<película> [N tramos].<formato>`.
+- **Formato**: vídeo (MP4, H.265 más pequeño, WebM) o **solo audio** (M4A, MP3, Opus, FLAC). Se recuerda.
+- Cada tramo tiene lo suyo: *Ir ahí*, *Repetir este* y *Quitarlo*.
+
+Todo va a la cola de *Tareas*, como las demás conversiones, así que puedes seguir viendo mientras se hace. Dos
+avisos honestos: al **unir** tramos hay que recodificar (un corte y pegado no puede copiar los flujos tal cual), y
+por eso no se usa la tarjeta gráfica y los subtítulos incrustados se quedan fuera; guardándolos **por separado** sí
+se aprovecha todo lo de siempre.
+
 ## 4. Subtítulos con IA, traducción, duales y guardar SRT
 0. **Vídeos de internet: subtítulos que da la web.** Con un vídeo de YouTube (u otra web con subtítulos) abierto, `alt+i`
    → *Subtítulos de la web* lista los manuales y los automáticos del idioma del vídeo. Enter añade el elegido como pista
@@ -326,13 +352,24 @@ página abierta). Al final de la página, *«Enviar a Atalaya Player» desde el 
 (sirve en cualquier equipo de la red; rellena el enlace y tú confirmas). Más en docs/REMOTE.md.
 
 ## 9b. Compartir: ver juntos
-`alt+W` (o *Herramientas → Compartir: ver juntos*) → *Crear una sala para ver juntos*: sale un enlace y un QR. Quien lo
-abra pone su nombre y ve lo mismo que tú, a la vez, en su navegador (móvil u ordenador). Por defecto el enlace solo vale
-dentro de tu red (wifi de casa); para que entren desde fuera, enciende *Que se pueda entrar desde internet* (abajo).
+`alt+W` (o *Herramientas → Compartir: ver juntos*) → *Crear una sala para ver juntos*. La sala se abre al momento y
+**el enlace se copia solo**: ya lo puedes pegar en un mensaje. Quien lo abra pone su nombre y ve lo mismo que tú, a la
+vez, en su navegador (móvil u ordenador) o en su propio reproductor.
+
+Por defecto la sala se abre **hacia internet**, porque compartir suele ser con alguien que no está en casa. Eso tarda
+un poco: la dirección pública la da Cloudflare en unos segundos pero **no empieza a funcionar hasta un minuto después**
+(medido). Por eso el reproductor **no te copia el enlace hasta que la dirección contesta de verdad**: primero te dice
+«Abriendo la puerta a internet…» y luego «Enlace copiado». Si lo pegaras antes, quien lo abriera se encontraría un
+error durante ese minuto. Para salas dentro de casa, apaga *Que se pueda entrar desde internet* y el enlace es
+inmediato.
 - Los invitados entran en *solo ver*. Si uno pide el control, te sale un sí/no en pantalla; en *Invitados* puedes
   darlo, quitarlo o sacar a alguien. Verás avisos como «Ana ha pausado».
 - Vídeos de internet: el navegador del invitado los abre directamente si puede; si no, Atalaya Player los retransmite (con
   los subtítulos de texto activos).
+- **El invitado puede verlo en SU reproductor, sea lo que sea.** En su página aparece *Abrir en mi reproductor* tanto
+  si compartes un archivo tuyo (se lleva el original) como si ves la TV o un vídeo de internet (se lleva la
+  retransmisión o la dirección original). Antes ese bloque solo salía con un archivo tuyo, así que con la TV el
+  invitado se quedaba encerrado en el navegador.
 - **Archivos de tu equipo: el invitado puede verlos tal cual.** En su página aparece *Abrir en mi reproductor*, con
   tres formas de llevárselo porque cada sistema va mejor con una: **copiar el enlace**, bajar un **`.m3u`** (doble
   clic lo abre en VLC o en mpv en Windows, macOS y Linux) y la línea **`mpv "<enlace>"`** para pegar en un terminal.
@@ -355,7 +392,9 @@ dentro de tu red (wifi de casa); para que entren desde fuera, enciende *Que se p
   (no se nota); si la diferencia es grande, salta. Es la misma cuenta que hace la página, para que quien entra por
   el navegador y quien entra por el reproductor vean lo mismo en el mismo momento.
 - El enlace caduca (24 h como mucho), se puede cambiar por uno nuevo y deja de valer al cerrar la sala.
-- **Que se pueda entrar desde internet.** En *Compartir* hay un interruptor con ese nombre, **apagado** por defecto y que
+- **El código QR ya no sale solo.** Está en *Compartir → Mostrar el código QR* y en `alt+Q`, para cuando quien va a
+  entrar está delante de ti con el móvil. Para todo lo demás, lo que sirve es el enlace, y ese ya lo tienes copiado.
+- **Que se pueda entrar desde internet.** En *Compartir* hay un interruptor con ese nombre, **encendido** por defecto y que
   se recuerda. Encendido, al crear la sala Atalaya Player abre un *túnel rápido de Cloudflare* (sin cuenta ni configuración) y el
   enlace pasa a ser una dirección `https://…trycloudflare.com` que funciona desde cualquier sitio. El túnel vive
   exactamente lo que vive la sala: al cerrarla, la dirección deja de existir, y la próxima sala tendrá otra distinta. Con

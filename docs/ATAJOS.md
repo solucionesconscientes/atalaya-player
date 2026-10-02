@@ -84,7 +84,10 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 | `9` / `0` | Volumen − / + · `m` silenciar |
 | `f` | Pantalla completa · `ESC` salir de pantalla completa |
 | `!` / `@` | Capítulo anterior / siguiente · `<` / `>` elemento anterior / siguiente de la lista |
-| `l` | Bucle A-B · `L` repetir archivo |
+| `l` | Repetir el tramo elegido · sin nada elegido, bucle A-B de siempre · `L` repetir archivo |
+| `ctrl+x` | Tramos: marcar «desde aquí» y, al pulsar otra vez, «hasta aquí» |
+| `ctrl+l` | Lista de tramos: guardarlos sueltos o unidos, en vídeo o solo audio |
+| `n` | Anotar el minuto en el que estás (la nota sale en la línea de tiempo) |
 | `z` / `x` | Retraso de subtítulos −/+ 100 ms · `ctrl+-` / `ctrl++` retraso de audio |
 | `I` | Estadísticas · `` ` `` consola |
 | `Q` | Salir guardando la posición (`quit-watch-later`) |

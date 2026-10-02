@@ -132,7 +132,7 @@ def test_un_segundo_reproductor_entra_en_la_sala_y_sigue_al_anfitrion(share_env,
 
         # H44/C6 · el invitado carga el FICHERO ORIGINAL con su credencial, no el relay del navegador
         path = g.wait_property("path", lambda v: isinstance(v, str) and f"/s/{room}/file" in v, timeout=40)
-        assert "?k=" in path and path.startswith("http://127.0.0.1:")
+        assert "k=" in path and "v=" in path and path.startswith("http://127.0.0.1:")
         g.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=40)
         assert d.call("share.status")["guest_of"]["kind"] == "file"
 
@@ -146,6 +146,14 @@ def test_un_segundo_reproductor_entra_en_la_sala_y_sigue_al_anfitrion(share_env,
         h.command("seek", "25", "absolute+exact")
         g.wait_property("time-pos", lambda v: isinstance(v, (int, float)) and abs(v - 25) < 2.0, timeout=25)
         assert _guest_of(d)["seeks"] >= 1
+
+        # H51 · y si el anfitrión cambia de película, el invitado cambia con él (la dirección del archivo ya no
+        # es la misma cadena para todas)
+        antes = g.get("path")
+        h.command("loadfile", str(ROOT / "tests" / "fixtures" / "media" / "video30.mkv"))
+        h.wait_property("path", lambda v: isinstance(v, str) and v.endswith("video30.mkv"), timeout=20)
+        g.wait_property("path", lambda v: isinstance(v, str) and v != antes and "/s/" in v, timeout=60)
+        assert d.call("share.status")["guest_of"]["title"] != ""
 
         out = d.call("share.leave")
         assert out["joined"] is False and out["left"] == room
@@ -221,8 +229,8 @@ def test_desde_el_menu_se_entra_y_se_sale_de_la_sala(share_env, clip):
         fila = titles(v).index("Entrar en una sala de otro…") + 1
 
         ev(g, {"type": "activate", "index": fila, "value": {"view": "join"}})
-        v = share(g, lambda v: v["view"] == "join")
-        assert "Escribir o pegar el enlace…" in titles(v)
+        # ojo: el estado publica la vista ANTES que sus filas, así que se espera por la fila
+        v = share(g, lambda v: v["view"] == "join" and "Escribir o pegar el enlace…" in titles(v))
 
         fila = titles(v).index("Escribir o pegar el enlace…") + 1
         ev(g, {"type": "activate", "index": fila, "value": {"action": "join-write"}})
@@ -231,7 +239,7 @@ def test_desde_el_menu_se_entra_y_se_sale_de_la_sala(share_env, clip):
         ev(g, {"type": "activate", "index": 1, "value": {"save": url}}, message="mu-share-input-event")
 
         _share(h, lambda v: (v.get("last_notice") or "").endswith("se ha unido"))
-        g.wait_property("path", lambda v: isinstance(v, str) and "/s/" in v and "?k=" in v, timeout=40)
+        g.wait_property("path", lambda v: isinstance(v, str) and "/s/" in v and "k=" in v, timeout=40)
 
         g.command("script-binding", "mu_share/share-menu")
         v = share(g, lambda v: "Salir de la sala" in titles(v))

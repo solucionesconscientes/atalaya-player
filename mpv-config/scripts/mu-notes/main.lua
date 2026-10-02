@@ -176,6 +176,50 @@ views.file = function(args)
 end
 
 -- ---------------------------------------------------------------------------------------------
+-- H52 · las notas, en la línea de tiempo
+--
+-- Una nota lleva su segundo desde siempre, pero solo se veía dentro de un menú. Ahora cada una es una marca que
+-- mu-marks pone en `chapter-list`, que es lo que uosc dibuja: un rombo con su texto al pasar por encima. mu-marks
+-- es el único que escribe esa propiedad (dos scripts escribiéndola se pisan sin enterarse).
+
+local marks_count = 0
+local refresh_marks   -- se define abajo; declarada aquí porque LuaJIT no mira hacia adelante
+
+local function set_note_button()
+  if not uosc.available() then return end
+  uosc.set_button('mu-note', {
+    icon = 'edit_note', badge = marks_count > 0 and tostring(marks_count) or nil,
+    tooltip = marks_count > 0 and string.format('Notas: %d · anotar este minuto (alt+n)', marks_count)
+      or 'Anotar este minuto (alt+n)',
+    command = { 'script-binding', SCRIPT .. '/notes-add' },
+  })
+end
+
+refresh_marks = function()
+  local path = current_path()
+  if path == '' or not rpc.connected() then
+    marks_count = 0
+    mp.commandv('script-message-to', 'mu_marks', 'mu-marks-clear', 'notes')
+    set_note_button()
+    return
+  end
+  rpc.call('notes.get', { path = path }, function(err, f)
+    local marks = {}
+    if not err and type(f) == 'table' then
+      for _, n in ipairs(f.items or {}) do
+        if type(n.time) == 'number' then
+          marks[#marks + 1] = { time = n.time, title = 'nota · ' .. tostring(n.text or '') }
+        end
+      end
+    end
+    marks_count = #marks
+    mp.commandv('script-message-to', 'mu_marks', 'mu-marks-set', 'notes',
+                utils.format_json({ mode = 'add', marks = marks }))
+    set_note_button()
+  end, 15)
+end
+
+-- ---------------------------------------------------------------------------------------------
 -- text box (edit a note / choose the export folder): a uosc palette whose query is the text
 
 local function input_menu(query)
@@ -183,14 +227,19 @@ local function input_menu(query)
   query = query or ''
   inp.query = query
   local items = {}
+  local verbo = (inp.mode == 'edit' and 'Guardar: ') or (inp.mode == 'add' and 'Anotar: ') or 'Exportar a: '
+  local vacio = (inp.mode == 'edit' and 'Escribe el nuevo texto')
+    or (inp.mode == 'add' and 'Escribe la nota: se guarda con el minuto en el que estás')
+    or 'Escribe o pega la carpeta'
   if query ~= '' then
-    table.insert(items, { title = (inp.mode == 'edit' and 'Guardar: ' or 'Exportar a: ') .. query, icon = 'check',
-                          value = { save = query } })
+    table.insert(items, { title = verbo .. query, icon = 'check', value = { save = query } })
   else
-    table.insert(items, { title = inp.mode == 'edit' and 'Escribe el nuevo texto' or 'Escribe o pega la carpeta',
-                          icon = 'edit', selectable = false, muted = true })
+    table.insert(items, { title = vacio, icon = 'edit', selectable = false, muted = true })
   end
-  return { type = INPUT, title = inp.mode == 'edit' and 'Editar la nota' or 'Carpeta de destino', items = items,
+  local titulo = (inp.mode == 'edit' and 'Editar la nota')
+    or (inp.mode == 'add' and ('Nota en ' .. hms(mp.get_property_number('time-pos') or 0)))
+    or 'Carpeta de destino'
+  return { type = INPUT, title = titulo, items = items,
     callback = { SCRIPT, INPUT_EVENT }, search_style = 'palette', search_debounce = 0, on_search = 'callback',
     on_close = 'callback', search_suggestion = query, footnote = 'Enter guarda · ⌫ en vacío vuelve' }
 end
@@ -229,10 +278,21 @@ mp.register_script_message(INPUT_EVENT, function(json)
     close_input(true)
   elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.save then
     local text = ev.value.save
-    if inp.mode == 'edit' then
+    if inp.mode == 'add' then
+      -- H52 · una nota en el segundo en el que estás, que es como se piden: «esto de aquí»
+      rpc.call('notes.add', { text = text, path = current_path(), time_pos = inp.at,
+        title = mp.get_property('media-title') }, function(err)
+        if err then osd('Nota: ' .. fail(err, 'notes.add')) else osd('📝 Nota en ' .. hms(inp.at or 0)) end
+        state.input = nil
+        publish()
+        uosc.close(INPUT)
+        refresh_marks()
+      end, 15)
+    elseif inp.mode == 'edit' then
       rpc.call('notes.edit', { key = state.key, index = inp.index, text = text }, function(err)
         if err then osd('Editar: ' .. fail(err, 'notes.edit')) end
         close_input(true)
+        refresh_marks()
       end, 15)
     else
       local folder = mp.command_native({ 'expand-path', text }) or text
@@ -382,9 +442,22 @@ local function open_here()
   open_view({ name = 'file', args = { path = current_path() } })
 end
 
+-- H52 · anotar el minuto en el que estás, de una tecla o del botón de la barra
+local function add_here()
+  if not uosc.available() then osd('uosc no está cargado') return end
+  if not rpc.connected() then osd('mpvd no está conectado') return end
+  if current_path() == '' then osd('No hay nada en reproducción que anotar') return end
+  open_input('add', '', { at = mp.get_property_number('time-pos') or 0 })
+end
+
+mp.add_key_binding(nil, 'notes-add', add_here)
+mp.register_script_message('mu-notes-refresh', function() refresh_marks() end)
+mp.register_event('file-loaded', function() refresh_marks() end)
+
 N:binding('notes-menu', open_root)
 N:binding('notes-here', open_here)
 mp.register_script_message('mu-notes-open', open_root)
 
 publish()
+set_note_button()   -- que el botón exista desde el principio: uosc muestra un hueco vacío si no
 msg.info('mu-notes loaded')

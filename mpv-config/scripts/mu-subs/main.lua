@@ -1008,7 +1008,6 @@ mp.register_event('file-loaded', function()
     state.adopted = ''
     state.ai_chapters = 0
     state.chapters_status = ''
-    state.orig_chapters = nil
       publish()
     set_button_state()
   end
@@ -1041,7 +1040,6 @@ mp.register_event('end-file', function()
   state.adopted = ''
   state.ai_chapters = 0
   state.chapters_status = ''
-  state.orig_chapters = nil
   publish()
   set_button_state()
 end)
@@ -1100,16 +1098,17 @@ end
 
 local function yesno(b) return b and 'sí' or 'no' end
 
--- topic-change chapters from mpvd (semantic.chapters over the transcript) → chapter-list; originals restored on removal
+-- topic-change chapters from mpvd (semantic.chapters over the transcript) → the timeline, through mu-marks, which
+-- is the only script that writes `chapter-list` (H52): it keeps the film's own chapters and puts them back. This
+-- used to write the property directly, which fought with anything else that wanted to mark the timeline.
 local function apply_chapters(on)
   if not on then
     if state.ai_chapters and state.ai_chapters > 0 then
-      mp.set_property_native('chapter-list', state.orig_chapters or {})
+      mp.commandv('script-message-to', 'mu_marks', 'mu-marks-clear', 'subs')
       osd('Capítulos IA quitados')
     end
     state.ai_chapters = 0
     state.chapters_status = ''
-    state.orig_chapters = nil
     publish()
     return
   end
@@ -1135,10 +1134,10 @@ local function apply_chapters(on)
       publish()
       return
     end
-    if not state.orig_chapters then state.orig_chapters = mp.get_property_native('chapter-list') or {} end
     local list = {}
     for _, c in ipairs(chaps) do table.insert(list, { title = c.title, time = c.start }) end
-    mp.set_property_native('chapter-list', list)
+    mp.commandv('script-message-to', 'mu_marks', 'mu-marks-set', 'subs',
+                utils.format_json({ mode = 'instead', marks = list }))
     state.ai_chapters = #list
     state.chapters_status = 'listo'
     osd(string.format('Capítulos IA: %d capítulos por tema', #list))

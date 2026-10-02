@@ -377,15 +377,17 @@ class GuestSession:
 
     # -- what we play ----------------------------------------------------------------------------------------
     def _source(self, media: dict[str, Any]) -> str:
-        """The guest is a real player: the original file first, the relay only when there is nothing else."""
+        """The guest is a real player: the original file first, the relay only when there is nothing else.
+
+        H51 · the URL comes from the room's own `url` field and is never rebuilt here. `/s/<room>/file` is the same
+        string for every film, so building it here meant the guest could not tell that the host had changed film
+        and stayed on the previous one; the server now puts a per-film token in it."""
         kind = media.get("kind")
-        if kind == "file":
-            return self.link.url(f"/s/{self.link.room}/file", self.cookie)
-        if kind == "direct":
-            return str(media.get("url") or "")
-        if kind == "hls":
-            url = str(media.get("url") or "")
+        url = str(media.get("url") or "")
+        if kind in ("file", "hls"):
             return self.link.url(url, self.cookie) if url.startswith("/") else url
+        if kind == "direct":
+            return url
         return ""
 
     async def _media(self, media: dict[str, Any]) -> None:
@@ -396,6 +398,7 @@ class GuestSession:
             if kind == "preparing":
                 self._push("media", "Preparando lo que está viendo el anfitrión…")
             elif kind == "none":
+                self.state.url = ""
                 self._push("media", "El anfitrión no está viendo nada")
             return
         if url == self.state.url:

@@ -125,6 +125,18 @@ def test_without_cloudflared_the_room_still_works_and_says_why(tmp_path, monkeyp
     assert "falta cloudflared" in share.tunnel_error and "sigue funcionando en tu red" in share.tunnel_error
 
 
+def esperar(d, cond, timeout: float = 30.0) -> dict:  # type: ignore[no-untyped-def]
+    """share.status hasta que cumpla `cond` (el túnel ya no bloquea a share.create)."""
+    fin = time.monotonic() + timeout
+    st = d.call("share.status")
+    while time.monotonic() < fin:
+        if cond(st):
+            return st
+        time.sleep(0.2)
+        st = d.call("share.status")
+    raise AssertionError(f"share.status no llegó a cumplirlo: tunnel_state={st.get('tunnel_state')!r}")
+
+
 # -- a real room, with the fake cloudflared in front of it ----------------------------------------------------------
 
 
@@ -136,6 +148,9 @@ def tunnel_env(daemon_env, tmp_path):
         "MPVD_SHARE_HOST": "127.0.0.1", "MPVD_SHARE_PUBLIC_HOST": "127.0.0.1", "MPVD_SHARE_PORT": "0",
         "MPV_UOS_CLOUDFLARED": str(FAKE), "FAKE_CF_PIDFILE": str(pid_file),
         "FAKE_CF_URL": "https://sala-de-ser.trycloudflare.com", "MPV_UOS_YTDLP_AUTO_UPDATE": "0",
+        # H51 · la dirección de pega no existe en internet, así que aquí no se comprueba que conteste; que se
+        # espera a que conteste de verdad se prueba aparte (test_la_direccion_no_se_da_por_buena_hasta_que_contesta)
+        "MPVD_SHARE_TUNNEL_PROBE": "0",
     })
     from tests.conftest import start_mpv
 
@@ -155,12 +170,18 @@ def test_the_room_link_goes_through_the_tunnel_and_it_dies_with_the_room(tunnel_
     h.command("loadfile", str(media_dir / "video30.mkv"))
     h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 0, timeout=20)
 
+    # H51 · la sala se abre YA, con su dirección local, y el túnel se abre detrás: antes se esperaba aquí a
+    # cloudflared y no aparecía nada durante los 6-8 s que tarda en hablar.
     res = d.call("share.create", {"internet": True})
-    assert res["url"].startswith("https://sala-de-ser.trycloudflare.com/s/")
-    st = d.call("share.status")
+    assert res["url"].startswith("http://127.0.0.1:")
+    assert res["status"]["tunnel_state"] in ("starting", "warming", "ready")
+
+    st = esperar(d, lambda s: s["tunnel_state"] == "ready")
     assert st["public_url"] == "https://sala-de-ser.trycloudflare.com" and st["lan_only"] is False
     assert st["tunnel"] == "cloudflared" and st["tunnel_error"] == ""
     assert st["firewall"] is None            # nothing to open in the router: the tunnel goes outwards
+    # y a partir de ahí el enlace que se reparte YA es el público
+    assert d.call("share.link")["url"].startswith("https://sala-de-ser.trycloudflare.com/s/")
     pid = int(pid_file.read_text(encoding="utf-8"))
     assert alive(pid)
 
@@ -168,6 +189,7 @@ def test_the_room_link_goes_through_the_tunnel_and_it_dies_with_the_room(tunnel_
     assert wait_gone(pid), "el túnel sigue abierto tras cerrar la sala"
     st = d.call("share.status")
     assert st["open"] is False and st["public_url"] is None and st["lan_only"] is True
+    assert st["tunnel_state"] == "off"
 
 
 def test_a_room_without_internet_never_opens_a_tunnel(tunnel_env, media_dir):
@@ -248,3 +270,75 @@ def test_a_real_quick_tunnel_serves_what_is_behind_it(tmp_path):
     finally:
         httpd.shutdown()
     assert pid and wait_gone(pid), "cloudflared sigue vivo tras cerrar el túnel"
+
+
+# -- H51 · la dirección no se da por buena hasta que contesta ---------------------------------------------------
+
+
+def test_url_answers_distingue_enrutar_de_no_enrutar():
+    """Cualquier respuesta HTTP vale, incluso un 404: lo que se comprueba es que el túnel LLEVA la petición, no
+    lo que conteste. Una dirección que no enruta no contesta nada."""
+    import http.server
+    import threading
+
+    from mpvd.share.service import url_answers
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b"no")
+
+        def log_message(self, *a):  # noqa: ANN002
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    port = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        assert url_answers(f"http://127.0.0.1:{port}/s/loquesea") is True
+    finally:
+        srv.shutdown()
+    assert url_answers(f"http://127.0.0.1:{port}/s/loquesea") is False   # ya no hay nadie detrás
+    assert url_answers("http://no-existe-esta-maquina.invalid/x") is False
+
+
+def test_la_direccion_no_se_da_por_buena_hasta_que_contesta(daemon_env, tmp_path, media_dir):
+    """El fallo que encontró Ser: «al compartir el enlace, tarda un min aprox en cargar». cloudflared entrega la
+    dirección a los 6-8 s pero no enruta hasta ~65 s (medido tres veces el 2026-10-02), y nosotros la dábamos por
+    buena en el primer momento: el enlace que se copiaba estaba MUERTO durante un minuto. Aquí la dirección de
+    pega no contesta nunca, así que la sala tiene que quedarse en «abriendo» y acabar diciendo que no, sin llegar
+    a presentarla nunca como pública."""
+    pid_file = tmp_path / "cf.pid"
+    daemon_env.extra_env.update({
+        "MPVD_SHARE_HOST": "127.0.0.1", "MPVD_SHARE_PUBLIC_HOST": "127.0.0.1", "MPVD_SHARE_PORT": "0",
+        "MPV_UOS_CLOUDFLARED": str(FAKE), "FAKE_CF_PIDFILE": str(pid_file),
+        "FAKE_CF_URL": "https://esta-no-contesta-nunca.trycloudflare.com",
+        "MPV_UOS_YTDLP_AUTO_UPDATE": "0", "MPVD_SHARE_TUNNEL_WARM": "6",   # 6 s en vez de 240
+    })
+    from tests.conftest import start_mpv
+
+    h = start_mpv(daemon_env.runtime_dir,
+                  ["--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5",
+                   "--keep-open=yes", "--pause=yes"], env=daemon_env.env)
+    try:
+        h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
+        h.command("loadfile", str(media_dir / "video30.mkv"))
+        h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 0, timeout=20)
+
+        res = daemon_env.call("share.create", {"internet": True})
+        assert res["url"].startswith("http://127.0.0.1:")      # la sala se abre ya, con lo que sí funciona
+        st = esperar(daemon_env, lambda s: s["tunnel_state"] == "warming", timeout=20)
+        assert st["pending_url"] == "https://esta-no-contesta-nunca.trycloudflare.com"
+        assert st["public_url"] is None and st["lan_only"] is True
+        # mientras no conteste, el enlace que se reparte NO es el que no sirve
+        assert daemon_env.call("share.link")["url"].startswith("http://127.0.0.1:")
+
+        st = esperar(daemon_env, lambda s: s["tunnel_state"] == "failed", timeout=40)
+        assert st["public_url"] is None and "no ha llegado a contestar" in st["tunnel_error"]
+        assert daemon_env.call("share.link")["url"].startswith("http://127.0.0.1:")
+
+        daemon_env.call("share.close")
+        assert wait_gone(int(pid_file.read_text(encoding="utf-8"))), "el túnel a medias sigue abierto"
+    finally:
+        h.stop()

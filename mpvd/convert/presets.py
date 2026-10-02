@@ -46,6 +46,7 @@ AUDIO_BITRATE_CHOICES = (64, 96, 128, 160, 192, 256, 320)
 GIF_WIDTHS = (320, 480, 640)
 GIF_FPS = (10, 12, 15)
 GIF_MAX_SECONDS = 60.0
+MAX_RANGES = 50                               # H52 · tramos que se pueden unir de una vez
 
 # video quality → CRF (x264/x265/VP9) or constant QP (VA-API): «normal» is each encoder's usual default
 CRF = {"h264": {"high": 20, "normal": 23, "small": 28},
@@ -95,6 +96,9 @@ class ConvertSpec:
     gif_fps: int = 12
     hw: str = "auto"                # auto (VA-API when available) | cpu | vaapi
     speed: str = "normal"           # normal | fast (fastest encoder settings, used by the tests)
+    # H52 · «juntar los tramos que quieras» en UN archivo: [[inicio, fin], …] en segundos. Con uno solo es lo
+    # mismo que start/end; con varios se corta y se pega en una sola pasada de ffmpeg (trim + concat).
+    ranges: list[list[float]] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ConvertSpec:
@@ -108,6 +112,11 @@ class ConvertSpec:
         for k in ("start", "end"):
             if known.get(k) is not None:
                 known[k] = float(known[k])
+        if known.get("ranges"):
+            known["ranges"] = [[float(r[0]), float(r[1])] for r in known["ranges"] if len(r) >= 2]
+            # un solo tramo es exactamente start/end, y por ahí va mucho más rápido (-ss/-t en vez de un filtro)
+            if len(known["ranges"]) == 1 and known.get("start") is None and known.get("end") is None:
+                known["start"], known["end"] = known["ranges"][0]
         if "subtitles" in known:
             known["subtitles"] = bool(known["subtitles"])
         spec = cls(**known)
@@ -142,6 +151,18 @@ class ConvertSpec:
             raise ConvertError("start must be >= 0")
         if self.start is not None and self.end is not None and self.end <= self.start:
             raise ConvertError("el final del tramo debe ser mayor que el inicio")
+        if self.ranges:
+            if self.preset == "gif" and len(self.ranges) > 1:
+                raise ConvertError("un GIF se hace de un solo tramo")
+            if len(self.ranges) > MAX_RANGES:
+                raise ConvertError(f"como mucho {MAX_RANGES} tramos de una vez")
+            last = -1.0
+            for a, b in self.ranges:
+                if a < 0 or b <= a:
+                    raise ConvertError("cada tramo tiene que acabar después de empezar")
+                if a < last:
+                    raise ConvertError("los tramos tienen que ir en orden y sin solaparse")
+                last = b
 
     @property
     def meta(self) -> dict[str, Any]:
@@ -332,10 +353,115 @@ def _audio_kbps(spec: ConvertSpec, key: str) -> int:
     return AUDIO_KBPS[key][spec.quality]
 
 
+def _audio_track(spec: ConvertSpec, info: SourceInfo) -> int:
+    track = spec.audio_track or 0
+    return track if track < len(info.audio) else 0
+
+
+def audio_only_args(spec: ConvertSpec) -> list[str]:
+    """Encoder of an audio-only preset."""
+    return {
+        "mp3": ["-c:a", "libmp3lame", "-b:a", f"{_audio_kbps(spec, 'mp3')}k", "-id3v2_version", "3"],
+        "m4a": ["-c:a", "aac", "-b:a", f"{_audio_kbps(spec, 'm4a')}k", "-movflags", "+faststart"],
+        "opus": ["-c:a", "libopus", "-b:a", f"{_audio_kbps(spec, 'opus')}k"],
+        "flac": ["-c:a", "flac"],
+        "wav": ["-c:a", "pcm_s16le"],
+    }[spec.preset]
+
+
+def cpu_video_args(spec: ConvertSpec, vcodec: str) -> list[str]:
+    """Video encoder on the CPU (no scaling: the caller puts the filter where it belongs)."""
+    if vcodec == "h264":
+        args = ["-c:v", "libx264", "-preset", X264_PRESET[spec.speed], "-crf", str(CRF["h264"][spec.quality])]
+    elif vcodec == "hevc":
+        args = ["-c:v", "libx265", "-preset", X265_PRESET[spec.speed], "-crf", str(CRF["hevc"][spec.quality]),
+                "-x265-params", "log-level=error"]
+    else:  # vp9: constant quality (-b:v 0), row multithreading
+        args = ["-c:v", "libvpx-vp9", "-crf", str(CRF["vp9"][spec.quality]), "-b:v", "0", "-row-mt", "1",
+                *VP9_SPEED[spec.speed]]
+    return [*args, "-pix_fmt", "yuv420p"]
+
+
+def video_audio_args(spec: ConvertSpec, ext: str) -> list[str]:
+    """Audio encoder of a video preset, by container."""
+    if ext == ".mp4":
+        return ["-c:a", "aac", "-b:a", f"{_audio_kbps(spec, 'aac')}k"]
+    return ["-c:a", "libopus", "-b:a", f"{_audio_kbps(spec, 'libopus')}k"]
+
+
+def join_plan(spec: ConvertSpec, src: Path, out: Path, info: SourceInfo, ffmpeg: str = "ffmpeg") -> Plan:
+    """H52 · «juntar los que quieras»: varios tramos del mismo archivo en UNO, en una sola pasada de ffmpeg.
+
+    `trim`/`atrim` cortan cada tramo y `concat` los pega. Se recodifica a la fuerza —un filtro no puede ir con
+    `-c copy`— y por eso va siempre por CPU: montar VA-API dentro de un filter_complex por tramo es pedir
+    problemas al controlador para ganar en un caso raro. Los subtítulos se quedan fuera: no hay forma de pegarlos
+    con el filtro, y colarlos a medias sería peor que decirlo."""
+    ranges = [(float(a), float(b)) for a, b in spec.ranges]
+    if info.duration > 0:
+        ranges = [(a, min(b, info.duration)) for a, b in ranges if a < info.duration]
+    if not ranges:
+        raise ConvertError("ningún tramo cae dentro del archivo")
+    span = sum(b - a for a, b in ranges)
+    warnings: list[str] = []
+    kind = spec.kind
+    if kind == "video" and info.video_index is None:
+        raise ConvertError("el archivo no tiene vídeo")
+    if kind == "audio" and not info.audio:
+        raise ConvertError("el archivo no tiene audio")
+
+    chains: list[str] = []
+    labels: list[str] = []
+    want_video = kind == "video"
+    aidx = info.audio[_audio_track(spec, info)] if info.audio else None
+    if want_video and aidx is None:
+        warnings.append("el archivo no tiene audio: los tramos se unen sin sonido")
+    for i, (a, b) in enumerate(ranges):
+        if want_video:
+            chains.append(f"[0:{info.video_index}]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS[v{i}]")
+            labels.append(f"[v{i}]")
+        if aidx is not None:
+            chains.append(f"[0:{aidx}]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS[a{i}]")
+            labels.append(f"[a{i}]")
+    n = len(ranges)
+    has_audio = aidx is not None
+    outs = ("[v]" if want_video else "") + ("[a]" if has_audio else "")
+    chains.append(f"{''.join(labels)}concat=n={n}:v={1 if want_video else 0}:a={1 if has_audio else 0}{outs}")
+
+    vlabel = "[v]"
+    if want_video:
+        scale = scale_filter(spec.height)
+        if scale:
+            chains.append(f"[v]{scale}[vout]")
+            vlabel = "[vout]"
+    maps: list[str] = []
+    if want_video:
+        maps += ["-map", vlabel]
+    if has_audio:
+        maps += ["-map", "[a]"]
+
+    if want_video:
+        vcodec = spec.vcodec or "h264"
+        codec = cpu_video_args(spec, vcodec)
+        if vcodec == "hevc" and spec.ext == ".mp4":
+            codec += ["-tag:v", "hvc1"]
+        codec += video_audio_args(spec, spec.ext) if has_audio else ["-an"]
+        tail = ["-movflags", "+faststart"] if spec.ext == ".mp4" else []
+        if spec.subtitles and info.subs:
+            warnings.append("al unir tramos no se pueden llevar los subtítulos incrustados")
+    else:
+        codec = ["-vn", *audio_only_args(spec)]
+        tail = []
+
+    cmd = [*base_args(ffmpeg), "-i", str(src), "-filter_complex", ";".join(chains), *maps, *codec, *tail, str(out)]
+    return Plan([cmd], [1.0], span, warnings, "cpu")
+
+
 def build_plan(spec: ConvertSpec, src: Path, out: Path, info: SourceInfo, hw: HwPlan | None = None,
                ffmpeg: str = "ffmpeg", palette: Path | None = None) -> Plan:
     """Exact ffmpeg command(s) converting ``src`` into ``out`` (never overwrites: ``-n``)."""
     spec.validate()
+    if len(spec.ranges) > 1:
+        return join_plan(spec, src, out, info, ffmpeg)
     start, length = effective_range(spec, info.duration)
     span = length if length is not None else max(0.0, info.duration - start)
     kind = spec.kind
@@ -359,18 +485,8 @@ def build_plan(spec: ConvertSpec, src: Path, out: Path, info: SourceInfo, hw: Hw
         return Plan([pass1, pass2], [0.4, 0.6], span)
 
     if kind == "audio":
-        track = spec.audio_track or 0
-        if track >= len(info.audio):
-            track = 0
-        amap = ["-map", f"0:{info.audio[track]}"]
-        codec = {
-            "mp3": ["-c:a", "libmp3lame", "-b:a", f"{_audio_kbps(spec, 'mp3')}k", "-id3v2_version", "3"],
-            "m4a": ["-c:a", "aac", "-b:a", f"{_audio_kbps(spec, 'm4a')}k", "-movflags", "+faststart"],
-            "opus": ["-c:a", "libopus", "-b:a", f"{_audio_kbps(spec, 'opus')}k"],
-            "flac": ["-c:a", "flac"],
-            "wav": ["-c:a", "pcm_s16le"],
-        }[spec.preset]
-        return Plan([[*base_args(ffmpeg), *inp, *amap, "-vn", *codec, str(out)]], [1.0], span)
+        amap = ["-map", f"0:{info.audio[_audio_track(spec, info)]}"]
+        return Plan([[*base_args(ffmpeg), *inp, *amap, "-vn", *audio_only_args(spec), str(out)]], [1.0], span)
 
     # video
     ext = spec.ext
@@ -393,22 +509,10 @@ def build_plan(spec: ConvertSpec, src: Path, out: Path, info: SourceInfo, hw: Hw
             video += ["-low_power", "1"]
         video += ["-rc_mode", "CQP", "-qp", str(VAAPI_QP[vcodec][spec.quality])]
     else:
-        video = ["-vf", scale] if scale else []
-        if vcodec == "h264":
-            video += ["-c:v", "libx264", "-preset", X264_PRESET[spec.speed], "-crf", str(CRF["h264"][spec.quality])]
-        elif vcodec == "hevc":
-            video += ["-c:v", "libx265", "-preset", X265_PRESET[spec.speed], "-crf", str(CRF["hevc"][spec.quality]),
-                      "-x265-params", "log-level=error"]
-        else:  # vp9: constant quality (-b:v 0), row multithreading
-            video += ["-c:v", "libvpx-vp9", "-crf", str(CRF["vp9"][spec.quality]), "-b:v", "0", "-row-mt", "1",
-                      *VP9_SPEED[spec.speed]]
-        video += ["-pix_fmt", "yuv420p"]
+        video = (["-vf", scale] if scale else []) + cpu_video_args(spec, vcodec)
     if vcodec == "hevc" and ext == ".mp4":
         video += ["-tag:v", "hvc1"]    # QuickTime/iOS only play HEVC in mp4 tagged hvc1 (ffmpeg's default is hev1)
-    if ext == ".mp4":
-        audio = ["-c:a", "aac", "-b:a", f"{_audio_kbps(spec, 'aac')}k"]
-    else:
-        audio = ["-c:a", "libopus", "-b:a", f"{_audio_kbps(spec, 'libopus')}k"]
+    audio = video_audio_args(spec, ext)
     tail = ["-movflags", "+faststart"] if ext == ".mp4" else []
     if length is not None and sub_codecs:
         # the input -t does not stop subtitle packets (a cue after the range reached the mp4/webm, verified with
@@ -424,7 +528,9 @@ def build_plan(spec: ConvertSpec, src: Path, out: Path, info: SourceInfo, hw: Hw
 def output_path(src: Path, folder: Path, spec: ConvertSpec, reserved: set[str] | None = None) -> Path:
     """``<folder>/<stem>[ [A-B]].<ext>``; `` (2)``, `` (3)``… when the name (or its .part) is taken or reserved."""
     stem = src.stem
-    if spec.start is not None or spec.end is not None:
+    if len(spec.ranges) > 1:
+        stem += f" [{len(spec.ranges)} tramos]"
+    elif spec.start is not None or spec.end is not None:
         a = spec.start or 0.0
         stem += f" [{hms_name(a)}-{hms_name(spec.end) if spec.end is not None else 'fin'}]"
     stem = _RANGE_NAME.sub(" ", stem).strip() or "convertido"

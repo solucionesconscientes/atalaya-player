@@ -18,7 +18,7 @@ from tests.test_share_http import MU_OPTS, Guest
 def mu_share(daemon_env, media_dir):
     daemon_env.extra_env.update({"MPVD_SHARE_HOST": "127.0.0.1", "MPVD_SHARE_PUBLIC_HOST": "127.0.0.1",
                                  "MPVD_SHARE_PORT": "0", "MPVD_SHARE_MIN_TTL": "1", "MPV_UOS_VAAPI": "0",
-                                 "MPV_UOS_YTDLP_AUTO_UPDATE": "0"})
+                                 "MPV_UOS_YTDLP_AUTO_UPDATE": "0", "MPV_UOS_CLOUDFLARED": "0"})
     h = start_mpv(daemon_env.runtime_dir, [MU_OPTS, "--keep-open=yes", "--pause=yes", str(media_dir / "video30.mkv")],
                   env=daemon_env.env)
     try:
@@ -51,15 +51,16 @@ def test_menu_create_guests_permissions_close(mu_share):
     assert v["open"] is False and v["view"] == "root"
 
     ev(h, {"type": "activate", "index": 1, "value": {"action": "create"}})
-    v = share(h, lambda v: v["open"] and v["qr_visible"])
-    assert v["url"].startswith("http://127.0.0.1:") and "#k=" in v["url"] and v["qr_size"] >= 21
+    # H51 · al crear la sala ya NO sale el QR por su cuenta: lo que hace falta es el enlace, y se copia solo
+    v = share(h, lambda v: v["open"] and v["url"] != "")
+    assert v["url"].startswith("http://127.0.0.1:") and "#k=" in v["url"]
+    assert v["qr_visible"] is False      # el QR ya no se planta en la pantalla sin pedirlo
     assert v["lan_only"] is True
     h.wait_property("user-data/uosc/menu/type", lambda t: not t, timeout=10)
-    # the QR binding hides and shows it again (same room)
-    h.command("script-binding", "mu_share/share-qr")
-    share(h, lambda v: v["qr_visible"] is False)
+    # el QR sigue estando, pero hay que pedirlo: alt+Q lo pone y lo quita
     h.command("script-binding", "mu_share/share-qr")
     v = share(h, lambda v: v["qr_visible"] is True)
+    assert v["qr_size"] >= 21
     url = v["url"]
 
     h.command("script-binding", "mu_share/share-menu")
@@ -71,7 +72,7 @@ def test_menu_create_guests_permissions_close(mu_share):
     ev(h, {"type": "activate", "index": fila, "value": {"action": "qr"}})
     share(h, lambda v: v["qr_visible"] is False)
     h.command("script-binding", "mu_share/share-menu")
-    v = share(h, lambda v: "Mostrar el enlace y el código QR" in titles(v))
+    v = share(h, lambda v: "Mostrar el código QR" in titles(v))
 
     # a guest joins from «the browser»: notice on the OSD, the guests list
     base, rest = url.split("/s/", 1)
@@ -133,7 +134,8 @@ def test_room_expires_by_itself(mu_share):
 @pytest.fixture
 def mu_share_chat(daemon_env, media_dir):
     daemon_env.extra_env.update({"MPVD_SHARE_HOST": "127.0.0.1", "MPVD_SHARE_PUBLIC_HOST": "127.0.0.1",
-                                 "MPVD_SHARE_PORT": "0", "MPV_UOS_VAAPI": "0", "MPV_UOS_YTDLP_AUTO_UPDATE": "0"})
+                                 "MPVD_SHARE_PORT": "0", "MPV_UOS_VAAPI": "0", "MPV_UOS_YTDLP_AUTO_UPDATE": "0",
+                                 "MPV_UOS_CLOUDFLARED": "0"})
     h = start_mpv(daemon_env.runtime_dir, [MU_OPTS, "--script-opts-append=mu-share-chat_seconds=2",
                                            "--script-opts-append=mu-share-max_viewers=7",
                                            "--keep-open=yes", "--pause=yes", str(media_dir / "video30.mkv")],
@@ -155,7 +157,8 @@ def test_menu_public_room_and_chat(mu_share_chat):
     hint = next(i["hint"] for i in v["items"] if i["title"] == "Crear una sala pública (solo ver)")
     assert "hasta 7" in hint
     ev(h, {"type": "activate", "index": 2, "value": {"action": "create", "mode": "public"}})
-    v = share(h, lambda v: v["open"] and v["mode"] == "public" and v["qr_visible"])
+    v = share(h, lambda v: v["open"] and v["mode"] == "public" and v["url"] != "")
+    assert v["qr_visible"] is False
     assert v["url"].endswith("&v=1") and d.call("share.status")["max_viewers"] == 7
     h.command("script-binding", "mu_share/share-menu")
     v = share(h, lambda v: "Sala pública (solo ver)" in titles(v))

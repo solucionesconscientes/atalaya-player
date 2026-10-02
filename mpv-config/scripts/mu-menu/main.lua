@@ -461,6 +461,7 @@ end
 views.tools = function()
   show(tr('Herramientas'), {
     sub('Buscar comandos, canales y recientes…', 'alt+p', 'search', 'palette'),
+    child('Tramos: elegir trozos y guardarlos', 'ctrl+l', 'content_cut', 'mu_cut', 'cut-menu'),
     child('Saltar intro y créditos', 'alt+j', 'skip_next', 'mu_intro', 'intro-menu'),
     child('Estudio: repetir, velocidad, notas', 'alt+e', 'school', 'mu_study', 'study-menu'),
     child('Mis notas', 'alt+B', 'sticky_note_2', 'mu_notes', 'notes-menu'),
@@ -626,7 +627,14 @@ local CURATED = {
   { title = tr('Capítulo anterior'), cmd = 'add chapter -1', key = '@' },
   { title = tr('Siguiente de la lista'), cmd = 'playlist-next', key = '>', kw = 'next siguiente' },
   { title = tr('Anterior de la lista'), cmd = 'playlist-prev', key = '<', kw = 'previous anterior' },
-  { title = tr('Bucle A-B'), cmd = 'ab-loop', key = 'l' },
+  { title = tr('Repetir el tramo elegido (bucle)'), cmd = 'script-binding mu_cut/cut-loop', key = 'l',
+    kw = 'bucle loop ab repetir tramo' },
+  { title = tr('Tramos: elegir trozos y guardarlos'), cmd = 'script-binding mu_cut/cut-menu', key = 'ctrl+l',
+    kw = 'tramos cortar trozos clips guardar unir recortar' },
+  { title = tr('Marcar un tramo desde aquí / hasta aquí'), cmd = 'script-binding mu_cut/cut-mark', key = 'ctrl+x',
+    kw = 'tramo cortar corte segmento clip trozo recortar' },
+  { title = tr('Anotar este minuto'), cmd = 'script-binding mu_notes/notes-add', key = 'n',
+    kw = 'nota notas anotar apuntar minuto' },
   { title = tr('Repetir archivo'), cmd = 'cycle-values loop-file inf no', key = 'L' },
   { title = tr('Subtítulos: mostrar / ocultar'), cmd = 'cycle sub-visibility', key = 'v', kw = 'subtitles subs' },
   { title = tr('Subtítulos: retrasar +100 ms'), cmd = 'add sub-delay 0.1', key = 'x' },

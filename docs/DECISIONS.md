@@ -897,3 +897,64 @@
   puede llegar: el lanzador (`bin/mpv-uos <enlace>` abre el reproductor ya dentro, y no se lo pasa a mpv, que se lo
   daría a yt-dlp para descargar una página web), la puerta única de H42 (pegarlo en *Abrir o descargar* ofrece
   «Entrar en esa sala» en vez de reproducir o descargar) y *Compartir → Entrar en una sala de otro…*.
+
+- ADR-089 · Compartir: la sala sale a internet por defecto, el enlace se copia solo y no se entrega hasta que
+  funciona (H51). **Sustituye** la parte de ADR-068 que decía «apagado por defecto» y la de ADR-030 que hacía del QR
+  lo primero que se ve al crear una sala; el resto de las dos sigue en pie. De la prueba de Ser salieron cuatro
+  quejas sobre compartir, y **tres tenían la misma causa**. **(1) El minuto de espera no era lentitud, era un enlace
+  muerto**: medido tres veces el 2026-10-02, `cloudflared` imprime la dirección pública a los 5,6-7,7 s pero **esa
+  dirección no enruta hasta 65-69 s**. Nosotros la dábamos por buena en el primer momento, así que lo que se copiaba
+  —y lo que el invitado abría— no existía todavía. Ahora la sala se abre **al instante** con su dirección local, el
+  túnel se abre **detrás** (antes `create` esperaba a cloudflared, y por eso tampoco aparecía el QR hasta pasados
+  esos segundos: mismo origen), y la dirección pública **se sondea hasta que contesta**; solo entonces se da por
+  buena, se copia y se avisa. Si no llega a contestar en cuatro minutos, se dice y la sala sigue sirviendo en la red
+  local. **(2) El enlace, no el QR.** Una sala es para ver algo con quien **no está delante**, así que lo que hace
+  falta es un enlace que pegar en un mensaje: se copia solo al crearla y se dice «Enlace copiado». El QR pasa a ser
+  una fila del menú y `alt+Q`, para el caso real en que sirve (alguien con el móvil, aquí al lado). Y por lo mismo,
+  **internet deja de ser opcional por defecto**: una sala que solo vale dentro de casa no hace lo que se le pide. La
+  contrapartida es explícita: `tools/vendor.sh` instala ya `cloudflared` (`MU_VENDOR_CLOUDFLARED=0` lo deja fuera),
+  porque un ajuste encendido por defecto que no puede cumplirse es peor que no tenerlo. **(3) «En el invitado no
+  cambia la película»: dos fallos distintos.** La dirección del archivo original era `/s/<sala>/file` —**la misma
+  cadena para todas las películas**—, así que ni el navegador ni VLC ni el modo invitado tenían forma de saber que
+  había otra cosa; ahora lleva un testigo derivado del fichero y del secreto de la sala, que cambia con la película
+  y no publica nada de la ruta. Y en la página, `useRelay` se ponía a `true` y **no volvía nunca**: tras una
+  película que el navegador no abre, la siguiente que sí abría buscaba un relay que ya no existía, se quedaba sin
+  dirección y el invitado seguía viendo la anterior **para siempre**. **(4) «Solo desde el navegador, no desde VLC o
+  mpv»**: el bloque *Abrir en mi reproductor* solo existía cuando se compartía un archivo del anfitrión, así que con
+  la TV o un vídeo de internet no había nada que llevarse. Ahora hay uno para cada caso, y para la retransmisión
+  hubo que hacer algo que faltaba: **la lista HLS se reescribe con la credencial en cada trozo**, porque los nombra
+  en relativo y un reproductor los habría pedido a pelo llevándose un 401 en el primero.
+
+- ADR-090 · La barra y la línea de tiempo: tramos, bucle y notas donde se pulsan (H52). **Amplía** ADR-015 (la
+  barra reducida de uosc) y **sustituye** la parte de ADR-016 que ponía «solo audio» entre los botones de pista.
+  Ser pidió iconos en la barra para cortar y para repetir, poder elegir varios trozos y guardarlos sueltos o
+  unidos, notas en la línea de tiempo, y una opinión sobre qué más poner y cómo simplificar. El diseño entero y su
+  razonamiento están en `docs/INTERFAZ.md`; aquí van las decisiones y lo que las obliga.
+  **(1) `chapter-list` pasa a tener un solo dueño, `mu-marks`.** Lo que uosc dibuja en la línea de tiempo son los
+  capítulos de mpv, y esa propiedad **ya la escribía `mu-subs`** (capítulos por tema). Como cada script de mpv corre
+  en su propio estado de Lua, dos que la escriban se pisan sin enterarse: por eso los tramos y las notas no la
+  tocan, se la piden a `mu-marks`, que guarda los capítulos de verdad de la película, los mezcla con las marcas y
+  los vuelve a poner al quitarlas o al cambiar de archivo. Efecto lateral aceptado: las teclas de capítulo también
+  saltan de nota en nota y de tramo en tramo.
+  **(2) La barra no se puede rehacer en caliente.** Comprobado en la uosc vendorizada: `Controls:init_options()`
+  solo corre en `init()` y nada escucha los cambios de opciones, así que un «modo edición» que cambiara la barra
+  entera exigiría parchear uosc. Se descarta; lo que hace ese papel es `hide` botón a botón, que su API sí admite,
+  junto con `active`, `badge` y `tooltip`.
+  **(3) Qué entra y qué sale.** Entran bucle, tramos y nota, porque pasan las tres preguntas que ahora quedan
+  escritas: se pulsan a media película, dicen algo de un vistazo (estado o número) y se esconden cuando no aplican.
+  Sale «solo audio»: es una decisión que se toma una vez por vídeo, solo aplica a vídeos de internet, y su icono se
+  lee como «cámara apagada». Se queda en `alt+a` y en el menú. La barra además se **agrupa por significado**
+  (mover · lo que ves · ritmo · lo que haces con ello · salir), que es lo que no estaba: «grabar» vivía pegado al
+  menú y «solo audio» entre los botones de pista.
+  **(4) Elegir una vez, decidir después.** El bucle y los tramos comparten la elección: mientras marcas, el
+  principio y el final son `ab-loop-a`/`ab-loop-b` de mpv, así que uosc ya dibuja A y B sin ayuda; cerrado el
+  tramo, se decide si se repite o se guarda. Es la misma pregunta («qué trozo») contestada una sola vez.
+  **(5) Unir tramos se hace en una sola pasada de ffmpeg** (`trim`/`atrim` + `concat`), dentro del convertidor de
+  siempre: así hereda cola, progreso, nombres, respaldo por CPU e historial, y solo hubo que añadir `ranges` al
+  spec. Tiene un precio que se dice en voz alta: un filtro **obliga a recodificar**, de ahí que vaya por CPU (meter
+  VA-API dentro de un `filter_complex` por tramo es pedirle problemas al controlador para ganar en un caso raro) y
+  que los subtítulos incrustados se queden fuera. Guardarlos por separado no paga nada de eso: es la conversión de
+  siempre con `-ss`/`-t`, y además ya nombraba los archivos `<película> [inicio-fin].ext` y desduplicaba.
+  **(6) Las teclas no roban ninguna de mpv.** `ctrl+x` (el «cortar» de todo el mundo) marca, `ctrl+l` abre la
+  lista, `n` anota y `l` pasa de `ab-loop` a repetir el tramo elegido, que es estrictamente más. Se descartó `x`
+  porque mpv la trae puesta para el retardo de subtítulos.

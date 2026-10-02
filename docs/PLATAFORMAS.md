@@ -79,7 +79,8 @@ pwsh 7.6 en Linux (`tests/test_windows_scripts.py`, con un servidor HTTP local e
 
 ## Rutas
 - Config: siempre `<proyecto>/mpv-config` vía `--config-dir` (ADR-002). Caché de mpvd: `.cache/` en desarrollo; XDG/platformdirs en producción.
-- cloudflared (túnel de las salas): nunca se instala solo; `MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh` lo pone en
+- cloudflared (túnel de las salas): se instala con `tools/vendor.sh` desde H51 (las salas salen a internet por
+  defecto); `MU_VENDOR_CLOUDFLARED=0` lo deja fuera. Queda en
   `vendor/bin/cloudflared` (en Linux x86_64/arm64, que son las sumas que hay fijadas) y mpvd también lo acepta en
   `$MPV_UOS_CLOUDFLARED` o en el PATH. Sin él, las salas funcionan dentro de la red local.
 - Grabaciones (TV, radio y tramos): `<Vídeos>/<marca>/Grabaciones`, o `MPV_UOS_RECORD_DIR`; la reserva cuando mpvd no está

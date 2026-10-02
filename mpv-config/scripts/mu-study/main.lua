@@ -273,6 +273,8 @@ local function add_note(text)
     state.last_note = { file = res.file, time_pos = res.time_pos, text = body }
     state.notes = state.notes + 1
     publish()
+    -- H52 · que la marca salga en la línea de tiempo al momento: las notas las dibuja mu-notes
+    mp.commandv('script-message-to', 'mu_notes', 'mu-notes-refresh')
     osd('📝 Nota guardada en ' .. (res.file:match('[^/\\]+$') or res.file))
   end, 15)
 end

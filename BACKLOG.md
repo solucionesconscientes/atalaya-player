@@ -465,6 +465,45 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
 - [ ] C8 (nuevo, menor) Remux `-c copy` a fMP4/WebM para el navegador cuando los códecs lo permitan, en vez del relay
       recodificando: 9,64 s para 115 min frente a 2,2× tiempo real. Ahorra CPU del anfitrión; no arregla nada roto.
 
+## H51 · Compartir, de la prueba de Ser (2026-10-02) — ADR-089 · [x]
+- [x] D1 La sala sale a internet **por defecto** (compartir es con quien no está en casa) y `tools/vendor.sh`
+      instala ya `cloudflared`: un ajuste encendido que no puede cumplirse es peor que no tenerlo.
+- [x] D2 **El enlace se copia solo** al crear la sala, con aviso. El QR deja de plantarse en la pantalla y pasa a
+      ser una fila del menú y `alt+Q`, para cuando quien entra está delante.
+- [x] D3 **El minuto de espera era un enlace muerto**: cloudflared da la dirección a los 5,6-7,7 s y no enruta hasta
+      65-69 s (medido tres veces). La sala se abre ya con su dirección local, el túnel va detrás, y la pública se
+      sondea hasta que contesta; solo entonces se copia. Si no contesta en 4 min, se dice.
+- [x] D4 **El invitado sigue los cambios de película**, en el navegador y en Atalaya Player. Dos fallos: la URL del
+      archivo era la misma cadena para todas las películas (ahora lleva testigo por fichero) y `useRelay` no volvía
+      nunca a false en la página, dejando la película anterior puesta para siempre.
+- [x] D5 **Abrir en mi reproductor para todo**, no solo para un archivo del anfitrión: la TV y los vídeos de
+      internet también. La lista HLS se reescribe con la credencial en cada trozo (si no, 401 en el primero).
+
+## H52 · La barra y la línea de tiempo, de la prueba de Ser (2026-10-02) — ADR-090 · [x]
+- [x] E1 `mu-marks`: **un solo dueño de `chapter-list`**, que es lo que uosc dibuja en la línea de tiempo. Guarda
+      los capítulos propios de la película, mezcla las marcas y los repone. `mu-subs` (capítulos por tema) pasa por
+      él en vez de escribir la propiedad a pelo.
+- [x] E2 `mu-cut`: botón **✂ Tramos** con el número de tramos de insignia y botón **⟳ Bucle**. Marcar «desde aquí /
+      hasta aquí» (`ctrl+x`); mientras eliges, A y B son las de mpv y uosc las dibuja sola; cerrado el tramo, queda
+      pintado en azul de principio a fin.
+- [x] E3 Guardar los tramos **sueltos** (un archivo cada uno) o **unidos** (uno con todos pegados, en una sola
+      pasada de ffmpeg: `ranges` en el spec de conversión + `convert.cut`), en vídeo o **solo audio**.
+- [x] E4 **Notas en la línea de tiempo**: botón **✎ Nota** y tecla `n` para anotar el minuto en el que estás; cada
+      nota es un rombo con su texto. Las notas de *Estudio* también aparecen al momento.
+- [x] E5 La barra, **agrupada por significado y ordenada por frecuencia**; «solo audio» sale de ella (sigue en
+      `alt+a` y en el menú). Diseño y razonamiento en `docs/INTERFAZ.md`.
+
+## H53 · El «modo sencillo» no encoge la barra (encontrado el 2026-10-02) — [ ]
+- [ ] F1 `mu-modes` escribe `uosc-controls` al entrar en modo sencillo, pero **uosc solo lee esa opción al
+      arrancar** (`Controls:init_options()` solo corre en `init()`, y ningún elemento escucha cambios de opciones).
+      Comprobado con dos capturas: tras activarlo, el OSD dice «menú corto y barra mínima» y la barra se queda
+      **idéntica**. El menú sí encoge; la barra no. El test actual solo comprueba que la opción se escribe, no que
+      la barra cambie, por eso no saltaba.
+      Dos arreglos posibles: (a) que cada script esconda su botón (`hide`, que la API pública de uosc sí admite)
+      cuando mu-modes lo pida —toca mu-intro, mu-cut, mu-notes, mu-record—, o (b) un parche documentado en
+      `patches/` para que uosc rehaga la barra al cambiar la opción. (a) no toca uosc y es lo que recomiendo.
+      Al arreglarlo, el test tiene que mirar la barra, no la opción.
+
 ## H45 · El resumen en los vídeos de internet (§B.2.1-2) — ADR-081
 - [x] D1 Para una URL, pedir los subtítulos de la web antes de transcribir (5,41 s frente a ~8 min de whisper), al
       pulsar y no al abrir el vídeo, con el aviso de «Buscando los subtítulos del vídeo…» y caché para la siguiente.

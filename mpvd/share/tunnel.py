@@ -29,9 +29,15 @@ TAIL_LINES = 8
 
 
 def find_cloudflared(root: Path | None) -> Path | None:
-    """``cloudflared`` from $MPV_UOS_CLOUDFLARED, vendor/bin or the PATH (``.exe`` on Windows)."""
+    """``cloudflared`` from $MPV_UOS_CLOUDFLARED, vendor/bin or the PATH (``.exe`` on Windows).
+
+    ``MPV_UOS_CLOUDFLARED=0`` says there is none. Since H51 the rooms ask for the internet by default, so the
+    tests —which run with a real cloudflared vendored right here— have to be able to say «not from this machine»;
+    without it a test run would open real tunnels to the internet."""
     name = "cloudflared.exe" if sys.platform == "win32" else "cloudflared"
     env = os.environ.get("MPV_UOS_CLOUDFLARED")
+    if env in ("0", "none", "off"):
+        return None
     candidates = []
     if env:
         p = Path(env)
