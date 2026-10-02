@@ -106,7 +106,9 @@ def test_record_local_ranges_cut_and_menu(rec_mpv, media_dir, tmp_path):
     h.command("script-binding", "mu_record/record-menu")
     rec_state(h, lambda v: v.get("view") == "root")
     ev(h, "mu-record-event", {"type": "activate", "index": 4, "value": {"view": "format"}})
-    st = rec_state(h, lambda v: v.get("view") == "format")
+    # la vista se publica antes que sus filas: se espera a la fila, no a la vista
+    st = rec_state(h, lambda v: v.get("view") == "format" and any(
+        i["title"] == "MP4 si los códecs lo permiten" for i in v.get("items", [])))
     fila = next(i for i in st["items"] if i["title"] == "MP4 si los códecs lo permiten")
     assert "caben" in fila["hint"] and "NO caben" not in fila["hint"]
     ev(h, "mu-record-event", {"type": "activate", "index": 2, "value": {"format": "mp4"}})

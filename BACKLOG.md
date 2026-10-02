@@ -398,8 +398,9 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
       **dos** lanzadores (bash y PowerShell), que pasan `uosc-languages` (uosc ya está traducido, no se duplica) y
       `mu-core-lang`. OJO: cada script de mpv tiene su propio estado Lua, así que el idioma lo lee el módulo de
       `options/script-opts` en cada script; que lo fijara mu-core no servía de nada.
-- [ ] G2 Preferencias → Idioma (automático / castellano / English / Français). `prefs.json` es plano, así que el
-      lanzador puede leerlo y hacerlo ganar al entorno; se aplica al reiniciar.
+- [x] G2 Preferencias → Idioma (automático / Castellano / English / Français), que gana al idioma del sistema. Lo
+      leen los dos lanzadores de `prefs.json` antes de arrancar mpv; se aplica al reiniciar y la fila lo dice. Un
+      valor imposible o un `prefs.json` roto se ignoran sin ruido y se vuelve al idioma del sistema.
 - [x] G3 Lo primero que se ve: mu-menu (menú, paleta, ayuda, inicio, preferencias) y mu-modes, con **196 cadenas**
       traducidas a inglés y francés y un test que arranca el reproductor en los tres idiomas.
 - [ ] G4 Los módulos grandes: ytdl, iptv, subs, record, share, library, music.

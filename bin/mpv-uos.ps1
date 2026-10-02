@@ -97,6 +97,14 @@ function Get-MuExtraArguments {
 function Get-MuLanguage {
   $forced = $env:MPV_UOS_LANG
   if ($forced -in @('es', 'en', 'fr')) { return $forced }
+  # La preferencia de *Preferencias → Idioma* gana al idioma del sistema (igual que en bin/mpv-uos)
+  $prefs = Join-Path (Get-MuDataDir) 'prefs.json'
+  if (Test-Path -LiteralPath $prefs) {
+    try {
+      $saved = (Get-Content -Raw -LiteralPath $prefs | ConvertFrom-Json).'mu-menu'.lang
+      if ($saved -in @('es', 'en', 'fr')) { return $saved }
+    } catch { }
+  }
   $tags = @()
   foreach ($v in @($env:LC_ALL, $env:LC_MESSAGES, $env:LANG)) {
     if ($v -and $v -notin @('C', 'POSIX') -and -not $v.StartsWith('C.')) { $tags += $v }

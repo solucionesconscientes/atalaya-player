@@ -109,6 +109,19 @@ done
 # de POSIX). Regla: castellano o francés → ese; inglés o cualquier otro → inglés. MPV_UOS_LANG lo fuerza.
 # uosc ya trae sus propias traducciones (scripts/uosc/intl): se le dice el idioma y no se duplica nada.
 mu_lang="${MPV_UOS_LANG:-}"
+# La preferencia de *Preferencias → Idioma*, que gana al entorno. prefs.json es un fichero plano, así que se puede
+# leer aquí; el `grep` primero para no pagar un arranque de Python en cada apertura si no hay nada guardado.
+if [ -z "$mu_lang" ] && [ -f "$DATA_DIR/prefs.json" ] && grep -q '"lang"' "$DATA_DIR/prefs.json" 2>/dev/null; then
+  mu_py="$ROOT/.venv/bin/python"; [ -x "$mu_py" ] || mu_py="$ROOT/.venv/Scripts/python.exe"
+  [ -x "$mu_py" ] || mu_py=python3
+  mu_lang="$("$mu_py" -c 'import json,sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+v = (d.get("mu-menu") or {}).get("lang") or ""
+print(v if v in ("es", "en", "fr") else "")' "$DATA_DIR/prefs.json" 2>/dev/null || true)"
+fi
 if [ -z "$mu_lang" ]; then
   for v in "${LC_ALL:-}" "${LC_MESSAGES:-}" "${LANG:-}"; do
     case "$v" in ''|C|C.*|POSIX) continue ;; esac

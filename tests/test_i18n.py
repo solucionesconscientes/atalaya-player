@@ -174,3 +174,23 @@ def test_los_catalogos_estan_completos_y_al_dia():
         assert not faltan, f"locales/{lang}.json: faltan {len(faltan)} cadenas, p. ej. {faltan[:5]}"
         sobran = sorted(set(cat) - encontradas)
         assert not sobran, f"locales/{lang}.json: {len(sobran)} que ya no están en el código: {sobran[:5]}"
+
+
+def test_la_preferencia_gana_al_idioma_del_sistema(tmp_path):
+    """H49/G2 · alguien con el sistema en inglés puede querer el reproductor en castellano. La preferencia la guarda
+    mu-prefs en prefs.json, que es plano, así que el lanzador la lee antes de arrancar mpv."""
+    datos = tmp_path / "data"
+    datos.mkdir()
+    (datos / "prefs.json").write_text(json.dumps({"_version": 1, "mu-menu": {"lang": "fr"}}), encoding="utf-8")
+    args = _con_locale(tmp_path, "en_US.UTF-8", MPV_UOS_DATA_DIR=str(datos))
+    assert "--script-opts-append=mu-core-lang=fr" in args, args
+
+    # un valor con el que no se puede hacer nada no deja el reproductor a medias: se vuelve al del sistema
+    (datos / "prefs.json").write_text(json.dumps({"mu-menu": {"lang": "klingon"}}), encoding="utf-8")
+    args = _con_locale(tmp_path, "es_ES.UTF-8", MPV_UOS_DATA_DIR=str(datos))
+    assert "--script-opts-append=mu-core-lang=es" in args, args
+
+    # y un prefs.json roto tampoco: se ignora sin ruido
+    (datos / "prefs.json").write_text('{"mu-menu": {"lang"', encoding="utf-8")
+    args = _con_locale(tmp_path, "fr_FR.UTF-8", MPV_UOS_DATA_DIR=str(datos))
+    assert "--script-opts-append=mu-core-lang=fr" in args, args

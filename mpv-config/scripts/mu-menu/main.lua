@@ -33,7 +33,11 @@ local opts = {
 }
 options.read_options(opts, 'mu-menu')
 -- remembered "continue watching" switch (mu/prefs.lua; --script-opts=mu-menu-resume=… still wins)
-local P = prefs.ns('mu-menu', { resume = opts.resume, click_pause = opts.click_pause })
+-- H49/G2 · el idioma elegido a mano vive aquí ('' = el del sistema). Lo lee el lanzador de prefs.json antes de
+-- arrancar mpv, porque las cadenas se resuelven al cargar los scripts: se aplica al reiniciar, y la fila lo dice.
+local P = prefs.ns('mu-menu', { resume = opts.resume, click_pause = opts.click_pause, lang = '' })
+local LANGS = { '', 'es', 'en', 'fr' }
+local LANG_NAMES = { [''] = 'automático (el del sistema)', es = 'Castellano', en = 'English', fr = 'Français' }
 P:apply_opts(opts, 'mu-menu', { 'resume', 'click_pause' })
 local N = nav.new()
 
@@ -488,6 +492,8 @@ views.prefs = function()
     { title = tr('Restablecer preferencias…'), hint = tr('se guarda una copia'), icon = 'restart_alt',
       value = { cmd = { 'script-message-to', 'mu_prefs', 'reset-ask' } } },
     bind('Abrir la carpeta de configuración', 'ctrl+alt+o', 'folder_open', 'uosc/open-config-directory'),
+    { title = tr('Idioma'), icon = 'translate', value = { lang_next = true },
+      hint = (LANG_NAMES[P:get('lang')] or LANG_NAMES['']) .. ' · ' .. tr('al reiniciar') },
     { title = tr('Ayuda y novedades en %s'):format(brand.site:gsub('^https?://', '')), icon = 'language',
       value = { site = true }, actions = { { name = 'copy', icon = 'content_copy', label = tr('Copiar la dirección') } } },
   })
@@ -965,6 +971,14 @@ mp.register_script_message(EVENT, function(json)
       local crumbs = { nav.HOME }
       for _, spec in ipairs(state.stack) do crumbs[#crumbs + 1] = spec.title end
       nav.open_child(v.child.script, v.child.entry, crumbs, state.view)
+    elseif v.lang_next then
+      local actual = P:get('lang')
+      local i = 1
+      for n, code in ipairs(LANGS) do if code == actual then i = n end end
+      local siguiente = LANGS[(i % #LANGS) + 1]
+      P:set('lang', siguiente)
+      osd(tr('Idioma: %s · se aplica al reiniciar'):format(LANG_NAMES[siguiente]))
+      reopen_current()
     elseif v.site then
       -- H41 · Tab la copia (para abrirla en el móvil), Enter la abre en el navegador de este equipo
       if ev.action == 'copy' then

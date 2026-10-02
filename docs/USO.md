@@ -35,6 +35,8 @@ falta, avisa con la orden para instalarlo. Los subtítulos IA y los modelos se d
   y en qué orden; se quita sola a los 4 segundos. Con `p` vuelves a verla, y los botones ⏮⏭ de la barra aparecen solo
   cuando hay lista. Si prefieres que no salga o que se quede puesta, está en
   `--script-opts=mu-menu-playlist_on_open=0` (o un número de segundos grande).
+- **Idioma**: el reproductor sale en **castellano, inglés o francés** según el idioma de tu sistema (en cualquier
+  otro idioma, en inglés). Para forzarlo: *Preferencias → Idioma*, que se aplica al reiniciar.
 - **Ayuda**: `?` muestra las teclas principales, y abajo la dirección del proyecto —
   **solucionesconscientes.es/atalaya**, donde está toda la información — que se abre con Enter o se copia con `Tab`
   para llevártela al móvil. También está en *Preferencias*.
