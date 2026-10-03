@@ -10,6 +10,7 @@ package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local nav = require('mu.nav')
+local tr = require('mu.i18n').t
 
 local N = nav.new()
 local SCRIPT = mp.get_script_name()
@@ -75,23 +76,24 @@ local function casting_items(st)
       icon = 'movie', selectable = false, muted = true, separator = true },
   }
   if st.state == 'PAUSED_PLAYBACK' then
-    items[#items + 1] = { title = 'Reanudar en la tele', icon = 'play_arrow', value = { action = 'play' } }
+    items[#items + 1] = { title = tr('Reanudar en la tele'), icon = 'play_arrow', value = { action = 'play' } }
   else
-    items[#items + 1] = { title = 'Pausar la tele', icon = 'pause', value = { action = 'pause' } }
+    items[#items + 1] = { title = tr('Pausar la tele'), icon = 'pause', value = { action = 'pause' } }
   end
-  items[#items + 1] = { title = 'Atrasar 30 s', icon = 'replay_30', value = { action = 'seek', delta = -30 } }
-  items[#items + 1] = { title = 'Adelantar 30 s', icon = 'forward_30', value = { action = 'seek', delta = 30 } }
+  items[#items + 1] = { title = tr('Atrasar 30 s'), icon = 'replay_30', value = { action = 'seek', delta = -30 } }
+  items[#items + 1] = { title = tr('Adelantar 30 s'), icon = 'forward_30', value = { action = 'seek', delta = 30 } }
   local vol = st.volume or state.volume
   local vol_hint = vol and (tostring(vol) .. ' %') or nil
-  items[#items + 1] = { title = 'Subir volumen de la tele', hint = vol_hint, icon = 'volume_up',
+  items[#items + 1] = { title = tr('Subir volumen de la tele'), hint = vol_hint, icon = 'volume_up',
                         value = { action = 'volume', delta = 5 } }
-  items[#items + 1] = { title = 'Bajar volumen de la tele', hint = vol_hint, icon = 'volume_down',
+  items[#items + 1] = { title = tr('Bajar volumen de la tele'), hint = vol_hint, icon = 'volume_down',
                         value = { action = 'volume', delta = -5 }, separator = true }
-  items[#items + 1] = { title = 'Seguir viendo aquí', hint = 'desde ' .. clock(st.position), icon = 'computer',
+  items[#items + 1] = { title = tr('Seguir viendo aquí'), hint = tr('desde %s'):format(clock(st.position)), icon = 'computer',
                         value = { action = 'here' } }
-  items[#items + 1] = { title = 'Parar en la tele', icon = 'stop', value = { action = 'stop' } }
+  items[#items + 1] = { title = tr('Parar en la tele'), icon = 'stop', value = { action = 'stop' } }
   if st.firewall and st.firewall.command then
-    items[#items + 1] = { title = 'Si la tele no carga: abre el puerto ' .. tostring(st.firewall.port), icon = 'shield',
+    items[#items + 1] = { title = tr('Si la tele no carga: abre el puerto %s')
+                            :format(tostring(st.firewall.port)), icon = 'shield',
                           hint = st.firewall.command, selectable = false, muted = true }
   end
   if st.error then
@@ -104,11 +106,11 @@ local function device_items()
   local items = {}
   local src = current_source()
   if not src then
-    items[#items + 1] = { title = 'Abre un vídeo o una canción y elige la tele', icon = 'info', selectable = false,
+    items[#items + 1] = { title = tr('Abre un vídeo o una canción y elige la tele'), icon = 'info', selectable = false,
                           muted = true }
   end
   if state.searching and not state.devices then
-    for _, it in ipairs(uosc.loading_items('Buscando teles en tu red…')) do items[#items + 1] = it end
+    for _, it in ipairs(uosc.loading_items(tr('Buscando teles en tu red…'))) do items[#items + 1] = it end
     return items
   end
   for _, d in ipairs(state.devices or {}) do
@@ -116,8 +118,8 @@ local function device_items()
     items[#items + 1] = { title = d.name, hint = hint, icon = 'tv', value = { device = d.id } }
   end
   if state.devices and #state.devices == 0 then
-    items[#items + 1] = { title = 'No hay ninguna tele en tu red', icon = 'tv_off', selectable = false, muted = true }
-    items[#items + 1] = { title = 'Enciéndela y actívale «compartir contenido» o DLNA', icon = 'info',
+    items[#items + 1] = { title = tr('No hay ninguna tele en tu red'), icon = 'tv_off', selectable = false, muted = true }
+    items[#items + 1] = { title = tr('Enciéndela y actívale «compartir contenido» o DLNA'), icon = 'info',
                           selectable = false, muted = true }
   end
   if #items > 0 then items[#items].separator = true end
@@ -128,7 +130,7 @@ end
 
 render = function(open)
   if not rpc.connected() then
-    show(uosc.message_items('mpvd no está conectado: espera unos segundos', 'error'), open)
+    show(uosc.message_items(tr('mpvd no está conectado: espera unos segundos'), 'error'), open)
     return
   end
   if state.status and state.status.casting then show(casting_items(state.status), open)
@@ -163,7 +165,7 @@ local function discover()
     state.searching = false
     if err then
       state.last_error = err.message or tostring(err)
-      osd('No se pudo buscar: ' .. state.last_error)
+      osd(tr('No se pudo buscar: %s'):format(state.last_error))
     else
       state.devices = res.devices or {}
     end
@@ -183,13 +185,13 @@ end
 
 local function send_to(device_id)
   local src = current_source()
-  if not src then osd('Abre primero lo que quieras ver en la tele') return end
-  show(uosc.loading_items('Enviando a la tele…'), false)
+  if not src then osd(tr('Abre primero lo que quieras ver en la tele')) return end
+  show(uosc.loading_items(tr('Enviando a la tele…')), false)
   rpc.call('cast.play', { device = device_id, path = src.path, title = src.title, start = src.start,
                           audio_only = src.audio_only }, function(err, st)
     if not err then
       mp.set_property_native('pause', true)
-      osd('En la tele: ' .. ((st.device or {}).name or ''))
+      osd(tr('En la tele: %s'):format((st.device or {}).name or ''))
       start_poll()
     end
     after(err, st, 'No se pudo enviar')
@@ -217,7 +219,7 @@ local function action(v)
       after(err, res, 'Parar')
       if pos and pos > 0 then mp.commandv('seek', tostring(pos), 'absolute') end
       mp.set_property_native('pause', false)
-      osd('Seguimos aquí')
+      osd(tr('Seguimos aquí'))
       stop_poll()
       uosc.close(MENU)
     end, 15)

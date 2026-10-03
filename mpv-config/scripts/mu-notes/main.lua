@@ -10,6 +10,7 @@ local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local prefs = require('mu.prefs')
 local nav = require('mu.nav')
+local tr = require('mu.i18n').t
 local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
@@ -102,7 +103,7 @@ end
 
 local function require_mpvd(title)
   if rpc.connected() then return true end
-  show(title, uosc.message_items('mpvd no está conectado', 'error'))
+  show(title, uosc.message_items(tr('mpvd no está conectado'), 'error'))
   return false
 end
 
@@ -115,23 +116,23 @@ views.root = function()
     local items = {}
     local here = current_path()
     if here ~= '' then
-      table.insert(items, { title = 'Notas de este vídeo', icon = 'movie', value = { view = 'file', path = here } })
+      table.insert(items, { title = tr('Notas de este vídeo'), icon = 'movie', value = { view = 'file', path = here } })
     end
-    table.insert(items, { title = 'Nueva nota en este minuto…', hint = 'alt+b', icon = 'edit_note',
+    table.insert(items, { title = tr('Nueva nota en este minuto…'), hint = 'alt+b', icon = 'edit_note',
                           value = { cmd = { 'script-binding', 'mu_study/note' } }, separator = true })
     for _, f in ipairs(files or {}) do
       table.insert(items, { title = f.title ~= '' and f.title or basename(f.path), icon = 'description',
         hint = f.notes == 1 and '1 nota' or (tostring(f.notes) .. ' notas'), value = { view = 'file', key = f.key } })
     end
     if #(files or {}) == 0 then
-      table.insert(items, { title = 'Todavía no hay notas: alt+b guarda una en el minuto actual', icon = 'info',
+      table.insert(items, { title = tr('Todavía no hay notas: alt+b guarda una en el minuto actual'), icon = 'info',
                             selectable = false, muted = true })
     else
       items[#items].separator = true
-      table.insert(items, { title = 'Abrir la carpeta de notas', icon = 'folder_open',
+      table.insert(items, { title = tr('Abrir la carpeta de notas'), icon = 'folder_open',
                             value = { open_dir = dirname(files[1].file) } })
     end
-    show(ROOT_TITLE, items, { footnote = 'Enter abre · ⌫ atrás' })
+    show(ROOT_TITLE, items, { footnote = tr('Enter abre · ⌫ atrás') })
   end, 15)
 end
 
@@ -152,27 +153,28 @@ views.file = function(args)
       table.insert(items, { title = n.text, hint = n.time and hms(n.time) or n.stamp,
         icon = n.time and 'schedule' or 'notes',
         value = { note = n.index, time = n.time },
-        actions = { { name = 'edit', icon = 'edit', label = 'Editar' },
-                    { name = 'delete', icon = 'delete', label = 'Borrar' } } })
+        actions = { { name = 'edit', icon = 'edit', label = tr('Editar') },
+                    { name = 'delete', icon = 'delete', label = tr('Borrar') } } })
     end
     if #items == 0 then
-      items = { { title = 'Sin notas: alt+b guarda una en el minuto actual', icon = 'info', selectable = false, muted = true } }
+      items = { { title = tr('Sin notas: alt+b guarda una en el minuto actual'), icon = 'info',
+                  selectable = false, muted = true } }
     else
       items[#items].separator = true
       local playing_it = f.path ~= '' and strip_file(f.path) == current_path()
       if not playing_it and f.path ~= '' then
-        table.insert(items, { title = 'Abrir el vídeo', icon = 'play_arrow', hint = basename(f.path),
+        table.insert(items, { title = tr('Abrir el vídeo'), icon = 'play_arrow', hint = basename(f.path),
                               value = { play = f.path } })
       end
       local next_to = f.path:match('^%a[%w+.-]*://') and 'solo archivos locales'
         or (basename(f.path):gsub('%.[^.]*$', '') .. '.notas.md')
-      table.insert(items, { title = 'Exportar junto al vídeo', icon = 'save_alt', value = { export = 'video' },
+      table.insert(items, { title = tr('Exportar junto al vídeo'), icon = 'save_alt', value = { export = 'video' },
                             hint = next_to })
       local dir = P:get('export_dir')
-      table.insert(items, { title = 'Exportar a una carpeta (Obsidian)…', icon = 'drive_folder_upload',
+      table.insert(items, { title = tr('Exportar a una carpeta (Obsidian)…'), icon = 'drive_folder_upload',
                             hint = dir ~= '' and dir or nil, value = { export = 'folder' } })
     end
-    show(title, items, { footnote = 'Enter salta al minuto · Tab: editar / borrar · ⌫ atrás' })
+    show(title, items, { footnote = tr('Enter salta al minuto · Tab: editar / borrar · ⌫ atrás') })
   end, 15)
 end
 
@@ -209,7 +211,7 @@ refresh_marks = function()
     if not err and type(f) == 'table' then
       for _, n in ipairs(f.items or {}) do
         if type(n.time) == 'number' then
-          marks[#marks + 1] = { time = n.time, title = 'nota · ' .. tostring(n.text or '') }
+          marks[#marks + 1] = { time = n.time, title = tr('nota · %s'):format(tostring(n.text or '')) }
         end
       end
     end
@@ -242,7 +244,7 @@ local function input_menu(query)
     or 'Carpeta de destino'
   return { type = INPUT, title = titulo, items = items,
     callback = { SCRIPT, INPUT_EVENT }, search_style = 'palette', search_debounce = 0, on_search = 'callback',
-    on_close = 'callback', search_suggestion = query, footnote = 'Enter guarda · ⌫ en vacío vuelve' }
+    on_close = 'callback', search_suggestion = query, footnote = tr('Enter guarda · ⌫ en vacío vuelve') }
 end
 
 local function open_input(mode, text, extra)
@@ -262,10 +264,10 @@ end
 local function export(folder)
   if state.key == '' then return end
   rpc.call('notes.export', { key = state.key, folder = folder }, function(err, res)
-    if err then osd('Exportar: ' .. fail(err, 'notes.export'), 5) return end
+    if err then osd(tr('Exportar: %s'):format(fail(err, 'notes.export')), 5) return end
     state.last_export = res.file
     publish()
-    osd('📝 Notas exportadas: ' .. res.file, 5)
+    osd(tr('📝 Notas exportadas: %s'):format(res.file), 5)
   end, 15)
 end
 
@@ -283,7 +285,8 @@ mp.register_script_message(INPUT_EVENT, function(json)
       -- H52 · una nota en el segundo en el que estás, que es como se piden: «esto de aquí»
       rpc.call('notes.add', { text = text, path = current_path(), time_pos = inp.at,
         title = mp.get_property('media-title') }, function(err)
-        if err then osd('Nota: ' .. fail(err, 'notes.add')) else osd('📝 Nota en ' .. hms(inp.at or 0)) end
+        if err then osd(tr('Nota: %s'):format(fail(err, 'notes.add')))
+        else osd(tr('📝 Nota en %s'):format(hms(inp.at or 0))) end
         state.input = nil
         publish()
         uosc.close(INPUT)
@@ -291,7 +294,7 @@ mp.register_script_message(INPUT_EVENT, function(json)
       end, 15)
     elseif inp.mode == 'edit' then
       rpc.call('notes.edit', { key = state.key, index = inp.index, text = text }, function(err)
-        if err then osd('Editar: ' .. fail(err, 'notes.edit')) end
+        if err then osd(tr('Editar: %s'):format(fail(err, 'notes.edit'))) end
         close_input(true)
         refresh_marks()
       end, 15)
@@ -350,8 +353,8 @@ mp.register_script_message(EVENT, function(json)
         open_input('edit', n and n.text or '', { index = v.note })
       elseif ev.action == 'delete' then
         rpc.call('notes.delete', { key = state.key, index = v.note }, function(err, f)
-          if err then osd('Borrar: ' .. fail(err, 'notes.delete')) return end
-          osd('🗑 Nota borrada')
+          if err then osd(tr('Borrar: %s'):format(fail(err, 'notes.delete'))) return end
+          osd(tr('🗑 Nota borrada'))
           if f and (f.notes or 0) == 0 then
             table.remove(state.stack)
             if #state.stack == 0 then uosc.close(MENU) return end
@@ -430,14 +433,14 @@ end)
 -- bindings
 
 local function open_root()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'root' })
 end
 
 local function open_here()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = { { name = 'root', title = ROOT_TITLE } }
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'file', args = { path = current_path() } })
@@ -445,9 +448,9 @@ end
 
 -- H52 · anotar el minuto en el que estás, de una tecla o del botón de la barra
 local function add_here()
-  if not uosc.available() then osd('uosc no está cargado') return end
-  if not rpc.connected() then osd('mpvd no está conectado') return end
-  if current_path() == '' then osd('No hay nada en reproducción que anotar') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
+  if not rpc.connected() then osd(tr('mpvd no está conectado')) return end
+  if current_path() == '' then osd(tr('No hay nada en reproducción que anotar')) return end
   open_input('add', '', { at = mp.get_property_number('time-pos') or 0 })
 end
 

@@ -14,6 +14,7 @@ local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local prefs = require('mu.prefs')
 local nav = require('mu.nav')
+local tr = require('mu.i18n').t
 local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
@@ -229,7 +230,7 @@ local function require_mpvd(title)
   if rpc.connected() then return true end
   local core = mp.get_property_native('user-data/mu/core') or {}
   show(title, {
-    { title = 'mpvd no está disponible', hint = core.mpvd or '', icon = 'error', selectable = false, muted = true },
+    { title = tr('mpvd no está disponible'), hint = core.mpvd or '', icon = 'error', selectable = false, muted = true },
   })
   return false
 end
@@ -249,7 +250,7 @@ end
 local function with_presets(cb)
   if state.presets then cb() return end
   rpc.call('convert.presets', nil, function(err, res)
-    if err then osd('Convertir: ' .. fail(err, 'convert.presets')) return end
+    if err then osd(tr('Convertir: %s'):format(fail(err, 'convert.presets'))) return end
     state.presets, state.meta = res.presets, res
     state.default_dir = res.default_dir or ''
     publish()
@@ -299,16 +300,16 @@ views.root = function()
                               or 'Abre un archivo de tu equipo para convertirlo',
                             icon = 'info', selectable = false, muted = true, separator = true }
     end
-    items[#items + 1] = { title = 'Convertir una carpeta entera…', icon = 'folder_copy', value = { folder_input = true } }
+    items[#items + 1] = { title = tr('Convertir una carpeta entera…'), icon = 'folder_copy', value = { folder_input = true } }
     local n = count_active()
     items[#items + 1] = { title = TASKS_TITLE, icon = 'pending_actions', hint = n > 0 and (n .. ' activas') or nil,
                           value = { view = 'tasks' }, separator = true }
     local dir = P:get('dir')
-    items[#items + 1] = { title = 'Carpeta de salida', icon = 'folder', hint = dir ~= '' and dir or 'predeterminada',
+    items[#items + 1] = { title = tr('Carpeta de salida'), icon = 'folder', hint = dir ~= '' and dir or 'predeterminada',
                           value = { choose_dir = true } }
-    items[#items + 1] = { title = 'Usar la tarjeta gráfica', icon = 'memory', hint = hw_hint(),
+    items[#items + 1] = { title = tr('Usar la tarjeta gráfica'), icon = 'memory', hint = hw_hint(),
                           value = { toggle_hw = true } }
-    show(ROOT_TITLE, items, { footnote = 'Enter elige · ⌫ atrás · Esc cierra' })
+    show(ROOT_TITLE, items, { footnote = tr('Enter elige · ⌫ atrás · Esc cierra') })
   end)
 end
 
@@ -321,7 +322,7 @@ views.folder = function(args)
       it.value.folder = true
       items[#items + 1] = it
     end
-    show('Carpeta ' .. basename(args.folder), items, { footnote = 'Cada archivo es una tarea · ⌫ atrás' })
+    show(tr('Carpeta %s'):format(basename(args.folder)), items, { footnote = tr('Cada archivo es una tarea · ⌫ atrás') })
   end)
 end
 
@@ -364,20 +365,20 @@ views.options = function()
   end
   if HW_CODEC[p.id] then
     local can = state.hw and state.hw.available and state.hw.encode and state.hw.encode[HW_CODEC[p.id]]
-    items[#items + 1] = { title = 'Tarjeta gráfica', icon = 'memory', value = { toggle_hw = true },
+    items[#items + 1] = { title = tr('Tarjeta gráfica'), icon = 'memory', value = { toggle_hw = true },
       hint = can and (P:get('hw') and 'sí (VA-API)' or 'no') or 'no disponible para este formato' }
   end
   items[#items].separator = true
   if not job.folder then
     local a, b = marks()
-    items[#items + 1] = { title = 'Solo un tramo', icon = 'content_cut', value = { opt = 'range' },
+    items[#items + 1] = { title = tr('Solo un tramo'), icon = 'content_cut', value = { opt = 'range' },
       hint = (job.range and a) and (hms(a) .. '–' .. hms(b)) or (a and 'no · hay marcas A-B' or 'todo el archivo') }
-    items[#items + 1] = { title = 'Marcar el inicio aquí', icon = 'first_page', value = { mark = 'a' },
+    items[#items + 1] = { title = tr('Marcar el inicio aquí'), icon = 'first_page', value = { mark = 'a' },
       hint = mp.get_property_number('ab-loop-a') and hms(mp.get_property_number('ab-loop-a')) or 'sin marcar' }
-    items[#items + 1] = { title = 'Marcar el final aquí', icon = 'last_page', value = { mark = 'b' },
+    items[#items + 1] = { title = tr('Marcar el final aquí'), icon = 'last_page', value = { mark = 'b' },
       hint = mp.get_property_number('ab-loop-b') and hms(mp.get_property_number('ab-loop-b')) or 'sin marcar' }
   end
-  show(p.label, items, { footnote = 'Enter cambia una opción · la primera fila empieza' })
+  show(p.label, items, { footnote = tr('Enter cambia una opción · la primera fila empieza') })
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -385,10 +386,10 @@ end
 
 local STATUS_ICON = { queued = 'schedule', done = 'check_circle', failed = 'error', cancelled = 'cancel' }
 local ACTION = {
-  cancel = { name = 'cancel', icon = 'cancel', label = 'Cancelar' },
-  retry = { name = 'retry', icon = 'refresh', label = 'Repetir' },
-  remove = { name = 'remove', icon = 'delete', label = 'Quitar de la lista' },
-  folder = { name = 'folder', icon = 'folder_open', label = 'Abrir la carpeta' },
+  cancel = { name = 'cancel', icon = 'cancel', label = tr('Cancelar') },
+  retry = { name = 'retry', icon = 'refresh', label = tr('Repetir') },
+  remove = { name = 'remove', icon = 'delete', label = tr('Quitar de la lista') },
+  folder = { name = 'folder', icon = 'folder_open', label = tr('Abrir la carpeta') },
 }
 local METHODS = {
   download = { cancel = 'ytdl.downloads.cancel', retry = 'ytdl.downloads.retry', remove = 'ytdl.downloads.remove' },
@@ -416,7 +417,7 @@ local function task_item(t)
     icon = (t.type == 'download' and 'downloading') or (t.type == 'job' and 'autorenew') or 'sync'
   end
   local hint = t.message ~= '' and t.message or t.status
-  if t.status == 'failed' then hint = 'error' end
+  if t.status == 'failed' then hint = tr('error') end
   -- el nombre de la clase de tarea lo manda mpvd cuando lo sabe (`kind`), que es quien conoce los trabajos
   local kind = t.kind
   if kind == nil or kind == '' then kind = t.type == 'download' and 'Descarga' or 'Conversión' end
@@ -433,9 +434,9 @@ local function tasks_items()
     local t = state.tasks[key]
     if t then items[#items + 1] = task_item(t) end
   end
-  if #items == 0 then return uosc.message_items('Ahora mismo no se está haciendo nada por detrás', 'pending_actions') end
+  if #items == 0 then return uosc.message_items(tr('Ahora mismo no se está haciendo nada por detrás'), 'pending_actions') end
   items[#items].separator = true
-  items[#items + 1] = { title = 'Limpiar terminadas', icon = 'cleaning_services', value = { clear = true },
+  items[#items + 1] = { title = tr('Limpiar terminadas'), icon = 'cleaning_services', value = { clear = true },
                         keep_open = true }
   return items
 end
@@ -526,7 +527,7 @@ local function start_job()
   local params = { path = job.source, preset = job.preset, options = spec, notify = SCRIPT }
   if P:get('dir') ~= '' then params.out_dir = output_dir() end
   rpc.call('convert.start', params, function(err, res)
-    if err then osd('Convertir: ' .. fail(err, 'convert.start'), 5) return end
+    if err then osd(tr('Convertir: %s'):format(fail(err, 'convert.start')), 5) return end
     state.last_started = {}
     for _, it in ipairs(res.items or {}) do
       state.last_started[#state.last_started + 1] = it.id
@@ -564,15 +565,15 @@ local function input_menu(query)
   local mode = state.input.mode
   local items
   if query ~= '' then
-    items = { { title = 'Usar: ' .. query, icon = 'check', value = { save = query } } }
+    items = { { title = tr('Usar: %s'):format(query), icon = 'check', value = { save = query } } }
   elseif mode == 'dir' then
-    items = { { title = 'Escribe o pega la carpeta (vacío = predeterminada)', icon = 'edit', value = { save = '' } } }
+    items = { { title = tr('Escribe o pega la carpeta (vacío = predeterminada)'), icon = 'edit', value = { save = '' } } }
   else
-    items = { { title = 'Escribe o pega la ruta de la carpeta', icon = 'edit', selectable = false, muted = true } }
+    items = { { title = tr('Escribe o pega la ruta de la carpeta'), icon = 'edit', selectable = false, muted = true } }
   end
   return { type = INPUT, title = INPUT_TITLES[mode], items = items, callback = { SCRIPT, INPUT_EVENT },
     search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-    search_suggestion = query, footnote = 'Enter elige · ⌫ en vacío vuelve' }
+    search_suggestion = query, footnote = tr('Enter elige · ⌫ en vacío vuelve') }
 end
 
 local function open_input(mode, text)
@@ -595,7 +596,7 @@ mp.register_script_message(INPUT_EVENT, function(json)
   uosc.close(INPUT)
   if mode == 'dir' and chosen ~= nil then
     P:set('dir', chosen)
-    osd('Carpeta de salida: ' .. (chosen ~= '' and output_dir() or 'predeterminada'))
+    osd(tr('Carpeta de salida: %s'):format(chosen ~= '' and output_dir() or tr('predeterminada')))
   elseif mode == 'folder' and chosen ~= nil then
     local path = mp.command_native({ 'expand-path', chosen }) or chosen
     local info = utils.file_info(path)
@@ -604,7 +605,7 @@ mp.register_script_message(INPUT_EVENT, function(json)
       open_view({ name = 'folder', args = { folder = path } })
       return
     end
-    osd('No es una carpeta: ' .. path)
+    osd(tr('No es una carpeta: %s'):format(path))
   end
   reopen_current(true)
 end)
@@ -625,7 +626,7 @@ mp.register_script_message(EVENT, function(json)
       open_view({ name = 'options' })
     elseif v.opt == 'range' then
       if not marks() then
-        osd('Marca el inicio y el final (filas de abajo o tecla l)')
+        osd(tr('Marca el inicio y el final (filas de abajo o tecla l)'))
         state.job.range = false
       else
         state.job.range = not state.job.range
@@ -694,9 +695,9 @@ mp.register_script_message('mu-event', function(payload)
     state.last_done = { id = t.id, status = t.status, file = (t.outputs or {})[1] or '', error = t.error or '' }
     if opts.notify_done then
       if t.status == 'done' then
-        osd('✓ Convertido: ' .. (t.title or '') .. '\n→ ' .. ((t.outputs or {})[1] or t.out_dir or ''), 5)
+        osd(tr('✓ Convertido: %s\n→ %s'):format(t.title or '', (t.outputs or {})[1] or t.out_dir or ''), 5)
       else
-        osd('✗ No se pudo convertir ' .. (t.title or '') .. '\n' .. (t.error or ''), 5)
+        osd(tr('✗ No se pudo convertir %s\n%s'):format(t.title or '', t.error or ''), 5)
       end
     end
   end
@@ -708,14 +709,14 @@ end)
 -- bindings
 
 local function open_root()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'root' })
 end
 
 local function open_tasks()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'tasks' })

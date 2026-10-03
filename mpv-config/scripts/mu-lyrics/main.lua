@@ -16,6 +16,7 @@ local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local prefs = require('mu.prefs')
 local nav = require('mu.nav')
+local tr = require('mu.i18n').t
 local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
@@ -200,14 +201,14 @@ local function settings_items(items)
                              { setting = 'lyrics_online' }))
   table.insert(items, toggle('Identificar canciones (AcoustID)', s.songid_enabled == true, 'fingerprint',
                              { setting = 'songid_enabled' }))
-  table.insert(items, { title = 'Tu clave de AcoustID…', icon = 'key', hint = s.has_acoustid_key and 'guardada' or 'falta',
+  table.insert(items, { title = tr('Tu clave de AcoustID…'), icon = 'key', hint = s.has_acoustid_key and 'guardada' or 'falta',
                         value = { key = true } })
 end
 
 local function lyrics_items()
   local items = {}
   local l = state.lyrics
-  if state.status == 'loading' then return uosc.loading_items('Buscando la letra…') end
+  if state.status == 'loading' then return uosc.loading_items(tr('Buscando la letra…')) end
   if not l or not l.found then
     local why = mp.get_property_native('idle-active') and 'Abre una canción primero'
       or (audio_only() and 'Esta canción no tiene letra (ni .lrc al lado ni en sus etiquetas)'
@@ -240,10 +241,10 @@ views.root = function()
   local tail = {}
   local path = abs_path()
   if path and not is_url(path) and audio_only() then
-    table.insert(tail, { title = '¿Qué canción es?', icon = 'fingerprint', value = { view = 'identify' },
+    table.insert(tail, { title = tr('¿Qué canción es?'), icon = 'fingerprint', value = { view = 'identify' },
                          hint = (state.settings and state.settings.songid_active) and 'AcoustID' or 'desactivado' })
   end
-  table.insert(tail, { title = 'Ajustes de letras y canciones', icon = 'settings', value = { view = 'settings' } })
+  table.insert(tail, { title = tr('Ajustes de letras y canciones'), icon = 'settings', value = { view = 'settings' } })
   local all = {}
   for _, it in ipairs(head) do table.insert(all, it) end
   if #head > 0 then all[#all].separator = true end
@@ -262,23 +263,23 @@ views.root = function()
 end
 
 views.settings = function()
-  local title = 'Ajustes de letras y canciones'
-  if not rpc.connected() then show(title, uosc.message_items('mpvd no está conectado', 'error')) return end
+  local title = tr('Ajustes de letras y canciones')
+  if not rpc.connected() then show(title, uosc.message_items(tr('mpvd no está conectado'), 'error')) return end
   rpc.call('lyrics.settings.get', nil, function(err, s)
     if state.view ~= 'settings' then return end
     if err then show(title, uosc.message_items(fail(err, 'lyrics.settings.get'), 'error')) return end
     state.settings = s
     local items = {}
     settings_items(items)
-    show(title, items, { footnote = 'Todo lo de internet está apagado hasta que lo enciendas' })
+    show(title, items, { footnote = tr('Todo lo de internet está apagado hasta que lo enciendas') })
   end, 10)
 end
 
 views.identify = function()
-  local title = '¿Qué canción es?'
+  local title = tr('¿Qué canción es?')
   local path = abs_path()
-  if not path or is_url(path) then show(title, uosc.message_items('Solo con archivos del equipo', 'info')) return end
-  if not rpc.connected() then show(title, uosc.message_items('mpvd no está conectado', 'error')) return end
+  if not path or is_url(path) then show(title, uosc.message_items(tr('Solo con archivos del equipo'), 'info')) return end
+  if not rpc.connected() then show(title, uosc.message_items(tr('mpvd no está conectado'), 'error')) return end
   local s = state.settings or {}
   if not s.songid_active then
     local items = uosc.message_items(s.songid_enabled and 'Falta tu clave de AcoustID (gratis en acoustid.org)'
@@ -287,7 +288,7 @@ views.identify = function()
     show(title, items)
     return
   end
-  show(title, uosc.loading_items('Escuchando la canción…'))
+  show(title, uosc.loading_items(tr('Escuchando la canción…')))
   rpc.call('songid.identify', { path = path }, function(err, res)
     if state.view ~= 'identify' then return end
     if err then show(title, uosc.message_items(fail(err, 'songid.identify'), 'error')) return end
@@ -297,11 +298,11 @@ views.identify = function()
       local sub = c.artist .. ((c.album and c.album ~= '') and (' · ' .. c.album) or '')
       table.insert(items, { title = c.title .. ' — ' .. sub, hint = string.format('%d %%', math.floor(c.score * 100 + 0.5)),
                             icon = 'music_note', value = { candidate = i },
-                            actions = { { name = 'tag', icon = 'save', label = 'Guardar en el archivo' } } })
+                            actions = { { name = 'tag', icon = 'save', label = tr('Guardar en el archivo') } } })
     end
-    if #items == 0 then items = uosc.message_items('No se ha encontrado esta canción', 'info') end
+    if #items == 0 then items = uosc.message_items(tr('No se ha encontrado esta canción'), 'info') end
     publish()
-    show(title, items, { footnote = 'Tab: guardar título, artista y álbum en el archivo' })
+    show(title, items, { footnote = tr('Tab: guardar título, artista y álbum en el archivo') })
   end, 90)
 end
 
@@ -311,13 +312,13 @@ end
 local function input_menu(query)
   local items = {}
   if query ~= '' then
-    table.insert(items, { title = 'Guardar la clave', icon = 'check', value = { save = query } })
+    table.insert(items, { title = tr('Guardar la clave'), icon = 'check', value = { save = query } })
   else
-    table.insert(items, { title = 'Borrar la clave guardada', icon = 'delete', value = { save = '' } })
+    table.insert(items, { title = tr('Borrar la clave guardada'), icon = 'delete', value = { save = '' } })
   end
-  return { type = INPUT, title = 'Clave de aplicación de AcoustID', items = items, callback = { SCRIPT, INPUT_EVENT },
+  return { type = INPUT, title = tr('Clave de aplicación de AcoustID'), items = items, callback = { SCRIPT, INPUT_EVENT },
            search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-           footnote = 'Pídela gratis en acoustid.org/new-application · se guarda solo en este equipo' }
+           footnote = tr('Pídela gratis en acoustid.org/new-application · se guarda solo en este equipo') }
 end
 
 mp.register_script_message(INPUT_EVENT, function(json)
@@ -331,7 +332,7 @@ mp.register_script_message(INPUT_EVENT, function(json)
     if ev.type == 'back' then reopen_current(true) end
   elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.save ~= nil then
     rpc.call('lyrics.settings.set', { acoustid_key = ev.value.save }, function(err, s)
-      if err then osd('Clave: ' .. fail(err, 'lyrics.settings.set')) return end
+      if err then osd(tr('Clave: %s'):format(fail(err, 'lyrics.settings.set'))) return end
       state.settings = s
       state.input = false
       uosc.close(INPUT)
@@ -388,10 +389,10 @@ mp.register_script_message(EVENT, function(json)
       if ev.action == 'tag' then
         local path = abs_path()
         rpc.call('songid.tag', { path = path, title = c.title, artist = c.artist, album = c.album }, function(err, res)
-          if err then osd('Guardar: ' .. fail(err, 'songid.tag'), 5) return end
+          if err then osd(tr('Guardar: %s'):format(fail(err, 'songid.tag')), 5) return end
           state.tagged = res.tags
           publish()
-          osd('🏷 Guardado en el archivo: ' .. c.title .. ' — ' .. c.artist, 4)
+          osd(tr('🏷 Guardado en el archivo: %s — %s'):format(c.title, c.artist), 4)
         end, 120)
       else
         osd('🎵 ' .. c.title .. ' — ' .. c.artist .. ((c.album ~= '') and (' · ' .. c.album) or ''), 5)
@@ -423,7 +424,7 @@ mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
 end)
 
 local function open_root()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'root' })

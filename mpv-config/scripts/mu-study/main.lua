@@ -14,6 +14,7 @@ local uosc = require('mu.uosc')
 local nav = require('mu.nav')
 local N = nav.new()
 local prefs = require('mu.prefs')
+local tr = require('mu.i18n').t
 
 local SCRIPT = mp.get_script_name()
 local MENU = 'mu-study'
@@ -110,19 +111,19 @@ local function repeat_stop(quiet)
   state.repeat_line = false
   state.line = nil
   publish()
-  if not quiet then osd('Repetir línea: desactivado') end
+  if not quiet then osd(tr('Repetir línea: desactivado')) end
 end
 
 local function repeat_toggle()
   if state.repeat_line then repeat_stop() return end
   local line = current_line()
-  if not line then osd('No hay subtítulo en pantalla (activa una pista o usa alt+c)') return end
+  if not line then osd(tr('No hay subtítulo en pantalla (activa una pista o usa alt+c)')) return end
   state.repeat_line = true
   state.line = line
   set_ab(line.start, line['end'])
   mp.commandv('seek', tostring(line.start), 'absolute+exact')
   publish()
-  osd('🔁 Repitiendo: ' .. (line.text:gsub('\n', ' ')))
+  osd(tr('🔁 Repitiendo: %s'):format(line.text:gsub('\n', ' ')))
 end
 
 local function repeat_step(dir)
@@ -208,7 +209,7 @@ local function smart_set(on, quiet)
   state.smart = on
   if on then
     if not is_local(current_path()) then
-      if not quiet then osd('Velocidad inteligente: solo archivos locales') end
+      if not quiet then osd(tr('Velocidad inteligente: solo archivos locales')) end
       state.smart = false
       return
     end
@@ -221,7 +222,7 @@ local function smart_set(on, quiet)
   else
     smart_timer:kill()
     restore_speed()
-    if not quiet then osd('Velocidad inteligente: desactivada') end
+    if not quiet then osd(tr('Velocidad inteligente: desactivada')) end
   end
   publish()
 end
@@ -231,14 +232,14 @@ local function user_smart(on)
   if on and (mp.get_property('path') or '') == '' then
     state.smart_wanted = true
     P:set('smart', true)
-    osd('⏩ Velocidad inteligente: se activará al abrir un archivo local')
+    osd(tr('⏩ Velocidad inteligente: se activará al abrir un archivo local'))
     publish()
     return
   end
   local was_active = state.smart
   smart_set(on)
   if not on or state.smart then
-    if not on and not was_active and state.smart_wanted then osd('Velocidad inteligente: desactivada') end
+    if not on and not was_active and state.smart_wanted then osd(tr('Velocidad inteligente: desactivada')) end
     state.smart_wanted = on
     P:set('smart', on)
   end
@@ -261,21 +262,21 @@ end
 -- notes (mpvd notes.add: Markdown with time links) — the uosc palette search box is the text input
 
 local function add_note(text)
-  if not rpc.connected() then osd('mpvd no está conectado') return end
+  if not rpc.connected() then osd(tr('mpvd no está conectado')) return end
   local line = current_line()
   local quote = line and line.text ~= '' and ('«' .. line.text:gsub('\n', ' ') .. '»') or ''
   local body = text and text ~= '' and text or ''
   if body ~= '' and quote ~= '' then body = body .. ' ' .. quote elseif body == '' then body = quote end
-  if body == '' then osd('Nota vacía: escribe algo o activa subtítulos') return end
+  if body == '' then osd(tr('Nota vacía: escribe algo o activa subtítulos')) return end
   rpc.call('notes.add', { text = body, path = current_path(), time_pos = mp.get_property_number('time-pos'),
     title = mp.get_property('media-title') }, function(err, res)
-    if err then osd('Nota: ' .. fail(err, 'notes.add')); return end
+    if err then osd(tr('Nota: %s'):format(fail(err, 'notes.add'))); return end
     state.last_note = { file = res.file, time_pos = res.time_pos, text = body }
     state.notes = state.notes + 1
     publish()
     -- H52 · que la marca salga en la línea de tiempo al momento: las notas las dibuja mu-notes
     mp.commandv('script-message-to', 'mu_notes', 'mu-notes-refresh')
-    osd('📝 Nota guardada en ' .. (res.file:match('[^/\\]+$') or res.file))
+    osd(tr('📝 Nota guardada en %s'):format(res.file:match('[^/\\]+$') or res.file))
   end, 15)
 end
 
@@ -285,22 +286,24 @@ local function note_menu(query)
   local line = current_line()
   local items = {}
   if note_query ~= '' then
-    table.insert(items, { title = 'Guardar: ' .. note_query, icon = 'save', value = { save = note_query } })
+    table.insert(items, { title = tr('Guardar: %s'):format(note_query), icon = 'save',
+                        value = { save = note_query } })
   end
   if line and line.text ~= '' then
-    table.insert(items, { title = 'Guardar la cita del subtítulo', hint = line.text:gsub('\n', ' '), icon = 'format_quote',
+    table.insert(items, { title = tr('Guardar la cita del subtítulo'), hint = line.text:gsub('\n', ' '), icon = 'format_quote',
       value = { save = '' } })
   end
   if #items == 0 then
-    table.insert(items, { title = 'Escribe la nota y pulsa Enter', icon = 'edit', selectable = false, muted = true })
+    table.insert(items, { title = tr('Escribe la nota y pulsa Enter'), icon = 'edit', selectable = false, muted = true })
   end
-  return { type = NOTE_MENU, title = 'Nota en ' .. fmt_time(mp.get_property_number('time-pos') or 0), items = items,
+  return { type = NOTE_MENU, title = tr('Nota en %s'):format(fmt_time(mp.get_property_number('time-pos') or 0)),
+           items = items,
     callback = { SCRIPT, NOTE_EVENT }, search_style = 'palette', search_debounce = 100, on_search = 'callback',
-    search_suggestion = note_query, footnote = 'Enter guarda con enlace de tiempo · ⌫ cierra' }
+    search_suggestion = note_query, footnote = tr('Enter guarda con enlace de tiempo · ⌫ cierra') }
 end
 
 local function open_note_menu()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   uosc.open(note_menu(''))
 end
 
@@ -331,15 +334,15 @@ local function clip_range()
 end
 
 local function export_clip(fmt)
-  if not rpc.connected() then osd('mpvd no está conectado') return end
+  if not rpc.connected() then osd(tr('mpvd no está conectado')) return end
   local path = current_path()
-  if not is_local(path) then osd('Clips: solo archivos locales') return end
+  if not is_local(path) then osd(tr('Clips: solo archivos locales')) return end
   local a, b, what = clip_range()
-  if not a then osd('Marca un tramo A-B (l) o activa un subtítulo') return end
+  if not a then osd(tr('Marca un tramo A-B (l) o activa un subtítulo')) return end
   rpc.call('study.clip', { path = path, start = a, ['end'] = b, format = fmt or opts.clip_format,
     dir = opts.clip_dir ~= '' and opts.clip_dir or nil, title = mp.get_property('media-title') or '', notify = SCRIPT },
     function(err, item)
-      if err then osd('Clip: ' .. fail(err, 'study.clip')); return end
+      if err then osd(tr('Clip: %s'):format(fail(err, 'study.clip'))); return end
       state.clips[item.id] = item
       state.last_clip = item
       publish()
@@ -355,9 +358,9 @@ mp.register_script_message('mu-event', function(payload)
   state.last_clip = c
   publish()
   if c.status == 'done' then
-    osd('✅ Clip listo: ' .. ((c.file or ''):match('[^/\\]+$') or c.file or ''))
+    osd(tr('✅ Clip listo: %s'):format((c.file or ''):match('[^/\\]+$') or c.file or ''))
   elseif c.status == 'failed' then
-    osd('❌ Clip: ' .. (c.message or 'error'))
+    osd(tr('❌ Clip: %s'):format(c.message or 'error'))
   end
   if uosc.open_type() == MENU then mp.commandv('script-message-to', SCRIPT, 'mu-study-menu-refresh') end
 end)
@@ -368,12 +371,12 @@ end)
 local function root_items()
   local items = {}
   local line = current_line()
-  table.insert(items, { title = 'Repetir la línea actual', hint = state.repeat_line and 'repitiendo · alt+w' or 'alt+w',
+  table.insert(items, { title = tr('Repetir la línea actual'), hint = state.repeat_line and 'repitiendo · alt+w' or 'alt+w',
     icon = 'repeat_one', active = state.repeat_line, value = { repeat_line = true },
     muted = (not state.repeat_line and line == nil) or nil })
-  table.insert(items, { title = 'Línea anterior / siguiente en bucle', hint = 'alt+LEFT / alt+RIGHT', icon = 'swap_horiz',
+  table.insert(items, { title = tr('Línea anterior / siguiente en bucle'), hint = tr('alt+LEFT / alt+RIGHT'), icon = 'swap_horiz',
     selectable = false, muted = true })
-  table.insert(items, { title = 'Velocidad inteligente (acelera silencios)', icon = 'speed', active = state.smart,
+  table.insert(items, { title = tr('Velocidad inteligente (acelera silencios)'), icon = 'speed', active = state.smart,
     hint = (state.smart and (string.format('×%.1f', opts.silence_speed) .. (state.silence_stats and
       string.format(' · %d%% silencio', math.floor((state.silence_stats.quiet_ratio or 0) * 100 + 0.5)) or ''))
       or (state.smart_wanted and 'en el próximo archivo local' or 'alt+g')), value = { smart = true } })
@@ -382,9 +385,9 @@ local function root_items()
     table.insert(speeds, { title = string.format('×%g', x), active = math.abs(x - opts.silence_speed) < 1e-6,
       value = { silence_speed = x } })
   end
-  table.insert(items, { title = 'Velocidad en silencios', hint = string.format('×%g', opts.silence_speed),
+  table.insert(items, { title = tr('Velocidad en silencios'), hint = string.format('×%g', opts.silence_speed),
     icon = 'fast_forward', items = speeds, separator = true })
-  table.insert(items, { title = 'Nota con enlace de tiempo…', hint = 'alt+b', icon = 'edit_note', value = { note = true },
+  table.insert(items, { title = tr('Nota con enlace de tiempo…'), hint = 'alt+b', icon = 'edit_note', value = { note = true },
     separator = true })
   local a, b, what = clip_range()
   local sub = {}
@@ -392,7 +395,7 @@ local function root_items()
     table.insert(sub, { title = f.label, hint = f.name, icon = f.kind == 'audio' and 'audiotrack' or 'movie',
       value = { clip = f.name } })
   end
-  table.insert(items, { title = 'Exportar clip / GIF', icon = 'content_cut', items = #sub > 0 and sub or nil,
+  table.insert(items, { title = tr('Exportar clip / GIF'), icon = 'content_cut', items = #sub > 0 and sub or nil,
     hint = a and string.format('%s %s–%s', what, fmt_time(a), fmt_time(b)) or 'marca A-B con l',
     value = #sub == 0 and { clip = opts.clip_format } or nil })
   local recent = {}
@@ -410,7 +413,7 @@ end
 
 local function base_menu()
   return nav.decorate({ type = MENU, title = N:title({ 'Estudio' }), items = root_items(), callback = { SCRIPT, EVENT },
-    keep_open = true, search_submenus = false, footnote = 'Repetir · velocidad inteligente · notas · clips' })
+    keep_open = true, search_submenus = false, footnote = tr('Repetir · velocidad inteligente · notas · clips') })
 end
 
 local function refresh_menu()
@@ -418,7 +421,7 @@ local function refresh_menu()
 end
 
 local function open_menu()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.view = 'root'
   publish()
   if state.formats == nil and rpc.connected() then

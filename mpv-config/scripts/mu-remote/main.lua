@@ -9,6 +9,7 @@ local options = require('mp.options')
 package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .. ';' .. package.path
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
+local tr = require('mu.i18n').t
 local nav = require('mu.nav')
 local clip = require('mu.clip')
 local N = nav.new()
@@ -46,7 +47,7 @@ local function fail(err, what)
   msg.warn(what .. ': ' .. m)
   state.last_error = what .. ': ' .. m
   publish()
-  osd('Mando: ' .. m)
+  osd(tr('Mando: %s'):format(m))
   return m
 end
 
@@ -103,8 +104,8 @@ local function draw_qr()
   if type(fw) == 'table' and fw.command then
     ass:new_event()
     ass:append(string.format('{\\pos(%d,%d)\\an8\\bord2\\shad0\\fs18\\1c&H66CCFF&\\3c&H000000&}', cx, y0 + total + 78))
-    ass:append('¿El móvil no conecta? El cortafuegos (' .. fw.tool .. ') bloquea el puerto ' .. tostring(fw.port) ..
-               '. En una terminal: ' .. fw.command:gsub('\\', '\\\\'))
+    ass:append(tr('¿El móvil no conecta? El cortafuegos (%s) bloquea el puerto %s. En una terminal: %s')
+      :format(fw.tool, tostring(fw.port), fw.command:gsub('\\', '\\\\')))
   end
   overlay.res_x = res_w
   overlay.res_y = 720
@@ -136,7 +137,7 @@ end
 
 local function toggle()
   if state.visible then hide(); return end
-  if not rpc.connected() then osd('Mando: mpvd no está conectado'); return end
+  if not rpc.connected() then osd(tr('Mando: mpvd no está conectado')); return end
   rpc.call('remote.pair', {}, function(err, result)
     if err then fail(err, 'no se pudo crear el código'); return end
     if type(result.status) == 'table' then state.status = result.status end
@@ -146,7 +147,7 @@ end
 
 -- H23: the downloads panel in this computer's browser, already paired (one-time token in the URL)
 local function open_downloads()
-  if not rpc.connected() then osd('Descargas: mpvd no está conectado'); return end
+  if not rpc.connected() then osd(tr('Descargas: mpvd no está conectado')); return end
   rpc.call('remote.pair', { path = '/downloads', ['local'] = true }, function(err, result)
     if err then fail(err, 'panel de descargas'); return end
     if type(result.status) == 'table' then state.status = result.status end
@@ -157,7 +158,7 @@ local function open_downloads()
     if cmd == '' then cmd = platform == 'windows' and 'explorer' or (platform == 'darwin' and 'open' or 'xdg-open') end
     mp.command_native_async({ name = 'subprocess', args = { cmd, state.downloads_url }, detach = true,
                               playback_only = false, capture_stdout = false }, function() end)
-    osd('Panel de descargas abierto en el navegador')
+    osd(tr('Panel de descargas abierto en el navegador'))
   end)
 end
 
@@ -177,25 +178,25 @@ mp.observe_property('osd-dimensions', 'native', function() if state.visible then
 -- ---------------------------------------------------------------------------------------------
 -- menu
 
-local COPY_ACTION = { { name = 'copy', icon = 'content_copy', label = 'Copiar el enlace' } }
+local COPY_ACTION = { { name = 'copy', icon = 'content_copy', label = tr('Copiar el enlace') } }
 
 local function menu_items()
   local st = state.status or {}
   local items = {}
   items[#items + 1] = { title = state.visible and 'Ocultar el código QR' or 'Mostrar código QR para emparejar un móvil',
                         hint = 'alt+z', icon = 'qr_code_2', value = { action = 'toggle' } }
-  items[#items + 1] = { title = 'Panel de descargas en el navegador', hint = 'este ordenador · Tab copia el enlace',
+  items[#items + 1] = { title = tr('Panel de descargas en el navegador'), hint = tr('este ordenador · Tab copia el enlace'),
                         icon = 'download', value = { action = 'downloads' }, actions = COPY_ACTION }
   if st.running then
-    items[#items + 1] = { title = 'Servidor activo: ' .. tostring(st.url or ''),
-                          hint = 'puerto ' .. tostring(st.port) .. ' · Enter copia el enlace',
+    items[#items + 1] = { title = tr('Servidor activo: %s'):format(tostring(st.url or '')),
+                          hint = tr('puerto %s · Enter copia el enlace'):format(tostring(st.port)),
                           icon = 'wifi', value = { action = 'copy' } }
   else
-    items[#items + 1] = { title = 'Servidor del mando detenido', icon = 'wifi_off', muted = true, selectable = false }
+    items[#items + 1] = { title = tr('Servidor del mando detenido'), icon = 'wifi_off', muted = true, selectable = false }
   end
   if type(st.firewall) == 'table' and st.firewall.command then
-    items[#items + 1] = { title = 'El cortafuegos (' .. st.firewall.tool .. ') puede bloquear al móvil',
-                          hint = 'copiar la orden', icon = 'shield', value = { action = 'copy-fw' } }
+    items[#items + 1] = { title = tr('El cortafuegos (%s) puede bloquear al móvil'):format(st.firewall.tool),
+                          hint = tr('copiar la orden'), icon = 'shield', value = { action = 'copy-fw' } }
   end
   local paired = st.paired or {}
   if #paired > 0 then
@@ -204,15 +205,15 @@ local function menu_items()
       sub[#sub + 1] = { title = p.name or p.id, hint = os.date('%d/%m %H:%M', math.floor(p.created or 0)),
                         icon = 'smartphone', selectable = false }
     end
-    sub[#sub + 1] = { title = 'Olvidar todos los mandos', icon = 'delete', value = { action = 'forget' }, separator = true }
-    items[#items + 1] = { title = 'Móviles emparejados', hint = tostring(#paired), icon = 'devices', items = sub }
+    sub[#sub + 1] = { title = tr('Olvidar todos los mandos'), icon = 'delete', value = { action = 'forget' }, separator = true }
+    items[#items + 1] = { title = tr('Móviles emparejados'), hint = tostring(#paired), icon = 'devices', items = sub }
   else
-    items[#items + 1] = { title = 'Ningún móvil emparejado', icon = 'devices', muted = true, selectable = false }
+    items[#items + 1] = { title = tr('Ningún móvil emparejado'), icon = 'devices', muted = true, selectable = false }
   end
   items[#items + 1] = { title = st.running and 'Detener el servidor del mando' or 'Arrancar el servidor del mando',
                         icon = st.running and 'stop' or 'play_arrow', separator = true,
                         value = { action = st.running and 'stop' or 'start' } }
-  items[#items + 1] = { title = 'Sin conexión desde el móvil: revisa el cortafuegos (docs/REMOTE.md)', icon = 'help',
+  items[#items + 1] = { title = tr('Sin conexión desde el móvil: revisa el cortafuegos (docs/REMOTE.md)'), icon = 'help',
                         muted = true, selectable = false }
   return items
 end
@@ -227,7 +228,7 @@ local function refresh_menu()
 end
 
 local function open_menu()
-  if not uosc.available() then osd('Mando: uosc no disponible'); return end
+  if not uosc.available() then osd(tr('Mando: uosc no disponible')); return end
   state.view = 'menu'
   uosc.open(remote_menu(uosc.loading_items()))
   rpc.call('remote.status', nil, function(err, st)
