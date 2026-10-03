@@ -1139,3 +1139,19 @@
   antes de que el invitado pueda empezar, justo lo contrario de la queja de Ser («tarda un min aprox en cargar»);
   y un fMP4 que crece empieza rápido pero no salta mejor que ahora. Si el salto vuelve a dar problemas, la palanca
   barata es la reconstrucción del relay que ya existe.
+
+- ADR-100 · Volumen parejo y temporizador: el trabajo era enseñarlos, no construirlos (K3).
+  **Amplía** ADR-051 (el nivelador `dynaudnorm`) y la parte de audio de `mu-music`, sin cambiar ninguna de las dos.
+  Al abrir K3 resultó que lo pedido ya estaba hecho: `mu-music` aplica el `replaygain` de mpv (por pista o por
+  álbum) para lo que trae etiquetas y, para la música que no las trae, la ganancia que mide mpvd puesta como
+  `replaygain-fallback`; y el temporizador de `mu-books` dice en su propia cabecera que vale para cualquier
+  reproducción, no solo para un libro. Lo que fallaba era **dónde estaban**: el volumen, dentro de *Música*, que es
+  el último sitio donde se mira viendo una película; el temporizador, dentro del menú de *Audiolibros*.
+  **La decisión es no unificarlos en un interruptor «inteligente».** Lo tentador era una sola fila que eligiera por
+  su cuenta: etiquetas donde las haya, filtro donde no. Se descarta: el filtro aparecería y desaparecería entre
+  canciones según las etiquetas de cada fichero, y un sonido que cambia de carácter solo es desconcertante. En su
+  lugar, las dos filas van **juntas** y cada una dice lo que cuesta —gratis pero solo donde hay etiquetas, o válida
+  para todo a cambio de CPU—, que es información con la que se puede decidir.
+  **Y una sola verdad**: la fila de *Imagen y sonido* no guarda nada propio, le manda el modo a `mu-music` por
+  `mu-music-replaygain`, porque quien aplica la ganancia es él. Dos preferencias para lo mismo acaban siempre en
+  que una miente.

@@ -461,6 +461,9 @@ views.av = function()
     child('Filtros: diálogo claro, modo noche, ruido…', 'alt+v', 'tune', 'mu_av', 'av-menu'),
     bind('Modo noche', 'alt+n', 'bedtime', 'mu_av/av-night'),
     child('Audiolibros y podcasts', 'alt+A', 'menu_book', 'mu_books', 'books-menu', { separator = true }),
+    -- K3 · el temporizador sirve para cualquier reproducción, no solo para un audiolibro: dentro del menú de
+    -- audiolibros nadie lo encontraba viendo una película
+    child('Temporizador para dormir', nil, 'bedtime', 'mu_books', 'sleep-menu'),
     child('Letra de la canción', 'alt+K', 'lyrics', 'mu_lyrics', 'lyrics-menu'),
   })
 end
@@ -667,6 +670,7 @@ local CURATED = {
   { title = tr('Audio › Pistas de audio'), cmd = 'script-binding uosc/audio' },
   { title = tr('Audiolibros › Adelante 30 s'), cmd = 'script-binding mu_books/forward-30' },
   { title = tr('Audiolibros › Atrás 30 s'), cmd = 'script-binding mu_books/back-30' },
+  { title = tr('Temporizador para dormir'), cmd = 'script-binding mu_books/sleep-menu' },
   { title = tr('Audiolibros y podcasts (capítulos, marcadores, temporizador)'),
     cmd = 'script-binding mu_books/books-menu' },
   { title = tr('Biblioteca (películas, series, seguir viendo, carpetas)'), cmd = 'script-binding mu_library/library-menu' },

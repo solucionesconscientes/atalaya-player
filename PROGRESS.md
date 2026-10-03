@@ -13,6 +13,22 @@ lista guardada…»**, que enseña las listas de Música, y **«Lo que está pue
 acabaría a y veinte— y al terminar se deja la repetición como estuviera. El título del menú dice «Poner», no
 «Grabar», porque grabar algo que ya está en el disco no tiene sentido.
 
+### K3 · Volumen parejo y temporizador, donde se buscan
+Aquí el trabajo no era construir nada: ya estaba. El volumen parejo funcionaba (etiquetas ReplayGain por pista o por
+álbum, y para música sin etiquetas la ganancia que mide el daemon) pero **solo se ofrecía en Música**, que es el
+último sitio donde uno mira viendo una película; y el temporizador para dormirse ya valía para cualquier
+reproducción, pero vivía dentro del menú de audiolibros. Ahora las **dos formas de igualar el volumen van juntas**
+en *Imagen y sonido*, cada una diciendo lo que cuesta —las etiquetas son gratis pero solo donde las hay; el
+nivelador vale para todo a cambio de algo de CPU—, y el **temporizador tiene puerta propia** en el menú principal y
+en la paleta. No se han unificado en un interruptor «listo» a propósito: elegir solo por fichero haría que el
+sonido cambiara de carácter entre canciones, y eso desconcierta más de lo que ayuda.
+
+### Lo que NO se ha hecho, y por qué
+- **El remux para el navegador (H44/C8)**: descartado al medirlo. La nota que lo justificaba decía «en vez del relay
+  recodificando», y el relay **ya** copia cuando los códecs lo permiten: para el mismo fichero, remux 0,08 s y relay
+  0,08 s. Donde sí recodifica —HEVC + Opus, que es lo que graba esta casa— un remux no sirve, porque eso no lo abre
+  ningún navegador; para eso está desde H44 el «ábrelo en tu reproductor», con el fichero original.
+
 ### H60 · El vídeo se quita solo al minimizar
 Preguntaste si minimizar ya deja de decodificar y si entonces el botón de apagar el vídeo es redundante. Lo medí:
 **minimizar no para nada** (37 % de un núcleo con la ventana visible, 18 % minimizada, 8 % sin vídeo, y los mismos

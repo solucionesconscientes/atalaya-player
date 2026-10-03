@@ -81,8 +81,8 @@ local FILTERS = {
     end },
   -- H24: same loudness from one video to the next. A slow dynaudnorm (7.5 s look-ahead, target RMS): loudnorm was
   -- discarded (resamples to 192 kHz, several times the CPU) and ReplayGain tags are rare outside music (ADR-051)
-  level = { kind = 'af', title = 'Volumen igualado', icon = 'volume_up',
-    desc = 'el mismo volumen de un vídeo a otro, sin tocar el mando',
+  level = { kind = 'af', title = 'Volumen parejo · siempre', icon = 'volume_up',
+    desc = 'funciona en todo (también sin etiquetas), cuesta algo de CPU',
     graph = function() return 'dynaudnorm=f=500:g=31:p=0.9:m=8:r=0.15' end },
   eq = { kind = 'af', title = 'Ecualizador', icon = 'graphic_eq',
     desc = 'perfiles de graves, agudos, voz y altavoces',
@@ -357,6 +357,11 @@ end
 
 local function yesno(b) return b and 'activado' or 'desactivado' end
 
+-- modos de ReplayGain, con lo que significa cada uno (el ajuste es el de mu-music)
+local RG_HINT = { no = 'desactivado · gratis, pero solo donde hay etiquetas (música)',
+                  track = 'por pista · gratis, sin tocar el sonido', album = 'por álbum · respeta el disco entero' }
+local RG_NEXT = { no = 'track', track = 'album', album = 'no' }
+
 views.root = function()
   local active = active_filters()
   local items = {}
@@ -371,6 +376,14 @@ views.root = function()
     else
       table.insert(items, { title = f.title, hint = hint, icon = f.icon, active = active[name] == true,
         value = { toggle = name } })
+    end
+    -- K3 · las dos formas de que todo suene igual de fuerte, juntas y diciendo lo que cuestan. La de las etiquetas
+    -- (ReplayGain) es gratis pero solo donde las hay —casi solo música—; el filtro vale para todo pero cuesta CPU.
+    -- El ajuste vive en mu-music, que es quien lo aplica; aquí solo se ofrece donde se busca viendo una película.
+    if name == 'level' then
+      local rg = (mp.get_property_native('user-data/mu/music') or {}).replaygain or 'no'
+      table.insert(items, { title = 'Volumen parejo · con las etiquetas', icon = 'equalizer',
+        hint = RG_HINT[rg] or RG_HINT.no, active = rg ~= 'no', value = { replaygain = rg }, separator = true })
     end
   end
   table.insert(items, { title = 'Quitar el vídeo al minimizar', hint = yesno(P:get('audio_minimized')),
@@ -468,7 +481,10 @@ mp.register_script_message(EVENT, function(json)
   if back then ev.type = 'back' end
   if ev.type == 'activate' then
     local v = type(ev.value) == 'table' and ev.value or {}
-    if v.audio_minimized then
+    if v.replaygain then
+      mp.commandv('script-message-to', 'mu_music', 'mu-music-replaygain', RG_NEXT[v.replaygain] or 'track')
+      mp.add_timeout(0.3, reopen_current)   -- mu-music publica su estado y la fila se redibuja con el nuevo modo
+    elseif v.audio_minimized then
       P:set('audio_minimized', not P:get('audio_minimized'))
       osd('Quitar el vídeo al minimizar: ' .. yesno(P:get('audio_minimized')))
       reopen_current()

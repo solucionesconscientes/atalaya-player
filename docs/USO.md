@@ -369,7 +369,10 @@ para equipos modestos y diagnóstico de tirones con recomendaciones. Más en doc
     archivo. **No se recuerda**: el siguiente vídeo se abre con su imagen. Para escuchar de verdad solo el audio de un
     vídeo largo de internet —bajando únicamente la pista de audio— está «Solo audio» en el menú de calidad (`alt+q`),
     que sí recarga porque se ha pedido a propósito.
-- **Volumen igualado**: todos los vídeos suenan parecido de fuertes, sin tocar el mando (normalizador lento; tarda unos
+- **Volumen parejo · con las etiquetas** (ReplayGain): gratis y exacto, pero solo donde hay etiquetas —casi solo
+  música—; por pista o por álbum. Es el mismo ajuste que hay en *Música*, ofrecido también aquí porque es donde se
+  busca viendo una película. Para la música sin etiquetas, mpvd mide la ganancia y la aplica igual.
+- **Volumen parejo · siempre**: todos los vídeos suenan parecido de fuertes, sin tocar el mando (normalizador lento; tarda unos
   segundos en ajustarse al empezar).
 - **Ecualizador**: *Plano*, *Más graves*, *Menos graves*, *Más agudos*, *Voz*, *Música*, *Altavoces del portátil* y
   *Auriculares*. Se recuerda como el resto de filtros.

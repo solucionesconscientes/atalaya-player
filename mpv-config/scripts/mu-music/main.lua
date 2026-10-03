@@ -1354,6 +1354,15 @@ mp.add_key_binding(nil, 'music-add-to-list', function()
   state.force_open = true
   open_view({ name = 'pick' })
 end)
+-- K3 · «Volumen parejo» también se ofrece en Imagen y sonido, que es donde se busca viendo una película; el ajuste
+-- sigue siendo este, para no tener dos verdades
+mp.register_script_message('mu-music-replaygain', function(mode)
+  if not RG_MODES[mode] then return end
+  set_pref('replaygain', mode)
+  apply_audio_settings()
+  apply_gain()
+  osd('Volumen igualado: ' .. RG_LABEL[mode])
+end)
 mp.register_script_message('mu-music-open', open_root)
 mp.register_script_message('mu-music-play-next', function(path) if path then play_next({ path }) end end)
 mp.register_script_message('mu-music-queue', function(path) if path then enqueue({ path }) end end)

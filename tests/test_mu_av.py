@@ -102,9 +102,11 @@ def test_filters_light_profile_and_diagnosis(av_mpv, media_dir):
     h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-av", timeout=15)
     st = h.wait_property("user-data/mu/av", lambda v: bool(v) and v.get("view") == "root" and v.get("items"), timeout=20)
     titles = [i["title"] for i in st["items"]]
-    assert titles[:7] == ["Diálogo claro", "Modo noche", "Volumen igualado", "Ecualizador", "Reducción de ruido",
+    # K3 · la fila de las etiquetas (ReplayGain) va pegada a la del filtro, para poder comparar lo que cuestan
+    assert titles[:8] == ["Diálogo claro", "Modo noche", "Volumen parejo · siempre",
+                          "Volumen parejo · con las etiquetas", "Ecualizador", "Reducción de ruido",
                           "Binaural para auriculares", "Protección fotosensible"]
-    assert [i["active"] for i in st["items"][:7]] == [True, False, False, False, False, True, True]
+    assert [i["active"] for i in st["items"][:8]] == [True, False, False, False, False, False, True, True]
     assert "Diagnóstico de tirones" in titles and "Quitar todos los filtros" in titles
     send_event(h, {"type": "activate", "index": titles.index("Diagnóstico de tirones") + 1, "value": {"view": "diag"}})
     st = h.wait_property("user-data/mu/av", lambda v: bool(v) and v.get("view") == "diag"

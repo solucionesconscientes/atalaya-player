@@ -8,7 +8,7 @@
 --     delete), speed, ±30 s, «Seguir escuchando» and the sleep timer;
 --   · sleep timer (any playback, not only books): 15/30/45/60 min of playback or «al terminar el capítulo»; at the
 --     end the volume goes down little by little (`fade_seconds`) and playback pauses (volume restored).
--- Bindings: books-menu, back-30, forward-30, bookmark, sleep-cycle. Script name: mu_books. State: user-data/mu/books.
+-- Bindings: books-menu, sleep-menu, back-30, forward-30, bookmark, sleep-cycle. Script name: mu_books. State: user-data/mu/books.
 -- Messages (tests, other scripts): mu-books-sleep <min|chapter|off>, mu-books-bookmark [note], mu-books-speed <x>,
 -- mu-books-skip <seconds>.
 local mp = require('mp')
@@ -748,6 +748,12 @@ local function open_root()
 end
 
 N:binding('books-menu', open_root)
+-- K3 · el temporizador vale para cualquier reproducción, no solo para un audiolibro, así que tiene puerta propia:
+-- escondido dentro del menú de audiolibros nadie lo encuentra viendo una película
+N:binding('sleep-menu', function()
+  state.stack = {}
+  open_view({ name = 'sleep' })
+end)
 mp.add_key_binding(nil, 'back-30', function() skip(-opts.skip_seconds) end, { repeatable = true })
 mp.add_key_binding(nil, 'forward-30', function() skip(opts.skip_seconds) end, { repeatable = true })
 mp.add_key_binding(nil, 'bookmark', function() add_bookmark('') end)

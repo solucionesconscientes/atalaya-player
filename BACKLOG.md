@@ -549,7 +549,13 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
       nombre y el porcentaje de la que corre; al pulsarlo, Tareas. Sin trabajo no está.
 - [x] K2 **Avisar antes, no después**, escrito como regla en docs/INTERFAZ.md y aplicado en tramos, mandos del
       invitado e «ir a un minuto». Queda repasar el resto del menú con ese criterio.
-- [ ] K3 Volumen parejo (ReplayGain) y temporizador para dormirse en todo, no solo en audiolibros.
+- [x] K3 **Volumen parejo y temporizador, donde se buscan** — ADR-100. Las dos piezas ya existían y estaban
+      escondidas. ReplayGain funcionaba —etiquetas por pista o por álbum, y para música sin etiquetas la ganancia
+      que mide mpvd— pero solo se ofrecía en *Música*, y viendo una película nadie entra ahí; ahora la fila está
+      también en *Imagen y sonido*, **pegada** a la del nivelador y diciendo lo que cuesta cada vía: las etiquetas
+      son gratis pero solo donde las hay, el filtro vale para todo pero cuesta CPU. El ajuste sigue siendo uno
+      solo, el de `mu-music`, que es quien lo aplica. El temporizador ya valía para cualquier reproducción, no solo
+      para audiolibros: ahora tiene puerta propia en el menú principal y en la paleta.
 - [x] K4 **«La charla de una hora en quince minutos»**: `semantic.highlights` elige los tramos que mejor la
       representan (cortados por frases enteras) y el reproductor los monta con `edl://`, sin recodificar nada y al
       instante. Guardar el archivo es un paso aparte, porque eso sí cuesta.

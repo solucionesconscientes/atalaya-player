@@ -166,7 +166,8 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 ## Música, audiolibros, podcasts y letras (mu-music, mu-books, mu-lyrics)
 | Tecla | Acción |
 |---|---|
-| `alt+A` | **Audiolibros y podcasts**: capítulos (los del archivo o uno por pista), marcadores con nota (añadir, saltar, borrar con Tab), velocidad de este libro, «Seguir escuchando» y temporizador de apagado (15/30/45/60 min o al terminar el capítulo; baja el volumen poco a poco y pausa) |
+| `alt+A` | **Audiolibros y podcasts**: capítulos (los del archivo o uno por pista), marcadores con nota (añadir, saltar, borrar con Tab), velocidad de este libro y «Seguir escuchando» |
+| — | **Temporizador para dormir** (menú principal › Imagen y sonido, y en la paleta): 15/30/45/60 min o al terminar el capítulo; al final baja el volumen poco a poco y pausa. Vale para cualquier reproducción, no solo para un audiolibro |
 | `alt+J` / `alt+L` | Atrás / adelante 30 s |
 | `alt+K` | **Letra** de la canción: las líneas con su minuto (Enter salta), mostrar u ocultar; «¿Qué canción es?» y sus ajustes (internet desactivado por defecto) |
 | `alt+M` | **Música**: artistas › álbumes › pistas, álbumes, géneros, buscar (sin acentos), listas M3U8 e inteligentes, cola («Reproducir a continuación», mover con `ctrl+↑/↓`, guardar como lista), historial local, carpetas y ajustes (sin cortes, fundido, volumen igualado, salida exclusiva) |
