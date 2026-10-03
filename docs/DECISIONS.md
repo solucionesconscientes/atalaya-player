@@ -1277,3 +1277,71 @@
   configuración DE VERDAD de quien ejecuta la batería— y dejó los torrents encendidos. El resto de rutas ya estaban
   aisladas en los tests; esta era nueva y se me pasó. Ahora `MPV_UOS_CONFIG_DIR` también apunta a la carpeta del
   test, y el fichero que se creó se borró a mano.
+
+- ADR-107 · Las páginas servidas se traducen con un `/i18n.js` propio, y el HTML se traduce en el navegador
+  (H49/G6).
+  La sala, el mando y el panel los abre **otra persona** en **su** navegador, así que el idioma lo decide su
+  `Accept-Language` (ADR-087 ya lo dejó dicho; esto es cómo se hace).
+  **(1) No se manda el catálogo entero.** Son 1.538 cadenas, unos 75 KB, en un móvil que quizá está en 3G y para
+  una página que usa setenta. El servidor calcula las cadenas de esa carpeta (`page_keys`: los `t('…')` de sus
+  `.js` y el texto de sus `.html`), se queda con las que tienen traducción y las sirve en `/i18n.js` —la sala, en
+  `/static/i18n.js`— delante de la plantilla `mpvd/i18n_page.js`, que trae el `t()` y el paso que traduce el HTML.
+  En castellano se sirve `window.MU_T = {}`, porque la página ya está escrita en castellano: el peor caso sigue
+  siendo «se ve en español».
+  **(2) Un fichero, no un `<script>` en línea.** La primera versión metía el catálogo en un hueco
+  `{/*i18n*/}` dentro del HTML. Funcionaba en el mando y en el panel, y **no** en la sala: se sirve con
+  `Content-Security-Policy: script-src 'self'`, que bloquea lo que va en línea. Y lo bloquea **callando**: no salta
+  `window.onerror`, así que el síntoma era una sala que cargaba y se quedaba muda («t is not defined» dentro de un
+  `catch`), con el vídeo sin empezar. Aflojar la CSP para una traducción habría sido cambiar la seguridad de la
+  página —que se expone a internet por el túnel— por una comodidad; servir un `.js` más cuesta una petición que el
+  navegador cachea igual.
+  **(3) El HTML ya escrito se traduce en el navegador**, con un recorrido de los nodos de texto y de los atributos
+  que una persona lee (`placeholder`, `title`, `aria-label`, `alt`), usando el mismo catálogo. La alternativa era
+  marcar cada etiqueta con `data-i18n` —cien atributos a mano— o montar plantillas en el servidor. La clave es el
+  texto castellano, apretando los espacios en blanco, así que la indentación del HTML no la cambia. El cambio de
+  marca (`brand.json`) se aplica al catálogo entero, clave incluida, porque el HTML también se reescribe: las dos
+  mitades tienen que decir lo mismo para que la clave se encuentre.
+  **(4) Una frase, un nodo.** Un párrafo partido por dentro con un `<code>` produce trozos («, necesitan») que no
+  se pueden traducir por separado. Había uno y se reescribió para que el `<code>` quede al final. La regla es la
+  misma que en Lua: nunca media frase.
+  **(5) Los dos fallos de la sala que esto deja cerrados** los cazaron los tests de navegador, que son los únicos
+  que ejecutan estas páginas de verdad: `var t = document.createElement('span')` tapaba el `t()` global (ADR-109) y
+  un renombrado a ciegas de esa misma variable convirtió una **clase de CSS** (`'t'`, el título de la fila) en
+  `'task'`, que era la de la fila entera, así que cada descarga contaba por dos. Un renombrado automático no
+  distingue un identificador de una cadena: por eso ahora las páginas pasan por `node --check` y por un test que
+  prohíbe la variable `t`.
+
+- ADR-108 · Un repaso de traducción es también un repaso de lo que el programa entiende (H49/G7).
+  Leyendo los 1.533 pares salió una sola frase con castellano dentro en los otros dos idiomas: la pista de la
+  programación manual, «también **mañana** 9:00 1h30». Y no era un descuido de la traducción: el analizador de
+  `mpvd/iptv/schedule.py` solo entendía `hoy`/`mañana`/`pasado`, de modo que la pista en inglés o en francés tenía
+  que seguir diciendo una palabra en castellano **para que funcionara**. Traducir la pista sin tocar el analizador
+  habría dado una instrucción que no funciona, que es peor que no traducirla.
+  **La decisión es que el analizador entienda los tres idiomas** (`today`/`tomorrow`, `aujourd’hui`/`demain`/
+  `après-demain`, los conectores `to`/`à`/`until`, `now`/`maintenant`), y que las castellanas sigan valiendo
+  siempre: una lista guardada o una costumbre de los dedos no se rompe por cambiar de idioma. Los avisos de esa
+  entrada («no entiendo la hora…»), que salen en la paleta, pasan por `t()`; y el `hoy 21:30–22:15 (45 min)` de la
+  ficha también, que es lo que se ve en el menú.
+  **Lo que el repaso NO cambió**: la puntuación francesa ya estaba bien (espacio antes de `:` `;` `!` `?`,
+  comillas `« »`) y no había ni una traducción vacía ni un `%s` descolocado —eso lo vigila un test—. Lo único
+  cosmético fue unificar el apóstrofo tipográfico (`’`) en las 267 cadenas francesas que llevaban el recto.
+
+- ADR-109 · `t` es un nombre demasiado corto para dejarlo suelto: se prohíbe como variable (H49).
+  La función de traducción se llama `t()` en los tres lenguajes del proyecto porque va en 1.538 sitios y un nombre
+  largo haría el código ilegible. El precio es que `t` es también el nombre que todo el mundo le pone a una
+  variable temporal —una pista, una tarea, un `<span>`— y entonces **tapa la función**, de tres maneras distintas
+  y las tres silenciosas:
+  **En Lua**, un `local tr` dentro de una función tapa el `tr` del módulo; reventó en mu-subs y lo cazó luacheck.
+  **En JavaScript**, `var t = …` se iza al principio de la función, así que la línea de ANTES ya falla con «t is
+  not a function»; en la sala eso dejaba la lista de invitados, el chat y el vídeo sin pintar, y nadie lo veía
+  porque el error se lo comía un `catch`.
+  **En Python es lo peor**: una sola asignación `t = …`, o un `for t in …`, hace el nombre local de **toda** la
+  función, así que `raise RpcError(NOT_FOUND, t("no task %s") % (id,))` no lanza el error que dice sino un
+  `UnboundLocalError`. O sea: el camino del error se rompe exactamente cuando hay un error. Pasó en tres sitios
+  (`asr.status`, `asr.segments` y el idioma de origen de los subtítulos) y lo cazó **la pasada completa**, no el
+  lint: para ruff y para mypy ese código es correcto.
+  **La decisión es que ningún `t` suelto se queda**, y que lo vigile un test en vez de la memoria: uno recorre el
+  JavaScript de las páginas buscando `var|let|const t`, `function (t)` y `(t) =>`, y otro recorre mpvd con `ast`
+  y marca cualquier función que **ate** el nombre `t` y además llame a `t(...)` —mirando el ámbito de verdad, sin
+  entrar en las funciones anidadas ni en las comprensiones, que tienen el suyo—. Un `for x in …` no cuesta nada;
+  un error que se convierte en otro error, mucho.

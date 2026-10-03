@@ -1,6 +1,66 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## Resumen para Ser (2026-10-04, iteración 9) · H59 torrents, H61-H65 y H49 idiomas
+De tus tres preguntas (minimizar no avisaba, cómo se ven los torrents, el mando de la tele en una Raspberry) y del
+«hazlo todo de golpe, menos la web» salió esta tanda. Lo de la web (H50) sigue sin empezar, como pediste.
+
+### H59 · Ver un torrent mientras se descarga
+Pegas un *magnet* o un `.torrent` y, si los torrents están encendidos (**Preferencias**, apagados de fábrica), la
+puerta única de `ctrl+o` ofrece **«Ver mientras se descarga»**. No espera a que acabe: mpv pide rangos a un
+servidor local y a las piezas de **ese** rango se les pone fecha límite, así que un salto adelante se sirve igual
+(el test lee el final del fichero sin haberlo descargado). Medido: 12,1 ms de CPU por MB y 110 MB de RSS, un 6 % de
+un núcleo bajando a 5 MB/s. Con proxy SOCKS5 si lo configuras; a un torrent **privado** no se le añade ningún
+tracker extra, que es motivo de expulsión.
+
+### H61 · El mando del televisor (HDMI-CEC)
+Pensando en la Raspberry enchufada a la tele: si el aparato lo permite, las flechas, OK, play/pausa y los números
+del **mando del televisor** manejan el reproductor, sin teclado. Se habla con `/dev/cec0` del kernel directamente
+(sin libcec ni paquetes del sistema) y funciona también fuera del modo salón. **No lo he podido probar con una tele
+de verdad** —no hay ninguna aquí—: está escrito contra la API del kernel y probado con un dispositivo falso; en
+`NEEDS_HUMAN.md` queda la orden exacta para comprobarlo cuando haya una.
+
+### H62 · Lo que pasa por detrás se ve y se dice
+Guardar los cortes de un vídeo **no recodifica nada** (se copian las pistas: un corte de 10 minutos son dos
+segundos), pero antes solo se avisaba al empezar. Ahora: las tareas que tardan salen en **Tareas** (alt+j) con su
+nombre en claro, y al terminar sale un aviso del escritorio si han tardado más de 20 segundos. Las que son
+instantáneas no molestan.
+
+### H64 · Explorar las carpetas del equipo
+**Biblioteca › Explorar** recorre el equipo entero con el mando: discos y sitios (Vídeos, Música, Descargas…),
+subir, **reproducir la carpeta entera**, añadirla a la biblioteca. Para la tele sin teclado, que era la idea.
+
+### H63 y H65 · Tests que no fallan al azar, y un menú que no se reabre
+Seis fallos distintos que parecían «sensibles a la carga» eran de verdad: las filas de la vista anterior se leían
+como si fueran de la nueva (arreglado en los trece scripts, no en los tests) y un menú cerrado se volvía a abrir
+solo cuando llegaba una respuesta tardía.
+
+### H49 · El programa en tres idiomas
+Castellano, inglés y francés: **1.533 cadenas por idioma** (3.066 traducciones), ninguna vacía. Si el sistema está
+en castellano o francés, ese; en cualquier otro, inglés; y en **Preferencias › Idioma** se puede forzar. Lo que no
+está traducido cae al castellano, así que el peor caso es «se ve en español», nunca un hueco.
+- Las páginas que sirve el programa (la sala de *ver juntos*, el mando del móvil, el panel de descargas) siguen al
+  **navegador del invitado**, no a tu sistema: las abre otra persona y puede estar en otro idioma.
+- Al repasar las traducciones salió algo que no era de traducción: la pista «también **mañana** 9:00 1h30» de
+  *Programar* tenía que seguir diciendo una palabra castellana, porque el programa solo entendía `hoy`/`mañana`/
+  `pasado`. Ahora entiende también `today`/`tomorrow` y `aujourd’hui`/`demain`/`après-demain` (y las castellanas
+  siguen valiendo siempre).
+- Quedan medidas **491 cadenas** de mpvd que el extractor no veía porque no son `RpcError` (los formatos de
+  «Convertir», los modelos de voz, los nombres de las tareas…): está anotado como H49/G8 con el detalle por
+  ficheros. No es un error nuevo: es la parte que faltaba por descubrir, y ahora se sabe cuánta es.
+- Y una trampa que costó tres fallos y ahora la vigilan dos tests: la función de traducción se llama `t()`, que es
+  también el nombre que cualquiera le pone a una variable temporal. Cuando eso pasa, en JavaScript la página se
+  queda muda y en Python el mensaje de error se convierte en otro error (`UnboundLocalError`) justo cuando hay un
+  error que contar (ADR-109).
+
+Probar a mano:
+```bash
+bin/mpv-uos                      # ctrl+o y pega un magnet → «Ver mientras se descarga» (enciéndelos antes en Preferencias)
+bin/mpv-uos                      # alt+j → Biblioteca › Explorar: discos, carpetas, «reproducir toda esta carpeta»
+MPV_UOS_LANG=fr bin/mpv-uos      # todo en francés, incluido el menú y los avisos
+MPV_UOS_LANG=en bin/mpv-uos      # y en inglés; el mando del móvil, en el idioma del móvil
+```
+
 ## Resumen para Ser (2026-10-03, iteración 8) · H58, H60, J5, H44/C8, H53, K3
 De tu tercera prueba y del repaso de `docs/IDEAS.md` salieron cuatro cosas, y están. Detrás van las cinco que
 aprobaste después.
@@ -278,44 +338,26 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-El 2026-10-03 Ser dio el visto bueno a todo lo que quedaba del repaso y se hizo de una tanda: **H58**, **H60**,
-**J5**, **H53** y **K3**, más **H44/C8 descartado al medirlo**. El código no tiene pendientes abiertos.
+El 2026-10-04 se hizo de una tanda lo que quedaba aprobado menos la web: **H59** (torrents), **H61** (mando del
+televisor), **H62**, **H63**, **H64**, **H65** y **H49/G1-G7** (los tres idiomas). El código no tiene pendientes
+abiertos y `tools/check.sh` queda en verde.
 
 Lo que queda, por orden:
 
-1. **Que Ser vuelva a probar.** Es el único paso que puede desbloquear lo demás: su orden fue «primero termina de
-   construir el programa, lo pruebo, y cuando te dé el ok, luego haces web y traducción».
+1. **Que Ser vuelva a probar**, ahora con todo construido y traducido. Es lo único que puede desbloquear lo demás.
 2. **Arreglar lo que salga.**
-3. **Traducir (H49/G4-G7) — lo último de todo**, porque multiplica por tres cualquier cambio posterior: ~1.600
-   cadenas.
-4. **La web (H50)**, diseñada en `docs/SITIO-WEB.md`. Las capturas las puedo hacer yo (comprobado); faltan dos
-   decisiones de Ser: qué se ve de fondo en ellas y si el repo se hace público. Aquí es donde encajan, si se
-   quieren, los enlaces `mpv-uos://` para canales y categorías: solos no valen (hay que registrar un `.desktop`
-   fuera del proyecto, y la puerta única de `ctrl+o` ya se traga cualquier cosa pegada), pero con una web que los
-   reparta sí tendrían sentido.
+3. **H49/G8**: las **491 cadenas** de mpvd que el extractor de G5 no veía porque no son `RpcError` (valores de
+   diccionario, listas de presets, f-strings sueltas). Están medidas y repartidas por ficheros en el BACKLOG, por
+   orden de lo que más se ve: `convert/presets.py` (32), `intro/service.py` (25), `subscriptions/chain.py` (20),
+   `share/live.py` (18), `asr/models.py`, `jobs.py`, `ytdl/presets.py`, `power.py` (14 cada uno) y
+   `share/service.py` (51). Hace falta además ampliar `tools/i18n_extract_py.py` a esas formas, o el test no las
+   vigilará. **Primero** hay que ampliar el extractor; envolver a mano sin él deja el catálogo cojo sin avisar.
+4. **La web (H50)**, diseñada en `docs/SITIO-WEB.md`. Ser la dejó fuera a propósito de esta tanda. Las capturas las
+   puedo hacer yo; faltan dos decisiones suyas: qué se ve de fondo en ellas y si el repo se hace público.
 
-**H59 · torrents con libtorrent** sigue aprobado y sin empezar. El diseño **ya está escrito en el BACKLOG** (L1-L10);
-al recapitular dije que lo estaba y no era cierto, se escribió el 2026-10-03 al preguntar Ser cómo se visualizan.
-Reabre H26, cuya propuesta de integrarse con qBittorrent queda aparcada.
-
-Lo que Ser tiene que hacer una vez: **la línea de sudoers de `rtcwake`** (sin ella, una grabación o reproducción
-programada de madrugada no ocurre) y, sin prisa, **la cuenta de OpenSubtitles**. El puerto en `ufw` **no** hace
-falta: la sala sale por el túnel, que no necesita puertos abiertos. Los comandos exactos y el porqué de cada uno,
-en NEEDS_HUMAN.md.
-
-Avisos para quien siga, todos aprendidos a golpes en esta iteración:
-- **uosc deriva el id de un submenú de su TÍTULO** (`elements/Menu.lua:192`). Dos filas hermanas con el mismo título
-  comparten id y uosc **revienta al pintar** el menú (`clamp(0, pos, nil)` en `set_scroll_to`), dejándolo inservible.
-  Si una fila lleva `items` y su título sale de datos, **ponle `id`** (ADR-080).
-- **LuaJIT no mira hacia adelante**: una función usada antes de definirse se resuelve como variable global (= nil) y
-  `luajit -bl` no lo detecta, solo `luacheck`. Declárala arriba (`local open_root`) y asígnala después.
-- **No partas un fichero Lua por `split('\n}')`** para insertar en una tabla: hay muchos `\n}` y se mete en la tabla
-  de al lado (me pasó con CURATED y ACTIONS, y una vez me dejó el fichero sin la primera mitad). Ancla por texto único
-  y comprueba el resultado con `luacheck`, no solo con `luajit -bl`.
-- **Tests sensibles a la carga**: con otro proyecto ocupando ~3 de los 4 núcleos fallan por tiempo entre 2 y 4 tests
-  por pasada, y **no son siempre los mismos** (los de Whisper, `test_nav`, `test_mu_share`, `test_mu_av`,
-  `test_robustness`, `test_mu_feeds`, `test_prefs`, `test_recap`). Todos pasan al repetirlos aislados. Antes de
-  dar por roto algo, repítelo solo.
+Solo Ser puede: la línea de `sudoers` para `rtcwake` (despertar el equipo para una grabación), la cuenta de
+OpenSubtitles y **comprobar el HDMI-CEC con una tele de verdad** (H61/M7). Las órdenes exactas están en
+`NEEDS_HUMAN.md`.
 
 ## Registro por iteración
 ### Iteración 12 · 2026-10-02/03 · H57 · Programar que SUENE, y el repaso de ideas — hecho

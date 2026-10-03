@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import json
 import subprocess
+import urllib.request
 
 import pytest
 
 from mpvd import i18n
 from tests.conftest import ROOT, start_mpv
 from tests.test_mu_iptv import tv  # noqa: F401
+from tests.test_remote import remote_env  # noqa: F401
 
 LANZADOR = ROOT / "bin" / "mpv-uos"
 
@@ -178,6 +180,10 @@ def test_los_catalogos_estan_completos_y_al_dia():
         encontradas |= set(found_py)
         assert not pendientes, f"{f.name}: mensajes en castellano sin envolver: {pendientes}"
 
+    # H49/G6 · y las de las páginas que sirve mpvd: los `t('…')` de sus .js y el texto de sus .html
+    for carpeta in ("mpvd/remote/www", "mpvd/share/www"):
+        encontradas |= set(i18n.page_keys(str(ROOT / carpeta)))
+
     for lang in ("en", "fr"):
         cat = json.loads((ROOT / "locales" / f"{lang}.json").read_text(encoding="utf-8"))
         faltan = sorted(encontradas - set(cat))
@@ -204,3 +210,172 @@ def test_la_preferencia_gana_al_idioma_del_sistema(tmp_path):
     (datos / "prefs.json").write_text('{"mu-menu": {"lang"', encoding="utf-8")
     args = _con_locale(tmp_path, "fr_FR.UTF-8", MPV_UOS_DATA_DIR=str(datos))
     assert "--script-opts-append=mu-core-lang=fr" in args, args
+
+
+# -- H49/G6 · las páginas servidas ------------------------------------------------------------------------------
+
+PAGINAS = (("mpvd/remote/www", "index.html"), ("mpvd/remote/www", "downloads.html"), ("mpvd/share/www", "room.html"))
+
+
+@pytest.mark.parametrize(("carpeta", "pagina"), PAGINAS)
+def test_cada_pagina_servida_carga_su_i18n_antes_de_su_javascript(carpeta, pagina):
+    """Cada página tiene que cargar el `i18n.js` que le da el servidor —y **antes** que su propio .js, que llama a
+    `t()`—. Va en un fichero aparte porque la sala se sirve con `script-src 'self'`, que bloquea el `<script>` en
+    línea sin avisar: la página se quedaba muda y sin traducir (ADR-107)."""
+    import re as _re
+
+    html = (ROOT / carpeta / pagina).read_text(encoding="utf-8")
+    assert "{/*i18n*/}" not in html, "el catálogo ya no se mete dentro del HTML"
+    fuentes = _re.findall(r'<script src="([^"]+)"', html)
+    assert fuentes, "la página no carga ningún .js"
+    assert fuentes[0].endswith("/i18n.js"), f"i18n.js tiene que ser el primero: {fuentes}"
+
+
+def test_la_plantilla_del_i18n_de_las_paginas_esta_completa():
+    """Una sola copia para las tres páginas (`mpvd/i18n_page.js`): el `t()` con sus `%s` y el paso que traduce el
+    texto que ya viene escrito en el HTML."""
+    js = (ROOT / "mpvd" / "i18n_page.js").read_text(encoding="utf-8")
+    assert "function t(s)" in js and "/%s/g" in js, "falta el t()"
+    assert "createTreeWalker" in js, "falta el paso que traduce el HTML ya escrito"
+    for atributo in ("placeholder", "title", "aria-label", "alt"):
+        assert atributo in js, atributo
+
+
+@pytest.mark.parametrize(("carpeta", "pagina"), PAGINAS)
+def test_el_i18n_que_se_sirve_lleva_el_catalogo_delante(carpeta, pagina):
+    """Lo que se sirve es el catálogo de esa página y, detrás, la plantilla. En castellano, un catálogo vacío."""
+    i18n.catalogue.cache_clear()
+    js = i18n.page_script(ROOT / carpeta, "fr-FR,fr;q=0.9").decode("utf-8")
+    assert js.startswith("window.MU_T = {\"")
+    assert "function t(s)" in js and "createTreeWalker" in js
+    cat = json.loads(js.split("window.MU_T = ", 1)[1].split(";\n", 1)[0])
+    assert cat and all(v.strip() for v in cat.values())
+    vacio = i18n.page_script(ROOT / carpeta, "es-ES,es").decode("utf-8")
+    assert vacio.startswith("window.MU_T = {};")
+
+
+def test_ninguna_funcion_de_mpvd_tapa_la_funcion_t():
+    """El mismo fallo que en el JavaScript, y en Python es peor: una sola asignación `t = …` (o un `for t in …`)
+    hace que `t` sea local de **toda** la función, así que el `t("…")` de antes revienta con UnboundLocalError y
+    el mensaje de error se convierte en un error distinto. Pasó de verdad en `asr.status`, `asr.segments` y en el
+    idioma de origen de los subtítulos: lo cazó la pasada completa, no el lint."""
+    import ast
+
+    anida = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp,
+             ast.GeneratorExp)
+
+    def propios(nodo):
+        """El ámbito de esta función, sin entrar en los anidados (que tienen el suyo)."""
+        for hijo in ast.iter_child_nodes(nodo):
+            if isinstance(hijo, anida):
+                continue
+            yield hijo
+            yield from propios(hijo)
+
+    def ata(nodo):
+        out = {a.arg for a in list(nodo.args.args) + list(nodo.args.kwonlyargs) + list(nodo.args.posonlyargs)}
+        for n in propios(nodo):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+                out.add(n.id)
+            elif isinstance(n, (ast.Import, ast.ImportFrom)):
+                out |= {(a.asname or a.name).split(".")[0] for a in n.names}
+            elif isinstance(n, ast.ExceptHandler) and n.name:
+                out.add(n.name)
+            elif isinstance(n, ast.Global):
+                out -= set(n.names)
+        return out
+
+    malas = []
+    for f in sorted((ROOT / "mpvd").rglob("*.py")):
+        for nodo in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            if not isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef)) or "t" not in ata(nodo):
+                continue
+            if any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "t"
+                   for n in propios(nodo)):
+                malas.append(f"{f.relative_to(ROOT)}:{nodo.lineno} {nodo.name}()")
+    assert not malas, f"funciones que atan `t` y llaman a t(): {malas}"
+
+
+def test_ninguna_variable_de_las_paginas_tapa_la_funcion_t():
+    """Un `var t = …` dentro de una función tapa el `t()` global en TODA la función (hoisting), así que la línea de
+    antes revienta con «t is not a function» y la página se queda a medias. Pasó de verdad con la lista de
+    invitados de la sala, y no se ve hasta que alguien abre esa página: aquí se ve siempre."""
+    import re as _re
+
+    tapan = _re.compile(r"\b(?:var|let|const)\s+t\s*=|function\s*\(\s*t\s*\)|\(\s*t\s*\)\s*=>")
+    for carpeta in ("mpvd/remote/www", "mpvd/share/www"):
+        for f in sorted((ROOT / carpeta).glob("*.js")):
+            if f.name.endswith(".min.js"):
+                continue
+            malas = [n for n, linea in enumerate(f.read_text(encoding="utf-8").split("\n"), 1)
+                     if tapan.search(linea)]
+            assert not malas, f"{f.name}: líneas que tapan t(): {malas}"
+
+
+def test_el_javascript_de_las_paginas_compila():
+    """Un paréntesis mal puesto al envolver una cadena deja la página muda y no lo nota ningún test de Python.
+    `node --check` vale como compilador; si no hay node, se omite (no es una dependencia del proyecto)."""
+    import shutil
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("sin node")
+    ficheros = [ROOT / "mpvd" / "i18n_page.js"]
+    for carpeta in ("mpvd/remote/www", "mpvd/share/www"):
+        ficheros += [f for f in sorted((ROOT / carpeta).glob("*.js")) if not f.name.endswith(".min.js")]
+    for f in ficheros:
+        r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, f"{f.name}: {r.stderr}"
+
+
+def test_el_catalogo_de_la_pagina_va_en_el_idioma_del_navegador_y_solo_con_lo_suyo():
+    """No se le manda el catálogo entero (1.500 cadenas, 70 KB en un móvil por 3G) sino solo lo que esa página usa,
+    y en castellano no se manda nada porque la propia página ya está en castellano."""
+    i18n.catalogue.cache_clear()
+    for carpeta, _ in PAGINAS:
+        www = ROOT / carpeta
+        assert i18n.page_catalogue(www, "es-ES,es;q=0.9") == "{}"
+        for lang, cabecera in (("en", "en-US,en;q=0.9"), ("fr", "fr-FR,fr;q=0.9")):
+            cat = json.loads(i18n.page_catalogue(www, cabecera))
+            completo = i18n.catalogue(lang)
+            claves = i18n.page_keys(str(www))
+            assert cat, (carpeta, lang)
+            assert set(cat) <= set(claves), "no se manda nada que la página no use"
+            assert len(cat) < len(completo) / 2, "se manda un trozo, no el catálogo entero"
+            assert all(v.strip() for v in cat.values()), "una traducción vacía taparía el castellano"
+
+
+def test_el_texto_del_html_y_del_js_esta_todo_en_el_catalogo():
+    """Las dos mitades de una página: lo que pinta el JavaScript y lo que ya viene escrito en el HTML. Una frase
+    suelta deja la página medio traducida, que es peor que no traducirla."""
+    for carpeta, pagina in PAGINAS:
+        claves = i18n.page_keys(str(ROOT / carpeta))
+        delhtml = i18n.html_keys((ROOT / carpeta / pagina).read_text(encoding="utf-8"))
+        assert delhtml <= claves
+        for lang in ("en", "fr"):
+            cat = i18n.catalogue(lang)
+            faltan = sorted(k for k in claves if k not in cat)
+            assert not faltan, f"{carpeta} en {lang}: {faltan[:5]}"
+
+
+def test_el_mando_llega_al_movil_traducido(remote_env):  # noqa: F811
+    """La prueba de verdad, por HTTP: el móvil pide la página en francés y la recibe con las cadenas en francés
+    puestas dentro; pidiéndola en castellano no se le manda catálogo."""
+    _h, d = remote_env
+    base = d.call("remote.pair")["url"].split("/#")[0]
+
+    def pedir(ruta: str, cabecera: str) -> str:
+        r = urllib.request.Request(base + ruta, headers={"Accept-Language": cabecera})
+        with urllib.request.urlopen(r, timeout=20) as resp:
+            return resp.read().decode("utf-8")
+
+    html = pedir("/", "fr-FR,fr;q=0.9,en;q=0.5")
+    assert 'src="/i18n.js"' in html and "Canales" in html, "la página se sirve en castellano y se traduce al cargar"
+
+    js = pedir("/i18n.js", "fr-FR,fr;q=0.9,en;q=0.5")
+    cat = json.loads(js.split("window.MU_T = ", 1)[1].split(";\n", 1)[0])
+    assert cat.get("Canales") == "Chaînes" and cat.get("Más") == "Plus", "el texto del HTML va en el catálogo"
+    assert cat.get("Mando") == "Télécommande" and cat.get("Buscar canal o emisora…"), "y los atributos (placeholder)"
+    assert "function t(s)" in js and "createTreeWalker" in js
+
+    assert pedir("/i18n.js", "es-ES,es;q=0.9").startswith("window.MU_T = {};")

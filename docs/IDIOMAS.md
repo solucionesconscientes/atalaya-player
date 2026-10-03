@@ -93,3 +93,18 @@ La sala, el mando del móvil y el panel de descargas los abre otra persona, quiz
 4. **Los mensajes de mpvd**, que salen en el OSD.
 5. **Las páginas servidas** (sala, mando, descargas).
 6. **Repaso de las traducciones**, el francés con ojo: lo escribo yo y conviene que alguien lo lea.
+
+## Cómo acabó (H49, iteración 9)
+- **1.533 cadenas** por idioma, inglés y francés completos, sin ninguna vacía (un valor vacío cae al castellano,
+  así que un hueco no se ve; lo vigila `tests/test_i18n.py`).
+- Tres extractores, uno por lenguaje, y los tres son la fuente del test que compara código y catálogo:
+  `tools/i18n_extract.py` (Lua), `tools/i18n_extract_py.py` (los mensajes de mpvd) y `tools/i18n_extract_web.py`
+  (las páginas servidas: los `t('…')` de sus `.js` y el texto de sus `.html`).
+- Las páginas servidas no reciben el catálogo entero, sino las cadenas que esa página usa, en el idioma que pide el
+  navegador del invitado, servidas en `/i18n.js` (la sala, en `/static/i18n.js`) delante de `mpvd/i18n_page.js`
+  (ADR-107). El texto que ya viene escrito en el HTML se traduce en el propio navegador. Un `<script>` en línea no
+  vale: la sala se sirve con `script-src 'self'` y el navegador lo bloquea sin avisar.
+- Lo que no se traduce sigue siendo lo de la lista de arriba, más dos cosas que se decidieron al repasar:
+  - Los nombres de país de `mpvd/iptv/labels.py` (unos 240): son datos, vienen en castellano de la lista de
+    canales y traducirlos es un trabajo de datos, no de interfaz. Anotado en el BACKLOG (H49/G8).
+  - Las descripciones de las herramientas MCP (`mpvd/mcp.py`): las lee un modelo, no una persona.

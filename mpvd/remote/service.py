@@ -28,7 +28,7 @@ from mpvd.mpvipc import MpvIpcError
 from mpvd.remote import qr
 from mpvd.remote.downloads import DownloadsPanel
 from mpvd.remote.http import HttpError, HttpServer, Request, Response, sse_event
-from mpvd.i18n import t
+from mpvd.i18n import page_script, t
 from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -319,6 +319,10 @@ class RemoteService:
 
     async def handle(self, req: Request) -> Response:
         path = req.path
+        if req.method in ("GET", "HEAD") and path == "/i18n.js":
+            # H49/G6 · el mando lo abre otra persona en su móvil: las cadenas, en el idioma de SU navegador
+            return Response(200, {"Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache"},
+                            page_script(self.www, req.headers.get("accept-language")))
         if req.method in ("GET", "HEAD") and path in STATIC:
             resp = Response.file(self.www / STATIC[path], cache="no-cache")
             if STATIC[path] in BRANDED and app_name() != "MPV-UOS":

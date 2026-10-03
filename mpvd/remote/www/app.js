@@ -17,9 +17,9 @@
   async function api(path, body) {
     const opts = body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {};
     const r = await fetch(path, opts);
-    if (r.status === 401) { notice('Sin emparejar: abre el mando desde el reproductor (alt+z) y escanea el QR.', true); throw new Error('401'); }
+    if (r.status === 401) { notice(t('Sin emparejar: abre el mando desde el reproductor (alt+z) y escanea el QR.'), true); throw new Error('401'); }
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) { notice(data.error || ('Error ' + r.status), true); throw new Error(data.error || r.status); }
+    if (!r.ok) { notice(data.error || t('Error %s', r.status), true); throw new Error(data.error || r.status); }
     return data;
   }
   const cmd = (name, args) => api('/api/cmd', Object.assign({ cmd: name }, args || {}));
@@ -31,7 +31,7 @@
     history.replaceState(null, '', location.pathname);
     try {
       const r = await api('/api/pair', { token: m[1] });
-      notice('Emparejado: ' + r.name + '. Puedes añadir esta página a la pantalla de inicio.');
+      notice(t('Emparejado: %s.', r.name) + ' ' + t('Puedes añadir esta página a la pantalla de inicio.'));
       setTimeout(() => notice(''), 6000);
       return true;
     } catch (e) { return false; }
@@ -41,14 +41,14 @@
   function render(st) {
     state.st = st;
     if (st.no_player) {
-      $('title').textContent = 'Mando MPV-UOS';
-      $('subtitle').textContent = 'No hay ningún reproductor abierto';
+      $('title').textContent = t('Mando MPV-UOS');
+      $('subtitle').textContent = t('No hay ningún reproductor abierto');
       return;
     }
-    const title = st.channel || st['media-title'] || st.filename || (st['idle-active'] ? 'Sin archivo' : '');
+    const title = st.channel || st['media-title'] || st.filename || (st['idle-active'] ? t('Sin archivo') : '');
     $('title').textContent = title;
     const extra = st.icy_title ? ' · ' + st.icy_title : '';
-    $('subtitle').textContent = (st.pause ? '⏸ ' : '▶ ') + fmt(st['time-pos']) + (st.duration ? ' / ' + fmt(st.duration) : ' · directo')
+    $('subtitle').textContent = (st.pause ? '⏸ ' : '▶ ') + fmt(st['time-pos']) + (st.duration ? ' / ' + fmt(st.duration) : ' · ' + t('directo'))
       + (st.speed && st.speed !== 1 ? ' · ' + st.speed + '×' : '') + extra;
     $('playpause').textContent = st.pause ? '▶' : '⏸';
     $('pos').textContent = fmt(st['time-pos']);
@@ -70,8 +70,8 @@
     es.addEventListener('hello', () => notice(''));
     es.addEventListener('state', (e) => render(JSON.parse(e.data)));
     es.onerror = () => {
-      $('subtitle').textContent = 'Sin conexión con el reproductor… reintentando';
-      fetch('/api/state').then((r) => { if (r.status === 401) { es.close(); notice('Sin emparejar: escanea el QR del reproductor (alt+z).', true); } });
+      $('subtitle').textContent = t('Sin conexión con el reproductor… reintentando');
+      fetch('/api/state').then((r) => { if (r.status === 401) { es.close(); notice(t('Sin emparejar: escanea el QR del reproductor (alt+z).'), true); } });
     };
   }
 
@@ -98,41 +98,43 @@
     fill($('channel-list'), rows.filter((c) => c && c.id && !seen.has(c.id) && seen.add(c.id)).map((c) =>
       item(c.name || c.id, [c.kind === 'radio' ? '📻' : '📺', c.group, c.country].filter(Boolean).join(' · '),
         () => cmd('channel', { id: c.id }).then(() => switchTab('control')), state.st && state.st.channel === c.name)),
-      q ? 'Sin resultados' : 'Sin favoritos ni recientes. Escribe para buscar.');
+      q ? t('Sin resultados') : t('Sin favoritos ni recientes. Escribe para buscar.'));
   }
   async function loadSearch() {
     const q = $('search-q').value.trim();
     if (!q) return;
-    $('search-info').textContent = 'Buscando…';
+    $('search-info').textContent = t('Buscando…');
     try {
       const r = await api('/api/search?q=' + encodeURIComponent(q));
       const hits = (r.semantic && r.semantic.length ? r.semantic : r.text) || [];
-      $('search-info').textContent = r.mode === 'semantic' ? 'Búsqueda semántica' : (r.status === 'unavailable' ? 'Sin índice semántico: coincidencia literal' : 'Coincidencia literal' + (r.status ? ' (indexando…)' : ''));
+      $('search-info').textContent = r.mode === 'semantic' ? t('Búsqueda semántica')
+        : (r.status === 'unavailable' ? t('Sin índice semántico: coincidencia literal')
+           : t('Coincidencia literal') + (r.status ? t(' (indexando…)') : ''));
       fill($('search-list'), hits.map((h) => item(h.text || h.cue || '', fmt(h.start != null ? h.start : h.time),
         () => cmd('seek', { seconds: h.start != null ? h.start : h.time, mode: 'absolute' }).then(() => switchTab('control')))),
-        'Nada encontrado (¿hay transcripción IA de este archivo?)');
+        t('Nada encontrado (¿hay transcripción IA de este archivo?)'));
     } catch (e) { $('search-info').textContent = ''; }
   }
   async function loadRecents() {
     const rows = await api('/api/recents?limit=30');
-    fill($('recents-list'), rows.map((r) => item(r.title || r.name || r.path, (r.position ? fmt(r.position) + (r.duration ? ' / ' + fmt(r.duration) : '') : '') + (r.finished ? ' · visto' : ''),
-      () => cmd('play', { target: r.path }).then(() => switchTab('control')))), 'Sin recientes');
+    fill($('recents-list'), rows.map((r) => item(r.title || r.name || r.path, (r.position ? fmt(r.position) + (r.duration ? ' / ' + fmt(r.duration) : '') : '') + (r.finished ? ' · ' + t('visto') : ''),
+      () => cmd('play', { target: r.path }).then(() => switchTab('control')))), t('Sin recientes'));
   }
   async function loadMore() {
     const [tracks, ch, pl] = await Promise.all([api('/api/tracks'), api('/api/chapters'), api('/api/playlist')]);
-    fill($('sub-list'), [item('Sin subtítulos', '', () => cmd('sub', { id: 'no' }), !tracks.sub.some((t) => t.selected))].concat(
-      tracks.sub.map((t) => item(t.title || ('Pista ' + t.id), [t.lang, t.codec, t.external ? 'externa' : ''].filter(Boolean).join(' · '),
-        () => cmd('sub', { id: t.id }).then(loadMore), t.selected))), '');
-    fill($('audio-list'), tracks.audio.map((t) => item(t.title || ('Pista ' + t.id), [t.lang, t.codec].filter(Boolean).join(' · '),
-      () => cmd('audio', { id: t.id }).then(loadMore), t.selected)), 'Sin audio');
-    fill($('chapter-list'), (ch.chapters || []).map((c, i) => item(c.title || ('Capítulo ' + (i + 1)), fmt(c.time),
-      () => cmd('chapter_set', { index: i }).then(() => switchTab('control')), i === ch.current)), 'Sin capítulos');
+    fill($('sub-list'), [item(t('Sin subtítulos'), '', () => cmd('sub', { id: 'no' }), !tracks.sub.some((tk) => tk.selected))].concat(
+      tracks.sub.map((tk) => item(tk.title || t('Pista %s', tk.id), [tk.lang, tk.codec, tk.external ? t('externa') : ''].filter(Boolean).join(' · '),
+        () => cmd('sub', { id: tk.id }).then(loadMore), tk.selected))), '');
+    fill($('audio-list'), tracks.audio.map((tk) => item(tk.title || t('Pista %s', tk.id), [tk.lang, tk.codec].filter(Boolean).join(' · '),
+      () => cmd('audio', { id: tk.id }).then(loadMore), tk.selected)), t('Sin audio'));
+    fill($('chapter-list'), (ch.chapters || []).map((c, i) => item(c.title || t('Capítulo %s', i + 1), fmt(c.time),
+      () => cmd('chapter_set', { index: i }).then(() => switchTab('control')), i === ch.current)), t('Sin capítulos'));
     fill($('playlist'), (pl.items || []).map((p) => item(p.title || (p.filename || '').split('/').pop(), '',
-      () => cmd('playlist_play', { index: p.index }).then(() => switchTab('control')), p.current)), 'Lista vacía');
+      () => cmd('playlist_play', { index: p.index }).then(() => switchTab('control')), p.current)), t('Lista vacía'));
   }
   function switchTab(name) {
     state.tab = name;
-    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('hidden', t.id !== 'tab-' + name));
+    document.querySelectorAll('.tab').forEach((tk) => tk.classList.toggle('hidden', tk.id !== 'tab-' + name));
     document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
     if (name === 'channels') loadChannels().catch(() => {});
     if (name === 'recents') loadRecents().catch(() => {});
@@ -162,8 +164,8 @@
   $('search-q').onchange = () => loadSearch();
   $('search-q').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); loadSearch(); } };
   $('open-form').onsubmit = (e) => { e.preventDefault(); cmd('play', { target: $('open-url').value.trim() }).then(() => { $('open-url').value = ''; switchTab('control'); }).catch(() => {}); };
-  $('unpair').onclick = async () => { if (confirm('¿Desemparejar este móvil?')) { await api('/api/unpair', {}); location.reload(); } };
-  $('about').textContent = 'Mando local de MPV-UOS · ' + location.host;
+  $('unpair').onclick = async () => { if (confirm(t('¿Desemparejar este móvil?'))) { await api('/api/unpair', {}); location.reload(); } };
+  $('about').textContent = t('Mando local de MPV-UOS') + ' · ' + location.host;
 
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT') return;

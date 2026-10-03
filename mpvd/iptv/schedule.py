@@ -180,7 +180,14 @@ def channel_snapshot(ch: Channel) -> dict[str, Any]:
 
 _TIME_TOKEN = re.compile(r"^(\d{1,2})(?:[:.h](\d{2})?)$")
 _DURATION = re.compile(r"^\+?(?:(\d+)\s*h\s*(\d+)?\s*(?:m|min)?|(\d+)\s*(?:m|min)?)$")
-_DAYS = {"hoy": 0, "mañana": 1, "manana": 1, "pasado": 2}
+# H49/G7 · quien escribe la hora está en el idioma del reproductor, así que las palabras de día valen en
+# los tres; las castellanas siguen valiendo siempre (una lista guardada en otro idioma no se rompe)
+_DAYS = {"hoy": 0, "mañana": 1, "manana": 1, "pasado": 2,
+         "today": 0, "tomorrow": 1,
+         "aujourd’hui": 0, "aujourd'hui": 0, "aujourdhui": 0, "demain": 1}
+_AHORA = ("ahora", "ya", "now", "maintenant")
+# «pasado mañana» y «après-demain» son dos palabras después de partir por el guion
+_PASADO = {"pasado": ("mañana", "manana"), "après": ("demain",), "apres": ("demain",)}
 
 
 def _clock(token: str) -> tuple[int, int] | None:
@@ -203,9 +210,9 @@ def _minutes(token: str) -> int | None:
 def _day_label(when: dt.datetime, now: dt.datetime) -> str:
     delta = (when.date() - now.date()).days
     if delta == 0:
-        return "hoy"
+        return t("hoy")
     if delta == 1:
-        return "mañana"
+        return t("mañana")
     return when.strftime("%d/%m")
 
 
@@ -227,24 +234,26 @@ def parse_when(text: str, now: float | None = None, default_minutes: int = 60) -
     now = time.time() if now is None else now
     now_dt = dt.datetime.fromtimestamp(now)
     raw = (text or "").strip().lower()
-    tokens = [t for t in re.split(r"\s+|(?<=\d)-(?=\d)|\s*-\s*|\s+a\s+", raw) if t and t not in ("a", "de", "-", "hasta")]
+    tokens = [t for t in re.split(r"\s+|(?<=\d)-(?=\d)|\s*-\s*", raw)
+              if t and t not in ("a", "à", "de", "du", "-", "hasta", "to", "until", "till", "jusqu’à", "jusqu'à")]
     if not tokens:
-        return {"error": "Escribe la hora de inicio y la duración o la hora de fin: 21:30 22:15 · 21:30 90"}
+        return {"error": t("Escribe la hora de inicio y la duración o la hora de fin: 21:30 22:15 · 21:30 90")}
     day = None
-    if tokens[0] in _DAYS:
+    if tokens[0] in _PASADO and len(tokens) > 1 and tokens[1] in _PASADO[tokens[0]]:
+        day = 2
+        tokens = tokens[2:]
+    elif tokens[0] in _DAYS:
         day = _DAYS[tokens.pop(0)]
-        if day == 2 and tokens and tokens[0] in ("mañana", "manana"):
-            tokens.pop(0)
     if not tokens:
-        return {"error": "Falta la hora de inicio"}
+        return {"error": t("Falta la hora de inicio")}
     first = tokens.pop(0)
-    if first in ("ahora", "ya", "now"):
+    if first in _AHORA:
         start_dt = now_dt
         explicit_day = True
     else:
         hm = _clock(first)
         if hm is None:
-            return {"error": f"No entiendo la hora «{first}» (usa 21:30)"}
+            return {"error": t("No entiendo la hora «%s» (usa 21:30)") % (first,)}
         start_dt = now_dt.replace(hour=hm[0], minute=hm[1], second=0, microsecond=0) + dt.timedelta(days=day or 0)
         explicit_day = day is not None
     stop_dt = None
@@ -260,10 +269,10 @@ def parse_when(text: str, now: float | None = None, default_minutes: int = 60) -
             mins = _minutes(second + ("".join(tokens) if tokens else ""))
             tokens = []
             if mins is None or mins <= 0:
-                return {"error": f"No entiendo «{second}»: pon la hora de fin (22:15) o los minutos (90)"}
+                return {"error": t("No entiendo «%s»: pon la hora de fin (22:15) o los minutos (90)") % (second,)}
             stop_dt = start_dt + dt.timedelta(minutes=mins)
     if tokens:
-        return {"error": f"Sobra «{' '.join(tokens)}»"}
+        return {"error": t("Sobra «%s»") % (" ".join(tokens),)}
     if stop_dt is None:
         stop_dt = start_dt + dt.timedelta(minutes=default_minutes)
     if not explicit_day and stop_dt.timestamp() <= now:
@@ -271,9 +280,9 @@ def parse_when(text: str, now: float | None = None, default_minutes: int = 60) -
         stop_dt += dt.timedelta(days=1)
     start, stop = start_dt.timestamp(), stop_dt.timestamp()
     if stop <= now:
-        return {"error": "Esa hora ya ha pasado"}
+        return {"error": t("Esa hora ya ha pasado")}
     if stop - start > MAX_DURATION:
-        return {"error": "Como mucho 12 horas seguidas"}
+        return {"error": t("Como mucho 12 horas seguidas")}
     return {"start": start, "stop": stop, "label": describe(max(start, now) if start < now else start, stop, now),
             "now": start <= now}
 

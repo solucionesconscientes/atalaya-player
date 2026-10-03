@@ -33,7 +33,7 @@
     if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
     return fetch(base + path, opts).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (data) {
-        if (!r.ok) { var e = new Error(data.error || ('HTTP ' + r.status)); e.status = r.status; throw e; }
+        if (!r.ok) { var e = new Error(data.error || t('HTTP %s', r.status)); e.status = r.status; throw e; }
         return data;
       });
     });
@@ -62,7 +62,7 @@
     show('message', false); show('room', false); show('join', true);
     $('name').value = localStorage.getItem('mu-share-name') || '';
     $('name').focus();
-    if (!token) $('join-error').textContent = 'Abre el enlace de invitación completo que te han pasado.';
+    if (!token) $('join-error').textContent = t('Abre el enlace de invitación completo que te han pasado.');
   }
 
   $('join-form').addEventListener('submit', function (ev) {
@@ -82,7 +82,7 @@
       history.replaceState(null, '', location.pathname + location.search);
       enter(data.guest, false, data.room);
     }).catch(function (e) {
-      message(e.status === 410 ? 'La sala está cerrada o ha caducado.' : 'No se puede entrar: ' + e.message);
+      message(e.status === 410 ? t('La sala está cerrada o ha caducado.') : t('No se puede entrar: %s', e.message));
     });
   }
 
@@ -101,7 +101,7 @@
     needGesture = !gesture;
     show('join', false); show('message', false); show('room', true);
     setMode(room);
-    $('who').textContent = mode === 'public' ? 'Sala pública · solo ver' : 'Estás como ' + guest.name;
+    $('who').textContent = mode === 'public' ? t('Sala pública · solo ver') : t('Estás como %s', guest.name);
     updatePerm();
     connect();
   }
@@ -124,18 +124,18 @@
       var d = JSON.parse(e.data);
       var before = perm;
       perm = d.perm; pending = d.pending;
-      if (d.denied) toast('El anfitrión no te ha dado el control');
-      else if (perm === 'control' && before !== 'control') toast('Ya puedes controlar la reproducción');
-      else if (perm === 'view' && before === 'control') toast('El anfitrión ha recuperado el control');
+      if (d.denied) toast(t('El anfitrión no te ha dado el control'));
+      else if (perm === 'control' && before !== 'control') toast(t('Ya puedes controlar la reproducción'));
+      else if (perm === 'view' && before === 'control') toast(t('El anfitrión ha recuperado el control'));
       updatePerm();
     });
-    es.addEventListener('closed', function (e) { finish(JSON.parse(e.data).text || 'La sala se ha cerrado'); });
-    es.addEventListener('kicked', function (e) { finish(JSON.parse(e.data).text || 'Has salido de la sala'); });
+    es.addEventListener('closed', function (e) { finish(JSON.parse(e.data).text || t('La sala se ha cerrado')); });
+    es.addEventListener('kicked', function (e) { finish(JSON.parse(e.data).text || t('Has salido de la sala')); });
     es.onerror = function () {
       if (ended) return;
       if (es.readyState === EventSource.CLOSED) {
         api('api/me').then(function () { setTimeout(connect, 2000); })
-          .catch(function (err) { finish(err.status === 410 ? 'La sala está cerrada' : 'Ya no estás en la sala'); });
+          .catch(function (err) { finish(err.status === 410 ? t('La sala está cerrada') : t('Ya no estás en la sala')); });
       }
     };
     api('api/me').then(function (d) { if (d.room && d.room.guests) renderGuests(d.room.guests); chatHistory(d); })
@@ -158,18 +158,19 @@
       if (!g.connected) li.className = 'off';
       if (me && g.id === me.id) li.classList.add('me');
       var n = document.createElement('span');
-      n.textContent = g.name + (me && g.id === me.id ? ' (tú)' : '');
-      var t = document.createElement('span');
-      t.className = 'tag';
-      t.textContent = g.perm === 'control' ? 'controla' : (g.pending ? 'pide el control' : (g.connected ? 'mira' : 'desconectado'));
-      li.appendChild(n); li.appendChild(t);
+      n.textContent = me && g.id === me.id ? t('%s (tú)', g.name) : g.name;
+      var etiqueta = document.createElement('span');
+      etiqueta.className = 'tag';
+      etiqueta.textContent = g.perm === 'control' ? t('controla')
+        : (g.pending ? t('pide el control') : (g.connected ? t('mira') : t('desconectado')));
+      li.appendChild(n); li.appendChild(etiqueta);
       ul.appendChild(li);
     });
   }
 
   function renderViewers(v) {
     if (!v) return;
-    $('viewers').textContent = v.count === 1 ? '1 persona viendo' : (v.count || 0) + ' personas viendo';
+    $('viewers').textContent = v.count === 1 ? t('1 persona viendo') : t('%s personas viendo', v.count || 0);
   }
 
   // -- chat and reactions (private rooms) ------------------------------------------------------------------
@@ -201,7 +202,7 @@
     if (row.host) li.classList.add('host');
     var who = document.createElement('span');
     who.className = 'who';
-    who.textContent = row.who + (me && row.guest === me.id ? ' (tú)' : '');
+    who.textContent = me && row.guest === me.id ? t('%s (tú)', row.who) : row.who;
     var text = document.createElement('span');
     text.className = 'text';
     text.textContent = row.text;       // plain text: markup is shown, never interpreted
@@ -240,13 +241,13 @@
     var why = $('why-view');
     if (why) {
       why.textContent = can ? '' : (mode === 'public'
-        ? 'Esta sala es de solo ver: los mandos los lleva quien la ha abierto.'
-        : 'Ahora mismo solo puedes ver. Pide el control para pausar y saltar.');
+        ? t('Esta sala es de solo ver: los mandos los lleva quien la ha abierto.')
+        : t('Ahora mismo solo puedes ver. Pide el control para pausar y saltar.'));
       show('why-view', !can);
     }
     show('ask', !can && mode !== 'public');
     $('ask').disabled = pending;
-    $('ask').textContent = pending ? 'Esperando al anfitrión…' : 'Pedir el control';
+    $('ask').textContent = pending ? t('Esperando al anfitrión…') : t('Pedir el control');
   }
 
   // -- the host's state ----------------------------------------------------------------------------------
@@ -255,7 +256,7 @@
     state = st;
     anchor = performance.now();
     $('title').textContent = st.title || '';
-    $('play').textContent = st.paused ? 'Seguir' : 'Pausa';
+    $('play').textContent = st.paused ? t('Seguir') : t('Pausa');
     if (st.reason === 'seek' || st.reason === 'file' || st.reason === 'hello') correct(true);
     else correct(false);
   }
@@ -288,7 +289,7 @@
 
   function correct(force) {
     if (!state || !source || ended) return;
-    if (state.idle) { overlay('El anfitrión no está reproduciendo nada'); return; }
+    if (state.idle) { overlay(t('El anfitrión no está reproduciendo nada')); return; }
     var exp = localPos();
     if (exp > ready() - 1) {
       if (!video.paused) video.pause();
@@ -296,13 +297,13 @@
       // con offset, lo que se está preparando empieza donde va el anfitrión: decirlo, en vez de dejar al invitado
       // mirando una cuenta que parece que no avanza nunca
       if (offset() > 1) {
-        overlay('Empezamos donde va el anfitrión (' + S.clock(offset()) + '): ' + S.clock(r) + ' listos…');
+        overlay(t('Empezamos donde va el anfitrión (%s): %s listos…', S.clock(offset()), S.clock(r)));
       } else {
-        overlay('Preparando la retransmisión… ' + S.clock(r) + ' de ' + S.clock(state.duration || exp));
+        overlay(t('Preparando la retransmisión… %s de %s', S.clock(r), S.clock(state.duration || exp)));
       }
       return;
     }
-    if (needGesture) { overlay('La sala ya está en marcha', true); return; }
+    if (needGesture) { overlay(t('La sala ya está en marcha'), true); return; }
     overlay('');
     if (video.readyState < 1) return;  // metadata not loaded yet: loadedmetadata calls us again
     var c = S.correction(exp, video.currentTime, state.speed, state.paused);
@@ -314,7 +315,7 @@
     if (state.paused && !video.paused) video.pause();
     if (!state.paused && video.paused) {
       var p = video.play();
-      if (p && p.catch) p.catch(function () { needGesture = true; overlay('Pulsa para empezar a ver', true); });
+      if (p && p.catch) p.catch(function () { needGesture = true; overlay(t('Pulsa para empezar a ver'), true); });
     }
   }
 
@@ -332,8 +333,8 @@
   video.addEventListener('error', function () {
     if (media && media.kind === 'direct' && !useRelay) {
       useRelay = true;
-      overlay('Este navegador no puede abrir el vídeo directamente: preparando la retransmisión…');
-      api('api/relay', {}).then(onMedia).catch(function (e) { overlay('No se puede reproducir: ' + e.message); });
+      overlay(t('Este navegador no puede abrir el vídeo directamente: preparando la retransmisión…'));
+      api('api/relay', {}).then(onMedia).catch(function (e) { overlay(t('No se puede reproducir: %s', e.message)); });
     }
   });
   $('start').addEventListener('click', function () {
@@ -369,10 +370,10 @@
     else if (m.kind === 'direct') url = useRelay ? (m.relay_url || '') : m.url;
     // Un archivo del anfitrión hay que empaquetarlo para este navegador, y en un equipo modesto eso tarda: decir qué
     // está pasando, porque un «Preparando…» mudo no distingue «va» de «se ha roto».
-    else if (m.kind === 'preparing') overlay('Preparando la retransmisión de «' + (m.title || 'lo que está viendo') +
-                                             '»… puede tardar un minuto');
-    else if (m.kind === 'none') overlay(m.reason ? 'No se puede compartir esto: ' + m.reason : 'Nada en reproducción');
-    if (m.kind === 'hls' && m.status === 'failed') overlay('La retransmisión ha fallado: ' + (m.error || ''));
+    else if (m.kind === 'preparing') overlay(t('Preparando la retransmisión de «%s»… puede tardar un minuto',
+                                               m.title || t('lo que está viendo')));
+    else if (m.kind === 'none') overlay(m.reason ? t('No se puede compartir esto: %s', m.reason) : t('Nada en reproducción'));
+    if (m.kind === 'hls' && m.status === 'failed') overlay(t('La retransmisión ha fallado: %s', m.error || ''));
     if (url && url !== source) attach(url);
     setSubs(m.subs);
     ownPlayer(m);
@@ -409,19 +410,21 @@
   // Por qué merece la pena llevárselo a tu reproductor, que no es lo mismo según lo que esté puesto.
   function whyOwnPlayer(m) {
     if (m.kind === 'hls') {
-      return 'Es un directo o un vídeo de internet: te llevas la retransmisión del anfitrión, y tu reproductor '
-        + 'aguanta formatos que este navegador no abre.';
+      // dos frases y dos `t()`: concatenar dentro de la llamada juntaría los trozos ANTES de llamar, así que la
+      // clave real sería la frase entera y la que se inyecta en la página solo el primer trozo
+      return t('Es un directo o un vídeo de internet: te llevas la retransmisión del anfitrión.') + ' '
+        + t('Tu reproductor aguanta formatos que este navegador no abre.');
     }
-    if (m.kind === 'direct') return 'El vídeo original de la web, directo: ni pasa por el equipo del anfitrión.';
+    if (m.kind === 'direct') return t('El vídeo original de la web, directo: ni pasa por el equipo del anfitrión.');
     if (m.browser !== 'direct') {
-      return 'Este vídeo no está en un formato que tu navegador abra tal cual, así que aquí lo ves recomprimido. '
-        + 'En tu reproductor lo verás como es.';
+      return t('Este vídeo no está en un formato que tu navegador abra tal cual, así que aquí lo ves recomprimido.')
+        + ' ' + t('En tu reproductor lo verás como es.');
     }
-    return 'Calidad original, sin recomprimir nada, y los saltos son instantáneos.';
+    return t('Calidad original, sin recomprimir nada, y los saltos son instantáneos.');
   }
 
   function copyText(text, what) {
-    var done = function () { toast('Copiado: ' + what); };
+    var done = function () { toast(t('Copiado: %s', what)); };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(done, function () { toast(text); });
       return;
@@ -434,10 +437,10 @@
     document.body.removeChild(ta);
   }
 
-  $('own-copy').addEventListener('click', function () { copyText(fileLink, 'el enlace del vídeo'); });
-  $('own-copy-cmd').addEventListener('click', function () { copyText('mpv "' + fileLink + '"', 'la orden de mpv'); });
+  $('own-copy').addEventListener('click', function () { copyText(fileLink, t('el enlace del vídeo')); });
+  $('own-copy-cmd').addEventListener('click', function () { copyText('mpv "' + fileLink + '"', t('la orden de mpv')); });
   $('own-copy-pos').addEventListener('click', function () {
-    copyText(S.clock(state ? hostPos() : 0), 'la posición del anfitrión');
+    copyText(S.clock(state ? hostPos() : 0), t('la posición del anfitrión'));
   });
 
   function loadHlsJs() {
@@ -464,7 +467,7 @@
     }
     loadHlsJs().then(function (Hls) {
       if (source !== url) return;
-      if (!Hls.isSupported()) { overlay('Este navegador no puede reproducir la retransmisión'); return; }
+      if (!Hls.isSupported()) { overlay(t('Este navegador no puede reproducir la retransmisión')); return; }
       hls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 60 });
       hls.on(Hls.Events.ERROR, function (_, data) {
         if (!data.fatal) return;
@@ -473,7 +476,7 @@
       });
       hls.loadSource(url);
       hls.attachMedia(video);
-    }).catch(function () { overlay('No se pudo cargar el reproductor'); });
+    }).catch(function () { overlay(t('No se pudo cargar el reproductor')); });
   }
 
   function setSubs(sub) {
@@ -481,12 +484,12 @@
     show('subs', !!url);
     if (url === subsUrl) return;
     subsUrl = url;
-    Array.prototype.slice.call(video.querySelectorAll('track')).forEach(function (t) { t.remove(); });
+    Array.prototype.slice.call(video.querySelectorAll('track')).forEach(function (pista) { pista.remove(); });
     if (!url) return;
     var tr = document.createElement('track');
     tr.kind = 'subtitles';
     tr.src = url;
-    tr.label = sub.label || 'Subtítulos';
+    tr.label = sub.label || t('Subtítulos');
     if (sub.lang) tr.srclang = sub.lang.slice(0, 2);
     tr.default = true;
     video.appendChild(tr);
@@ -512,14 +515,14 @@
   });
   $('mute').addEventListener('click', function () {
     video.muted = !video.muted;
-    $('mute').textContent = video.muted ? 'Activar sonido' : 'Silenciar';
+    $('mute').textContent = video.muted ? t('Activar sonido') : t('Silenciar');
   });
   $('volume').addEventListener('input', function () { video.volume = $('volume').value / 100; });
   $('subs').addEventListener('click', function () {
-    var t = video.textTracks[0];
-    if (!t) return;
-    t.mode = t.mode === 'showing' ? 'hidden' : 'showing';
-    $('subs').classList.toggle('on', t.mode === 'showing');
+    var pista = video.textTracks[0];
+    if (!pista) return;
+    pista.mode = pista.mode === 'showing' ? 'hidden' : 'showing';
+    $('subs').classList.toggle('on', pista.mode === 'showing');
   });
   $('full').addEventListener('click', function () {
     var st = $('stage');
@@ -528,19 +531,19 @@
     else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
   });
   $('leave').addEventListener('click', function () {
-    api('api/leave', {}).finally(function () { finish('Has salido de la sala. Puedes volver con el mismo enlace.'); });
+    api('api/leave', {}).finally(function () { finish(t('Has salido de la sala. Puedes volver con el mismo enlace.')); });
   });
 
   // -- start ---------------------------------------------------------------------------------------------
 
-  if (!roomId) { message('Enlace no válido'); return; }
+  if (!roomId) { message(t('Enlace no válido')); return; }
   api('api/me').then(function (d) {
     enter(d.guest, false, d.room);
     if (d.media) onMedia(d.media);
     if (d.state) onState(d.state);
   }).catch(function (e) {
     if (e.status === 401) askName();
-    else if (e.status === 410) message('La sala está cerrada o ha caducado. Pide un enlace nuevo.');
-    else message('No se puede entrar: ' + e.message);
+    else if (e.status === 410) message(t('La sala está cerrada o ha caducado. Pide un enlace nuevo.'));
+    else message(t('No se puede entrar: %s', e.message));
   });
 })();

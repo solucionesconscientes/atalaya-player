@@ -632,10 +632,10 @@ def register(server: MpvdServer, service: AsrService) -> None:  # noqa: C901 - f
     async def status(ctx: RpcContext, id: str | None = None) -> dict[str, Any]:  # noqa: A002
         """Engine state, recommended models and tasks (or one task by id)."""
         if id:
-            t = service.tasks.get(id)
-            if t is None:
+            task = service.tasks.get(id)
+            if task is None:
                 raise RpcError(NOT_FOUND, t("no task %s") % (id,))
-            return service.task_dict(t)
+            return service.task_dict(task)
         return service.status()
 
     @d.method("asr.models")
@@ -735,8 +735,8 @@ def register(server: MpvdServer, service: AsrService) -> None:  # noqa: C901 - f
     async def segments(ctx: RpcContext, id: str, start: float | None = None,  # noqa: A002
                        end: float | None = None) -> dict[str, Any]:
         """Transcribed cues of a task, optionally limited to a time range."""
-        t = service.tasks.get(id)
-        if t is None:
+        task = service.tasks.get(id)
+        if task is None:
             raise RpcError(NOT_FOUND, t("no task %s") % (id,))
-        rows = [s for s in t.segments if (start is None or s.end >= start) and (end is None or s.start <= end)]
-        return {"id": t.id, "segments": [s.to_dict() for s in rows], "text": " ".join(s.text for s in rows)}
+        rows = [s for s in task.segments if (start is None or s.end >= start) and (end is None or s.start <= end)]
+        return {"id": task.id, "segments": [s.to_dict() for s in rows], "text": " ".join(s.text for s in rows)}

@@ -63,6 +63,40 @@ def test_parse_when_now_and_errors():
         assert "error" in parse_when(bad, NOW), bad
 
 
+@pytest.mark.parametrize(("texto", "dias"), [
+    ("mañana 9:00 30", 1), ("tomorrow 9:00 30", 1), ("demain 9:00 30", 1),
+    ("hoy 21:30 30", 0), ("today 21:30 30", 0), ("aujourd’hui 21:30 30", 0), ("aujourd'hui 21:30 30", 0),
+    ("pasado mañana 9:00 30", 2), ("après-demain 9:00 30", 2), ("apres-demain 9:00 30", 2),
+])
+def test_las_palabras_de_dia_valen_en_los_tres_idiomas(texto, dias):
+    """H49/G7 · quien escribe la hora está en el idioma del reproductor. Las castellanas siguen valiendo siempre."""
+    got = parse_when(texto, NOW)
+    assert "error" not in got, (texto, got)
+    assert dt.datetime.fromtimestamp(got["start"]).date() == dt.date(2026, 9, 30) + dt.timedelta(days=dias)
+
+
+@pytest.mark.parametrize("texto", ["21:30 a 22:15", "21:30 to 22:15", "de 21:30 à 22:15", "21:30 hasta 22:15",
+                                   "21:30 until 22:15"])
+def test_los_conectores_tambien(texto):
+    got = parse_when(texto, NOW)
+    assert "error" not in got, (texto, got)
+    assert (got["start"], got["stop"]) == (local(2026, 9, 30, 21, 30), local(2026, 9, 30, 22, 15))
+
+
+@pytest.mark.parametrize("texto", ["ahora 30", "now 30", "maintenant 30"])
+def test_ahora_en_los_tres_idiomas(texto):
+    got = parse_when(texto, NOW)
+    assert got["start"] == NOW and got["stop"] == NOW + 1800 and got["now"] is True
+
+
+def test_la_ficha_de_la_programacion_sale_en_el_idioma_del_reproductor(monkeypatch):
+    """El «hoy 21:30–22:15 (45 min)» que se ve en el menú va en el idioma del reproductor, no en castellano."""
+    for entorno, hoy in (("es_ES.UTF-8", "hoy"), ("en_US.UTF-8", "today"), ("fr_FR.UTF-8", "aujourd’hui")):
+        monkeypatch.setenv("LC_ALL", entorno)
+        monkeypatch.setenv("LANG", entorno)
+        assert parse_when("21:30 22:15", NOW)["label"].startswith(hoy + " 21:30"), entorno
+
+
 def test_ffmpeg_args_send_the_channel_headers():
     ch = {"url": "https://tv.example/live.m3u8", "kind": "tv", "hls": True,
           "headers": {"User-Agent": "Mozilla/5.0 X", "Referer": "https://web.example/", "Origin": "https://web.example"}}

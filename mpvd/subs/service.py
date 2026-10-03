@@ -303,9 +303,9 @@ class SubsService:
         if source and source != "auto":
             return source
         # the AI track knows its language; anything else must say it
-        for t in self.server.asr.tasks.values():
-            if t.srt_path is not None and str(t.srt_path) == srt:
-                lang = t.detected or (t.language if t.language != "auto" else "")
+        for task in self.server.asr.tasks.values():
+            if task.srt_path is not None and str(task.srt_path) == srt:
+                lang = task.detected or (task.language if task.language != "auto" else "")
                 if lang:
                     return lang
         raise RpcError(INVALID_PARAMS, t("indica el idioma de origen (source) del subtítulo"))

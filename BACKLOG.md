@@ -518,7 +518,8 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
 
 ## H49 · Idiomas: castellano, inglés y francés (diseño: docs/IDIOMAS.md)
 Regla de Ser: sistema en castellano o francés → ese idioma; inglés o cualquier otro → inglés. Medido antes de
-empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de las páginas), o sea ~3.600 traducidas.
+empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de las páginas), o sea ~3.600
+traducidas. Al acabar G7 van **1.533 por idioma** (3.066 traducciones) y quedan medidas las 491 de G8.
 - [x] G1 Maquinaria: `locales/en.json` y `fr.json` (la cadena castellana ES la clave, así que no hay `es.json` y lo
       no traducido cae al castellano), `mu/i18n.lua`, `mpvd/i18n.py`, `tools/i18n_extract.py` y la detección en los
       **dos** lanzadores (bash y PowerShell), que pasan `uosc-languages` (uosc ya está traducido, no se duplica) y
@@ -535,9 +536,30 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
       están en inglés (`path required`, `unknown download: …`) son el contrato entre mpvd y los scripts y se
       quedan, que es la convención del proyecto (código en inglés, texto de usuario en castellano). El test
       comprueba también este lado, y que no quede ningún mensaje en castellano sin envolver.
-- [ ] G6 Las páginas servidas (sala, mando, descargas), que siguen al **navegador del invitado**, no al sistema del
-      anfitrión: las abre otra persona y puede estar en otro idioma.
-- [ ] G7 Repaso de las traducciones (el francés, con ojo).
+- [x] G6 Las páginas servidas (sala, mando, descargas), que siguen al **navegador del invitado** (`Accept-Language`),
+      no al sistema del anfitrión: las abre otra persona y puede estar en otro idioma. **158 cadenas** entre el
+      JavaScript (`t('…')`) y el texto que ya viene escrito en el HTML, que se traduce en el navegador con el mismo
+      catálogo. A cada página se le manda **solo lo que usa** (unas 70 de las 1.538, no 75 KB en un móvil) en un
+      `/i18n.js` propio —en línea no vale: la sala se sirve con `script-src 'self'` y el navegador lo bloqueaba
+      callando (ADR-107)— y en castellano no se le manda nada. Extractor: `tools/i18n_extract_web.py`.
+- [x] G7 Repaso de las traducciones: los **1.533 pares** de los dos catálogos leídos enteros. Ni una vacía, ni un
+      `%s` descolocado, la puntuación francesa correcta y el apóstrofo tipográfico unificado (267 cadenas). El
+      hallazgo de verdad no era de traducción: la pista «también **mañana** 9:00 1h30» tenía que seguir diciendo
+      una palabra castellana porque el analizador de horas solo entendía castellano. Ahora entiende los tres
+      idiomas (`today`/`tomorrow`, `aujourd’hui`/`demain`/`après-demain`, `to`/`à`/`until`, `now`/`maintenant`) y
+      las castellanas siguen valiendo siempre (ADR-108).
+- [ ] G8 Lo que el repaso dejó medido y pendiente: **491 cadenas** castellanas visibles de mpvd que no son
+      `RpcError` y que por eso el extractor de G5 no veía. No son errores: son otra forma (valores de diccionario,
+      listas de presets, f-strings sueltas). Por orden de lo que más se ve: `convert/presets.py` (32, los formatos
+      de «Convertir»), `intro/service.py` (25), `subscriptions/chain.py` (20), `share/live.py` (18, incluido el
+      aviso legal), `asr/models.py` (14, los modelos de voz), `jobs.py` (14, los nombres de las tareas),
+      `ytdl/presets.py` (14), `power.py` (14) y `share/service.py` (51); el resto, repartido en 57 ficheros. Hace
+      falta además **ampliar `tools/i18n_extract_py.py`** a esas formas, o el test no las vigilará.
+      Fuera a propósito: los ~240 nombres de país de `iptv/labels.py` (son datos de la lista de canales, no
+      interfaz) y las descripciones de `mcp.py` (las lee un modelo, no una persona).
+      OJO al envolver: una función que ate el nombre `t` (un `t = …` o un `for t in …`) convierte su propio
+      `t("…")` en un `UnboundLocalError` (ADR-109). Hay un test que lo caza, pero el extractor debería renombrar
+      la variable, no esperar al test.
 
 ## H50 · El sitio web del proyecto (solucionesconscientes.es/atalaya)
 - [ ] F1 La página pública: qué es, las características importantes, capturas, cómo instalarlo. Para alguien que no

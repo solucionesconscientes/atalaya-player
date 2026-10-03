@@ -45,7 +45,7 @@ from mpvd.mpvipc import MpvIpcError
 from mpvd.remote import qr
 from mpvd.remote.http import HttpError, HttpServer, Request, Response, sse_event
 from mpvd.remote.service import firewall_hint, lan_ip
-from mpvd.i18n import t
+from mpvd.i18n import page_script, t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd.share import guest as guest_mod
 from mpvd.share import hls
@@ -1047,7 +1047,7 @@ class ShareService:
 
     # -- HTTP -------------------------------------------------------------------------------------------------
 
-    def _page(self) -> Response:
+    def _page(self, req: Request | None = None) -> Response:
         resp = Response.file(self.www / "room.html", cache="no-cache")
         if app_name() != "MPV-UOS":
             resp.body = resp.body.replace(b"MPV-UOS", app_name().encode("utf-8"))
@@ -1150,6 +1150,11 @@ class ShareService:
 
     async def handle(self, req: Request) -> Response:
         path = req.path
+        if req.method in ("GET", "HEAD") and path == "/static/i18n.js":
+            # H49/G6 · la sala la abre un invitado en SU navegador: las cadenas van en el idioma que pide él.
+            # Fichero aparte y no en línea: la sala se sirve con `script-src 'self'` (ADR-107).
+            return Response(200, {"Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache"},
+                            page_script(self.www, req.headers.get("accept-language")))
         if req.method in ("GET", "HEAD") and path.startswith("/static/"):
             name = path[len("/static/"):]
             if name not in STATIC:
@@ -1164,7 +1169,7 @@ class ShareService:
             raise HttpError(404)
         room_id, rest = parts[2], "/".join(parts[3:])
         if rest == "" and req.method in ("GET", "HEAD"):
-            return self._page()
+            return self._page(req)
         if req.method == "POST":
             origin = req.headers.get("origin")
             host = req.headers.get("host", "")
