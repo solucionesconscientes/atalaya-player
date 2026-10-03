@@ -259,10 +259,9 @@ Lo que queda, por orden:
    fuera del proyecto, y la puerta única de `ctrl+o` ya se traga cualquier cosa pegada), pero con una web que los
    reparta sí tendrían sentido.
 
-**H59 · torrents con libtorrent** sigue aprobado y sin empezar; el diseño completo está en el BACKLOG (extra
-opcional y apagado, `set_piece_deadline` sobre la ventana de reproducción, mpvd sirviendo el fichero que crece por
-HTTP con Range, `trackers_best` en caché semanal y nunca en torrents privados, sin blocklist, SOCKS5 y
-`anonymous_mode` como interruptores, entrada por la puerta única, tests sin red con sembrador local). Reabre H26.
+**H59 · torrents con libtorrent** sigue aprobado y sin empezar. El diseño **ya está escrito en el BACKLOG** (L1-L10);
+al recapitular dije que lo estaba y no era cierto, se escribió el 2026-10-03 al preguntar Ser cómo se visualizan.
+Reabre H26, cuya propuesta de integrarse con qBittorrent queda aparcada.
 
 Lo que Ser tiene que hacer una vez: **la línea de sudoers de `rtcwake`** (sin ella, una grabación o reproducción
 programada de madrugada no ocurre) y, sin prisa, **la cuenta de OpenSubtitles**. El puerto en `ufw` **no** hace

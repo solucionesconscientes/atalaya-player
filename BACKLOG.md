@@ -224,9 +224,54 @@ traducción en directo. Fuera también: imagen (mejoras de imagen, visor de foto
 - NOMBRE PENDIENTE: no renombrar nada. La app sigue llamándose MPV-UOS hasta que Ser decida (candidato descartado de momento:
   «Sintonía»). Deja el nombre centralizado en un solo sitio (constante/Config) para que el cambio posterior sea trivial.
 
-## H26 · Torrents · FUERA POR AHORA (decisión de Ser, 2026-09-30: no implementar)
-- [~] Propuesta aparcada: integrarse con qBittorrent (ya instalado; Ser activa su interfaz web en localhost) para añadir magnets, descargar en
-      orden y «ver mientras descarga» en MPV-UOS, con libtorrent en el .venv solo como alternativa si no hay qBittorrent.
+## H26 · Torrents · REABIERTO como H59 (Ser, 2026-10-03)
+- [~] La propuesta de 2026-09-30 (integrarse con qBittorrent por su interfaz web) queda aparcada en favor de
+      libtorrent en el .venv, que es lo que se acordó el 2026-10-03. Ver H59.
+
+## H59 · Ver un torrent mientras se descarga (aprobado por Ser el 2026-10-03) — [ ]
+Diseño acordado en la conversación del 2026-10-03, que **no estaba escrito aquí** (error mío: lo di por escrito al
+recapitular). libtorrent 2.1.1 tiene ruedas oficiales en PyPI (BSD) para cp312 en Linux x86_64/aarch64, musl,
+Windows 32/64 y macOS arm64/x86_64, y su API se comprobó completa con el Python del proyecto (`set_piece_deadline`,
+`have_piece`, `piece_priority`, `file_priority`, `set_sequential_download`, `clear_piece_deadlines`).
+- [ ] L1 **Extra opcional y APAGADO por defecto**, como los servicios de nube: un reproductor no tiene por qué
+      traer un cliente de torrents encendido. Se activa en Preferencias y se dice en una línea qué implica.
+- [ ] L2 **La ventana de reproducción manda**: `set_piece_deadline` sobre los trozos que hacen falta YA, no
+      `set_sequential_download` a lo bruto, que pelea con el salto hacia delante y desperdicia la bajada.
+- [ ] L3 **mpvd sirve el fichero que crece** por HTTP local con Range, igual que ya sirve el fichero original de
+      una sala (H44/C1): así mpv no necesita saber nada de torrents y los saltos funcionan dentro de lo bajado.
+- [ ] L4 **Al acabar se deja de sembrar**; seguir sembrando es un interruptor explícito, no el comportamiento.
+- [ ] L5 **Trackers**: `trackers_best` (20, de ngosang/trackerslist) en caché semanal con copia incluida en el
+      repo como respaldo, y **nunca** en un torrent privado (`priv()`), que es motivo de expulsión. **Sin
+      blocklist**: la del nivel 2 bloquea rangos enteros por reputación, rompe conexiones legítimas y hay que
+      mantenerla; no paga.
+- [ ] L6 **Privacidad por interruptor**, no por defecto: SOCKS5 y `anonymous_mode`, con las credenciales en
+      `~/.config/mpv-uos/` con permisos 600 y fuera del repo. Lo demás se queda como lo trae libtorrent (DHT, LSD,
+      cifrado 1, 200 conexiones), que son valores sensatos y probados.
+- [ ] L7 **Sin estrangular la subida**: un cliente que no devuelve nada es un cliente que no baja.
+- [ ] L8 **Entrada por la puerta única**: un magnet pegado en `ctrl+o` se reconoce y se ofrece ver o descargar,
+      como cualquier otro enlace. Nada de un sitio nuevo.
+- [ ] L9 **Tests sin red**: un sembrador y un cliente locales en el mismo equipo, como se probó el relay.
+- [ ] L10 **Medir CPU y RAM antes de prometer nada** en el portátil de cuatro núcleos, y **un aviso legal claro**
+      la primera vez: la herramienta es neutra, lo que se baje es responsabilidad de quien lo baje.
+
+## H61 · El mando del televisor (HDMI-CEC) en la Raspberry — preguntado por Ser el 2026-10-03 — [ ]
+Revisa el juicio de `docs/IDEAS.md` 1.8, que lo daba por poco valioso pensando en un portátil. En una Pi conectada
+a la tele no hay teclado, y el mando del televisor es el único que ya tiene en la mano quien está mirando.
+- [ ] M1 **Puente `cec.*` en mpvd**, con la forma que ya tiene el del gamepad (`mpvd/gamepad.py`): lee el aparato,
+      traduce a un verbo y se lo manda por IPC al mpv de la sesión. El vocabulario de acciones **es el mismo que ya
+      existe** (`play_pause`, `back`, `forward`, `prev`, `next`, `volume_up`, `volume_down`, `subtitles`, `menu`,
+      `close`), así que no hay que inventar ni mantener un segundo mapa.
+- [ ] M2 **Correspondencia de teclas CEC** (códigos de «user control»): 0x00 Select → aceptar, 0x01/0x02 arriba y
+      abajo, 0x03/0x04 → atrás y adelante, 0x44 Play y 0x46 Pause → play_pause, 0x45 Stop → cerrar, 0x48/0x49
+      rebobinar y avanzar, 0x0D Exit → cerrar, 0x09/0x0A (menú raíz y de ajustes) → el menú, 0x41/0x42 → volumen.
+- [ ] M3 **Probado sin hardware**, como el gamepad: `MPV_UOS_CEC_DEVICE` apuntando a un fifo que escribe las mismas
+      líneas que `cec-client`, y un test que comprueba que cada tecla acaba en su acción. La última milla (que el
+      televisor pase las teclas, lo que depende de que implemente «remote control pass through» y de que seamos la
+      fuente activa) solo se puede comprobar en la Pi → NEEDS_HUMAN.
+- [ ] M4 **Apagado si no hay CEC**, sin ruido: en un equipo sin `/dev/cec*` el servicio no se anuncia en
+      `capabilities`, igual que ocurre con el gamepad y con `fpcalc`.
+- [ ] M5 Mientras no esté, **ya hay dos mandos que funcionan hoy** y conviene decirlo en la documentación de la Pi:
+      el del móvil (`alt+z`, PWA servida por mpvd) y un gamepad por USB o Bluetooth en modo salón.
 
 ## H27 · Diferenciales
 - [x] Mini reproductor flotante, modo salón (letra grande, gamepad; HDMI-CEC no: necesita hardware y libcec), modo sencillo.

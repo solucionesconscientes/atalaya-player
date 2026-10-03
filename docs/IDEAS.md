@@ -44,9 +44,14 @@ tonos; falta elegirlo bien y ofrecerlo donde se note. *Apoyo: mu-av, detección 
 Un portátil de casa lo usan varios. Hoy «Continuar viendo», las notas y los favoritos son de todos. *Apoyo:
 mu-prefs, biblioteca.*
 
-### 1.8 Mando de salón de verdad (HDMI-CEC) · **valor bajo aquí, coste alto**
-Manejar el reproductor con el mando del televisor. Depende del hardware y no hay forma de probarlo aquí: lo dejo
-anotado, no propuesto.
+### 1.8 Mando de salón de verdad (HDMI-CEC) · **revisado el 2026-10-03: valor ALTO en la Raspberry**
+Manejar el reproductor con el mando del televisor. Lo puse como «valor bajo, coste alto», y eso era verdad **para
+este portátil**, donde el teclado está a un palmo. Ser preguntó por el caso que cambia el juicio: una Raspberry Pi
+conectada a la tele, que es justo el destino del *modo salón* (H28). Ahí no hay teclado que valga, y el mando de la
+tele es el único que ya está en la mano de quien mira. Es como se maneja Kodi en una Pi, o sea un camino andado.
+Pasa a ser un hito: **H59b/H61**, con el diseño en el BACKLOG. Lo que no cambia es que el hardware no está aquí: el
+puente se puede construir y probar entero con una entrada falsa (como el gamepad, que se prueba con un fifo), pero
+la última milla —que el televisor pase de verdad las teclas— solo se comprueba en la Pi.
 
 ---
 

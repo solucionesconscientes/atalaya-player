@@ -206,11 +206,16 @@ def test_audio_only_for_local_files_and_when_minimized(av_mpv, media_dir):
     h.wait_property("current-tracks/video", lambda v: isinstance(v, dict) and v.get("id") == 1, timeout=20)
 
     # H60: encendido por defecto, así que minimizar quita el vídeo sin activar nada antes
+    titulo = h.get("options/title")
     h.command("set", "window-minimized", "yes")
     h.wait_property("user-data/mu/av", lambda v: bool(v) and v.get("minimized_audio") is True, timeout=10)
     h.wait_property("vid", lambda v: v is False or v == "no", timeout=10)
+    # y se DICE, en el único sitio que se ve con la ventana escondida: el título, que es lo que enseña la barra de
+    # tareas (lo preguntó Ser: «no sé si se sigue decodificando o no»)
+    h.wait_property("title", lambda v: isinstance(v, str) and v.startswith("🎧 Solo audio (minimizado)"), timeout=10)
     h.command("set", "window-minimized", "no")
     h.wait_property("current-tracks/video", lambda v: isinstance(v, dict) and v.get("id") == 1, timeout=10)
+    h.wait_property("title", lambda v: v == titulo, timeout=10)
     assert h.get("user-data/mu/av")["minimized_audio"] is False
 
     # y se puede apagar: entonces minimizar no toca nada

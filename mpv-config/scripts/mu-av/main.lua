@@ -93,7 +93,8 @@ local FILTERS = {
 }
 local ORDER = { 'dialog', 'night', 'level', 'eq', 'denoise', 'binaural', 'photo' }
 
-local P = prefs.ns('mu-av', { filters = {}, light = false, eq = '', audio_minimized = true }, function(key, v)
+local P = prefs.ns('mu-av', { filters = {}, light = false, eq = '', audio_minimized = true,
+                              told_minimized = false }, function(key, v)
   if key == 'eq' then return v == '' or EQ_GRAPHS[v] ~= nil end
   if key ~= 'filters' then return true end
   for _, name in pairs(v) do if type(name) ~= 'string' then return false end end
@@ -602,25 +603,39 @@ mp.observe_property('vf', 'native', function() publish(); set_button_state() end
 -- defecto desde H60: medido, minimizar NO deja de decodificar por sí solo (37 % → 18 % de un núcleo, y 8 % sin
 -- vídeo), y en un vídeo de internet deseleccionar la pista corta además su descarga. Vale igual para una URL que
 -- para un fichero: 0,03 s de ida y vuelta, sin recargar nada. ADR-096.
-local minimized = { vid = nil, path = nil }
+-- Con la ventana escondida no hay OSD que valga, así que la señal va donde sí se ve con la ventana minimizada:
+-- el TÍTULO, que es lo que enseña la barra de tareas. Y al volver se dice una vez lo que ha pasado, porque si no
+-- no hay forma de saber si el vídeo se apagó de verdad (lo preguntó Ser, y era una pega justa).
+local MIN_TITLE = '🎧 Solo audio (minimizado)'
+local minimized = { vid = nil, path = nil, title = nil }
 local function on_minimized(_, m)
   if m and P:get('audio_minimized') then
     local v = mp.get_property_native('current-tracks/video')
     if type(v) ~= 'table' or v.image or minimized.vid then return end
     minimized.vid, minimized.path = mp.get_property('vid'), mp.get_property('path')
     mp.set_property('file-local-options/vid', 'no')
+    minimized.title = mp.get_property('options/title')
+    mp.set_property('title', MIN_TITLE .. ' — ' .. (minimized.title or ''))
     state.minimized_audio = true
     publish()
   elseif not m and minimized.vid then
     if mp.get_property('path') == minimized.path then mp.set_property('file-local-options/vid', minimized.vid) end
-    minimized.vid, minimized.path = nil, nil
+    if minimized.title then mp.set_property('title', minimized.title) end
+    if not P:get('told_minimized') then
+      P:set('told_minimized', true)
+      mp.osd_message('🎧 Mientras la ventana estaba minimizada se ha apagado el vídeo: no se decodifica, y si viene '
+                     .. 'de internet tampoco se descarga. Se cambia en Imagen y sonido.', 7)
+    end
+    minimized.vid, minimized.path, minimized.title = nil, nil, nil
     state.minimized_audio = false
     publish()
   end
 end
 mp.observe_property('window-minimized', 'bool', on_minimized)
 mp.register_event('end-file', function()
-  if minimized.vid then minimized.vid, minimized.path, state.minimized_audio = nil, nil, false end
+  if not minimized.vid then return end
+  if minimized.title then mp.set_property('title', minimized.title) end
+  minimized.vid, minimized.path, minimized.title, state.minimized_audio = nil, nil, nil, false
 end)
 
 resolve_models_local()

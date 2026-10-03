@@ -1,5 +1,18 @@
 # NEEDS_HUMAN — cosas que necesita Ser (con el comando exacto)
 
+## 2026-10-03 · Si quieres el mando del televisor en la Raspberry (H61, no bloquea)
+El puente se puede construir y probar aquí con una entrada falsa, pero que el televisor PASE las teclas solo se
+comprueba en la Pi. Allí, una vez:
+```bash
+sudo apt install cec-utils            # trae cec-client (libcec)
+cec-client -l                         # tiene que listar un adaptador
+echo "scan" | cec-client -s -d 1      # y verse el televisor
+cec-client -m -d 8                    # pulsa teclas del mando: deben salir líneas «key pressed»
+```
+Si la última orden no imprime nada al pulsar, es que tu televisor no pasa las teclas (no todos lo hacen, y algunos
+solo mientras somos la fuente activa): en ese caso el camino es el mando del móvil (`alt+z`) o un gamepad, que ya
+funcionan hoy. Guarda la salida de las cuatro órdenes y la construyo con eso.
+
 ## 2026-10-03 · De las tres que quedan, qué haría yo (y qué no)
 Ser preguntó por las tres cosas que solo puede hacer él. Esto es lo que recomiendo, por orden:
 

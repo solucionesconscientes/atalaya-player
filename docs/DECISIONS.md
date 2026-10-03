@@ -1155,3 +1155,18 @@
   **Y una sola verdad**: la fila de *Imagen y sonido* no guarda nada propio, le manda el modo a `mu-music` por
   `mu-music-replaygain`, porque quien aplica la ganancia es él. Dos preferencias para lo mismo acaban siempre en
   que una miente.
+
+- ADR-101 · Minimizar tiene que DECIRSE, y el sitio es el título de la ventana (H60, de la prueba de Ser).
+  **Corrige** ADR-096, que encendió el ajuste y lo dejó **invisible**: `on_minimized` no avisaba de nada (cero
+  `osd` en todo el manejador). Ser lo dijo en una frase —«cuando minimizo no sé si se sigue decodificando o no»—
+  y tiene razón: es exactamente lo que ADR-095 escribió como regla para los demás y aquí no se aplicó.
+  **El problema es dónde ponerlo.** Con la ventana escondida un OSD no sirve: se dibuja sobre un vídeo que nadie
+  ve. Lo único que sí se ve de una ventana minimizada es su **título**, que es lo que enseña la barra de tareas, y
+  `title` es una propiedad que mpv acepta cambiar en caliente (comprobado). Así que mientras está minimizada el
+  título pasa a «🎧 Solo audio (minimizado) — …» y al restaurar se devuelve la plantilla que hubiera, que se guarda
+  de `options/title` (la propiedad `title` da la plantilla sin expandir, no el texto final).
+  **Y una vez, al volver, se cuenta lo que ha pasado** (`told_minimized`): sin eso nadie puede enterarse de que la
+  función existe, y una función que ahorra algo sin decirlo es indistinguible de un fallo. Repetirlo cada vez sería
+  ruido, así que es una sola vez en la vida de la instalación.
+  **De paso se gana el test que faltaba**: el título es observable desde fuera, así que la prueba ya no depende de
+  dormir y mirar la CPU — comprueba que el título cambia al minimizar y vuelve al restaurar.
