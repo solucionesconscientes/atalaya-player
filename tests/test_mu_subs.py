@@ -90,8 +90,10 @@ def test_subtitulos_preparados_pista_precompute_y_menu(subs_mpv, media_dir, tmp_
     late = tmp_path / "externo.srt"
     late.write_text(render_srt([Segment(s.start + 2.5, s.end + 2.5, s.text) for s in segs]), encoding="utf-8")
     h.command("sub-add", str(late), "select", "Externo")
+    # 30 s y no 10: cargar y seleccionar un SRT externo es cosa de mpv, y bajo la carga de la pasada completa diez
+    # segundos se quedan cortos. Lo que comprueba el test es que ocurra, no lo rápido que ocurra.
     h.wait_property("track-list", lambda tl: any(t.get("external-filename") == str(late) and t.get("selected") for t in tl or []),
-                    timeout=10)
+                    timeout=30)
     h.command("script-binding", "mu_subs/subs-resync")
     st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("resync_status") == "done", timeout=60)
     assert st["resync_out"].endswith("externo.resync.srt") and -3.5 < st["resync_offset"] < -1.5, st

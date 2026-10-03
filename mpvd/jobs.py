@@ -78,7 +78,10 @@ JOB_LABELS: tuple[tuple[str, str], ...] = (
     ("music.scan", "Explorar la música"),
     ("ytdl.update", "Actualizar yt-dlp"),
 )
-HIDDEN_JOBS = ("convert:",)   # una conversión ya tiene su fila, con su progreso y sus acciones: no se cuenta dos veces
+# Una conversión y una descarga ya tienen su propia fila, con su progreso y sus acciones; sus trabajos en la cola
+# se llaman `convert:<id>` y `download:<id>`, y contarlos otra vez duplicaba la lista (lo cazó test_downloads_panel,
+# que es el panel del móvil y lee la misma lista).
+HIDDEN_JOBS = ("convert:", "download:")
 SHOW_AFTER = 2.0              # s corriendo antes de anunciar un trabajo que no es «heavy»
 
 
