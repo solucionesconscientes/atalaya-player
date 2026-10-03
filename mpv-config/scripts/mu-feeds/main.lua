@@ -340,6 +340,7 @@ end
 local function open_view(spec, push)
   if push ~= false then table.insert(state.stack, spec) end
   state.view = spec.name
+  state.items = {}   -- H63: nunca se publica una vista nueva con las filas de la anterior
   publish()
   local v = views[spec.name]
   v.render(spec.args or {})

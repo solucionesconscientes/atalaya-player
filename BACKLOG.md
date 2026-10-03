@@ -296,9 +296,13 @@ los once fallos de H55.
       con el vídeo corriendo (test_mu_cut) y leer `chapter-list` justo después de marcar. Y dos expectativas
       equivocadas: una copia muerta puede explicar su muerte de varias maneras, y `muertas[0]` no tiene un orden
       garantizado.
-- [ ] N1 **Barrer la clase entera en una pasada**, en vez de uno por carrera perdida: todo test que espere por
-      `user-data/mu/<x>` y lea `items` justo después tiene que esperar por una FILA, no por el nombre de la vista.
-      Cada módulo tiene su propio helper (`wait_view`, `cut_state`, `modes`…), así que el barrido es por fichero.
+- [x] N1 **Barrido hecho, y por la vía buena: en los scripts, no en los tests.** En vez de repasar sesenta esperas
+      una a una, `open_view` **vacía las filas** al cambiar de vista en los trece scripts que las publican, así que
+      es **imposible** leer las de la vista anterior. `mu-av` ya lo hacía desde antes —con el comentario puesto— y
+      funcionaba: era aplicar el mismo patrón. El efecto buscado es que lo que antes pasaba en silencio ahora falle
+      a la cara, y falló: cuatro tests leían filas viejas (`test_mu_convert`, `test_mu_feeds`, `test_mu_library`,
+      `test_mu_music`). Arreglados los cuatro, y de paso dos helpers que **reventaban dentro de un
+      `wait_property`** —un `next()` sin defecto— y tumbaban la espera entera en vez de volver a mirar.
 - [ ] N2 **Y medir**: tres pasadas seguidas sin un solo fallo antes de declararlo. Mientras eso no ocurra, lo
       honesto al cerrar una tanda es decir el número y qué falló, no «check en verde».
 

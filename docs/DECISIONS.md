@@ -1235,3 +1235,19 @@
   **Y el detector ya estaba escrito**: el test que espera a que el menú se cierre. Fallaba con el fallo puesto y
   pasa con él quitado. Que un test «sensible a la carga» resulte ser un fallo de verdad es la razón por la que
   H63 dice que una batería que falla al azar se deja de leer.
+
+- ADR-105 · La carrera de las filas viejas se arregla en los scripts, no en los tests (H63/N1).
+  **Cierra** la clase de fallos que ADR-093 dejó anotada y que ha mordido cuatro veces en dos días.
+  El síntoma era siempre el mismo: un test espera a que el estado diga «estoy en la vista X», lee `items` y se
+  encuentra las filas de la vista anterior, porque el estado se publica **dos veces** (la vista al entrar, sus filas
+  cuando llegan). La tentación era repasar las sesenta esperas y hacerlas esperar por una fila. Se descarta: eso
+  arregla los tests de hoy y no impide los de mañana.
+  **La decisión es vaciar las filas al cambiar de vista** (`open_view`), en los trece scripts que las publican. Con
+  eso leer las filas de la vista anterior pasa de ser un error silencioso a ser **imposible**: lo peor que se puede
+  leer es una lista vacía. No es una idea nueva: `mu-av` lo hacía desde que se escribió, con el comentario puesto,
+  y nunca dio este problema — era aplicar lo que ya estaba demostrado.
+  **Y el efecto buscado era que algo fallara.** Falló: cuatro tests que venían pasando leían filas viejas sin que
+  nadie se enterase (`test_mu_convert`, `test_mu_feeds`, `test_mu_library`, `test_mu_music`). Dos de ellos, además,
+  por una razón que conviene recordar: su helper hacía `next(...)` sin valor por defecto **dentro de un
+  `wait_property`**, así que la excepción tumbaba la espera entera en lugar de volver a mirar un instante después.
+  Un predicado no puede reventar; tiene que contestar que todavía no.

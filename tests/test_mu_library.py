@@ -48,8 +48,11 @@ def titles(v):
     return [i["title"] for i in v.get("items", [])]
 
 
+# H63 · un `item()` que revienta dentro de un `wait_property` tumba la espera entera en vez de volver a mirar.
+# Desde que una vista nueva se publica SIN las filas de la anterior, eso pasa de verdad: la primera lectura llega
+# con la lista vacía. Devuelve None y que decida quien pregunta.
 def item(v, title):
-    return next(i for i in v["items"] if i["title"] == title)
+    return next((i for i in v.get("items") or [] if i["title"] == title), None)
 
 
 def test_library_menu_play_next_episode_countdown_home_and_subtitles(lib_mpv, media_dir, tmp_path):
@@ -146,7 +149,7 @@ def test_library_menu_play_next_episode_countdown_home_and_subtitles(lib_mpv, me
     assert item(s, "Siguiente episodio automático")["hint"] == "sí"
     ev(h, "mu-library-event", {"type": "activate", "index": 1, "value": {"toggle": "auto_next"}})
     s = lib_state(h, lambda v: v.get("auto_next") is False and v.get("view") == "settings"
-                  and item(v, "Siguiente episodio automático")["hint"] == "no")
+                  and (item(v, "Siguiente episodio automático") or {}).get("hint") == "no")
     h.command("script-message-to", "uosc", "close-menu", "mu-library")
     h.command("loadfile", str(eps[0]))
     h.command("set", "pause", "no")          # keep-open left the previous episode paused

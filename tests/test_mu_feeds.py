@@ -289,12 +289,15 @@ def test_from_downloads_menu_downloads_with_the_default_chain(open_mpv, feed_ser
     crumbs = f"{APP} › Abrir o descargar › Suscripciones"
 
     # H42: «Suscripciones» salió de la raíz de las descargas y vive donde se abre algo (a child: ⌫ vuelve a él)
+    # H63 · hay que esperar por LA FILA y no por el nombre de la vista: la vista se publica antes que sus filas
     h.command("script-binding", "mu_menu/root")
-    mv = h.wait_property("user-data/mu/menu", lambda v: bool(v) and v.get("view") == "root", timeout=15)
+    mv = h.wait_property("user-data/mu/menu", lambda v: bool(v) and v.get("view") == "root"
+                         and any(i["title"] == "Abrir o descargar" for i in v.get("items") or []), timeout=15)
     abrir = next(i for i in mv["items"] if i["title"] == "Abrir o descargar")
     h.command("script-message-to", "mu_menu", "mu-menu-event", json.dumps(
         {"type": "activate", "index": 1, "menu_id": "{root}", "value": abrir["value"]}))
-    mv = h.wait_property("user-data/mu/menu", lambda v: bool(v) and v.get("view") == "open", timeout=15)
+    mv = h.wait_property("user-data/mu/menu", lambda v: bool(v) and v.get("view") == "open"
+                         and any(i["title"] == "Suscripciones" for i in v.get("items") or []), timeout=15)
     row = next(i for i in mv["items"] if i["title"] == "Suscripciones")
     h.command("script-message-to", "mu_menu", "mu-menu-event", json.dumps(
         {"type": "activate", "index": 1, "menu_id": "{root}", "value": row["value"]}))

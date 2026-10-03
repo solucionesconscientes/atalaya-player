@@ -236,6 +236,7 @@ local function open_view(spec, push)
   if push ~= false then table.insert(state.stack, spec) end
   if state.view ~= spec.name then state.move = nil end    -- a redraw of the same view keeps its move mapping
   state.view = spec.name
+  state.items = {}   -- H63: nunca se publica una vista nueva con las filas de la anterior
   publish()
   views[spec.name](spec.args or {})
 end

@@ -63,8 +63,11 @@ def titles(v: dict) -> list[str]:
     return [i["title"] for i in v.get("items") or []]
 
 
+# H63 · un `item()` que revienta dentro de un `wait_property` tumba la espera entera en vez de volver a mirar.
+# Desde que una vista nueva se publica SIN las filas de la anterior, eso pasa de verdad: la primera lectura llega
+# con la lista vacía. Devuelve None y que decida quien pregunta.
 def item(v: dict, title: str) -> dict:
-    return next(i for i in v["items"] if i["title"] == title)
+    return next((i for i in v.get("items") or [] if i["title"] == title), None)
 
 
 def set_output(h, folder: Path) -> None:
@@ -107,7 +110,7 @@ def test_convert_open_file_with_range_and_tasks_panel(conv_mpv, clip, tmp_path):
     assert item(st, "Conservar los subtítulos")["hint"] == "sí"
     for hint in ("1080p", "720p", "480p"):
         ev(h, {"type": "activate", "index": 3, "value": {"opt": "height"}})
-        conv(h, lambda v, x=hint: item(v, "Resolución máxima")["hint"] == x)
+        conv(h, lambda v, x=hint: (item(v, "Resolución máxima") or {}).get("hint") == x)
     ev(h, {"type": "activate", "index": 2, "value": {"start": True}})
     wait_nav(h, "mu-convert", f"{APP} › Convertir › MP4 compatible › Tareas")
     st = conv(h, lambda v: v.get("last_done", {}).get("status") == "done", timeout=60)

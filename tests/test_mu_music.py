@@ -64,6 +64,10 @@ def hint(v, title):
 
 
 def activate(h, v, title, action=None):
+    # H63 · la vista se publica sin filas y las de verdad llegan detrás: si la fila aún no está, se espera a que
+    # llegue en vez de reventar con la lista de la vista anterior
+    if title not in titles(v):
+        v = st(h, lambda s: title in titles(s))
     idx, it = row(v, title)
     e = {"type": "activate", "index": idx, "value": it["value"]}
     if action:
