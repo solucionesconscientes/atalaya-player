@@ -58,7 +58,7 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 | Tecla | Acción |
 |---|---|
 | `alt+y` | Menú de vídeos de internet: abrir URL, buscar en YouTube, solo audio, calidad, **Descargar…** (una sola puerta: un enlace, veinte, una lista, un canal o un `.txt` → lista con casillas, formato de todos y formato por fila, SRT global o por fila), descargas, estado |
-| `alt+a` | Solo audio ⇄ vídeo, manteniendo la posición (internet: recarga solo el audio; archivos locales: al instante, sin decodificar el vídeo) |
+| `alt+a` | Quitar o devolver el vídeo, al instante (0,03 s) y sin perder la posición. En un vídeo de internet, además, deja de descargarlo. No se recuerda: el siguiente vídeo se abre con imagen |
 | `alt+q` | Calidad: todos los formatos; Enter cambia en caliente, Tab descarga ese formato |
 | `alt+d` | Descargar con un preset (vídeo/audio) y opciones |
 | `alt+l` | Descargas: progreso, cancelar, repetir, quitar |

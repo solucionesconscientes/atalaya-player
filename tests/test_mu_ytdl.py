@@ -79,23 +79,24 @@ def test_hook_path_switch_quality_download_and_panel(ytdl_mpv, media_dir):
     h.command("set_property", "pause", True)
     pos = h.get("time-pos")
 
-    # 2. audio-only keeps the position and the pause state; ytdl_hook re-runs the fake with bestaudio/best
+    # 2. H60 · quitar el vídeo NO recarga: deselecciona la pista, conserva posición y pausa y no vuelve a llamar a
+    #    yt-dlp. Antes recargaba con bestaudio/best —segundos de espera y una reproducción contada de más—, y medido
+    #    no hacía falta: deseleccionar la pista ya corta la descarga del vídeo (ADR-096).
     n = len(argv_lines(arglog))
     h.command("script-binding", "mu_ytdl/ytdl-toggle-audio")
-    st = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("mode") == "audio" and v.get("active"),
+    st = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("audio_only") is True and v.get("active"),
                          timeout=40)
-    assert st["format"] == "bestaudio/best" and st["current_ids"] == ["140"] and h.get("path") == URL
+    assert st["current_ids"] == ["137", "140"] and h.get("path") == URL
     assert h.get("vid") is False and h.get("pause") is True
     assert abs(h.get("time-pos") - pos) < 1.5, (h.get("time-pos"), pos)
-    reload_argv = [a for a in argv_lines(arglog)[n:] if "-J" in a][-1]
-    assert reload_argv[reload_argv.index("--format") + 1] == "bestaudio/best"
-    assert h.get("stream-open-filename").endswith("voz_es.flac")
+    assert [a for a in argv_lines(arglog)[n:] if "-J" in a] == [], "no debe recargar"
 
-    # …and back to video (vid=auto restores the video track)
+    # …y vuelve la imagen igual de rápido, sin recargar tampoco
     h.command("script-binding", "mu_ytdl/ytdl-toggle-audio")
-    st = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("mode") == "video" and v.get("active")
-                         and v.get("current_ids") == ["137", "140"], timeout=40)
+    h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("audio_only") is False and v.get("active"),
+                    timeout=40)
     assert h.get("vid") not in (False, "no")
+    assert [a for a in argv_lines(arglog)[n:] if "-J" in a] == [], "no debe recargar"
 
     # 3. quality menu: formats grouped from ytdl.info (seeded with ytdl_hook's JSON: no extra yt-dlp run)
     n = len(argv_lines(arglog))

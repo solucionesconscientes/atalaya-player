@@ -73,9 +73,10 @@ botón de «solo audio» vive entre los de pistas.
   y los tramos se ven pintados en la línea de tiempo.
 - **Nota** (`edit_note`): se pulsa a media película —«esto de aquí»— y la marca cae en la línea de tiempo.
 
-**Lo que sale de la barra**: «solo audio» (`videocam_off`). Es una decisión que se toma una vez por vídeo, solo
-aplica a vídeos de internet, y su icono se lee como «cámara apagada», que hoy significa otra cosa para todo el
-mundo. Sigue en `alt+a` y en el menú.
+**Lo que sale de la barra**: «solo audio» (`videocam_off`). Su icono se lee como «cámara apagada», que hoy
+significa otra cosa para todo el mundo, y sobre todo **ya no hay que pulsarlo**: desde H60 el vídeo se quita solo al
+minimizar la ventana, que es cuando de verdad molesta decodificarlo. Sigue en `alt+a` y en el menú para el caso raro
+de querer escuchar con la ventana delante.
 
 **Lo que NO se añade, y por qué**: un control de volumen (uosc ya tiene el suyo al lado), una rueda de ajustes (eso
 es el menú), captura de pantalla (es una tecla; nadie la busca en la barra), enviar a la tele (una vez por sesión,

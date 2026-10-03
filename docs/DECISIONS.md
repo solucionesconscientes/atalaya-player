@@ -1064,3 +1064,26 @@
   un tartamudeo y no un montaje, así que la puntuación se suaviza entre frases vecinas para que ganen **pasajes**,
   y se ajusta por búsqueda binaria cuántas frases se cogen, porque fundir y estirar infla el total (quince minutos
   pedidos daban diecisiete). Con eso: 15 min pedidos → 14,9 reales, en tramos de 25 s a 2 min.
+
+- ADR-096 · Quitar el vídeo al minimizar, y por qué el botón deja de hacer falta (H60).
+  **Sustituye** la parte de ADR-058/H32 que dejaba este ajuste apagado, y retira el `prefer_audio` de H14.
+  Ser preguntó si minimizar ya deja de decodificar y, si es así, si el botón de apagar el vídeo es redundante.
+  **(1) Minimizar no para nada.** Medido dos veces con la ventana real y un 720p HEVC, cambiando `window-minimized`
+  por IPC y muestreando `/proc/<pid>/stat`: 37,2 % y 32,6 % de un núcleo con la ventana visible, 17,9 % y 17,8 %
+  minimizada, 11,7 % y 8,1 % sin vídeo, y los mismos fotogramas descartados (11) en los dos casos con imagen. Lo
+  que ahorra minimizar es **pintar**; mpv sigue decodificando cada fotograma para nadie.
+  **(2) Y no hace falta recargar para quitarlo, ni en internet.** Esto es lo que cambia el diseño. La idea inicial
+  era activar `ytdl_hook-all_formats=yes` para que cada formato fuera una pista de carga diferida; midiéndolo
+  resultó innecesario: con ytdl_hook **tal cual está**, deseleccionar la pista de vídeo de un vídeo de YouTube baja
+  la descarga al 35 % (98,7 → 34,1 KiB/s en 480p), tarda 0,03 s, no corta el sonido y la posición sigue corriendo
+  (27 → 52 → 77 s), porque el vídeo viene en su propio flujo y mpv deja de leerlo. Con lo que se cae todo el riesgo:
+  no se toca la selección de formatos, ni se pierden etiquetas, ni hay que probar `all_formats` en directos.
+  **(3) Encendido por defecto.** H32 dejó el ajuste apagado por prudencia; con 0,03 s de ida y vuelta no hay motivo.
+  Vale igual para un fichero y para una URL: el manejador no excluía las direcciones, solo le faltaba estar puesto.
+  **(4) Fuera `prefer_audio`.** Recordar «abre los vídeos de internet sin imagen» era la única cosa que minimizar no
+  puede expresar, pero también la que confunde: abres un vídeo y no tiene imagen sin saber por qué. Los vídeos se
+  abren **siempre** con su imagen; `alt+a` es cosa del momento y no recuerda nada. El ahorro máximo de datos —bajar
+  solo la pista de audio— sigue existiendo donde se pide a propósito: «Solo audio» en el menú de calidad.
+  **(5) El botón ya no estaba.** `mu-audio` salió de la barra en H51 al hacer sitio a tramos, bucle y notas; quedó
+  escrito en `docs/INTERFAZ.md` pero no se le dijo a Ser, y el código seguía registrando en uosc un botón que nadie
+  dibujaba. Se retira el registro. Y de paso el toggle deja de contar una reproducción nueva, porque ya no recarga.

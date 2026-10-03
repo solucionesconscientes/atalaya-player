@@ -186,8 +186,8 @@ def test_volume_leveling_and_equalizer_are_applied_and_remembered(daemon_env, me
 
 
 def test_audio_only_for_local_files_and_when_minimized(av_mpv, media_dir):
-    """H32: alt+a on a local file deselects the video at once (only for that file); «Solo audio al minimizar la
-    ventana» does the same while the window is minimized and brings the picture back afterwards."""
+    """H32/H60: alt+a deselects the video at once (only for that file); minimizing the window does the same on its
+    own, because that is on by default since H60, and brings the picture back afterwards."""
     h, d = av_mpv
     h.wait_property("user-data/mu/av", lambda v: bool(v) and "filters" in v, timeout=20)
     h.command("loadfile", str(media_dir / "video30.mkv"))
@@ -203,18 +203,22 @@ def test_audio_only_for_local_files_and_when_minimized(av_mpv, media_dir):
     h.command("loadfile", str(media_dir / "chapters.mkv"))
     h.wait_property("current-tracks/video", lambda v: isinstance(v, dict) and v.get("id") == 1, timeout=20)
 
-    # minimized: off by default → nothing happens
-    h.command("set", "window-minimized", "yes")
-    time.sleep(0.5)
-    assert isinstance(h.get("current-tracks/video"), dict)
-    h.command("set", "window-minimized", "no")
-    h.command("script-message-to", "mu_av", "mu-av-event", json.dumps(
-        {"menu_id": "{root}", "is_pointer": False, "alt": False, "ctrl": False, "shift": False, "type": "activate",
-         "index": 1, "value": {"audio_minimized": True}}))
+    # H60: encendido por defecto, así que minimizar quita el vídeo sin activar nada antes
     h.command("set", "window-minimized", "yes")
     h.wait_property("user-data/mu/av", lambda v: bool(v) and v.get("minimized_audio") is True, timeout=10)
     h.wait_property("vid", lambda v: v is False or v == "no", timeout=10)
     h.command("set", "window-minimized", "no")
     h.wait_property("current-tracks/video", lambda v: isinstance(v, dict) and v.get("id") == 1, timeout=10)
     assert h.get("user-data/mu/av")["minimized_audio"] is False
+
+    # y se puede apagar: entonces minimizar no toca nada
+    h.command("script-message-to", "mu_av", "mu-av-event", json.dumps(
+        {"menu_id": "{root}", "is_pointer": False, "alt": False, "ctrl": False, "shift": False, "type": "activate",
+         "index": 1, "value": {"audio_minimized": True}}))
+    h.wait_property("user-data/mu/av", lambda v: bool(v) and v.get("audio_minimized") is False, timeout=10)
+    h.command("set", "window-minimized", "yes")
+    time.sleep(1.5)   # no hay nada que esperar: la prueba es que NO pase nada
+    assert isinstance(h.get("current-tracks/video"), dict)
+    assert h.get("user-data/mu/av")["minimized_audio"] is False
+    h.command("set", "window-minimized", "no")
     assert h.script_errors() == []

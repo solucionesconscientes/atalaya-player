@@ -729,7 +729,7 @@ local CURATED = {
   { title = tr('Vídeos de internet › Descargar'), cmd = 'script-binding mu_ytdl/ytdl-download' },
   { title = tr('Vídeos de internet › Descargas'), cmd = 'script-binding mu_ytdl/ytdl-downloads' },
   { title = tr('Vídeos de internet › Menú (calidad, descargas)'), cmd = 'script-binding mu_ytdl/ytdl-menu' },
-  { title = tr('Vídeos de internet › Solo audio / vídeo'), cmd = 'script-binding mu_ytdl/ytdl-toggle-audio' },
+  { title = tr('Vídeos de internet › Quitar o devolver el vídeo'), cmd = 'script-binding mu_ytdl/ytdl-toggle-audio' },
 }
 
 local ACTIONS = {

@@ -1,8 +1,19 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
-## Resumen para Ser (2026-10-03, iteración 8) · H58
-De tu tercera prueba y del repaso de `docs/IDEAS.md` salieron cuatro cosas, y están.
+## Resumen para Ser (2026-10-03, iteración 8) · H58, H60, J5, H44/C8, H53, K3
+De tu tercera prueba y del repaso de `docs/IDEAS.md` salieron cuatro cosas, y están. Detrás van las cinco que
+aprobaste después.
+
+### H60 · El vídeo se quita solo al minimizar
+Preguntaste si minimizar ya deja de decodificar y si entonces el botón de apagar el vídeo es redundante. Lo medí:
+**minimizar no para nada** (37 % de un núcleo con la ventana visible, 18 % minimizada, 8 % sin vídeo, y los mismos
+fotogramas descartados). Lo que ahorra es pintar. Así que ahora **se quita solo** mientras la ventana está escondida
+y vuelve al restaurarla, encendido de fábrica. En un vídeo de internet, además, **deja de descargarse**: la descarga
+baja al 35 % y tarda 0,03 s, sin recargar nada — con lo que se cayó la parte arriesgada del plan, que era tocar la
+selección de formatos. Y el botón: **ya no estaba en la barra** (lo quité en H51 para hacer sitio a tramos y notas,
+quedó escrito en docs/INTERFAZ.md pero no te lo dije). Queda `alt+a` para el caso raro de escuchar con la ventana
+delante, y **ya no se recuerda**: todo vídeo se abre con su imagen.
 
 - **Se ve lo que pasa por detrás.** Tu «guardar los tramos no hace nada» era **falso** —los archivos se creaban—
   pero no había ninguna señal: iban a una carpeta que nadie había visto y, al unir, se recodificaba en silencio.

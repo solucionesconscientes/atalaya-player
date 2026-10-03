@@ -360,11 +360,15 @@ se busca en los primeros 10 minutos y los créditos en los últimos 5. Hace falt
 ## 7. Sonido e imagen
 `alt+v`: diálogo claro, modo noche (`alt+n`), reducción de ruido, sonido binaural para auriculares, protección fotosensible, perfil ligero
 para equipos modestos y diagnóstico de tirones con recomendaciones. Más en docs/AUDIO_VIDEO.md.
-- **Solo audio** (`alt+a`): en un vídeo de internet recarga solo el audio (y se recuerda); en un archivo de tu equipo es
-  instantáneo y solo para ese archivo: el vídeo deja de decodificarse. *Solo audio al minimizar la ventana* (en `alt+v`,
-  desactivado) hace lo mismo mientras la ventana está minimizada y devuelve la imagen al volver. Medido en este portátil
-  con un 1080p60 H.264 (10 s): 6,7 s de CPU decodificando por procesador, 5,8 s con VA-API en modo copia y 0,5 s en solo
-  audio (unas 13 veces menos).
+- **Quitar el vídeo al minimizar** (en `alt+v`, **activado**): mientras la ventana está escondida nadie necesita la
+  imagen, así que se deja de decodificar y, si es un vídeo de internet, también de descargar; al restaurar vuelve. Hace
+  falta porque **minimizar por sí solo no para nada**: medido en este portátil con un 720p HEVC, 37 % de un núcleo con
+  la ventana visible, 18 % minimizada y 8 % sin vídeo, con los mismos fotogramas descartados. Y en un vídeo de YouTube,
+  deseleccionar la pista baja la descarga al 35 % (98,7 → 34,1 KiB/s en 480p; cuanto mejor la calidad, más se ahorra).
+  - **Quitar o devolver el vídeo a mano** (`alt+a`): lo mismo, al instante (0,03 s, no recarga nada) y solo para ese
+    archivo. **No se recuerda**: el siguiente vídeo se abre con su imagen. Para escuchar de verdad solo el audio de un
+    vídeo largo de internet —bajando únicamente la pista de audio— está «Solo audio» en el menú de calidad (`alt+q`),
+    que sí recarga porque se ha pedido a propósito.
 - **Volumen igualado**: todos los vídeos suenan parecido de fuertes, sin tocar el mando (normalizador lento; tarda unos
   segundos en ajustarse al empezar).
 - **Ecualizador**: *Plano*, *Más graves*, *Menos graves*, *Más agudos*, *Voz*, *Música*, *Altavoces del portátil* y

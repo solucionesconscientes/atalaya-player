@@ -93,7 +93,7 @@ local FILTERS = {
 }
 local ORDER = { 'dialog', 'night', 'level', 'eq', 'denoise', 'binaural', 'photo' }
 
-local P = prefs.ns('mu-av', { filters = {}, light = false, eq = '', audio_minimized = false }, function(key, v)
+local P = prefs.ns('mu-av', { filters = {}, light = false, eq = '', audio_minimized = true }, function(key, v)
   if key == 'eq' then return v == '' or EQ_GRAPHS[v] ~= nil end
   if key ~= 'filters' then return true end
   for _, name in pairs(v) do if type(name) ~= 'string' then return false end end
@@ -143,7 +143,8 @@ local function publish()
   end
   mp.set_property_native('user-data/mu/av', {
     filters = active_filters(), light = state.light, eq = state.eq, eq_presets = presets,
-    minimized_audio = state.minimized_audio or false, models = state.models, view = state.view, items = state.items,
+    minimized_audio = state.minimized_audio or false, audio_minimized = P:get('audio_minimized') == true,
+    models = state.models, view = state.view, items = state.items,
     last_error = state.last_error, diag = state.diag or {},
   })
 end
@@ -372,7 +373,7 @@ views.root = function()
         value = { toggle = name } })
     end
   end
-  table.insert(items, { title = 'Solo audio al minimizar la ventana', hint = yesno(P:get('audio_minimized')),
+  table.insert(items, { title = 'Quitar el vídeo al minimizar', hint = yesno(P:get('audio_minimized')),
     icon = 'minimize', active = P:get('audio_minimized'), value = { audio_minimized = true }, separator = true })
   table.insert(items, { title = 'Perfil ligero (menos GPU/CPU)', hint = yesno(state.light), icon = 'speed',
     active = state.light, value = { light = true }, separator = true })
@@ -469,7 +470,7 @@ mp.register_script_message(EVENT, function(json)
     local v = type(ev.value) == 'table' and ev.value or {}
     if v.audio_minimized then
       P:set('audio_minimized', not P:get('audio_minimized'))
-      osd('Solo audio al minimizar: ' .. yesno(P:get('audio_minimized')))
+      osd('Quitar el vídeo al minimizar: ' .. yesno(P:get('audio_minimized')))
       reopen_current()
     elseif v.eq ~= nil then
       set_eq(v.eq, true)
@@ -580,8 +581,11 @@ end)
 mp.observe_property('af', 'native', function() publish(); set_button_state() end)
 mp.observe_property('vf', 'native', function() publish(); set_button_state() end)
 
--- H32: while the window is minimized nothing needs the picture: the video track is deselected for the current file
--- (file-local, so the next file is untouched) and selected again when the window comes back
+-- H32/H60: while the window is minimized nothing needs the picture, so the video track is deselected for the current
+-- file (file-local, so the next file is untouched) and selected again when the window comes back. Encendido por
+-- defecto desde H60: medido, minimizar NO deja de decodificar por sí solo (37 % → 18 % de un núcleo, y 8 % sin
+-- vídeo), y en un vídeo de internet deseleccionar la pista corta además su descarga. Vale igual para una URL que
+-- para un fichero: 0,03 s de ida y vuelta, sin recargar nada. ADR-096.
 local minimized = { vid = nil, path = nil }
 local function on_minimized(_, m)
   if m and P:get('audio_minimized') then

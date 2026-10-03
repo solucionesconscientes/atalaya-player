@@ -34,14 +34,15 @@ def _prefs(daemon_env) -> dict:
     return {}
 
 
-def test_audio_only_and_download_options_are_remembered(daemon_env, media_dir, tmp_path):
+def test_download_options_are_remembered_and_audio_only_is_not(daemon_env, media_dir, tmp_path):
+    """H60: las opciones de descarga se recuerdan; «quitar el vídeo» NO, porque es cosa del momento."""
     h, httpd = _start(daemon_env, media_dir, tmp_path)
     try:
         h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
         h.command("loadfile", URL)
         h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("active") is True, timeout=40)
         h.command("script-binding", "mu_ytdl/ytdl-toggle-audio")
-        h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("active") and v.get("mode") == "audio",
+        h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("active") and v.get("audio_only") is True,
                         timeout=40)
         # a download option changed from the menu (container mp4 → mkv)
         h.command("script-binding", "mu_ytdl/ytdl-download")
@@ -53,23 +54,24 @@ def test_audio_only_and_download_options_are_remembered(daemon_env, media_dir, t
         deadline = time.time() + 15
         while time.time() < deadline:
             p = _prefs(daemon_env).get("mu-ytdl", {})
-            if p.get("prefer_audio") is True and p.get("dl_options", {}).get("container") == "mkv":
+            if p.get("dl_options", {}).get("container") == "mkv":
                 break
             time.sleep(0.3)
-        assert p.get("prefer_audio") is True and p["dl_options"]["container"] == "mkv"
+        assert p["dl_options"]["container"] == "mkv"
+        assert "prefer_audio" not in p, "quitar el vídeo no se recuerda (H60)"
         assert "playlist" not in p["dl_options"]
     finally:
         h.stop()
         httpd.shutdown()
 
-    # next start: the URL opens straight in audio-only mode
+    # H60 · al arrancar otra vez, la URL se abre CON imagen: haber quitado el vídeo antes no se recuerda
     h, httpd = _start(daemon_env, media_dir, tmp_path)
     try:
         h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
         h.command("loadfile", URL)
         st = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("active") is True, timeout=40)
-        assert st["mode"] == "audio"
-        assert h.get("vid") is False
+        assert st["audio_only"] is False
+        assert h.get("vid") not in (False, "no")
         assert h.script_errors() == []
     finally:
         h.stop()

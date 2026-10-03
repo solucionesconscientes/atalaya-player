@@ -42,8 +42,9 @@ local opts = {
   clipboard_text = '',              -- tests: fixed clipboard contents instead of mpv's clipboard/text
 }
 options.read_options(opts, 'mu-ytdl')
--- remembered choices: "solo audio" for internet videos and the download options (container, subtitles…)
-local P = prefs.ns('mu-ytdl', { prefer_audio = false, dl_options = {}, pick_preset = 'video_1080' })
+-- remembered choices: the download options (container, subtitles…). H60 dropped "prefer_audio": an internet video
+-- always opens with its picture, and taking the video away is a thing of the moment (alt+a, or minimizing).
+local P = prefs.ns('mu-ytdl', { dl_options = {}, pick_preset = 'video_1080' })
 
 local platform = mp.get_property_native('platform') or ''
 local is_windows = platform == 'windows'
@@ -108,6 +109,8 @@ local function publish()
   mp.set_property_native('user-data/mu/ytdl', {
     hw_format = hw.format,
     active = state.active, url = state.url, mode = state.mode, format = state.format, title = state.title,
+    -- H60 · quitar el vídeo ya no recarga, así que `mode` no lo refleja: lo dice la pista de verdad
+    audio_only = mp.get_property('vid') == 'no',
     current_ids = state.current_ids, view = state.view, depth = #state.stack, downloads_active = count_active(),
     last_event = state.last_event or '', last_error = state.last_error, hook_path = state.hook_path,
     items = state.items, search_query = state.search_query, search_status = state.search_status,
@@ -399,9 +402,16 @@ local function reload(format, audio_only)
   if ok == nil then osd('No se pudo recargar ' .. url) end
 end
 
--- H32: a local file (or any stream that is not yt-dlp's) goes audio-only at once: the video track is deselected for
--- this file only (file-local vid=no), so nothing is decoded and the next file opens normally
-local function toggle_local_audio()
+-- ¿Está sonando solo el audio? Lo dice la pista, no lo que creamos recordar.
+local function audio_only()
+  return mp.get_property('vid') == 'no'
+end
+
+-- H60 · quitar el vídeo es deseleccionar la pista, y punto: para este fichero (file-local vid=no), así que el
+-- siguiente se abre limpio. Antes, en internet, esto recargaba con `bestaudio/best`; medido, no hacía falta —
+-- deseleccionar la pista ya corta la descarga del vídeo (35 % de los datos) y tarda 0,03 s en vez de segundos,
+-- sin contar una reproducción nueva ni obligar a la sala a rehacer su relay. ADR-096.
+local function toggle_audio()
   local path = mp.get_property('path') or ''
   if path == '' then osd('No hay nada abierto') return end
   local vid = mp.get_property('vid')
@@ -416,38 +426,16 @@ local function toggle_local_audio()
   end
 end
 
-local function toggle_audio()
-  if not state.active then
-    toggle_local_audio()
-    return
-  end
-  if state.mode == 'audio' then
-    reload(default_video_format(), false)
-    osd('🎬 Vídeo')
-    P:set('prefer_audio', false)
-  else
-    reload(opts.audio_format, true)
-    osd('🎧 Solo audio (' .. opts.audio_format .. ') · se recordará')
-    P:set('prefer_audio', true)
-  end
-end
-
 -- mpv.conf's ytdl-format: while it is still this one (the user did not pick another, which mu-prefs would remember),
 -- internet videos use the format that suits this machine's hardware decoding (H31, mpvd ytdl.hw)
 local FACTORY_FORMAT = 'bestvideo[height<=?1080][vcodec^=avc1]+bestaudio/bestvideo[height<=?1080]+bestaudio/best'
 
--- "Solo audio" remembered: internet videos open without video. Runs before ytdl_hook's on_load (priority 10) so the
--- audio format is the one yt-dlp resolves; a format chosen for this file (loadfile options) is left alone.
+-- Runs before ytdl_hook's on_load (priority 10): a format chosen for this file (loadfile options) is left alone.
 mp.add_hook('on_load', 9, function()
   local path = mp.get_property('path') or ''
   if not (path:match('^https?://') or path:match('^ytdl://')) then return end
-  local tv = mp.get_property_native('user-data/mu/iptv') or {}
-  if type(tv.current) == 'table' and tv.current.url == path then return end  -- TV channels keep their video
   if mp.get_property_native('option-info/ytdl-format/set-locally') then return end
-  if P:get('prefer_audio') then
-    mp.set_property('file-local-options/ytdl-format', opts.audio_format)
-    mp.set_property('file-local-options/vid', 'no')
-  elseif hw.format ~= '' and mp.get_property('ytdl-format') == FACTORY_FORMAT then
+  if hw.format ~= '' and mp.get_property('ytdl-format') == FACTORY_FORMAT then
     mp.set_property('file-local-options/ytdl-format', hw.format)
   end
 end)
@@ -522,8 +510,9 @@ views.root = function()
   }
   if state.active then
     table.insert(items, {
-      title = state.mode == 'audio' and 'Volver al vídeo' or 'Solo audio',
-      hint = state.mode == 'audio' and 'ahora: audio' or 'ahora: vídeo', icon = state.mode == 'audio' and 'movie' or 'headphones',
+      title = audio_only() and 'Volver al vídeo' or 'Quitar el vídeo',
+      hint = audio_only() and 'ahora: solo audio' or 'ahora: con imagen',
+      icon = audio_only() and 'movie' or 'videocam_off',
       value = { toggle = true },
     })
     table.insert(items, { title = 'Calidad', hint = short_format(), icon = 'high_quality', value = { view = 'quality' } })
@@ -553,13 +542,13 @@ local function is_current(id)
 end
 
 local function quality_item(row, group)
-  local audio_only = row.kind == 'audio'
+  local solo_audio = row.kind == 'audio'
   local format
   if row.kind == 'video' then format = row.id .. '+ba/' .. row.id else format = row.id end
   return {
     title = row.label, hint = row.hint ~= '' and row.hint or nil, active = is_current(row.id),
-    icon = audio_only and 'audiotrack' or (row.kind == 'video' and 'videocam' or 'movie'),
-    value = { quality = { format = format, audio_only = audio_only, id = row.id, group = group } },
+    icon = solo_audio and 'audiotrack' or (row.kind == 'video' and 'videocam' or 'movie'),
+    value = { quality = { format = format, audio_only = solo_audio, id = row.id, group = group } },
     actions = { { name = 'download', icon = 'download', label = 'Descargar este formato' } },
   }
 end
@@ -1843,12 +1832,6 @@ end)
 -- ---------------------------------------------------------------------------------------------
 -- bindings and controls button
 
--- ¿Está sonando solo el audio? En internet lo dice el formato recargado; en un archivo local, que el vídeo esté apagado.
-local function audio_only()
-  if state.active then return state.mode == 'audio' end
-  return mp.get_property('vid') == 'no'
-end
-
 set_button_state = function()
   if not uosc.available() then return end
   local n = count_active()
@@ -1856,13 +1839,6 @@ set_button_state = function()
     icon = 'download', tooltip = 'yt-dlp: calidad y descargas (alt+y)', active = n > 0,
     badge = n > 0 and tostring(n) or nil,
     command = { 'script-binding', SCRIPT .. '/ytdl-menu' },
-  })
-  -- B1: quitar el vídeo y dejar solo el audio, a un clic (la función ya estaba, pero solo en alt+a)
-  local solo = audio_only()
-  uosc.set_button('mu-audio', {
-    icon = solo and 'music_note' or 'videocam_off', active = solo,
-    tooltip = solo and 'Volver al vídeo (alt+a)' or 'Solo audio: no decodificar el vídeo (alt+a)',
-    command = { 'script-binding', SCRIPT .. '/ytdl-toggle-audio' },
   })
 end
 
@@ -1906,8 +1882,8 @@ mp.register_script_message('mu-ytdl-open-url', function(text) open_palette('open
 mp.register_script_message('mu-ytdl-search', function(query) open_palette('yt_search', query) end)
 
 mp.register_script_message('uosc-version', set_button_state)
--- el botón de «solo audio» tiene que reflejar el estado real, también cuando se cambia por tecla o por otro script
-mp.observe_property('vid', 'string', function() set_button_state() end)
+-- el estado tiene que decir si está sonando solo el audio, también cuando se cambia por tecla o por otro script
+mp.observe_property('vid', 'string', function() publish() end)
 
 mp.observe_property('user-data/mu/core', 'native', function(_, core)
   if core and core.uosc then set_button_state() end

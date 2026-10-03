@@ -545,6 +545,15 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
       instante. Guardar el archivo es un paso aparte, porque eso sí cuesta.
 - [x] K5 **Ir a un minuto escribiéndolo** (icono y `g`): `2:15`, `1:02:15`, segundos sueltos y `+30` / `−30`.
 
+## H60 · Quitar el vídeo al minimizar — ADR-096 · [x]
+- [x] G1 Medido: minimizar **no** deja de decodificar (37 % → 18 % de un núcleo; 8 % sin vídeo, mismos fotogramas
+      descartados), y deseleccionar la pista de un vídeo de internet **sí** corta su descarga (35 % de los datos)
+      en 0,03 s, sin recargar y sin `ytdl_hook-all_formats`, que se descarta.
+- [x] G2 `audio_minimized` encendido por defecto; vale para ficheros y para URLs.
+- [x] G3 `alt+a` usa el camino instantáneo también en internet: ya no recarga ni cuenta otra reproducción.
+- [x] G4 Fuera `prefer_audio` (los vídeos se abren siempre con imagen) y fuera el registro del botón `mu-audio`,
+      que no se dibuja desde H51. El ahorro máximo de datos sigue en «Solo audio» del menú de calidad.
+
 ## H53 · El «modo sencillo» no encoge la barra (encontrado el 2026-10-02) — [ ]
 - [ ] F1 `mu-modes` escribe `uosc-controls` al entrar en modo sencillo, pero **uosc solo lee esa opción al
       arrancar** (`Controls:init_options()` solo corre en `init()`, y ningún elemento escucha cambios de opciones).
