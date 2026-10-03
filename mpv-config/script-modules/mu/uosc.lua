@@ -37,9 +37,48 @@ function M.open_type()
   return nil
 end
 
-function M.set_button(name, spec)
-  M.send('set-button', name, utils.format_json(spec))
+-- H53 · El «modo sencillo» escribía la opción `controls` de uosc, pero uosc solo la lee al arrancar
+-- (`Controls:init_options()` corre en `init()` y ningún elemento escucha cambios de opciones), así que la barra se
+-- quedaba idéntica. Lo que sí entiende en caliente es `hide` en cada botón gestionado, así que el modo esconde
+-- aquí todos los botones propios —menos el del menú, que es la puerta a todo lo demás— y los devuelve al salir.
+-- Va en el módulo y no en cada script porque así lo heredan los veinte de una vez, incluidos los que aparecen
+-- más tarde (Tareas, grabación). Los elementos de uosc (play, anterior/siguiente, audio, velocidad, pantalla
+-- completa) no se pueden esconder uno a uno, y son justo los que el modo sencillo quiere conservar.
+local KEEP_SIMPLE = { ['mu-menu'] = true }
+local simple = false
+local sent = {}
+
+-- lo que este script tiene escondido ahora mismo, para poder comprobarlo desde fuera (uosc no publica sus botones)
+local function publish_bar()
+  local hidden = {}
+  for name in pairs(sent) do
+    if simple and not KEEP_SIMPLE[name] then hidden[#hidden + 1] = name end
+  end
+  table.sort(hidden)
+  mp.set_property_native('user-data/mu/bar/' .. mp.get_script_name(), { simple = simple, hidden = hidden })
 end
+
+function M.set_button(name, spec)
+  local nuevo = sent[name] == nil
+  sent[name] = spec
+  local out = spec
+  if simple and not KEEP_SIMPLE[name] then
+    out = {}
+    for k, v in pairs(spec) do out[k] = v end
+    out.hide = true
+  end
+  M.send('set-button', name, utils.format_json(out))
+  if nuevo then publish_bar() end
+end
+
+-- mu-modes publica el modo en `user-data/mu/modes`; al cambiar, se reenvían los botones ya registrados
+mp.observe_property('user-data/mu/modes', 'native', function(_, modes)
+  local on = type(modes) == 'table' and modes.simple == true
+  if on == simple then return end
+  simple = on
+  for name, spec in pairs(sent) do M.set_button(name, spec) end
+  publish_bar()
+end)
 
 function M.loading_items(text)
   return { { title = text or 'Cargando…', icon = 'spinner', align = 'center', selectable = false, muted = true } }

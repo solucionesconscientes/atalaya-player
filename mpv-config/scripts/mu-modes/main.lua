@@ -3,7 +3,9 @@
 --     "on top" depends on the window manager — KDE: Alt+F3 › Más acciones › Mantener por encima if it is ignored).
 --   * Modo salón: to watch from the sofa — fullscreen, big menus (uosc scale), big subtitles and messages; a gamepad
 --     can drive it through mpvd (gamepad.* over the Linux joystick API) while it is on.
---   * Modo sencillo: a short main menu (mu-menu reads `simple` here) and a reduced control bar.
+--   * Modo sencillo: a short main menu (mu-menu reads `simple` here) and a reduced control bar. The bar shrinks in
+--     two ways, because uosc needs both: the `controls` option for the next start, and `hide` on every mu-* button
+--     for right now (mu.uosc does that for every script; H53, ADR-099).
 -- Each mode remembers what it changed and puts it back when it is turned off. Salón and sencillo are remembered
 -- (mu-prefs namespace mu-modes); the mini player is not (it depends on the window of the moment).
 local mp = require('mp')

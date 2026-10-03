@@ -554,8 +554,15 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
 - [x] G4 Fuera `prefer_audio` (los vídeos se abren siempre con imagen) y fuera el registro del botón `mu-audio`,
       que no se dibuja desde H51. El ahorro máximo de datos sigue en «Solo audio» del menú de calidad.
 
-## H53 · El «modo sencillo» no encoge la barra (encontrado el 2026-10-02) — [ ]
-- [ ] F1 `mu-modes` escribe `uosc-controls` al entrar en modo sencillo, pero **uosc solo lee esa opción al
+## H53 · El «modo sencillo» no encoge la barra (encontrado el 2026-10-02) — ADR-097 · [x]
+- [x] F1 Arreglado por la vía (a), pero **una sola vez** y no script a script: el que esconde los botones es el
+      módulo compartido `mu.uosc`, que es por donde pasan todos los `set-button` de los veinte scripts. Así lo
+      heredan también los que aparecen más tarde (Tareas, grabación) sin tocarlos. Se conserva `mu-menu`, que es la
+      puerta a todo lo demás, y se sigue escribiendo la opción `controls` para el próximo arranque. El test ya mira
+      la barra: `mu.uosc` publica en `user-data/mu/bar/<script>` qué tiene escondido, porque uosc no publica sus
+      botones. Lo que no se puede esconder son los elementos propios de uosc (play, anterior/siguiente, audio,
+      velocidad, pantalla completa), que son justo los que el modo sencillo quiere conservar.
+- [ ] F0 (histórico) `mu-modes` escribe `uosc-controls` al entrar en modo sencillo, pero **uosc solo lee esa opción al
       arrancar** (`Controls:init_options()` solo corre en `init()`, y ningún elemento escucha cambios de opciones).
       Comprobado con dos capturas: tras activarlo, el OSD dice «menú corto y barra mínima» y la barra se queda
       **idéntica**. El menú sí encoge; la barra no. El test actual solo comprueba que la opción se escribe, no que

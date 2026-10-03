@@ -80,6 +80,12 @@ def test_modes_apply_and_restore(modes_mpv):
     h.command("script-binding", "mu_modes/simple-toggle")
     modes(h, lambda v: v["simple"])
     assert "button:mu-menu" in uosc_opt(h, "controls")
+    # H53 · la opción `controls` solo la lee uosc al arrancar, así que lo que encoge la barra AHORA es `hide` en cada
+    # botón propio. uosc no publica sus botones, así que se comprueba lo que se le manda (mu.uosc lo publica).
+    barra = h.wait_property("user-data/mu/bar", lambda v: bool(v) and (v.get("mu_record") or {}).get("simple") is True,
+                            timeout=10)
+    escondidos = sorted({n for s in barra.values() for n in (s.get("hidden") or [])})
+    assert "mu-record" in escondidos and "mu-menu" not in escondidos, escondidos
     h.command("script-binding", "mu_menu/root")
     st = h.wait_property("user-data/mu/menu", lambda v: bool(v) and v.get("view") == "root", timeout=10)
     titles = [i["title"] for i in st["items"]]
@@ -92,6 +98,9 @@ def test_modes_apply_and_restore(modes_mpv):
     st = h.wait_property("user-data/mu/menu", lambda v: bool(v) and any(i["title"] == "Herramientas"
                                                                          for i in v.get("items") or []), timeout=10)
     assert uosc_opt(h, "controls") is None
+    barra = h.wait_property("user-data/mu/bar", lambda v: bool(v) and (v.get("mu_record") or {}).get("simple") is False,
+                            timeout=10)
+    assert all(not (s.get("hidden") or []) for s in barra.values()), barra
 
 
 def test_modes_remembered(daemon_env, media_dir):

@@ -1087,3 +1087,20 @@
   **(5) El botón ya no estaba.** `mu-audio` salió de la barra en H51 al hacer sitio a tramos, bucle y notas; quedó
   escrito en `docs/INTERFAZ.md` pero no se le dijo a Ser, y el código seguía registrando en uosc un botón que nadie
   dibujaba. Se retira el registro. Y de paso el toggle deja de contar una reproducción nueva, porque ya no recarga.
+
+- ADR-097 · El modo sencillo encoge la barra escondiendo botones, no reescribiendo la opción (H53).
+  **Corrige** ADR-058, que dio por hecho que escribir `uosc-controls` bastaba. No bastaba: uosc lee esa opción en
+  `Controls:init_options()`, que solo corre en `init()`, y ningún elemento escucha cambios de opciones, así que el
+  menú encogía y la barra se quedaba idéntica. El test de entonces comprobaba que la opción se escribía, no que la
+  barra cambiara, y por eso no saltó.
+  **La decisión es dónde ponerlo.** El BACKLOG proponía que cada script escondiera su botón (`hide`, que la API
+  pública de uosc sí admite en caliente). Se hace, pero en **un solo sitio**: el módulo `mu.uosc`, por donde pasan
+  todos los `set-button`. Script a script habrían sido cuatro ficheros y un olvido garantizado en el siguiente botón
+  que se añada; en el módulo lo heredan los veinte scripts y también los que aún no existen. Se conserva `mu-menu`
+  —sin él el modo sencillo no tiene puerta— y se sigue escribiendo `controls` para el arranque siguiente, que es
+  cuando uosc sí la lee: las dos cosas describen la misma barra.
+  **Lo que no se puede**: esconder los elementos propios de uosc (play, anterior/siguiente, audio, velocidad,
+  pantalla completa). Da igual, porque son exactamente los que el modo sencillo quiere conservar.
+  **Y cómo se comprueba**: uosc no publica sus botones, así que `mu.uosc` publica en `user-data/mu/bar/<script>` qué
+  tiene escondido. El test mira eso, no la opción. Que uosc obedezca a `hide` está verificado en su código
+  (`ManagedButton.lua:27-32`) y ya lo usaba el indicador de tareas de H58.
