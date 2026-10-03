@@ -140,4 +140,7 @@ def test_la_lista_dice_lo_que_dijo_la_comprobacion(espejos):
     muertas = [c for c in todas["items"] if c.get("url") == muerta]
     if muertas:
         assert muertas[0]["health"] is False and muertas[0].get("health_detail"), muertas[0]
-        assert "no" in muertas[0]["health_detail"]
+        # lo que importa es que haya una EXPLICACIÓN y no un «✕» a secas. Buscar la palabra «no» dentro era
+        # frágil: una copia muerta puede fallar de varias maneras («no responde», pero también «pide
+        # identificarse» con un 401, o agotar el tiempo), y todas explican el porqué igual de bien
+        assert len(muertas[0]["health_detail"]) >= 4, muertas[0]["health_detail"]

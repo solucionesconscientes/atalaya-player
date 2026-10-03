@@ -254,6 +254,22 @@ Windows 32/64 y macOS arm64/x86_64, y su API se comprobó completa con el Python
 - [ ] L10 **Medir CPU y RAM antes de prometer nada** en el portátil de cuatro núcleos, y **un aviso legal claro**
       la primera vez: la herramienta es neutra, lo que se baje es responsabilidad de quien lo baje.
 
+## H63 · La batería no es de fiar del todo (encontrado el 2026-10-03) — [ ]
+Cuatro pasadas completas seguidas dieron 864, 867, 868 y 867 pasando, y en cada una falló **una pareja distinta**
+de tests, nunca los mismos y nunca nada de lo recién construido. Eso no es un programa roto: es una batería que no
+es de fiar, y una batería que falla al azar es una batería que se deja de leer — que es exactamente cómo se colaron
+los once fallos de H55.
+- [x] N0 Arregladas de raíz las causas que fueron apareciendo: el estado que se publica antes que sus filas
+      (test_books, test_mu_subs), esperas de 10 s para cosas que hace mpv (un SRT externo, cerrar un menú), marcar
+      con el vídeo corriendo (test_mu_cut) y leer `chapter-list` justo después de marcar. Y dos expectativas
+      equivocadas: una copia muerta puede explicar su muerte de varias maneras, y `muertas[0]` no tiene un orden
+      garantizado.
+- [ ] N1 **Barrer la clase entera en una pasada**, en vez de uno por carrera perdida: todo test que espere por
+      `user-data/mu/<x>` y lea `items` justo después tiene que esperar por una FILA, no por el nombre de la vista.
+      Cada módulo tiene su propio helper (`wait_view`, `cut_state`, `modes`…), así que el barrido es por fichero.
+- [ ] N2 **Y medir**: tres pasadas seguidas sin un solo fallo antes de declararlo. Mientras eso no ocurra, lo
+      honesto al cerrar una tanda es decir el número y qué falló, no «check en verde».
+
 ## H62 · Ver y saber lo que pasa por detrás — ADR-102 · [x]
 De la prueba de Ser: «debe haber alguna forma de monitorear los procesos en segundo plano, cualquiera… se debe
 poder ver el proceso en algún sitio, y debe avisar al terminar».

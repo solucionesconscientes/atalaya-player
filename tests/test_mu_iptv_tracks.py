@@ -147,7 +147,9 @@ def test_channel_tracks_menu_and_badges(tv):
     alang = h.get("alang") or []
     assert not alang or alang[0].lower() not in ("ads", "qaa")
     h.command("script-message-to", "uosc", "close-menu", "mu-iptv")
-    h.wait_property("user-data/uosc/menu/type", lambda v: v is None, timeout=10)
+    # 30 s y no 10: cerrar el menú lo hace uosc en su próximo dibujado, y bajo la carga de la pasada completa diez
+    # segundos se quedan cortos. Lo que comprueba el test es que se cierre, no lo rápido que se cierre
+    h.wait_property("user-data/uosc/menu/type", lambda v: v is None, timeout=30)
 
     # mpvd stored what the channel carries: CC VO AD in the lists and in the root menu entry
     chans = {c["name"]: c for c in d.call("iptv.channels", {"source": "tdt_tv", "compact": True})["items"]}
