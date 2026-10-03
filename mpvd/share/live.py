@@ -38,6 +38,7 @@ from mpvd.control import pick_session
 from mpvd.convert import hw as hw_mod
 from mpvd.convert.presets import HwPlan
 from mpvd.library.settings import write_private
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
 from mpvd.share import hls
 
@@ -489,21 +490,21 @@ class LiveService:
             server = PRESETS[preset][1]
         if key_from is not None:
             if key_from != "clipboard":
-                raise RpcError(INVALID_PARAMS, "key_from solo admite 'clipboard'")
+                raise RpcError(INVALID_PARAMS, t("key_from solo admite 'clipboard'"))
             try:
                 session = pick_session(self.server, None, ctx_session)
                 value = await session.client.get_property(self.clipboard_prop, timeout=5)
             except Exception:  # noqa: BLE001 - never echo what the clipboard had
-                raise RpcError(UNAVAILABLE, "no se pudo leer el portapapeles") from None
+                raise RpcError(UNAVAILABLE, t("no se pudo leer el portapapeles")) from None
             if not isinstance(value, str) or not value.strip():
-                raise RpcError(INVALID_PARAMS, "el portapapeles está vacío: copia antes la clave de emisión")
+                raise RpcError(INVALID_PARAMS, t("el portapapeles está vacío: copia antes la clave de emisión"))
             key = value.strip()
         try:
             self.settings.save(server=server, key=key)
         except ValueError as exc:
             raise RpcError(INVALID_PARAMS, str(exc)) from None
         except OSError as exc:
-            raise RpcError(UNAVAILABLE, f"no se pudo guardar la configuración: {exc.strerror}") from None
+            raise RpcError(UNAVAILABLE, t("no se pudo guardar la configuración: %s") % (exc.strerror,)) from None
         log.info("live settings saved (server %s, key %s)", server_host(self.settings.server) or "-",
                  "set" if self.settings.key else "unset")
         return self.status()
@@ -522,7 +523,7 @@ class LiveService:
                 raise RpcError(UNAVAILABLE, "abre el reproductor antes de emitir")
             path = await share._prop(session, "path")
             if not path:
-                raise RpcError(UNAVAILABLE, "no se está reproduciendo nada")
+                raise RpcError(UNAVAILABLE, t("no se está reproduciendo nada"))
             path = str(path)
             title = str(await share._prop(session, "media-title") or "")
             pos = 0.0 if from_start else float(await share._prop(session, "time-pos") or 0.0)
@@ -530,7 +531,7 @@ class LiveService:
         if not hls.is_url(path):
             local = await share._local_path(session, path) if source == "current" else Path(path).expanduser()
             if not local.is_file():
-                raise RpcError(INVALID_PARAMS, "solo se emiten archivos de este equipo o vídeos de internet")
+                raise RpcError(INVALID_PARAMS, t("solo se emiten archivos de este equipo o vídeos de internet"))
             if source == "current" and session is not None:
                 audio_index = await share._audio_ff_index(session)
             src = _Source([hls.Input(str(local))], title or local.name, "local", pos, False, audio_index)
@@ -553,7 +554,7 @@ class LiveService:
         try:
             src.probes = [await asyncio.to_thread(hls.probe, i) for i in src.inputs]
         except Exception as exc:  # noqa: BLE001
-            raise RpcError(UNAVAILABLE, f"no se puede abrir la fuente: {redact(str(exc), self._secrets())}") from None
+            raise RpcError(UNAVAILABLE, t("no se puede abrir la fuente: %s") % (redact(str(exc), self._secrets()),)) from None
         if hls.duration_of(src.probes[0]) is None:
             src.live = True     # no duration: a live stream (no -re, no seeking)
         if src.live:
@@ -565,13 +566,13 @@ class LiveService:
     async def start(self, ctx_session: Session | None, source: str = "current", from_start: bool = False,
                     session_id: str | None = None) -> dict[str, Any]:
         if not self.settings.configured:
-            raise RpcError(UNAVAILABLE, "configura antes el servidor y la clave de emisión")
+            raise RpcError(UNAVAILABLE, t("configura antes el servidor y la clave de emisión"))
         if self.run is not None and self.run.active:
-            raise RpcError(UNAVAILABLE, "ya hay una emisión en marcha: párala antes")
+            raise RpcError(UNAVAILABLE, t("ya hay una emisión en marcha: párala antes"))
         if self._starting:
-            raise RpcError(UNAVAILABLE, "la emisión ya está arrancando")
+            raise RpcError(UNAVAILABLE, t("la emisión ya está arrancando"))
         if not hls.ffmpeg_bin():
-            raise RpcError(UNAVAILABLE, "ffmpeg no está instalado")
+            raise RpcError(UNAVAILABLE, t("ffmpeg no está instalado"))
         self._starting = True
         try:
             session: Session | None = None

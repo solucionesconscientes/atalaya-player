@@ -87,5 +87,6 @@ def catalogue(lang: str) -> dict[str, str]:
 
 
 def t(text: str, lang: str | None = None) -> str:
-    """The translation, or the Spanish string when there is none."""
-    return catalogue(lang or system_language()).get(text, text)
+    """The translation, or the Spanish string when there is none —including when the entry exists but is empty,
+    which is how the extractor leaves a string it has just collected (same rule as `mu/i18n.lua`)."""
+    return catalogue(lang or system_language()).get(text) or text

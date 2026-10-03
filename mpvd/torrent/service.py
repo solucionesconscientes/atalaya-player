@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mpvd.remote.http import HttpError, HttpServer, Request, Response
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd.torrent import core
 
@@ -126,9 +127,9 @@ class TorrentService:
 
     def _need(self) -> None:
         if self.lt is None:
-            raise RpcError(UNAVAILABLE, "libtorrent no está instalado: uv sync --extra torrent")
+            raise RpcError(UNAVAILABLE, t("libtorrent no está instalado: uv sync --extra torrent"))
         if not self.settings.enabled:
-            raise RpcError(UNAVAILABLE, "los torrents están apagados: se encienden en Preferencias")
+            raise RpcError(UNAVAILABLE, t("los torrents están apagados: se encienden en Preferencias"))
 
     async def _ensure(self) -> core.Client:
         self._need()
@@ -165,7 +166,7 @@ class TorrentService:
         client = await self._ensure()
         link = str(link or "").strip()
         if not core.looks_like_torrent(link):
-            raise RpcError(INVALID_PARAMS, "no es un magnet ni un .torrent de este equipo")
+            raise RpcError(INVALID_PARAMS, t("no es un magnet ni un .torrent de este equipo"))
         tid = hashlib.sha1(link.encode("utf-8", "replace")).hexdigest()[:12]
         item = self.items.get(tid)
         if item is None:
@@ -177,7 +178,7 @@ class TorrentService:
         item.name = ti.name()
         want = index if index is not None else core.pick_file(ti)
         if want < 0 or want >= len(item.files):
-            raise RpcError(INVALID_PARAMS, f"ese torrent no tiene el archivo {want}")
+            raise RpcError(INVALID_PARAMS, t("ese torrent no tiene el archivo %s") % (want,))
         item.index = want
         item.size = item.files[want]["size"]
         # solo el fichero que se va a ver: lo demás no se baja hasta que alguien lo pida
@@ -195,8 +196,8 @@ class TorrentService:
             if ti is not None and item.handle.status().has_metadata:
                 return ti
             if time.monotonic() >= deadline:
-                raise RpcError(UNAVAILABLE, "nadie ha contestado con los datos del torrent "
-                                            f"en {METADATA_WAIT:.0f}s: puede que no tenga semillas")
+                raise RpcError(UNAVAILABLE, t("nadie ha contestado con los datos del torrent en %ss: "
+                                              "puede que no tenga semillas") % (round(METADATA_WAIT),))
             await asyncio.sleep(0.2)
 
     def _url(self, item: Item) -> str:
@@ -264,7 +265,7 @@ class TorrentService:
     async def remove(self, tid: str, data: bool = False) -> dict[str, Any]:
         item = self.items.pop(tid, None)
         if item is None:
-            raise RpcError(NOT_FOUND, f"no hay ningún torrent {tid}")
+            raise RpcError(NOT_FOUND, t("no hay ningún torrent %s") % (tid,))
         if self.client is not None:
             flags = service_delete_files(self.lt) if data else 0
             await asyncio.to_thread(self.client.session.remove_torrent, item.handle, flags)
@@ -297,7 +298,7 @@ def register(server: MpvdServer, service: TorrentService) -> None:
         offline tests work: a seeder on 127.0.0.1 that no tracker knows about."""
         item = service.items.get(str(id))
         if item is None:
-            raise RpcError(NOT_FOUND, f"no hay ningún torrent {id}")
+            raise RpcError(NOT_FOUND, t("no hay ningún torrent %s") % (id,))
         await asyncio.to_thread(item.handle.connect_peer, (str(host), int(port)))
         return {"added": True}
 

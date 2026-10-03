@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mpvd.net import DEFAULT_USER_AGENT
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -151,7 +152,7 @@ def register(server: MpvdServer, service: SongIdService) -> None:
     def local(path: str) -> str:
         p = urllib.parse.unquote(path[7:]) if path.startswith("file://") else path
         if not p or re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]+://", p):
-            raise RpcError(INVALID_PARAMS, "solo archivos locales")
+            raise RpcError(INVALID_PARAMS, t("solo archivos locales"))
         return p
 
     @d.method("songid.identify")

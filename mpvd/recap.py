@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mpvd import llm as llm_mod
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd.semantic.index import Sentence, sentences_from_segments
 
@@ -315,11 +316,11 @@ class RecapService:
             try:
                 segs = await asyncio.to_thread(load_cues, sub)
             except SubtitleError as exc:
-                raise RpcError(NOT_FOUND, f"no se pueden leer los subtítulos: {exc}") from exc
+                raise RpcError(NOT_FOUND, t("no se pueden leer los subtítulos: %s") % (exc,)) from exc
             return [{"start": s.start, "end": s.end, "text": s.text} for s in segs], "subtitles"
         path = params.get("path")
         if not path:
-            raise RpcError(INVALID_PARAMS, "hace falta cues, sub_path o path")
+            raise RpcError(INVALID_PARAMS, t("hace falta cues, sub_path o path"))
         ff_index = params.get("ff_index")
         if ff_index is not None and Path(path).is_file():
             srt = await self._extract(str(path), int(ff_index))
@@ -328,7 +329,7 @@ class RecapService:
         sem = getattr(self.server, "semantic", None)
         got = sem._transcript(Path(path)) if sem is not None else None
         if got is None:
-            raise RpcError(NOT_FOUND, "no hay subtítulos ni transcripción de este vídeo")
+            raise RpcError(NOT_FOUND, t("no hay subtítulos ni transcripción de este vídeo"))
         return got[1], "ai"
 
     async def _extract(self, path: str, ff_index: int) -> Path:
@@ -342,7 +343,7 @@ class RecapService:
             try:
                 await extract_srt(path, ff_index, dest)
             except SaveError as exc:
-                raise RpcError(NOT_FOUND, f"no se pudo leer la pista de subtítulos: {exc}") from exc
+                raise RpcError(NOT_FOUND, t("no se pudo leer la pista de subtítulos: %s") % (exc,)) from exc
         return dest
 
     # -- H38/G3 · nivel 2: prosa escrita por un modelo local, con los minutos del nivel 1 ----------
@@ -405,16 +406,16 @@ class RecapService:
         if model not in llm_mod.CATALOG:
             raise RpcError(INVALID_PARAMS, f"modelo desconocido {model!r}")
         if not self.llm.available:
-            raise RpcError(UNAVAILABLE, "falta llama-cli: ejecuta tools/vendor_llama.sh",
+            raise RpcError(UNAVAILABLE, t("falta llama-cli: ejecuta tools/vendor_llama.sh"),
                            {"install": "tools/vendor_llama.sh"})
         if self.llm.store.find(model) is None:
-            raise RpcError(UNAVAILABLE, f"el modelo {model} no está descargado",
+            raise RpcError(UNAVAILABLE, t("el modelo %s no está descargado") % (model,),
                            {"download": model, "size_mb": llm_mod.CATALOG[model].size_mb})
         cues, source = await self._cues(params)
         base = await asyncio.to_thread(outline, cues, params.get("duration"), await self._embed(), 2)
         sections = base.get("sections") or []
         if not sections:
-            raise RpcError(NOT_FOUND, "no hay suficiente diálogo para resumir este vídeo")
+            raise RpcError(NOT_FOUND, t("no hay suficiente diálogo para resumir este vídeo"))
         system, prompt, tokens = llm_mod.prompt_from_outline(sections, length, language)
         cache_key = "prose:" + hashlib.sha256(
             json.dumps([sections, length, language, model], ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:32]
@@ -479,7 +480,7 @@ class RecapService:
         except (KeyError, TypeError, ValueError) as exc:
             raise RpcError(INVALID_PARAMS, "start y end (segundos) son obligatorios") from exc
         if end <= start:
-            raise RpcError(INVALID_PARAMS, "end debe ser mayor que start")
+            raise RpcError(INVALID_PARAMS, t("end debe ser mayor que start"))
         cues, source = await self._cues(params)
         embed = None if params.get("method") == "words" else await self._embed()
         out = await asyncio.to_thread(summarize, cues, start, end, embed)

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from mpvd.hashing import file_hash
 from mpvd.mpvipc import MpvIpcError
 from mpvd.notes import NotesStore
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -27,13 +28,13 @@ def pick_session(server: MpvdServer, session_id: str | None, ctx_session: Sessio
     if session_id:
         s = server.sessions.get(session_id)
         if s is None or not s.connected:
-            raise RpcError(NOT_FOUND, f"no session {session_id}")
+            raise RpcError(NOT_FOUND, t("no session %s") % (session_id,))
         return s
     if ctx_session is not None and ctx_session.connected:
         return ctx_session
     live = [s for s in server.sessions.all() if s.connected] if hasattr(server.sessions, "all") else []
     if not live:
-        raise RpcError(UNAVAILABLE, "no hay ninguna instancia de mpv conectada")
+        raise RpcError(UNAVAILABLE, t("no hay ninguna instancia de mpv conectada"))
     return max(live, key=lambda s: s.created_at)
 
 
@@ -43,7 +44,7 @@ async def confirm(session: Session, text: str, timeout: float = CONFIRM_TIMEOUT)
     try:
         await session.client.command("script-message-to", "mu_menu", "mu-confirm", token, text)
     except MpvIpcError as exc:
-        raise RpcError(UNAVAILABLE, f"no se pudo mostrar la confirmación: {exc}") from exc
+        raise RpcError(UNAVAILABLE, t("no se pudo mostrar la confirmación: %s") % (exc,)) from exc
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
@@ -153,7 +154,7 @@ def register(server: MpvdServer) -> None:
                         title = None
             except RpcError:
                 if path is None:
-                    raise RpcError(INVALID_PARAMS, "no hay archivo: indica path") from None
+                    raise RpcError(INVALID_PARAMS, t("no hay archivo: indica path")) from None
         key = media_key(path) or "sin-archivo"
         return await asyncio.to_thread(notes.add, key, title or "", path or "", text, time_pos)
 
@@ -167,7 +168,7 @@ def register(server: MpvdServer) -> None:
         """Markdown of a note file."""
         text = await asyncio.to_thread(notes.read, key)
         if text is None:
-            raise RpcError(NOT_FOUND, f"no notes for {key}")
+            raise RpcError(NOT_FOUND, t("no notes for %s") % (key,))
         return {"key": key, "markdown": text}
 
     async def _key(key: str | None, path: str | None) -> str:

@@ -25,6 +25,7 @@ import urllib.parse
 from typing import TYPE_CHECKING, Any
 
 from mpvd.net import FetchError, HttpCache
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, RpcError
 
 if TYPE_CHECKING:
@@ -81,10 +82,10 @@ def clean_categories(categories: Any) -> list[str]:
     if isinstance(categories, str):
         categories = [c.strip() for c in categories.split(",")]
     if not isinstance(categories, (list, tuple)):
-        raise RpcError(INVALID_PARAMS, "categories: una lista de nombres de categoría")
+        raise RpcError(INVALID_PARAMS, t("categories: una lista de nombres de categoría"))
     out = [c for c in categories if c in CATEGORIES]
     if not out:
-        raise RpcError(INVALID_PARAMS, "ninguna categoría válida: " + ", ".join(CATEGORIES))
+        raise RpcError(INVALID_PARAMS, t("ninguna categoría válida: %s") % (", ".join(CATEGORIES),))
     return out
 
 

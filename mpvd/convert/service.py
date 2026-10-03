@@ -52,6 +52,7 @@ from mpvd.convert.presets import (
     probe,
 )
 from mpvd.jobs import Job, Priority, job_rows
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, RpcError
 from mpvd.ytdl.downloads import default_media_dir, fmt_eta
 
@@ -564,14 +565,14 @@ class ConvertService:
             folder_out = base / p.name
             files = media_files(p, spec.kind, recursive, skip=folder_out)[:MAX_FOLDER]
             if not files:
-                raise RpcError(INVALID_PARAMS, "no hay archivos que convertir en " + str(p))
+                raise RpcError(INVALID_PARAMS, t("no hay archivos que convertir en %s") % (p,))
             spec.start = spec.end = None   # a range makes no sense for a whole folder
             group = uuid.uuid4().hex[:8]
             items = [self.submit(f, copy.deepcopy(spec), folder_out, target, group) for f in files]
             return {"count": len(items), "items": [i.to_dict() for i in items], "out_dir": str(folder_out),
                     "group": group}
         if not p.is_file():
-            raise RpcError(INVALID_PARAMS, f"no existe: {p}")
+            raise RpcError(INVALID_PARAMS, t("no existe: %s") % (p,))
         item = self.submit(p, spec, base, target)
         return {"count": 1, "items": [item.to_dict()], "out_dir": str(base), "group": ""}
 
@@ -626,7 +627,7 @@ def register(server: MpvdServer, service: ConvertService) -> None:
                 raise RpcError(INVALID_PARAMS, "cada tramo necesita start y end")
             ranges.append([float(seg["start"]), float(seg["end"])])
         if not ranges:
-            raise RpcError(INVALID_PARAMS, "no hay ningún tramo que guardar")
+            raise RpcError(INVALID_PARAMS, t("no hay ningún tramo que guardar"))
         # al unir se respeta EL ORDEN QUE LLEGA: es lo que pidió Ser, poder juntarlos como quiera. Sueltos da igual.
         if not joined:
             ranges.sort()

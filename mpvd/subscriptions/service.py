@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mpvd.jobs import Priority, Status
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd.subscriptions import detect as detect_mod
 from mpvd.subscriptions.chain import RENAME_PRESETS, ChainConfig, PostChain, safe_component
@@ -239,7 +240,7 @@ class FeedsService:
     def get(self, sid: str) -> Subscription:
         sub = self.store.subs.get(sid)
         if sub is None:
-            raise RpcError(NOT_FOUND, f"no existe la suscripción {sid}")
+            raise RpcError(NOT_FOUND, t("no existe la suscripción %s") % (sid,))
         return sub
 
     # -- detection and adding -------------------------------------------------------------------------------------
@@ -266,9 +267,9 @@ class FeedsService:
         try:
             data = await self.ytdl.list_entries(norm, 5)
         except RpcError as exc:
-            raise RpcError(UNAVAILABLE, "no es un canal, una lista ni un podcast: " + exc.message) from None
+            raise RpcError(UNAVAILABLE, t("no es un canal, una lista ni un podcast: %s") % (exc.message,)) from None
         if data.get("raw_type") != "playlist":
-            raise RpcError(INVALID_PARAMS, "es un vídeo suelto, no un canal ni una lista (usa «Descargar»)")
+            raise RpcError(INVALID_PARAMS, t("es un vídeo suelto, no un canal ni una lista (usa «Descargar»)"))
         return {"kind": "playlist", "url": norm, "title": self._title_of(data, "playlist"),
                 "entries": data["entries"][:5]}
 
@@ -283,7 +284,7 @@ class FeedsService:
         info = await self.detect(url)
         for s in self.store.subs.values():
             if s.url == info["url"]:
-                raise RpcError(INVALID_PARAMS, f"ya estás suscrito: {s.title}")
+                raise RpcError(INVALID_PARAMS, t("ya estás suscrito: %s") % (s.title,))
         kind = info["kind"]
         sub = Subscription(url=info["url"], kind=kind, title=(title or info["title"] or info["url"]).strip(),
                            preset="audio_original" if kind == "rss" else "video_1080",
@@ -350,7 +351,7 @@ class FeedsService:
             res = await asyncio.to_thread(self.http.fetch, url, 0.0 if force else 300.0)
             return parse_feed(await asyncio.to_thread(res.read_bytes))
         except FeedError as exc:
-            raise RpcError(UNAVAILABLE, f"el podcast no se puede leer: {exc}") from None
+            raise RpcError(UNAVAILABLE, t("el podcast no se puede leer: %s") % (exc,)) from None
         except Exception as exc:  # noqa: BLE001 - FetchError, OSError
             raise RpcError(UNAVAILABLE, str(exc)) from None
 

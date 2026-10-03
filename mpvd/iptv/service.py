@@ -22,6 +22,7 @@ from mpvd.iptv.sources import BUILTIN_SOURCES, Source, SourceState, load_source
 from mpvd.iptv.store import IptvStore
 from mpvd.jobs import Job
 from mpvd.net import HttpCache
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -81,7 +82,7 @@ class IptvService:
         for s in self.sources():
             if s.id == source_id:
                 return s
-        raise RpcError(NOT_FOUND, f"esa lista ya no está: {source_id}")
+        raise RpcError(NOT_FOUND, t("esa lista ya no está: %s") % (source_id,))
 
     async def load(self, source_id: str, force: bool = False, rebuild: bool = True) -> SourceState:
         """Load one source (deduplicating concurrent loads); results are cached in memory."""
@@ -317,7 +318,7 @@ class IptvService:
             for c in self.store.favorites() + self.store.recents(50):
                 if c.id == channel_id:
                     return c
-            raise RpcError(NOT_FOUND, "ese canal ya no está en la lista (prueba a actualizarla)")
+            raise RpcError(NOT_FOUND, t("ese canal ya no está en la lista (prueba a actualizarla)"))
         return ch
 
     def search(self, query: str, limit: int = 50, kind: str | None = None, source_id: str | None = None,
@@ -748,7 +749,7 @@ def register(server: MpvdServer, service: IptvService) -> None:  # noqa: C901
         else:
             chans = service.channels_of(source)[:limit]
         if not chans:
-            raise RpcError(UNAVAILABLE, "no channels to check")
+            raise RpcError(UNAVAILABLE, t("no channels to check"))
         sid = ctx.session.id if ctx.session else None
         return service.submit_health_check(chans, session_id=sid).to_dict()
 

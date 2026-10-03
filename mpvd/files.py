@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mpvd.convert.presets import AUDIO_EXTS, VIDEO_EXTS
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, RpcError
 from mpvd.ytdl.downloads import _xdg_user_dir
 
@@ -127,10 +128,10 @@ def browse(path: str, hidden: bool = False, only_playable: bool = True) -> dict[
     """Una carpeta: sus subcarpetas y los archivos que este reproductor puede abrir."""
     raw = os.path.expanduser(str(path or "").strip())
     if not raw:
-        raise RpcError(INVALID_PARAMS, "hace falta una carpeta")
+        raise RpcError(INVALID_PARAMS, t("hace falta una carpeta"))
     here = Path(raw)
     if not here.is_dir():
-        raise RpcError(INVALID_PARAMS, f"no es una carpeta: {raw}")
+        raise RpcError(INVALID_PARAMS, t("no es una carpeta: %s") % (raw,))
     dirs: list[dict[str, Any]] = []
     files: list[dict[str, Any]] = []
     truncated = False
@@ -160,7 +161,7 @@ def browse(path: str, hidden: bool = False, only_playable: bool = True) -> dict[
                     size = 0
                 files.append({"name": entry.name, "path": entry.path, "dir": False, "kind": k, "size": size})
     except PermissionError:
-        raise RpcError(INVALID_PARAMS, f"no se puede leer: {raw}") from None
+        raise RpcError(INVALID_PARAMS, t("no se puede leer: %s") % (raw,)) from None
     dirs.sort(key=lambda r: natural_key(r["name"]))
     files.sort(key=lambda r: natural_key(r["name"]))
     parent = str(here.parent) if here.parent != here else ""

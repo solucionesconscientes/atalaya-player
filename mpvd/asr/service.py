@@ -28,6 +28,7 @@ from mpvd.asr.srt import Segment, merge_segments, render_srt
 from mpvd.hardware import hardware_info
 from mpvd.hashing import file_hash
 from mpvd.jobs import Job, Priority, Status
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -334,17 +335,17 @@ class AsrService:
 
     async def _resolve(self, path: str) -> tuple[str, float]:
         if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", path) and not path.startswith("file://"):
-            raise RpcError(UNAVAILABLE, "los subtítulos IA solo funcionan con archivos locales por ahora (ADR-023)")
+            raise RpcError(UNAVAILABLE, t("los subtítulos IA solo funcionan con archivos locales por ahora (ADR-023)"))
         p = Path(path.removeprefix("file://"))
         if not p.is_file():
-            raise RpcError(NOT_FOUND, f"no existe: {p}")
+            raise RpcError(NOT_FOUND, t("no existe: %s") % (p,))
         try:
             key = (await asyncio.to_thread(file_hash, p)).key
         except OSError as exc:
             raise RpcError(NOT_FOUND, f"cannot read {p}: {exc}") from exc
         duration = await asyncio.to_thread(probe_duration, str(p))
         if not duration or duration <= 0:
-            raise RpcError(UNAVAILABLE, "duración desconocida: los directos no se admiten todavía (ADR-023)")
+            raise RpcError(UNAVAILABLE, t("duración desconocida: los directos no se admiten todavía (ADR-023)"))
         return key, float(duration)
 
     async def _canonical_track(self, path: str, audio_track: int | None) -> int | None:
@@ -372,14 +373,14 @@ class AsrService:
         if model != VAD_MODEL and model not in CATALOG:
             raise RpcError(INVALID_PARAMS, f"unknown model {model!r}")
         if not self.engine.available:
-            raise RpcError(UNAVAILABLE, "whisper-cli no encontrado: ejecuta tools/vendor_whisper.sh")
+            raise RpcError(UNAVAILABLE, t("whisper-cli no encontrado: ejecuta tools/vendor_whisper.sh"))
         key, duration = await self._resolve(path)
         audio_track = await self._canonical_track(path, audio_track)
         chunk = float(chunk_seconds or DEFAULT_CHUNK)
         if auto:
             model = await self._adopt_model(key, language, translate, chunk, audio_track) or model
         if self.models.find(model) is None:
-            raise RpcError(UNAVAILABLE, f"el modelo {model} no está descargado (asr.models.download)")
+            raise RpcError(UNAVAILABLE, t("el modelo %s no está descargado (asr.models.download)") % (model,))
         task = self.find_task(key, model, language, translate, audio_track)
         if task is not None and abs(task.chunk_seconds - chunk) < 1e-6:
             if session_id:
@@ -539,14 +540,14 @@ class AsrService:
     def seek(self, task_id: str, time_pos: float) -> AsrTask:
         task = self.tasks.get(task_id)
         if task is None:
-            raise RpcError(NOT_FOUND, f"no task {task_id}")
+            raise RpcError(NOT_FOUND, t("no task %s") % (task_id,))
         task.pos = max(0.0, float(time_pos))
         return task
 
     def stop(self, task_id: str) -> AsrTask:
         task = self.tasks.get(task_id)
         if task is None:
-            raise RpcError(NOT_FOUND, f"no task {task_id}")
+            raise RpcError(NOT_FOUND, t("no task %s") % (task_id,))
         if task.status in ("queued", "running"):
             if task.job is not None:
                 self._cancel_job(task)
@@ -633,7 +634,7 @@ def register(server: MpvdServer, service: AsrService) -> None:  # noqa: C901 - f
         if id:
             t = service.tasks.get(id)
             if t is None:
-                raise RpcError(NOT_FOUND, f"no task {id}")
+                raise RpcError(NOT_FOUND, t("no task %s") % (id,))
             return service.task_dict(t)
         return service.status()
 
@@ -736,6 +737,6 @@ def register(server: MpvdServer, service: AsrService) -> None:  # noqa: C901 - f
         """Transcribed cues of a task, optionally limited to a time range."""
         t = service.tasks.get(id)
         if t is None:
-            raise RpcError(NOT_FOUND, f"no task {id}")
+            raise RpcError(NOT_FOUND, t("no task %s") % (id,))
         rows = [s for s in t.segments if (start is None or s.end >= start) and (end is None or s.start <= end)]
         return {"id": t.id, "segments": [s.to_dict() for s in rows], "text": " ".join(s.text for s in rows)}

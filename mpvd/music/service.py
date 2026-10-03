@@ -23,6 +23,7 @@ from mpvd.library.parse import norm
 from mpvd.music import tags as tagmod
 from mpvd.music.playlists import PlaylistError, Playlists
 from mpvd.music.store import NO_ALBUM, MusicStore
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -269,7 +270,7 @@ class MusicService:
         tracks = self.decorate(self.store.tracks(album=album))
         if a is None:
             if not tracks:
-                raise RpcError(NOT_FOUND, "álbum desconocido")
+                raise RpcError(NOT_FOUND, t("álbum desconocido"))
             info = {"key": album, "title": NO_ALBUM, "artist": tracks[0]["artist"], "artist_key": tracks[0]["artist_key"],
                     "year": None, "tracks": len(tracks), "duration": sum(t["duration"] for t in tracks), "cover": "",
                     "gain": None, "peak": None}
@@ -304,7 +305,7 @@ class MusicService:
             rows, title = self.store.unplayed(limit), SMART["unplayed"]
         elif kind == "genre":
             if not value:
-                raise RpcError(INVALID_PARAMS, "value: género")
+                raise RpcError(INVALID_PARAMS, t("value: género"))
             key = norm(str(value))
             rows = self.store.tracks(genre=key)[:limit]
             title = next((g["name"] for g in self.store.genres() if g["key"] == key), str(value))
@@ -452,7 +453,7 @@ def register(server: MpvdServer, service: MusicService) -> None:  # noqa: C901 -
         try:
             return await asyncio.to_thread(fn, *args, **kwargs)
         except FileNotFoundError as exc:
-            raise RpcError(NOT_FOUND, f"no existe la lista «{exc.args[0] if exc.args else ''}»") from None
+            raise RpcError(NOT_FOUND, t("no existe la lista «%s»") % (exc.args[0] if exc.args else '',)) from None
         except PlaylistError as exc:
             raise RpcError(INVALID_PARAMS, str(exc)) from None
 
@@ -477,7 +478,7 @@ def register(server: MpvdServer, service: MusicService) -> None:  # noqa: C901 -
         if os.path.isfile(p):
             p = os.path.dirname(p)
         if not os.path.isdir(p):
-            raise RpcError(NOT_FOUND, f"no existe la carpeta: {p}")
+            raise RpcError(NOT_FOUND, t("no existe la carpeta: %s") % (p,))
         await asyncio.to_thread(service.store.set_meta, "default_checked", "1")
         added = await asyncio.to_thread(service.store.add_folder, p)
         job = service.submit_scan([p], notify=notify, session_id=_sid(ctx)) if scan else None
@@ -490,7 +491,7 @@ def register(server: MpvdServer, service: MusicService) -> None:  # noqa: C901 -
         p = _folder(path)
         n = await asyncio.to_thread(service.store.remove_folder, p)
         if n < 0:
-            raise RpcError(NOT_FOUND, f"no está en la música: {p}")
+            raise RpcError(NOT_FOUND, t("no está en la música: %s") % (p,))
         return {"path": p, "removed": n, "folders": await asyncio.to_thread(service.store.folders)}
 
     @d.method("music.scan")
@@ -499,7 +500,7 @@ def register(server: MpvdServer, service: MusicService) -> None:  # noqa: C901 -
         """Rescan every folder (or one) in the background; ``wait`` returns the result."""
         folders = [_folder(path)] if path else None
         if folders and folders[0] not in {f["path"] for f in await asyncio.to_thread(service.store.folders)}:
-            raise RpcError(NOT_FOUND, f"no está en la música: {folders[0]}")
+            raise RpcError(NOT_FOUND, t("no está en la música: %s") % (folders[0],))
         job = service.submit_scan(folders, bool(force), notify, _sid(ctx))
         if wait:
             await job.wait()
@@ -537,7 +538,7 @@ def register(server: MpvdServer, service: MusicService) -> None:  # noqa: C901 -
         """Change auto_replaygain (yes/no)."""
         if auto_replaygain is not None:
             if not isinstance(auto_replaygain, bool):
-                raise RpcError(INVALID_PARAMS, "auto_replaygain: sí/no")
+                raise RpcError(INVALID_PARAMS, t("auto_replaygain: sí/no"))
             await asyncio.to_thread(service.store.set_meta, "auto_replaygain", "1" if auto_replaygain else "0")
             if auto_replaygain and service.store.rg_counts()["pending"]:
                 service.submit_replaygain()
@@ -734,7 +735,7 @@ def register(server: MpvdServer, service: MusicService) -> None:  # noqa: C901 -
         """Copy an .m3u/.m3u8 file into the saved playlists (relative paths resolved)."""
         src = Path(_folder(path))
         if not src.is_file():
-            raise RpcError(NOT_FOUND, f"no existe: {src}")
+            raise RpcError(NOT_FOUND, t("no existe: %s") % (src,))
         res = await _t(service.playlists.import_file, src, name)
         return await _t(service.playlist_view, res["name"])
 
@@ -745,5 +746,5 @@ def register(server: MpvdServer, service: MusicService) -> None:  # noqa: C901 -
         if not dest.is_dir() and dest.suffix.lower() not in (".m3u8", ".m3u"):
             dest = dest.with_name(dest.name + ".m3u8")
         if not dest.is_dir() and not dest.parent.is_dir():
-            raise RpcError(NOT_FOUND, f"no existe la carpeta: {dest.parent}")
+            raise RpcError(NOT_FOUND, t("no existe la carpeta: %s") % (dest.parent,))
         return {"path": await _t(service.playlists.export_file, name, dest, bool(relative))}

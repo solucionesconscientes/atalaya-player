@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mpvd.jobs import Job, Priority
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, RpcError
 
 if TYPE_CHECKING:
@@ -218,5 +219,5 @@ def register(server: MpvdServer, service: AvService) -> None:
         """Path of a downloaded model (error when missing)."""
         p = service.store.find(name)
         if p is None:
-            raise RpcError(NOT_FOUND, f"modelo {name} no descargado")
+            raise RpcError(NOT_FOUND, t("modelo %s no descargado") % (name,))
         return {"name": name, "path": str(p)}

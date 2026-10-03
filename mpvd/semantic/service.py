@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from mpvd.hashing import file_hash
 from mpvd.jobs import Job, Priority
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd.semantic import embed as embed_mod
 from mpvd.semantic.index import (Sentence, chapters as topic_chapters, ffmetadata,
@@ -62,9 +63,9 @@ class SemanticService:
         async with self._lock:
             if self._embedder is None:
                 if not embed_mod.runtime_available():
-                    raise RpcError(UNAVAILABLE, "falta el extra 'semantic' (uv sync --extra semantic)")
+                    raise RpcError(UNAVAILABLE, t("falta el extra 'semantic' (uv sync --extra semantic)"))
                 if not self.fake and not embed_mod.model_present(self.model_dir):
-                    raise RpcError(UNAVAILABLE, "el modelo de embeddings no está descargado (semantic.models.download)")
+                    raise RpcError(UNAVAILABLE, t("el modelo de embeddings no está descargado (semantic.models.download)"))
                 self._embedder = await asyncio.to_thread(self._factory, self.model_dir)
             return self._embedder
 
@@ -128,7 +129,7 @@ class SemanticService:
     async def build_index(self, path: Path, job: Job | None = None) -> dict[str, Any]:
         tr = self._transcript(path)
         if tr is None:
-            raise RpcError(NOT_FOUND, "no hay transcripción de ese archivo (asr.precompute primero)")
+            raise RpcError(NOT_FOUND, t("no hay transcripción de ese archivo (asr.precompute primero)"))
         key, cues, duration = tr
         sentences = sentences_from_segments(cues)
         if job:
@@ -182,7 +183,7 @@ class SemanticService:
     async def highlights(self, path: Path, target: float, min_segment: float) -> dict[str, Any]:
         loaded = await self.load_index(path)
         if loaded is None:
-            raise RpcError(NOT_FOUND, "no hay índice de ese archivo")
+            raise RpcError(NOT_FOUND, t("no hay índice de ese archivo"))
         sentences, vectors = loaded
         dur = sentences[-1].end if sentences else 0.0
         res = await asyncio.to_thread(pick_highlights, vectors, sentences, target, dur, min_segment)
@@ -214,10 +215,10 @@ def _local(path: str) -> Path:
     import re  # noqa: PLC0415
 
     if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", path) and not path.startswith("file://"):
-        raise RpcError(UNAVAILABLE, "solo archivos locales")
+        raise RpcError(UNAVAILABLE, t("solo archivos locales"))
     p = Path(path.removeprefix("file://"))
     if not p.is_file():
-        raise RpcError(NOT_FOUND, f"no existe: {p}")
+        raise RpcError(NOT_FOUND, t("no existe: %s") % (p,))
     return p
 
 
@@ -248,7 +249,7 @@ def register(server: MpvdServer, service: SemanticService) -> None:
     async def download(ctx: RpcContext, notify: str = DEFAULT_NOTIFY) -> dict[str, Any]:
         """Download the pinned embedding model (SHA-256 verified) in the background."""
         if not embed_mod.runtime_available():
-            raise RpcError(UNAVAILABLE, "falta el extra 'semantic' (uv sync --extra semantic)")
+            raise RpcError(UNAVAILABLE, t("falta el extra 'semantic' (uv sync --extra semantic)"))
         job = service.submit_download(notify, _sid(ctx))
         server.services["semantic"] = service.available()
         return {"job": job.to_dict(), "present": embed_mod.model_present(service.model_dir)}
@@ -259,13 +260,13 @@ def register(server: MpvdServer, service: SemanticService) -> None:
         """Embed the sentences of the file's transcript (needs an asr task with cues); cached by file hash."""
         p = _local(path)
         if not service.available():
-            raise RpcError(UNAVAILABLE, "búsqueda semántica no disponible: " + _why(service))
+            raise RpcError(UNAVAILABLE, t("búsqueda semántica no disponible: %s") % (_why(service),))
         if await service.load_index(p) is not None and not wait:
             return {"status": "done", "path": str(p), "cached": True}
         if wait:
             return {"status": "done", **(await service.build_index(p))}
         if service._transcript(p) is None:
-            raise RpcError(NOT_FOUND, "no hay transcripción de ese archivo (asr.precompute primero)")
+            raise RpcError(NOT_FOUND, t("no hay transcripción de ese archivo (asr.precompute primero)"))
         job = service.submit_index(p, notify, _sid(ctx), Priority.INTERACTIVE if interactive else Priority.PRECOMPUTE)
         return {"status": "indexing", "path": str(p), "job": job.to_dict()}
 
@@ -309,9 +310,9 @@ def register(server: MpvdServer, service: SemanticService) -> None:
         nunca empieza ni acaba a mitad de palabra."""
         p = _local(path)
         if not service.available():
-            raise RpcError(UNAVAILABLE, "no disponible: " + _why(service))
+            raise RpcError(UNAVAILABLE, t("no disponible: %s") % (_why(service),))
         if float(minutes) <= 0:
-            raise RpcError(INVALID_PARAMS, "¿de cuántos minutos?")
+            raise RpcError(INVALID_PARAMS, t("¿de cuántos minutos?"))
         if index and await service.load_index(p) is None:
             await service.build_index(p)
         return await service.highlights(p, float(minutes) * 60.0, float(min_segment))
@@ -322,7 +323,7 @@ def register(server: MpvdServer, service: SemanticService) -> None:
         """Topic-change chapters of a file (cached per parameters). Indexes synchronously first if needed."""
         p = _local(path)
         if not service.available():
-            raise RpcError(UNAVAILABLE, "capítulos automáticos no disponibles: " + _why(service))
+            raise RpcError(UNAVAILABLE, t("capítulos automáticos no disponibles: %s") % (_why(service),))
         if index and await service.load_index(p) is None:
             await service.build_index(p)
         return await service.chapters(p, float(min_seconds), float(percentile), float(window), force)

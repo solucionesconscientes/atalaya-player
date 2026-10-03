@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 from mpvd.hashing import url_key
 from mpvd.jobs import Priority
 from mpvd.net import HttpCache
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd import hwdecode
 from mpvd.ytdl import info as info_mod
@@ -231,7 +232,7 @@ class YtdlService:
         except ValueError as exc:
             raise RpcError(UNAVAILABLE, f"yt-dlp returned invalid JSON: {exc}") from exc
         if not isinstance(data, dict):
-            raise RpcError(UNAVAILABLE, "yt-dlp returned no object")
+            raise RpcError(UNAVAILABLE, t("yt-dlp returned no object"))
         return data
 
     async def raw_info(self, url: str, flat: bool = False, force: bool = False,
@@ -512,7 +513,7 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
             try:
                 sources.append(Path(file).expanduser().read_text(encoding="utf-8", errors="replace"))
             except OSError as exc:
-                raise RpcError(INVALID_PARAMS, f"no se puede leer {file}: {exc}") from None
+                raise RpcError(INVALID_PARAMS, t("no se puede leer %s: %s") % (file, exc)) from None
         for src in sources:
             for line in src.splitlines():
                 if line.lstrip().startswith(("#", ";", "]")):
@@ -521,7 +522,7 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
         found += [u for u in (urls or []) if isinstance(u, str) and URL_RE.fullmatch(u.strip())]
         unique = list(dict.fromkeys(u.strip().rstrip(".,;)") for u in found))[:MAX_BATCH]
         if not unique:
-            raise RpcError(INVALID_PARAMS, "no hay ninguna URL")
+            raise RpcError(INVALID_PARAMS, t("no hay ninguna URL"))
         await service.require_binary()
         items = []
         for url in unique:
@@ -579,7 +580,7 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
         if "container" in values and values["container"] not in CONTAINERS:
             raise RpcError(INVALID_PARAMS, f"container must be one of {CONTAINERS}")
         if values.get("cookies_browser") and not valid_browser(str(values["cookies_browser"])):
-            raise RpcError(INVALID_PARAMS, "navegador no admitido: " + ", ".join(BROWSERS))
+            raise RpcError(INVALID_PARAMS, t("navegador no admitido: %s") % (", ".join(BROWSERS),))
         if "sponsorblock" in values and values["sponsorblock"] not in SPONSORBLOCK_MODES:
             raise RpcError(INVALID_PARAMS, f"sponsorblock must be one of {SPONSORBLOCK_MODES}")
         s.update(values)

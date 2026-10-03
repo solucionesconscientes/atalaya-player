@@ -45,6 +45,7 @@ from mpvd.mpvipc import MpvIpcError
 from mpvd.remote import qr
 from mpvd.remote.http import HttpError, HttpServer, Request, Response, sse_event
 from mpvd.remote.service import firewall_hint, lan_ip
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd.share import guest as guest_mod
 from mpvd.share import hls
@@ -193,7 +194,7 @@ class ShareService:
 
     def _room(self) -> RoomRuntime:
         if self.rt is None or not self.rt.room.alive():
-            raise RpcError(NOT_FOUND, "no hay ninguna sala abierta")
+            raise RpcError(NOT_FOUND, t("no hay ninguna sala abierta"))
         return self.rt
 
     async def create(self, session_id: str | None, ttl: float = ROOM_TTL, mode: str = MODE_PRIVATE,
@@ -204,7 +205,7 @@ class ShareService:
         if self.rt is not None and self.rt.room.alive():
             if self.rt.room.mode != mode:
                 kind = "pública" if self.rt.room.public_mode else "privada"
-                raise RpcError(UNAVAILABLE, f"ya hay una sala {kind} abierta: ciérrala antes")
+                raise RpcError(UNAVAILABLE, t("ya hay una sala %s abierta: ciérrala antes") % (kind,))
             return await self.link()
         if self.rt is not None:
             await self.close("expired")
@@ -217,7 +218,7 @@ class ShareService:
                 await self.http.start(self.host, self.port_pref)
             except OSError as exc:
                 if self.port_pref == 0:
-                    raise RpcError(UNAVAILABLE, f"no se pudo abrir el puerto: {exc}") from exc
+                    raise RpcError(UNAVAILABLE, t("no se pudo abrir el puerto: %s") % (exc,)) from exc
                 log.warning("port %d busy (%s): using a free one", self.port_pref, exc)
                 await self.http.start(self.host, 0)
         room = Room.new(session.id, ttl, min_ttl=self.min_ttl, mode=mode, max_viewers=max_viewers)
@@ -292,7 +293,7 @@ class ShareService:
         """H55 · «los invitados pueden controlar», para los que están y para los que vengan."""
         rt = self._room()
         if rt.room.public_mode:
-            raise RpcError(INVALID_PARAMS, "en una sala pública solo se puede ver")
+            raise RpcError(INVALID_PARAMS, t("en una sala pública solo se puede ver"))
         rt.room.open_control = bool(on)
         for g in rt.room.active_guests():
             if g.id == rt.player_guest:
@@ -325,7 +326,7 @@ class ShareService:
         base = self.base_url()
         best = self._player_url(rt, who.id, base)
         if best is None:
-            raise RpcError(NOT_FOUND, "ahora mismo no hay nada que llevarse a otro reproductor")
+            raise RpcError(NOT_FOUND, t("ahora mismo no hay nada que llevarse a otro reproductor"))
         return {**best, "m3u": f"{base}/s/{room.id}/file.m3u?k={room.cookie_value(who.id)}"}
 
     def invite_text(self) -> str:
@@ -477,12 +478,12 @@ class ShareService:
         """Join the room the invitation points at and follow the host from this player."""
         link = guest_mod.parse_link(url)
         if link is None:
-            raise RpcError(INVALID_PARAMS, "eso no es un enlace de sala (…/s/<sala>#k=…)")
+            raise RpcError(INVALID_PARAMS, t("eso no es un enlace de sala (…/s/<sala>#k=…)"))
         # el anfitrión no puede ser invitado de sí mismo (se seguiría a sí mismo); OTRO reproductor de este equipo
         # sí puede entrar, y es justo el caso de probarlo en casa con dos ventanas
         if (self.rt is not None and self.rt.room.alive() and self.rt.room.id == link.room
                 and self.rt.session_id == session.id):
-            raise RpcError(INVALID_PARAMS, "esa sala es tuya: ya la estás viendo")
+            raise RpcError(INVALID_PARAMS, t("esa sala es tuya: ya la estás viendo"))
         await self.leave_room()
         who = (name or "").strip() or socket.gethostname() or "Invitado"
         g = guest_mod.GuestSession(self, session, link, who[:24])
@@ -491,7 +492,7 @@ class ShareService:
         except guest_mod.GuestError as exc:
             raise RpcError(INVALID_PARAMS, str(exc)) from None
         except (OSError, asyncio.TimeoutError) as exc:
-            raise RpcError(INVALID_PARAMS, f"no se puede llegar a la sala: {exc}") from None
+            raise RpcError(INVALID_PARAMS, t("no se puede llegar a la sala: %s") % (exc,)) from None
         self.guest = g
         log.info("share guest joined %s as %s", link.room, who)
         return out
@@ -530,7 +531,7 @@ class ShareService:
     def _guest(self, rt: RoomRuntime, guest_id: str) -> Any:
         g = rt.room.guests.get(guest_id)
         if g is None or g.kicked:
-            raise RpcError(NOT_FOUND, "ese invitado ya no está en la sala")
+            raise RpcError(NOT_FOUND, t("ese invitado ya no está en la sala"))
         return g
 
     def set_permission(self, guest_id: str, perm: str) -> dict[str, Any]:
@@ -660,7 +661,7 @@ class ShareService:
     def host_chat(self, raw: Any) -> dict[str, Any]:
         rt = self._room()
         if rt.room.public_mode:
-            raise RpcError(INVALID_PARAMS, "en una sala pública no hay chat")
+            raise RpcError(INVALID_PARAMS, t("en una sala pública no hay chat"))
         try:
             text = clean_chat(raw)
         except ValueError as exc:
@@ -1392,7 +1393,7 @@ def register(server: MpvdServer, service: ShareService) -> None:
         try:
             viewers = int(max_viewers)
         except (TypeError, ValueError):
-            raise RpcError(INVALID_PARAMS, "max_viewers debe ser un número") from None
+            raise RpcError(INVALID_PARAMS, t("max_viewers debe ser un número")) from None
         return await service.create(sid, float(ttl_hours) * 3600, str(mode), viewers, bool(internet),
                                     bool(control))
 
@@ -1411,7 +1412,7 @@ def register(server: MpvdServer, service: ShareService) -> None:
         """H56 · los dos enlaces explicados, para copiarlos cuando quieras y no solo cuando la sala se abre."""
         texto = service.invite_text()
         if not texto:
-            raise RpcError(NOT_FOUND, "no hay ninguna sala abierta")
+            raise RpcError(NOT_FOUND, t("no hay ninguna sala abierta"))
         return {"text": texto, "url": service.base_url() + service._room().room.link_path()}
 
     @d.method("share.player_link")
@@ -1452,7 +1453,7 @@ def register(server: MpvdServer, service: ShareService) -> None:
         `url` is the invitation (…/s/<room>#k=<token>); `name` is how the others see you (the hostname by default)."""
         s = server.sessions.get(session) if session else ctx.session
         if s is None:
-            raise RpcError(INVALID_PARAMS, "hace falta un reproductor")
+            raise RpcError(INVALID_PARAMS, t("hace falta un reproductor"))
         return await service.join_room(s, str(url), name)
 
     @d.method("share.leave")

@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Any
 from mpvd.asr.audio import ffmpeg_path
 from mpvd.power import WAKE_MARGIN, inhibit_prefix
 from mpvd.iptv.model import HLS_LAVF_DEFAULTS, Channel
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -161,10 +162,10 @@ def media_channel(path: str, title: str | None = None) -> Channel:
     para la radio de las 7:00 que para la lista que quieres oír mientras cenas, sin duplicar nada."""
     raw = os.path.expanduser(str(path).strip())
     if not raw:
-        raise RpcError(INVALID_PARAMS, "no hay nada que reproducir")
+        raise RpcError(INVALID_PARAMS, t("no hay nada que reproducir"))
     local = Path(raw)
     if not re.match(r"^[a-zA-Z][\w+.-]*://", raw) and not local.exists():
-        raise RpcError(INVALID_PARAMS, f"no existe: {raw}")
+        raise RpcError(INVALID_PARAMS, t("no existe: %s") % (raw,))
     nombre = (title or (local.name if local.exists() else raw)).strip() or "Programado"
     return Channel(id="media:" + hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:12],
                    name=nombre[:120], url=raw, kind="media", source="manual")
@@ -520,7 +521,7 @@ class ScheduleService:
             return sessions[0]
         launcher = Path(self.server.root) / "bin" / ("mpv-uos.ps1" if sys.platform == "win32" else "mpv-uos")
         if not launcher.is_file():
-            raise RpcError(UNAVAILABLE, "no hay ningún reproductor abierto y no se encuentra bin/mpv-uos")
+            raise RpcError(UNAVAILABLE, t("no hay ningún reproductor abierto y no se encuentra bin/mpv-uos"))
         cmd = ["pwsh", "-NoProfile", "-File", str(launcher)] if sys.platform == "win32" else [str(launcher)]
         log.info("schedule: no hay reproductor abierto, se abre uno (%s)", launcher)
         await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.DEVNULL,
@@ -531,7 +532,7 @@ class ScheduleService:
             abiertos = [x for x in self.server.sessions.all() if x.connected]
             if abiertos:
                 return abiertos[0]
-        raise RpcError(UNAVAILABLE, "el reproductor no ha llegado a abrirse")
+        raise RpcError(UNAVAILABLE, t("el reproductor no ha llegado a abrirse"))
 
     async def _play(self, rec: Recording) -> None:
         """Pone lo programado y lo deja sonando hasta la hora de fin."""
@@ -542,7 +543,7 @@ class ScheduleService:
         s = await self._player()
         url = str(rec.channel.get("url") or "")
         if not url:
-            raise RpcError(INVALID_PARAMS, "no hay nada que reproducir")
+            raise RpcError(INVALID_PARAMS, t("no hay nada que reproducir"))
         # J5 · una lista guardada se carga con `loadlist` (`loadfile` intentaría demuxear el .m3u8) y se repite
         # mientras dure la franja: «música de 21:00 a 23:00» con una lista de veinte minutos, si no, se acaba a y
         # veinte. Se guarda el valor que hubiera para devolverlo al terminar.
@@ -685,13 +686,13 @@ class ScheduleService:
         if stop <= start:
             raise RpcError(INVALID_PARAMS, "la hora de fin debe ser posterior a la de inicio")
         if stop + margin_after <= now:
-            raise RpcError(INVALID_PARAMS, "esa hora ya ha pasado")
+            raise RpcError(INVALID_PARAMS, t("esa hora ya ha pasado"))
         if stop - start > MAX_DURATION:
-            raise RpcError(INVALID_PARAMS, "como mucho 12 horas seguidas")
+            raise RpcError(INVALID_PARAMS, t("como mucho 12 horas seguidas"))
         if mode not in ("record", "play", "both"):
             raise RpcError(INVALID_PARAMS, "modo: record, play o both")
         if ch.drm and mode != "play":
-            raise RpcError(INVALID_PARAMS, "este canal está protegido (DRM) y no se puede grabar")
+            raise RpcError(INVALID_PARAMS, t("este canal está protegido (DRM) y no se puede grabar"))
         for other in self.items.values():  # the same programme twice
             if other.status in ACTIVE and other.channel.get("id") == ch.id and abs(other.start - start) < 1 \
                     and abs(other.stop - stop) < 1:
@@ -740,7 +741,7 @@ class ScheduleService:
     def get(self, rid: str) -> Recording:
         rec = self.items.get(rid)
         if rec is None:
-            raise RpcError(NOT_FOUND, f"no existe la grabación {rid}")
+            raise RpcError(NOT_FOUND, t("no existe la grabación %s") % (rid,))
         return rec
 
     async def cancel(self, rid: str) -> Recording:
@@ -820,7 +821,7 @@ def register(server: MpvdServer, service: ScheduleService) -> None:
         elif channel:
             ch = await resolve(channel)
         else:
-            raise RpcError(INVALID_PARAMS, "hace falta un canal o algo que reproducir")
+            raise RpcError(INVALID_PARAMS, t("hace falta un canal o algo que reproducir"))
         rec = service.add(ch, start, stop, title, margin_before, margin_after, programme, dir, wake=wake,
                           after=after, mode=mode)
         return rec.public() | {"label": describe(rec.start, rec.stop)}

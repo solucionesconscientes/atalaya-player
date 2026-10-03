@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from mpvd.asr.audio import ffmpeg_path
 from mpvd.jobs import Job, Priority
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
 from mpvd.study.clips import audio_codec, audio_copy_ext
 from mpvd.ytdl.downloads import default_media_dir
@@ -84,7 +85,7 @@ def register(server: MpvdServer) -> None:
         """Keep only the audio of a recording (stream copy); ``remove`` deletes the original afterwards."""
         src = Path(file).expanduser()
         if not src.is_file():
-            raise RpcError(INVALID_PARAMS, f"no existe: {src}")
+            raise RpcError(INVALID_PARAMS, t("no existe: %s") % (src,))
         item: dict[str, Any] = {"id": uuid.uuid4().hex[:10], "file": str(src), "status": "queued", "message": "",
                                 "notify": notify, "created_at": time.time()}
 

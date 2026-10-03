@@ -28,6 +28,7 @@ from mpvd.mpvipc import MpvIpcError
 from mpvd.remote import qr
 from mpvd.remote.downloads import DownloadsPanel
 from mpvd.remote.http import HttpError, HttpServer, Request, Response, sse_event
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -201,7 +202,7 @@ class RemoteService:
             await self.http.start(host, wanted)
         except OSError as exc:
             if wanted == 0:
-                raise RpcError(UNAVAILABLE, f"no se pudo abrir el puerto: {exc}") from exc
+                raise RpcError(UNAVAILABLE, t("no se pudo abrir el puerto: %s") % (exc,)) from exc
             log.warning("port %d busy (%s): using a free one", wanted, exc)
             await self.http.start(host, 0)
         self.host = host

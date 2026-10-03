@@ -530,7 +530,11 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
 - [x] G3 Lo primero que se ve: mu-menu (menú, paleta, ayuda, inicio, preferencias) y mu-modes, con **196 cadenas**
       traducidas a inglés y francés y un test que arranca el reproductor en los tres idiomas.
 - [x] G4 Los módulos grandes: ytdl, iptv, subs, record, share, library, music.
-- [ ] G5 Los mensajes de mpvd que salen en el OSD.
+- [x] G5 Los mensajes de mpvd que salen en el OSD, con su propio extractor (`tools/i18n_extract_py.py`). Lo que se
+      traduce son los **134 escritos en castellano**, que son los que se escribieron para una persona; los 77 que
+      están en inglés (`path required`, `unknown download: …`) son el contrato entre mpvd y los scripts y se
+      quedan, que es la convención del proyecto (código en inglés, texto de usuario en castellano). El test
+      comprueba también este lado, y que no quede ningún mensaje en castellano sin envolver.
 - [ ] G6 Las páginas servidas (sala, mando, descargas), que siguen al **navegador del invitado**, no al sistema del
       anfitrión: las abre otra persona y puede estar en otro idioma.
 - [ ] G7 Repaso de las traducciones (el francés, con ojo).

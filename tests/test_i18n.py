@@ -158,15 +158,25 @@ def test_los_catalogos_estan_completos_y_al_dia():
     ex = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(ex)
 
-    # los scripts ya traducidos (H49 va por etapas: aquí solo los que tienen `mu.i18n`)
-    hechos = [p for p in sorted((ROOT / "mpv-config" / "scripts").glob("mu-*/main.lua"))
-              if "require('mu.i18n')" in p.read_text(encoding="utf-8")]
-    assert hechos, "ningún script usa mu.i18n todavía"
+    # H49/G4 · TODOS los scripts del reproductor usan ya `mu.i18n`: que ninguno se quede atrás también se comprueba
+    todos = sorted((ROOT / "mpv-config" / "scripts").glob("mu-*/main.lua"))
+    sin_i18n = [p.parent.name for p in todos if "require('mu.i18n')" not in p.read_text(encoding="utf-8")
+                and ex.process(p)[1]]
+    assert not sin_i18n, f"scripts con texto visible y sin mu.i18n: {sin_i18n}"
     encontradas: set[str] = set()
-    for f in hechos:
+    for f in todos:
         _, found, glued = ex.process(f)
         encontradas |= set(found)
         assert not glued, f"{f.name}: frases pegadas con `..`, que no se pueden traducir a trozos: {glued}"
+
+    # H49/G5 · y los mensajes de mpvd que acaban en la pantalla, con su propio extractor
+    spec_py = importlib.util.spec_from_file_location("ex_py", ROOT / "tools" / "i18n_extract_py.py")
+    ex_py = importlib.util.module_from_spec(spec_py)
+    spec_py.loader.exec_module(ex_py)
+    for f in sorted((ROOT / "mpvd").rglob("*.py")):
+        _, found_py, pendientes = ex_py.process(f)
+        encontradas |= set(found_py)
+        assert not pendientes, f"{f.name}: mensajes en castellano sin envolver: {pendientes}"
 
     for lang in ("en", "fr"):
         cat = json.loads((ROOT / "locales" / f"{lang}.json").read_text(encoding="utf-8"))

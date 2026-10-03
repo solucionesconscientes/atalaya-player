@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from mpvd.hashing import file_hash, url_key
 from mpvd.iptv.index import normalize
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, RpcError
 
 if TYPE_CHECKING:
@@ -266,7 +267,7 @@ def register(server: MpvdServer, service: WatchService) -> None:
         k = key or await service.key_for(path or "")
         ok = await asyncio.to_thread(service.store.remove, k)
         if not ok:
-            raise RpcError(NOT_FOUND, f"no history for {k}")
+            raise RpcError(NOT_FOUND, t("no history for %s") % (k,))
         return {"removed": True}
 
     @d.method("watch.clear")

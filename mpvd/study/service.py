@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from mpvd.asr.audio import probe_duration
 from mpvd.hashing import file_hash
 from mpvd.jobs import Job, Priority
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd.study.clips import (FORMATS, MAX_SECONDS, ClipError, audio_codec, audio_copy_ext, export_clip,
                               output_path)
@@ -33,10 +34,10 @@ DEFAULT_NOTIFY = "mu_study"
 
 def _local(path: str) -> Path:
     if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", path) and not path.startswith("file://"):
-        raise RpcError(UNAVAILABLE, "solo archivos locales")
+        raise RpcError(UNAVAILABLE, t("solo archivos locales"))
     p = Path(path.removeprefix("file://"))
     if not p.is_file():
-        raise RpcError(NOT_FOUND, f"no existe: {p}")
+        raise RpcError(NOT_FOUND, t("no existe: %s") % (p,))
     return p
 
 
@@ -81,11 +82,11 @@ class StudyService:
         if fmt not in FORMATS:
             raise RpcError(INVALID_PARAMS, f"formato desconocido: {fmt} (study.formats)")
         if not (b > a >= 0):
-            raise RpcError(INVALID_PARAMS, "tramo inválido: fin ≤ inicio")
+            raise RpcError(INVALID_PARAMS, t("tramo inválido: fin ≤ inicio"))
         # said now, not after «Guardando…»: the job used to accept the range and fail minutes later
         limit = MAX_SECONDS if max_seconds is None else max_seconds
         if limit > 0 and b - a > limit:
-            raise RpcError(INVALID_PARAMS, f"tramo demasiado largo (máx. {int(limit)} s)")
+            raise RpcError(INVALID_PARAMS, t("tramo demasiado largo (máx. %s s)") % (int(limit),))
         ext = audio_copy_ext(audio_codec(src, audio_track)) if fmt == "audio-copy" else None
         out = output_path(src, a, b, fmt, directory, ext=ext)
         item: dict[str, Any] = {"id": uuid.uuid4().hex[:10], "path": str(src), "title": title or src.name, "start": round(a, 3),

@@ -33,6 +33,7 @@ PASTEABLE = ("osub_api_key", "osub_password", "tmdb_key")
 from mpvd.library.parse import norm, parse_path
 from mpvd.library.settings import LibrarySettings, normalize_languages
 from mpvd.library.store import LibraryStore
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -410,7 +411,7 @@ class LibraryService:
     def _osub_client(self) -> OpenSubtitles:
         s = self.settings
         if not s.get("osub_enabled"):
-            raise RpcError(UNAVAILABLE, "Subtítulos de internet desactivados (Biblioteca › Ajustes)")
+            raise RpcError(UNAVAILABLE, t("Subtítulos de internet desactivados (Biblioteca › Ajustes)"))
         key = s.secret("osub_api_key")
         if not key:
             raise RpcError(UNAVAILABLE, "Falta la Api-Key de OpenSubtitles (Biblioteca › Ajustes)")
@@ -437,7 +438,7 @@ class LibraryService:
         key, oshash, size = "", "", 0
         if not _is_url(path):
             if not os.path.isfile(local):
-                raise RpcError(NOT_FOUND, f"no existe: {local}")
+                raise RpcError(NOT_FOUND, t("no existe: %s") % (local,))
             h = await asyncio.to_thread(file_hash, local)
             key, oshash, size = h.key, h.opensubtitles, h.size
         else:
@@ -483,7 +484,7 @@ class LibraryService:
         results = found["results"]
         if file_id is None:
             if not results:
-                raise RpcError(NOT_FOUND, "No hay subtítulos para este vídeo en OpenSubtitles")
+                raise RpcError(NOT_FOUND, t("No hay subtítulos para este vídeo en OpenSubtitles"))
             choice = results[0]
         else:
             choice = next((r for r in results if r["file_id"] == int(file_id)), None) or {
@@ -532,20 +533,20 @@ class LibraryService:
         (ADR-061 hace lo mismo con la clave de emisión): la clave no pasa por el script Lua ni por el OSD, así que no
         acaba en un log ni en la pantalla. Devuelve solo la longitud y los ajustes públicos."""
         if field not in PASTEABLE:
-            raise RpcError(INVALID_PARAMS, f"no se puede pegar en {field!r}")
+            raise RpcError(INVALID_PARAMS, t("no se puede pegar en %s") % (repr(field),))
         if session is None:
-            raise RpcError(UNAVAILABLE, "hace falta un reproductor conectado para leer su portapapeles")
+            raise RpcError(UNAVAILABLE, t("hace falta un reproductor conectado para leer su portapapeles"))
         # la propiedad se lee en cada llamada (no al importar): los tests apuntan a un user-data propio
         prop = os.environ.get("MPVD_LIBRARY_CLIPBOARD_PROP") or CLIPBOARD_PROP
         try:
             value = await session.client.get_property(prop, timeout=5)
         except Exception:  # noqa: BLE001 - nunca repetir lo que hubiera en el portapapeles
-            raise RpcError(UNAVAILABLE, "no se pudo leer el portapapeles del reproductor") from None
+            raise RpcError(UNAVAILABLE, t("no se pudo leer el portapapeles del reproductor")) from None
         value = str(value or "").strip()
         if not value:
-            raise RpcError(INVALID_PARAMS, "el portapapeles está vacío")
+            raise RpcError(INVALID_PARAMS, t("el portapapeles está vacío"))
         if len(value) > 500 or "\n" in value:
-            raise RpcError(INVALID_PARAMS, "eso no parece una clave: copia solo la clave")
+            raise RpcError(INVALID_PARAMS, t("eso no parece una clave: copia solo la clave"))
         changes: dict[str, Any] = {field: value}
         if field == "osub_api_key" and not self.settings.get("osub_enabled"):
             changes["osub_enabled"] = True       # pegar la clave es decir «quiero esto»
@@ -607,7 +608,7 @@ class LibraryService:
                     raise RpcError(UNAVAILABLE, task.error or "la transcripción se detuvo")
             res = await fn(_local(path), str(srt), language, None, notify, session_id)
             if res.get("status") != "done":
-                raise RpcError(UNAVAILABLE, "la transcripción no terminó")
+                raise RpcError(UNAVAILABLE, t("la transcripción no terminó"))
             payload.update(self._resync_result(res, srt))
         except RpcError as exc:
             payload.update({"resync": "failed", "resync_reason": exc.message})
@@ -656,7 +657,7 @@ def register(server: MpvdServer, service: LibraryService) -> None:  # noqa: C901
         if os.path.isfile(p):
             p = os.path.dirname(p)
         if not os.path.isdir(p):
-            raise RpcError(NOT_FOUND, f"no existe la carpeta: {p}")
+            raise RpcError(NOT_FOUND, t("no existe la carpeta: %s") % (p,))
         added = await asyncio.to_thread(service.store.add_folder, p)
         job = service.submit_scan([p], notify=notify, session_id=_sid(ctx)) if scan else None
         return {"path": p, "added": added, "job": job.id if job else None,
@@ -668,7 +669,7 @@ def register(server: MpvdServer, service: LibraryService) -> None:  # noqa: C901
         p = _folder(path)
         n = await asyncio.to_thread(service.store.remove_folder, p)
         if n < 0:
-            raise RpcError(NOT_FOUND, f"no está en la biblioteca: {p}")
+            raise RpcError(NOT_FOUND, t("no está en la biblioteca: %s") % (p,))
         return {"path": p, "removed": n, "folders": await asyncio.to_thread(service.store.folders)}
 
     @d.method("library.scan")
@@ -677,7 +678,7 @@ def register(server: MpvdServer, service: LibraryService) -> None:  # noqa: C901
         """Rescan every folder (or one) in the background at INDEX priority; ``wait`` returns the result."""
         folders = [_folder(path)] if path else None
         if folders and folders[0] not in {f["path"] for f in await asyncio.to_thread(service.store.folders)}:
-            raise RpcError(NOT_FOUND, f"no está en la biblioteca: {folders[0]}")
+            raise RpcError(NOT_FOUND, t("no está en la biblioteca: %s") % (folders[0],))
         job = service.submit_scan(folders, bool(force), notify, _sid(ctx))
         if wait:
             await job.wait()

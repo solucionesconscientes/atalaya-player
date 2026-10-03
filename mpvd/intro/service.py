@@ -22,6 +22,7 @@ from mpvd.intro.episodes import VIDEO_EXTS, episode_info, episode_number, is_vid
 from mpvd.intro.fingerprint import Fingerprint, FingerprintError, Run, fingerprint_window, match
 from mpvd.intro.marks import KINDS, MarkStore
 from mpvd.jobs import Job, Priority
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -144,7 +145,7 @@ class IntroService:
         key = (await asyncio.to_thread(file_hash, path)).key
         duration = await asyncio.to_thread(probe_duration, str(path))
         if not duration:
-            raise RpcError(UNAVAILABLE, f"duración desconocida (¿archivo dañado?): {path.name}")
+            raise RpcError(UNAVAILABLE, t("duración desconocida (¿archivo dañado?): %s") % (path.name,))
         return key, float(duration)
 
     # -- consensus and sanity checks ----------------------------------------------------------------
@@ -596,7 +597,7 @@ class IntroService:
             if segs:
                 entries[f.name] = {"segments": segs, "key": key, "analyzed_at": res.get("analyzed_at")}
         if not entries:
-            raise RpcError(NOT_FOUND, "todavía no hay segmentos que exportar en esa carpeta")
+            raise RpcError(NOT_FOUND, t("todavía no hay segmentos que exportar en esa carpeta"))
         out = folder / "segments.json"
         data: dict[str, Any] = {}
         if out.exists():
@@ -609,16 +610,16 @@ class IntroService:
         try:
             out.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
         except OSError as exc:
-            raise RpcError(UNAVAILABLE, f"no se pudo escribir {out}: {exc.strerror or exc}") from exc
+            raise RpcError(UNAVAILABLE, t("no se pudo escribir %s: %s") % (out, exc.strerror or exc)) from exc
         return {"file": str(out), "entries": entries}
 
 
 def _local(path: str) -> Path:
     if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", path) and not path.startswith("file://"):
-        raise RpcError(UNAVAILABLE, "solo archivos locales")
+        raise RpcError(UNAVAILABLE, t("solo archivos locales"))
     p = Path(path.removeprefix("file://"))
     if not p.is_file():
-        raise RpcError(NOT_FOUND, f"no existe: {p}")
+        raise RpcError(NOT_FOUND, t("no existe: %s") % (p,))
     return p
 
 
@@ -633,7 +634,7 @@ def register(server: MpvdServer, service: IntroService) -> None:
 
     def _need_fpcalc() -> None:
         if not server.services["intro"]:
-            raise RpcError(UNAVAILABLE, "fpcalc (chromaprint) no está instalado")
+            raise RpcError(UNAVAILABLE, t("fpcalc (chromaprint) no está instalado"))
 
     @d.method("intro.segments")
     async def segments(ctx: RpcContext, path: str, analyze: bool = True, notify: str = "mu_intro") -> dict[str, Any]:

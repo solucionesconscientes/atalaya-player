@@ -17,6 +17,7 @@ from mpvd.asr.audio import probe_duration
 from mpvd.asr.srt import Segment, render_srt
 from mpvd.hashing import file_hash
 from mpvd.jobs import Job, Priority, Status
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd.hashing import url_key
 from mpvd.subs import opus as opus_mod
@@ -97,7 +98,7 @@ class SubsService:
     async def _key(self, path: str) -> str:
         p = Path(path.removeprefix("file://"))
         if not p.is_file():
-            raise RpcError(NOT_FOUND, f"no existe: {p}")
+            raise RpcError(NOT_FOUND, t("no existe: %s") % (p,))
         return (await asyncio.to_thread(file_hash, p)).key
 
     # -- cascada de proveedores (H36/C5) ---------------------------------------------------------------------------
@@ -178,7 +179,7 @@ class SubsService:
         if isinstance(osub, dict):
             return await self.server.library.subs_download(str(osub.get("path") or ""), osub.get("file_id"),
                                                            notify=notify, session_id=session_id)
-        raise RpcError(INVALID_PARAMS, "ese resultado no viene de subs.find")
+        raise RpcError(INVALID_PARAMS, t("ese resultado no viene de subs.find"))
 
     # -- subtitles of internet videos (H29) ------------------------------------------------------------------------
 
@@ -205,22 +206,22 @@ class SubsService:
             info = await self.server.ytdl.raw_info(url, force=attempt == 1)
             entry = web_mod.entry_for(info, lang, kind)
             if entry is None:
-                raise RpcError(NOT_FOUND, f"la web no ofrece subtítulos {kind} en «{lang}»")
+                raise RpcError(NOT_FOUND, t("la web no ofrece subtítulos %s en «%s»") % (kind, lang))
             try:
                 text = await asyncio.to_thread(web_mod.fetch_text, str(entry["url"]))
                 ext = str(entry.get("ext") or "")
                 break
             except web_mod.urllib.error.HTTPError as exc:
                 if exc.code == 429:
-                    raise RpcError(UNAVAILABLE, "la web no deja bajar los subtítulos ahora (429); prueba más tarde")\
+                    raise RpcError(UNAVAILABLE, t("la web no deja bajar los subtítulos ahora (429); prueba más tarde"))\
                         from exc
                 if exc.code not in web_mod.EXPIRED or attempt == 1:
-                    raise RpcError(UNAVAILABLE, f"no se pudieron bajar los subtítulos: HTTP {exc.code}") from exc
+                    raise RpcError(UNAVAILABLE, t("no se pudieron bajar los subtítulos: HTTP %s") % (exc.code,)) from exc
             except OSError as exc:
-                raise RpcError(UNAVAILABLE, f"no se pudieron bajar los subtítulos: {exc}") from exc
+                raise RpcError(UNAVAILABLE, t("no se pudieron bajar los subtítulos: %s") % (exc,)) from exc
         cues = web_mod.to_cues(text, ext, kind)
         if not cues:
-            raise RpcError(NOT_FOUND, "los subtítulos de la web están vacíos")
+            raise RpcError(NOT_FOUND, t("los subtítulos de la web están vacíos"))
         await asyncio.to_thread(web_mod.write_srt, dest, cues)
         return self._web_result(url, lang, kind, dest, cues, cached=False)
 
@@ -307,7 +308,7 @@ class SubsService:
                 lang = t.detected or (t.language if t.language != "auto" else "")
                 if lang:
                     return lang
-        raise RpcError(INVALID_PARAMS, "indica el idioma de origen (source) del subtítulo")
+        raise RpcError(INVALID_PARAMS, t("indica el idioma de origen (source) del subtítulo"))
 
     async def translate(self, srt: str, source: str, target: str, path: str | None = None,
                         notify: str = "mu_subs", session_id: str | None = None,
@@ -316,18 +317,18 @@ class SubsService:
         source = normalize_lang(source or "auto")
         engine = (engine or "auto").lower()
         if not LANG_RE.match(target) or (source != "auto" and not LANG_RE.match(source)):
-            raise RpcError(INVALID_PARAMS, "códigos de idioma ISO 639-1 (es, en, fr…)")
+            raise RpcError(INVALID_PARAMS, t("códigos de idioma ISO 639-1 (es, en, fr…)"))
         if engine not in ENGINES:
             raise RpcError(INVALID_PARAMS, f"motor desconocido {engine!r} (auto, argos, opus-big)")
         if not self.translator.available:
-            raise RpcError(UNAVAILABLE, "falta el runtime de traducción: uv sync --extra translate")
+            raise RpcError(UNAVAILABLE, t("falta el runtime de traducción: uv sync --extra translate"))
         source = await self._source_language(path, srt, source)
         if source == target:
-            raise RpcError(INVALID_PARAMS, f"el subtítulo ya está en {target}")
+            raise RpcError(INVALID_PARAMS, t("el subtítulo ya está en %s") % (target,))
         missing = await asyncio.to_thread(self.router.missing_for, source, target, engine)
         if missing:
-            raise RpcError(UNAVAILABLE, "falta el modelo de traducción " + ", ".join(
-                f"{lg.source}→{lg.target} ({ENGINE_NAMES.get(lg.engine, lg.engine)})" for lg in missing),
+            raise RpcError(UNAVAILABLE, t("falta el modelo de traducción %s") % (", ".join(
+                f"{lg.source}→{lg.target} ({ENGINE_NAMES.get(lg.engine, lg.engine)})" for lg in missing),),
                 {"missing": [[lg.source, lg.target, lg.engine] for lg in missing]})
         cues = await self._cues(srt)
         srt_path = Path(srt)
@@ -435,7 +436,7 @@ class SubsService:
                       session_id: str | None = None) -> dict[str, Any]:
         """Embedded text track → SRT in the cache (instant when already extracted, else an ffmpeg job)."""
         if is_url(path):
-            raise RpcError(UNAVAILABLE, "extraer pistas internas solo funciona con archivos locales")
+            raise RpcError(UNAVAILABLE, t("extraer pistas internas solo funciona con archivos locales"))
         if codec and codec in IMAGE_CODECS:
             raise RpcError(UNAVAILABLE, IMAGE_ERROR, {"reason": "image", "codec": codec})
         src = str(local_path(path))
@@ -530,7 +531,7 @@ class SubsService:
         try:
             return await asyncio.to_thread(_do)
         except (SaveError, OSError) as exc:
-            raise RpcError(UNAVAILABLE, f"no se pudo guardar: {exc}") from exc
+            raise RpcError(UNAVAILABLE, t("no se pudo guardar: %s") % (exc,)) from exc
 
     async def save(self, path: str, kind: str, lang: str = "", srt: str | None = None, ff_index: int | None = None,
                    codec: str | None = None, dest_dir: str | None = None, overwrite: bool = False,
@@ -543,7 +544,7 @@ class SubsService:
         if kind == "ai":
             task = self._ai_task(path, srt)
             if task is None:
-                raise RpcError(NOT_FOUND, "no hay pista IA para este archivo (inicia los subtítulos IA)")
+                raise RpcError(NOT_FOUND, t("no hay pista IA para este archivo (inicia los subtítulos IA)"))
             lang = lang or task.detected or (task.language if task.language != "auto" else "")
             coverage = self._coverage(task)
             if task.complete and not overwrite and not dest_dir:
@@ -560,7 +561,7 @@ class SubsService:
                 return {"status": "partial", "coverage": coverage, "task": task.id, "lines": len(task.segments),
                         "lang": lang, "kind": kind}
             if not task.segments:
-                raise RpcError(UNAVAILABLE, "la pista IA todavía no tiene texto")
+                raise RpcError(UNAVAILABLE, t("la pista IA todavía no tiene texto"))
             res = await self._write_file(path, render_srt(task.segments), len(task.segments), lang, kind, dest_dir,
                                          overwrite, title)
             res.update({"partial": not task.complete, "coverage": coverage, "task": task.id})
@@ -575,9 +576,9 @@ class SubsService:
                 return await self._save_after_extract(ex, path, lang, dest_dir, overwrite, title, notify, session_id)
             srt = ex["srt"]
         if not srt:
-            raise RpcError(INVALID_PARAMS, "falta el archivo de subtítulos (srt)")
+            raise RpcError(INVALID_PARAMS, t("falta el archivo de subtítulos (srt)"))
         if not Path(srt).is_file():
-            raise RpcError(NOT_FOUND, f"no existe: {srt}")
+            raise RpcError(NOT_FOUND, t("no existe: %s") % (srt,))
         try:
             text, lines = await asyncio.to_thread(srt_text, srt)
         except SaveError as exc:
@@ -694,7 +695,7 @@ def register(server: MpvdServer, service: SubsService) -> None:  # noqa: C901 - 
 
         Returns ``status: pending`` with the ASR task when the transcription is not finished yet."""
         if not server.asr.engine.available:
-            raise RpcError(UNAVAILABLE, "whisper-cli no encontrado: ejecuta tools/vendor_whisper.sh")
+            raise RpcError(UNAVAILABLE, t("whisper-cli no encontrado: ejecuta tools/vendor_whisper.sh"))
         return await service.resync_file(path, srt, language, model, notify, _sid(ctx))
 
     @d.method("subs.translate")
@@ -745,11 +746,11 @@ def register(server: MpvdServer, service: SubsService) -> None:  # noqa: C901 - 
         """Download a translation model in the background (progress pushed as ``subs-translate-model``). OPUS-MT big
         is downloaded (~860 MB) and converted to CTranslate2 int8 (~234 MB) once."""
         if not (LANG_RE.match(source or "") and LANG_RE.match(target or "")):
-            raise RpcError(INVALID_PARAMS, "códigos de idioma ISO 639-1")
+            raise RpcError(INVALID_PARAMS, t("códigos de idioma ISO 639-1"))
         if engine not in ("argos", "opus-big"):
             raise RpcError(INVALID_PARAMS, "motor: argos u opus-big")
         if engine == "opus-big" and opus_mod.model_for(source, target) is None:
-            raise RpcError(INVALID_PARAMS, f"OPUS-MT no cubre {source}→{target} (solo es/ca/fr ↔ en)")
+            raise RpcError(INVALID_PARAMS, t("OPUS-MT no cubre %s→%s (solo es/ca/fr ↔ en)") % (source, target))
         return service.download_package(source, target, notify, _sid(ctx), engine).to_dict()
 
     @d.method("subs.translate.remove")

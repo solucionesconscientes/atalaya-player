@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from mpvd.cast import dlna
 from mpvd.remote.http import HttpError, HttpServer, Request, Response
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -228,7 +229,7 @@ class CastService:
             await self.discover()
             r = self.devices.get(device_id)
         if r is None:
-            raise RpcError(NOT_FOUND, "no encuentro esa tele en la red")
+            raise RpcError(NOT_FOUND, t("no encuentro esa tele en la red"))
         return r
 
     # -- what to send -------------------------------------------------------------------------------------------
@@ -242,7 +243,7 @@ class CastService:
                 return Media(token, title, mime_for(path.split("?")[0], audio_only), True, url=path)
             ytdl = getattr(self.server, "ytdl", None)
             if ytdl is None:
-                raise RpcError(UNAVAILABLE, "yt-dlp no está disponible")
+                raise RpcError(UNAVAILABLE, t("yt-dlp no está disponible"))
             info = await ytdl.raw_info(path)
             title = title or str(info.get("title") or "")
             direct = hls.pick_direct(info) if mode != "relay" and not audio_only else None
@@ -259,7 +260,7 @@ class CastService:
                          relay_video_copy=copy, audio_only=audio_only, duration=info.get("duration"))
         p = Path(path)
         if not p.is_file():
-            raise RpcError(NOT_FOUND, f"no existe: {path}")
+            raise RpcError(NOT_FOUND, t("no existe: %s") % (path,))
         probe = await asyncio.to_thread(hls.probe, hls.Input(str(p)))
         as_is, v_copy = tv_can_play(probe)
         duration = hls.duration_of(probe)
@@ -308,7 +309,7 @@ class CastService:
 
     async def control(self, action: str, value: float | None = None) -> dict[str, Any]:
         if self.ctrl is None or self.media is None:
-            raise RpcError(NOT_FOUND, "no se está enviando nada a la tele")
+            raise RpcError(NOT_FOUND, t("no se está enviando nada a la tele"))
         try:
             if action == "pause":
                 await self.ctrl.pause()
@@ -332,7 +333,7 @@ class CastService:
             elif action == "stop":
                 return await self.stop()
             else:
-                raise RpcError(INVALID_PARAMS, f"acción desconocida: {action}")
+                raise RpcError(INVALID_PARAMS, t("acción desconocida: %s") % (action,))
         except dlna.DlnaError as exc:
             raise RpcError(UNAVAILABLE, str(exc)) from exc
         return await self.status()

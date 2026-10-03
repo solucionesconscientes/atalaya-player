@@ -29,6 +29,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from mpvd import notify
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -162,11 +163,11 @@ class PowerService:
                            {"install_hint": caps["install_hint"]})
         when = float(at)
         if when <= time.time() + 60:
-            raise RpcError(INVALID_PARAMS, "esa hora ya ha pasado (o es dentro de menos de un minuto)")
+            raise RpcError(INVALID_PARAMS, t("esa hora ya ha pasado (o es dentro de menos de un minuto)"))
         args = self._wake_args(when)
         code, out = await _run(args)
         if code != 0:
-            raise RpcError(UNAVAILABLE, f"no se pudo poner el despertador: {out[:200]}")
+            raise RpcError(UNAVAILABLE, t("no se pudo poner el despertador: %s") % (out[:200],))
         self.wake_at = when
         return {"wake_at": when, "tool": caps["wake_tool"], "output": out[:200]}
 
@@ -252,14 +253,14 @@ class PowerService:
     async def run_action(self, action: str, notice: float | None = None, force: bool = False) -> dict[str, Any]:
         """Suspende o apaga tras los tres seguros y un aviso cancelable. ``force`` se salta el aviso, nunca los seguros."""
         if action not in ACTIONS:
-            raise RpcError(INVALID_PARAMS, f"acción desconocida {action!r} ({', '.join(ACTIONS)})")
+            raise RpcError(INVALID_PARAMS, t("acción desconocida %s (%s)") % (repr(action), ', '.join(ACTIONS)))
         if action == "nothing":
             return {"done": False, "action": action, "blockers": []}
         caps = self.capabilities()
         if action == "suspend" and not caps["can_suspend"]:
-            raise RpcError(UNAVAILABLE, "este equipo no deja suspender desde el programa")
+            raise RpcError(UNAVAILABLE, t("este equipo no deja suspender desde el programa"))
         if action == "shutdown" and not caps["can_shutdown"]:
-            raise RpcError(UNAVAILABLE, "este equipo no deja apagar desde el programa")
+            raise RpcError(UNAVAILABLE, t("este equipo no deja apagar desde el programa"))
         blockers = self.blockers()
         if blockers:
             return {"done": False, "action": action, "blockers": blockers}
@@ -281,7 +282,7 @@ class PowerService:
 
     def arm(self, action: str, recording_id: str = "") -> dict[str, Any]:
         if action not in ACTIONS:
-            raise RpcError(INVALID_PARAMS, f"acción desconocida {action!r}")
+            raise RpcError(INVALID_PARAMS, t("acción desconocida %s") % (repr(action),))
         self.pending = None if action == "nothing" else {"action": action, "recording": recording_id}
         return self.status()
 
