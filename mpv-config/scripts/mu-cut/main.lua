@@ -19,6 +19,7 @@ local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local nav = require('mu.nav')
 local prefs = require('mu.prefs')
+local tr = require('mu.i18n').t
 local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
@@ -38,14 +39,14 @@ local P = prefs.ns('mu-cut', { preset = 'copy' })
 -- H55 · la lista la manda mpvd (`convert.presets`), que además quita los que ESTA máquina no puede hacer (AV1
 -- necesita SVT-AV1 y no está en todos los ffmpeg). Esto de aquí es solo el respaldo mientras mpvd no contesta.
 local FORMATS = {
-  { id = 'copy', title = 'Sin recodificar (rapidísimo)', hint = 'calidad intacta · corta por fotograma clave' },
-  { id = 'mp4', title = 'Vídeo · MP4', hint = 'se abre en cualquier sitio' },
-  { id = 'small', title = 'Vídeo · más pequeño (H.265)', hint = 'ocupa la mitad, tarda más' },
-  { id = 'web', title = 'Vídeo · WebM', hint = 'para páginas web' },
-  { id = 'm4a', title = 'Solo audio · M4A', hint = 'móviles y Apple' },
-  { id = 'mp3', title = 'Solo audio · MP3', hint = 'el más compatible' },
-  { id = 'opus', title = 'Solo audio · Opus', hint = 'el más pequeño' },
-  { id = 'flac', title = 'Solo audio · FLAC', hint = 'sin pérdida' },
+  { id = 'copy', title = tr('Sin recodificar (rapidísimo)'), hint = tr('calidad intacta · corta por fotograma clave') },
+  { id = 'mp4', title = tr('Vídeo · MP4'), hint = tr('se abre en cualquier sitio') },
+  { id = 'small', title = tr('Vídeo · más pequeño (H.265)'), hint = tr('ocupa la mitad, tarda más') },
+  { id = 'web', title = tr('Vídeo · WebM'), hint = tr('para páginas web') },
+  { id = 'm4a', title = tr('Solo audio · M4A'), hint = tr('móviles y Apple') },
+  { id = 'mp3', title = tr('Solo audio · MP3'), hint = tr('el más compatible') },
+  { id = 'opus', title = tr('Solo audio · Opus'), hint = tr('el más pequeño') },
+  { id = 'flac', title = tr('Solo audio · FLAC'), hint = tr('sin pérdida') },
 }
 local SIN_RECODIFICAR = 'copy'    -- el único que no puede unir tramos: pegar obliga a recodificar
 
@@ -160,13 +161,13 @@ local function clear_ab()
 end
 
 local function mark()
-  if duration() <= 0 then osd('Esto no tiene duración: no se puede trocear'); return end
+  if duration() <= 0 then osd(tr('Esto no tiene duración: no se puede trocear')); return end
   local t = now()
   if state.pending == nil then
     state.pending = t
     mp.set_property_number('ab-loop-a', t)   -- uosc dibuja la A sola
     mp.set_property('ab-loop-b', 'no')
-    osd('Tramo desde ' .. clock(t) .. ' · pulsa otra vez donde quieras acabarlo')
+    osd(tr('Tramo desde %s · pulsa otra vez donde quieras acabarlo'):format(clock(t)))
     refresh()
     return
   end
@@ -175,7 +176,7 @@ local function mark()
   state.pending = nil
   clear_ab()
   if b - a < 0.2 then
-    osd('Tramo descartado: no llega a durar nada')
+    osd(tr('Tramo descartado: no llega a durar nada'))
     refresh()
     return
   end
@@ -192,7 +193,7 @@ local function loop_toggle()
   local b = mp.get_property_number('ab-loop-b')
   if a ~= nil and b ~= nil then
     clear_ab()
-    osd('Ya no se repite')
+    osd(tr('Ya no se repite'))
   elseif #state.segments > 0 and state.pending == nil then
     local s = state.segments[#state.segments]
     mp.set_property_number('ab-loop-a', s.a)
@@ -258,10 +259,10 @@ end
 
 local function save(joined)
   local path = current_path()
-  if not path then osd('Solo se pueden guardar tramos de un archivo de tu equipo'); return end
+  if not path then osd(tr('Solo se pueden guardar tramos de un archivo de tu equipo')); return end
   local elegidos = chosen()
-  if #elegidos == 0 then osd('No has elegido ningún tramo'); return end
-  if not rpc.connected() then osd('mpvd no está conectado'); return end
+  if #elegidos == 0 then osd(tr('No has elegido ningún tramo')); return end
+  if not rpc.connected() then osd(tr('mpvd no está conectado')); return end
   local segs = {}
   for _, s in ipairs(elegidos) do segs[#segs + 1] = { start = s.a, ['end'] = s.b } end
   state.saving = true
@@ -272,7 +273,7 @@ local function save(joined)
       state.saving = false
       if err then
         state.last_error = err.message or 'error'
-        osd('No se pudo guardar: ' .. state.last_error)
+        osd(tr('No se pudo guardar: %s'):format(state.last_error))
         publish()
         return
       end
@@ -292,31 +293,31 @@ views.root = function()
   local items = {}
   local n = #state.segments
   if duration() <= 0 then
-    show(ROOT_TITLE, uosc.message_items('Esto no tiene duración: no se puede trocear', 'info'))
+    show(ROOT_TITLE, uosc.message_items(tr('Esto no tiene duración: no se puede trocear'), 'info'))
     return
   end
   if state.pending ~= nil then
-    items[#items + 1] = { title = 'Cerrar el tramo aquí', icon = 'content_cut',
-                          hint = 'empezó en ' .. clock(state.pending), value = { action = 'mark' } }
-    items[#items + 1] = { title = 'Olvidar este tramo a medias', icon = 'close', value = { action = 'cancel' } }
+    items[#items + 1] = { title = tr('Cerrar el tramo aquí'), icon = 'content_cut',
+                          hint = tr('empezó en %s'):format(clock(state.pending)), value = { action = 'mark' } }
+    items[#items + 1] = { title = tr('Olvidar este tramo a medias'), icon = 'close', value = { action = 'cancel' } }
   else
-    items[#items + 1] = { title = 'Empezar un tramo aquí', icon = 'content_cut', hint = clock(now()) .. ' · alt+x',
+    items[#items + 1] = { title = tr('Empezar un tramo aquí'), icon = 'content_cut', hint = clock(now()) .. ' · alt+x',
                           value = { action = 'mark' } }
   end
   if n > 0 and not current_path() then
     -- H56 · lo que se está viendo no es un archivo de este equipo (TV, radio, un vídeo de internet): guardar no
     -- puede funcionar, así que se dice AQUÍ y no después de pulsar, que es cuando parece que no hace nada.
-    items[#items + 1] = { title = 'Esto no se puede guardar a trozos', icon = 'info', muted = true,
+    items[#items + 1] = { title = tr('Esto no se puede guardar a trozos'), icon = 'info', muted = true,
                           selectable = false, separator = true,
-                          hint = 'es la TV o un vídeo de internet, no un archivo tuyo' }
-    items[#items + 1] = { title = 'Para quedarte con un trozo de esto, usa Grabar', icon = 'fiber_manual_record',
+                          hint = tr('es la TV o un vídeo de internet, no un archivo tuyo') }
+    items[#items + 1] = { title = tr('Para quedarte con un trozo de esto, usa Grabar'), icon = 'fiber_manual_record',
                           hint = 'alt+r', value = { action = 'record' } }
   elseif n > 0 then
     local el = #chosen()
     if el == 0 then
-      items[#items + 1] = { title = 'No has elegido ningún tramo', icon = 'info', muted = true,
+      items[#items + 1] = { title = tr('No has elegido ningún tramo'), icon = 'info', muted = true,
                             selectable = false, separator = true,
-                            hint = 'marca abajo los que quieras guardar' }
+                            hint = tr('marca abajo los que quieras guardar') }
     else
       items[#items + 1] = { title = el == 1 and 'Guardar el tramo elegido'
                               or string.format('Guardar los %d elegidos por separado', el),
@@ -325,9 +326,9 @@ views.root = function()
                                                  el == 1 and clock(chosen_seconds()) or (el .. ' archivos')),
                             value = { action = 'save' }, separator = true }
       if el > 1 and P:get('preset') == SIN_RECODIFICAR then
-        items[#items + 1] = { title = 'Para unirlos en uno hay que recodificar: elígelo en «Formato», abajo',
+        items[#items + 1] = { title = tr('Para unirlos en uno hay que recodificar: elígelo en «Formato», abajo'),
                               icon = 'info', muted = true, selectable = false,
-                              hint = 'ahora: ' .. format_label() .. ' · pegar trozos es un filtro y obliga' }
+                              hint = tr('ahora: %s · pegar trozos es un filtro y obliga'):format(format_label()) }
       elseif el > 1 then
         items[#items + 1] = { title = string.format('Guardar los %d elegidos unidos en uno', el), icon = 'merge',
                               hint = string.format('%s · %s · en el orden de esta lista', format_label(),
@@ -335,9 +336,9 @@ views.root = function()
                               value = { action = 'save-joined' } }
       end
     end
-    items[#items + 1] = { title = 'Formato', icon = 'tune', hint = format_label(), value = { view = 'format' } }
+    items[#items + 1] = { title = tr('Formato'), icon = 'tune', hint = format_label(), value = { view = 'format' } }
     if n > 1 then
-      items[#items + 1] = { title = 'Enter elige o descarta · las flechas de cada fila lo suben o lo bajan',
+      items[#items + 1] = { title = tr('Enter elige o descarta · las flechas de cada fila lo suben o lo bajan'),
                             icon = 'info', muted = true, selectable = false,
                             hint = state.manual and 'orden tuyo' or 'orden por tiempo' }
     end
@@ -350,23 +351,23 @@ views.root = function()
         hint = clock(s.b - s.a) .. (on and '' or ' · fuera'),
         icon = on and 'check_box' or 'check_box_outline_blank', active = on, muted = not on,
         separator = i == 1, value = { action = 'toggle', index = i },
-        actions = { { name = 'up', icon = 'arrow_upward', label = 'Subirlo' },
-                    { name = 'down', icon = 'arrow_downward', label = 'Bajarlo' },
-                    { name = 'go', icon = 'play_arrow', label = 'Ir ahí' },
-                    { name = 'loop', icon = 'repeat', label = 'Repetir este' },
-                    { name = 'drop', icon = 'delete', label = 'Quitarlo' } },
+        actions = { { name = 'up', icon = 'arrow_upward', label = tr('Subirlo') },
+                    { name = 'down', icon = 'arrow_downward', label = tr('Bajarlo') },
+                    { name = 'go', icon = 'play_arrow', label = tr('Ir ahí') },
+                    { name = 'loop', icon = 'repeat', label = tr('Repetir este') },
+                    { name = 'drop', icon = 'delete', label = tr('Quitarlo') } },
       }
     end
     items[#items + 1] = { title = el == n and 'Dejar fuera todos' or 'Elegirlos todos',
                           icon = el == n and 'check_box_outline_blank' or 'check_box',
                           value = { action = 'toggle-all' }, separator = true }
-    items[#items + 1] = { title = 'Vaciar la lista', icon = 'delete_sweep', value = { action = 'clear' } }
+    items[#items + 1] = { title = tr('Vaciar la lista'), icon = 'delete_sweep', value = { action = 'clear' } }
     if state.last_save then
-      items[#items + 1] = { title = 'Ver cómo van en Tareas', icon = 'checklist', value = { action = 'tasks' },
+      items[#items + 1] = { title = tr('Ver cómo van en Tareas'), icon = 'checklist', value = { action = 'tasks' },
                             hint = state.last_save.dir ~= '' and state.last_save.dir or nil, separator = true }
     end
   else
-    items[#items + 1] = { title = 'Marca un principio y un final y el tramo aparece en la línea de tiempo',
+    items[#items + 1] = { title = tr('Marca un principio y un final y el tramo aparece en la línea de tiempo'),
                           icon = 'info', muted = true, selectable = false, separator = true }
   end
   show(ROOT_TITLE, items)
@@ -395,7 +396,7 @@ views.format = function()
     items[#items + 1] = { title = f.title, hint = f.hint, icon = f.id == cur and 'radio_button_checked'
                           or 'radio_button_unchecked', active = f.id == cur, value = { preset = f.id } }
   end
-  show('Formato', items)
+  show(tr('Formato'), items)
 end
 
 local function act(v)
@@ -488,7 +489,7 @@ mp.register_script_message(EVENT, function(json)
 end)
 
 local function open_root()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   open_view({ name = 'root' })
 end

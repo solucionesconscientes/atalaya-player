@@ -16,6 +16,7 @@ local uosc = require('mu.uosc')
 local nav = require('mu.nav')
 local N = nav.new()
 local prefs = require('mu.prefs')
+local tr = require('mu.i18n').t
 
 local SCRIPT = mp.get_script_name()
 
@@ -180,17 +181,17 @@ local function skip(kind)
       if state.status == 'analyzing' then
         osd(string.format('Analizando… %d %%', pct()))
       else
-        osd('Saltar intro: ' .. why() .. ' · alt+j')
+        osd(tr('Saltar intro: %s · alt+j'):format(why()))
       end
       return false
     end
-    if kind ~= nil then osd('No hay ' .. seg_label(kind) .. ' detectados') return false end
+    if kind ~= nil then osd(tr('No hay %s detectados'):format(seg_label(kind))) return false end
     -- outside any segment: jump to the end of the next one ahead (manual key press)
     local pos = mp.get_property_number('time-pos') or 0
     for _, s in ipairs(state.segments) do
       if s.start > pos and (not seg or s.start < seg.start) then seg = s end
     end
-    if not seg then osd('No hay intro ni créditos por delante') return false end
+    if not seg then osd(tr('No hay intro ni créditos por delante')) return false end
   end
   local duration = mp.get_property_number('duration') or 0
   if seg.type == 'credits' and duration > 0 and seg['end'] >= duration - math.max(1.0, opts.credits_tail) then
@@ -198,18 +199,18 @@ local function skip(kind)
     local count = mp.get_property_number('playlist-count') or 0
     if pos + 1 < count then
       mp.commandv('playlist-next')
-      osd('⏭ Créditos saltados: siguiente episodio')
+      osd(tr('⏭ Créditos saltados: siguiente episodio'))
     elseif state.next ~= '' then
       mp.commandv('loadfile', state.next, 'insert-next')
       mp.commandv('playlist-next')
-      osd('⏭ Créditos saltados: ' .. basename(state.next))
+      osd(tr('⏭ Créditos saltados: %s'):format(basename(state.next)))
     else
       mp.commandv('seek', tostring(math.max(0, seg['end'] - 0.5)), 'absolute')
-      osd('⏭ Créditos saltados')
+      osd(tr('⏭ Créditos saltados'))
     end
   else
     mp.commandv('seek', tostring(seg['end']), 'absolute')
-    osd('⏭ ' .. upper1(seg_label(seg)) .. ' saltad' .. (seg.type == 'credits' and 'os' or 'o'))
+    osd(tr('⏭ %s saltado'):format(upper1(seg_label(seg))))
   end
   state.skipped[seg.type] = true
   return true
@@ -311,7 +312,7 @@ cancel_countdown = function(by_user)
   mp.remove_key_binding('mu-intro-cancel')
   if by_user then
     state.skipped[kind] = true
-    osd('Salto automático cancelado')
+    osd(tr('Salto automático cancelado'))
   end
   update_indicator()
   publish()
@@ -381,7 +382,7 @@ watchdog:kill()
 local function notice()
   if state.noticed or not opts.notify_missing or not state.local_video then return end
   state.noticed = true
-  osd('Saltar intro: ' .. why() .. ' · alt+j')
+  osd(tr('Saltar intro: %s · alt+j'):format(why()))
 end
 
 local function apply(res, quiet)
@@ -626,7 +627,7 @@ end
 local function save_mark(kind, start_, end_)
   rpc.call('intro.mark', { path = current_path(), kind = kind, start = start_, ['end'] = end_, notify = SCRIPT },
     function(err, res)
-      if err then osd('No se pudo guardar la marca: ' .. short(err.message or tostring(err))) return end
+      if err then osd(tr('No se pudo guardar la marca: %s'):format(short(err.message or tostring(err)))) return end
       apply(res, true)
       osd(string.format('%s guardada: %s → %s · se buscará en el resto de la temporada',
         kind == 'intro' and 'Intro' or 'Créditos', fmt_time(start_), fmt_time(end_)))
@@ -634,8 +635,8 @@ local function save_mark(kind, start_, end_)
 end
 
 local function mark(kind, which)
-  if not state.local_video then osd('Solo se puede marcar en vídeos locales') return end
-  if not rpc.connected() then osd('mpvd no está conectado') return end
+  if not state.local_video then osd(tr('Solo se puede marcar en vídeos locales')) return end
+  if not rpc.connected() then osd(tr('mpvd no está conectado')) return end
   local pos = mp.get_property_number('time-pos')
   if not pos then return end
   local start_, end_
@@ -652,11 +653,11 @@ local function mark(kind, which)
   else
     local seg = segment_of(kind)
     start_ = state.pending[kind] or (seg and seg.start) or (kind == 'intro' and 0 or nil)
-    if not start_ then osd('Marca primero el inicio de los créditos') return end
+    if not start_ then osd(tr('Marca primero el inicio de los créditos')) return end
     end_ = pos
     state.pending[kind] = nil
   end
-  if end_ - start_ < 1 then osd('El tramo marcado es demasiado corto (marca el final después del inicio)') return end
+  if end_ - start_ < 1 then osd(tr('El tramo marcado es demasiado corto (marca el final después del inicio)')) return end
   publish()
   save_mark(kind, start_, end_)
 end
@@ -664,10 +665,10 @@ end
 local function unmark()
   if not rpc.connected() or not state.local_video then return end
   rpc.call('intro.unmark', { path = current_path() }, function(err, res)
-    if err then osd('No se pudo borrar: ' .. short(err.message or tostring(err))) return end
+    if err then osd(tr('No se pudo borrar: %s'):format(short(err.message or tostring(err)))) return end
     state.pending = {}
     apply(res, true)
-    osd('Marcas manuales borradas')
+    osd(tr('Marcas manuales borradas'))
   end, 30)
 end
 
@@ -696,15 +697,16 @@ local function menu_items()
     table.insert(items, { title = txt, icon = #state.sponsor > 0 and 'playlist_remove' or 'info', selectable = false,
       muted = #state.sponsor == 0 })
   elseif not state.local_video then
-    table.insert(items, { title = 'Abre un episodio de una serie (vídeo local)', icon = 'info', selectable = false,
+    table.insert(items, { title = tr('Abre un episodio de una serie (vídeo local)'), icon = 'info', selectable = false,
       muted = true })
   elseif state.status == 'analyzing' then
     table.insert(items, { title = string.format('Analizando… %d %%', pct()), hint = state.progress_msg ~= '' and
       short(state.progress_msg, 40) or nil, icon = 'spinner', selectable = false, muted = true })
   elseif state.status == 'error' then
-    table.insert(items, { title = 'Error: ' .. short(why(), 80), icon = 'error', selectable = false, muted = true })
+    table.insert(items, { title = tr('Error: %s'):format(short(why(), 80)), icon = 'error',
+                          selectable = false, muted = true })
   elseif #state.segments == 0 then
-    table.insert(items, { title = 'Sin intro ni créditos detectados', hint = state.reason ~= '' and short(state.reason, 50)
+    table.insert(items, { title = tr('Sin intro ni créditos detectados'), hint = state.reason ~= '' and short(state.reason, 50)
       or nil, icon = 'info', selectable = false, muted = true })
   end
   if state.season and not state.season.final then
@@ -719,45 +721,45 @@ local function menu_items()
       active = state.current == s.type, value = { seek = s.start } })
   end
   if #state.segments > 0 then
-    table.insert(items, { title = 'Saltar ahora', hint = 'alt+k', icon = 'skip_next', value = { skip = true } })
+    table.insert(items, { title = tr('Saltar ahora'), hint = 'alt+k', icon = 'skip_next', value = { skip = true } })
   end
   if state.local_video then
     local here = fmt_time(pos)
     items[#items].separator = true
-    table.insert(items, { title = 'Marcar inicio de la intro aquí', hint = state.pending.intro and
+    table.insert(items, { title = tr('Marcar inicio de la intro aquí'), hint = state.pending.intro and
       ('inicio ' .. fmt_time(state.pending.intro) .. ' pendiente') or here, icon = 'first_page',
       value = { mark = 'intro', which = 'start' } })
-    table.insert(items, { title = 'Marcar final de la intro aquí', hint = here, icon = 'last_page',
+    table.insert(items, { title = tr('Marcar final de la intro aquí'), hint = here, icon = 'last_page',
       value = { mark = 'intro', which = 'end' } })
-    table.insert(items, { title = 'Marcar inicio de los créditos aquí', hint = here, icon = 'first_page',
+    table.insert(items, { title = tr('Marcar inicio de los créditos aquí'), hint = here, icon = 'first_page',
       value = { mark = 'credits', which = 'start' } })
-    table.insert(items, { title = 'Marcar final de los créditos aquí', hint = here, icon = 'last_page',
+    table.insert(items, { title = tr('Marcar final de los créditos aquí'), hint = here, icon = 'last_page',
       value = { mark = 'credits', which = 'end' } })
     if has_manual() then
-      table.insert(items, { title = 'Borrar las marcas manuales de este episodio', icon = 'delete',
+      table.insert(items, { title = tr('Borrar las marcas manuales de este episodio'), icon = 'delete',
         value = { unmark = true } })
     end
   end
   items[#items].separator = true
-  table.insert(items, { title = 'Saltar la intro automáticamente', hint = yesno(opts.auto_skip_intro), icon = 'fast_forward',
+  table.insert(items, { title = tr('Saltar la intro automáticamente'), hint = yesno(opts.auto_skip_intro), icon = 'fast_forward',
     active = opts.auto_skip_intro, value = { toggle = 'auto_skip_intro' } })
-  table.insert(items, { title = 'Saltar los créditos automáticamente', hint = yesno(opts.auto_skip_credits),
+  table.insert(items, { title = tr('Saltar los créditos automáticamente'), hint = yesno(opts.auto_skip_credits),
     icon = 'skip_next', active = opts.auto_skip_credits, value = { toggle = 'auto_skip_credits' } })
-  table.insert(items, { title = 'Detección activada', hint = yesno(opts.enabled), icon = 'radar', active = opts.enabled,
+  table.insert(items, { title = tr('Detección activada'), hint = yesno(opts.enabled), icon = 'radar', active = opts.enabled,
     value = { toggle = 'enabled' }, separator = true })
   -- H39/E3: en vídeos de internet, los tramos los marca la gente en SponsorBlock. Se pide por un prefijo del hash del
   -- id del vídeo, así que no se dice qué estás viendo.
-  table.insert(items, { title = 'SponsorBlock en vídeos de internet', hint = yesno(opts.sponsorblock),
+  table.insert(items, { title = tr('SponsorBlock en vídeos de internet'), hint = yesno(opts.sponsorblock),
     icon = 'playlist_remove', active = opts.sponsorblock, value = { toggle = 'sponsorblock' } })
-  table.insert(items, { title = 'Saltar los patrocinios automáticamente', hint = yesno(opts.auto_skip_sponsor),
+  table.insert(items, { title = tr('Saltar los patrocinios automáticamente'), hint = yesno(opts.auto_skip_sponsor),
     icon = 'fast_forward', active = opts.auto_skip_sponsor, value = { toggle = 'auto_skip_sponsor' } })
   if state.local_video then
     items[#items].separator = true
-    table.insert(items, { title = 'Analizar temporada', hint = state.episodes > 0 and ((state.episodes + 1) .. ' episodios')
+    table.insert(items, { title = tr('Analizar temporada'), hint = state.episodes > 0 and ((state.episodes + 1) .. ' episodios')
       or nil, icon = 'playlist_play', value = { season = true } })
-    table.insert(items, { title = 'Volver a analizar este episodio', hint = 'fpcalc + ffmpeg en segundo plano',
+    table.insert(items, { title = tr('Volver a analizar este episodio'), hint = tr('fpcalc + ffmpeg en segundo plano'),
       icon = 'refresh', value = { reanalyze = true } })
-    table.insert(items, { title = 'Exportar segmentos (Jellyfin)', hint = 'segments.json junto al vídeo', icon = 'save',
+    table.insert(items, { title = tr('Exportar segmentos (Jellyfin)'), hint = tr('segments.json junto al vídeo'), icon = 'save',
       value = { export = true } })
   end
   return items
@@ -766,7 +768,7 @@ end
 local function base_menu()
   return nav.decorate({ type = MENU, title = N:title({ 'Saltar intro y créditos' }), items = menu_items(),
     callback = { SCRIPT, EVENT }, keep_open = true, search_submenus = false,
-    footnote = 'mpvd compara el audio con los otros episodios de la temporada (misma carpeta o carpetas hermanas)' })
+    footnote = tr('mpvd compara el audio con los otros episodios de la temporada (misma carpeta o carpetas hermanas)') })
 end
 
 refresh_menu = function()
@@ -774,13 +776,13 @@ refresh_menu = function()
 end
 
 local function open_menu()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   if uosc.open_type() == MENU then uosc.update(base_menu()) else uosc.open(base_menu()) end
 end
 
 local function reanalyze()
-  if not rpc.connected() then osd('mpvd no está conectado') return end
-  if not state.local_video then osd('Solo vídeos locales') return end
+  if not rpc.connected() then osd(tr('mpvd no está conectado')) return end
+  if not state.local_video then osd(tr('Solo vídeos locales')) return end
   state.status = 'analyzing'
   state.progress = 0
   state.noticed = false
@@ -797,16 +799,16 @@ local function reanalyze()
       publish()
       set_button()
       refresh_menu()
-      osd('Análisis: ' .. state.last_error)
+      osd(tr('Análisis: %s'):format(state.last_error))
     end
   end, 30)
 end
 
 local function analyze_season()
-  if not rpc.connected() then osd('mpvd no está conectado') return end
-  if not state.local_video then osd('Solo vídeos locales') return end
+  if not rpc.connected() then osd(tr('mpvd no está conectado')) return end
+  if not state.local_video then osd(tr('Solo vídeos locales')) return end
   rpc.call('intro.season', { path = current_path(), notify = SCRIPT }, function(err, res)
-    if err then osd('Temporada: ' .. short(err.message or tostring(err))) return end
+    if err then osd(tr('Temporada: %s'):format(short(err.message or tostring(err)))) return end
     state.season = { done = 0, total = res.episodes or 0, found = 0 }
     osd(string.format('Analizando la temporada en segundo plano (%d episodios)', res.episodes or 0))
     publish()
@@ -815,10 +817,10 @@ local function analyze_season()
 end
 
 local function export()
-  if not rpc.connected() then osd('mpvd no está conectado') return end
-  if not state.local_video then osd('Solo vídeos locales') return end
+  if not rpc.connected() then osd(tr('mpvd no está conectado')) return end
+  if not state.local_video then osd(tr('Solo vídeos locales')) return end
   rpc.call('intro.export', { path = current_path() }, function(err, res)
-    if err then osd('Exportar: ' .. short(err.message or tostring(err))) return end
+    if err then osd(tr('Exportar: %s'):format(short(err.message or tostring(err)))) return end
     local n = 0
     for _ in pairs(res.entries or {}) do n = n + 1 end
     osd(string.format('Exportados %d archivo(s) a %s', n, res.file or 'segments.json'))

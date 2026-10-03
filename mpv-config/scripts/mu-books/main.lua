@@ -19,6 +19,7 @@ package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local nav = require('mu.nav')
+local tr = require('mu.i18n').t
 local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
@@ -157,7 +158,7 @@ local function resume(b)
   local now = mp.get_property_number('time-pos') or 0
   if pos.time >= opts.resume_min and math.abs(now - pos.time) > 2 then
     mp.commandv('seek', tostring(pos.time), 'absolute+exact')
-    osd('📖 Sigues donde lo dejaste: ' .. clock(pos.time))
+    osd(tr('📖 Sigues donde lo dejaste: %s'):format(clock(pos.time)))
   end
 end
 
@@ -263,7 +264,7 @@ local function stop_sleep(quiet)
   if sleep_timer then sleep_timer:kill(); sleep_timer = nil end
   state.sleep = nil
   if s and s.fading and s.vol0 then mp.set_property_number('volume', s.vol0) end
-  if not quiet then osd('⏰ Temporizador desactivado') end
+  if not quiet then osd(tr('⏰ Temporizador desactivado')) end
   publish()
 end
 
@@ -273,7 +274,7 @@ local function sleep_finish()
   if s and s.vol0 then mp.set_property_number('volume', s.vol0) end
   if sleep_timer then sleep_timer:kill(); sleep_timer = nil end
   state.sleep = nil
-  osd('🌙 Buenas noches: pausado', 4)
+  osd(tr('🌙 Buenas noches: pausado'), 4)
   publish()
 end
 
@@ -316,7 +317,7 @@ end
 
 local function start_sleep(mode, minutes)
   stop_sleep(true)
-  if mode == 'off' then osd('⏰ Temporizador desactivado') return end
+  if mode == 'off' then osd(tr('⏰ Temporizador desactivado')) return end
   state.sleep = { mode = mode, minutes = minutes, fading = false,
                   remaining = mode == 'minutes' and minutes * opts.minute_seconds or (chapter_left() or 0) }
   last_tick = mp.get_time()
@@ -324,7 +325,7 @@ local function start_sleep(mode, minutes)
   if mode == 'minutes' then
     osd(string.format('⏰ Pausa dentro de %d min', minutes))
   else
-    osd('⏰ Pausa al terminar el capítulo')
+    osd(tr('⏰ Pausa al terminar el capítulo'))
   end
   publish()
 end
@@ -377,14 +378,14 @@ end
 local reopen_current
 local function add_bookmark(note, cb)
   local b = state.book
-  if not b then osd('Esto no es un audiolibro: los marcadores son para libros y podcasts') return end
+  if not b then osd(tr('Esto no es un audiolibro: los marcadores son para libros y podcasts')) return end
   local t = mp.get_property_number('time-pos') or 0
   local params = book_fields(b)
   params.id, params.track, params.time, params.note = b.id, current_track(), t, note or ''
   rpc.call('books.bookmark.add', params, function(err, list)
-    if err then osd('Marcador: ' .. fail(err, 'books.bookmark.add')) return end
+    if err then osd(tr('Marcador: %s'):format(fail(err, 'books.bookmark.add'))) return end
     b.bookmarks = list or {}
-    osd('🔖 Marcador en ' .. clock(t) .. ((note and note ~= '') and (' · ' .. note) or ''))
+    osd(tr('🔖 Marcador en %s%s'):format(clock(t), (note and note ~= '') and (' · ' .. note) or ''))
     publish()
     if cb then cb() end
   end, 10)
@@ -483,36 +484,36 @@ views.root = function()
                           selectable = false, muted = true })
     table.insert(items, { title = b.tracks and 'Capítulos (pistas)' or 'Capítulos', icon = 'list',
                           value = { view = 'chapters' } })
-    table.insert(items, { title = 'Marcadores', icon = 'bookmarks', hint = tostring(#(b.bookmarks or {})),
+    table.insert(items, { title = tr('Marcadores'), icon = 'bookmarks', hint = tostring(#(b.bookmarks or {})),
                           value = { view = 'bookmarks' } })
-    table.insert(items, { title = 'Añadir marcador aquí…', icon = 'bookmark_add', value = { bookmark = true } })
-    table.insert(items, { title = 'Velocidad de este libro', icon = 'speed',
+    table.insert(items, { title = tr('Añadir marcador aquí…'), icon = 'bookmark_add', value = { bookmark = true } })
+    table.insert(items, { title = tr('Velocidad de este libro'), icon = 'speed',
                           hint = string.format('×%.2g', mp.get_property_number('speed') or 1), value = { view = 'speed' } })
-    table.insert(items, { title = 'Atrás 30 s', icon = 'replay_30', hint = 'alt+J', value = { skip = -opts.skip_seconds },
+    table.insert(items, { title = tr('Atrás 30 s'), icon = 'replay_30', hint = 'alt+J', value = { skip = -opts.skip_seconds },
                           keep_open = true })
-    table.insert(items, { title = 'Adelante 30 s', icon = 'forward_30', hint = 'alt+L', value = { skip = opts.skip_seconds },
+    table.insert(items, { title = tr('Adelante 30 s'), icon = 'forward_30', hint = 'alt+L', value = { skip = opts.skip_seconds },
                           keep_open = true, separator = true })
   end
-  table.insert(items, { title = 'Temporizador de apagado', icon = 'bedtime', hint = sleep_hint(),
+  table.insert(items, { title = tr('Temporizador de apagado'), icon = 'bedtime', hint = sleep_hint(),
                         value = { view = 'sleep' } })
-  table.insert(items, { title = 'Seguir escuchando', icon = 'auto_stories', value = { view = 'list' }, separator = true })
+  table.insert(items, { title = tr('Seguir escuchando'), icon = 'auto_stories', value = { view = 'list' }, separator = true })
   local path = abs_path()
   if b then
     table.insert(items, { title = b.tracks and 'Esta carpeta no es un audiolibro' or 'Esto no es un audiolibro',
                           icon = 'music_note', value = { mark = false, folder = b.tracks ~= nil } })
   elseif path and audio_only() and not mp.get_property_native('idle-active') then
-    table.insert(items, { title = 'Tratar este archivo como audiolibro', icon = 'menu_book', value = { mark = true } })
+    table.insert(items, { title = tr('Tratar este archivo como audiolibro'), icon = 'menu_book', value = { mark = true } })
     if not is_url(path) then
-      table.insert(items, { title = 'Tratar toda la carpeta como un audiolibro', icon = 'library_books',
+      table.insert(items, { title = tr('Tratar toda la carpeta como un audiolibro'), icon = 'library_books',
                             value = { mark = true, folder = true } })
     end
   end
-  show(ROOT_TITLE, items, { footnote = 'Enter elige · ⌫ atrás' })
+  show(ROOT_TITLE, items, { footnote = tr('Enter elige · ⌫ atrás') })
 end
 
 views.chapters = function()
   local b = state.book
-  local title = 'Capítulos'
+  local title = tr('Capítulos')
   local items = {}
   if b and b.tracks then
     for i, t in ipairs(b.tracks) do
@@ -526,27 +527,27 @@ views.chapters = function()
                             active = (i - 1) == cur, value = { seek = c.time } })
     end
   end
-  if #items == 0 then items = uosc.message_items('Este archivo no tiene capítulos', 'info') end
-  show(title, items, { footnote = 'Enter salta · ⌫ atrás' })
+  if #items == 0 then items = uosc.message_items(tr('Este archivo no tiene capítulos'), 'info') end
+  show(title, items, { footnote = tr('Enter salta · ⌫ atrás') })
 end
 
 views.bookmarks = function()
   local b = state.book
-  local title = 'Marcadores'
-  if not b then show(title, uosc.message_items('Abre un audiolibro primero', 'info')) return end
-  local items = { { title = 'Añadir marcador aquí…', icon = 'bookmark_add', value = { bookmark = true },
+  local title = tr('Marcadores')
+  if not b then show(title, uosc.message_items(tr('Abre un audiolibro primero'), 'info')) return end
+  local items = { { title = tr('Añadir marcador aquí…'), icon = 'bookmark_add', value = { bookmark = true },
                     separator = true } }
   for _, m in ipairs(b.bookmarks or {}) do
     local where = clock(m.time)
     if b.tracks and m.track_index then where = string.format('pista %d · %s', m.track_index + 1, where) end
     table.insert(items, { title = (m.note and m.note ~= '') and m.note or 'Marcador', hint = where, icon = 'bookmark',
                           value = { jump = { track_index = m.track_index, time = m.time }, index = m.index },
-                          actions = { { name = 'delete', icon = 'delete', label = 'Borrar' } } })
+                          actions = { { name = 'delete', icon = 'delete', label = tr('Borrar') } } })
   end
   if #items == 1 then
-    table.insert(items, { title = 'Todavía no hay marcadores', icon = 'info', selectable = false, muted = true })
+    table.insert(items, { title = tr('Todavía no hay marcadores'), icon = 'info', selectable = false, muted = true })
   end
-  show(title, items, { footnote = 'Enter salta · Tab: borrar · ⌫ atrás' })
+  show(title, items, { footnote = tr('Enter salta · Tab: borrar · ⌫ atrás') })
 end
 
 views.speed = function()
@@ -555,28 +556,28 @@ views.speed = function()
   for _, x in ipairs(SPEEDS) do
     table.insert(items, { title = string.format('×%.2g', x), active = math.abs(cur - x) < 0.01, value = { speed = x } })
   end
-  show('Velocidad', items, { footnote = 'Se guarda para este libro' })
+  show(tr('Velocidad'), items, { footnote = tr('Se guarda para este libro') })
 end
 
 views.sleep = function()
   local items = {}
   local s = state.sleep
   if s then
-    table.insert(items, { title = 'Desactivar', icon = 'alarm_off', hint = sleep_hint(), value = { sleep = 'off' },
+    table.insert(items, { title = tr('Desactivar'), icon = 'alarm_off', hint = sleep_hint(), value = { sleep = 'off' },
                           separator = true })
   end
   for _, m in ipairs(SLEEP_MINUTES) do
     table.insert(items, { title = string.format('Dentro de %d minutos', m), icon = 'timer',
                           active = s and s.mode == 'minutes' and s.minutes == m or false, value = { sleep = m } })
   end
-  table.insert(items, { title = 'Al terminar el capítulo', icon = 'last_page',
+  table.insert(items, { title = tr('Al terminar el capítulo'), icon = 'last_page',
                         active = s and s.mode == 'chapter' or false, value = { sleep = 'chapter' } })
-  show('Temporizador de apagado', items, { footnote = 'Al final baja el volumen poco a poco y pausa' })
+  show(tr('Temporizador de apagado'), items, { footnote = tr('Al final baja el volumen poco a poco y pausa') })
 end
 
 views.list = function()
-  local title = 'Seguir escuchando'
-  if not rpc.connected() then show(title, uosc.message_items('mpvd no está conectado', 'error')) return end
+  local title = tr('Seguir escuchando')
+  if not rpc.connected() then show(title, uosc.message_items(tr('mpvd no está conectado'), 'error')) return end
   show(title, uosc.loading_items())
   rpc.call('books.list', nil, function(err, list)
     if state.view ~= 'list' then return end
@@ -587,12 +588,12 @@ views.list = function()
       if bk.track and bk.track ~= '' and not bk.finished then hint = bk.track .. ' · ' .. hint end
       table.insert(items, { title = bk.title, hint = hint, icon = bk.kind == 'podcast' and 'podcasts' or 'menu_book',
                             value = { open = bk.open, id = bk.id },
-                            actions = { { name = 'forget', icon = 'delete', label = 'Olvidar' } } })
+                            actions = { { name = 'forget', icon = 'delete', label = tr('Olvidar') } } })
     end
     if #items == 0 then
-      items = uosc.message_items('Aún no hay libros: abre un audiolibro o un podcast', 'info')
+      items = uosc.message_items(tr('Aún no hay libros: abre un audiolibro o un podcast'), 'info')
     end
-    show(title, items, { footnote = 'Enter sigue escuchando · Tab: olvidar · ⌫ atrás' })
+    show(title, items, { footnote = tr('Enter sigue escuchando · Tab: olvidar · ⌫ atrás') })
   end, 15)
 end
 
@@ -604,12 +605,13 @@ local function input_menu(query)
   state.input.query = query
   local items = {}
   if query ~= '' then
-    table.insert(items, { title = 'Guardar con la nota: ' .. query, icon = 'check', value = { save = query } })
+    table.insert(items, { title = tr('Guardar con la nota: %s'):format(query), icon = 'check',
+                          value = { save = query } })
   end
-  table.insert(items, { title = 'Guardar sin nota', icon = 'bookmark_add', value = { save = '' } })
-  return { type = INPUT, title = 'Nota del marcador', items = items, callback = { SCRIPT, INPUT_EVENT },
+  table.insert(items, { title = tr('Guardar sin nota'), icon = 'bookmark_add', value = { save = '' } })
+  return { type = INPUT, title = tr('Nota del marcador'), items = items, callback = { SCRIPT, INPUT_EVENT },
            search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-           search_suggestion = query, footnote = 'Escribe una nota (opcional) · Enter guarda · ⌫ en vacío vuelve' }
+           search_suggestion = query, footnote = tr('Escribe una nota (opcional) · Enter guarda · ⌫ en vacío vuelve') }
 end
 
 local function close_input(back)
@@ -620,7 +622,7 @@ local function close_input(back)
 end
 
 local function open_input()
-  if not state.book then osd('Abre un audiolibro primero') return end
+  if not state.book then osd(tr('Abre un audiolibro primero')) return end
   state.input = { mode = 'bookmark', query = '', at = mp.get_property_number('time-pos') }
   publish()
   uosc.open(input_menu(''))
@@ -648,7 +650,7 @@ local function mark(value, folder)
   local path = abs_path()
   if not path then return end
   rpc.call('books.mark', { path = path, value = value, folder = folder == true }, function(err)
-    if err then osd('Audiolibro: ' .. fail(err, 'books.mark')) return end
+    if err then osd(tr('Audiolibro: %s'):format(fail(err, 'books.mark'))) return end
     osd(value and '📖 Se tratará como audiolibro' or '🎵 No se tratará como audiolibro')
     check_file()
     mp.add_timeout(0.5, function() if uosc.open_type() == MENU then reopen_current() end end)
@@ -685,9 +687,9 @@ mp.register_script_message(EVENT, function(json)
       if ev.action == 'delete' then
         rpc.call('books.bookmark.delete', { id = state.book and state.book.id or '', index = v.index },
           function(err, list)
-            if err then osd('Borrar: ' .. fail(err, 'books.bookmark.delete')) return end
+            if err then osd(tr('Borrar: %s'):format(fail(err, 'books.bookmark.delete'))) return end
             if state.book then state.book.bookmarks = list or {} end
-            osd('🗑 Marcador borrado')
+            osd(tr('🗑 Marcador borrado'))
             reopen_current()
           end, 10)
         return
@@ -703,7 +705,7 @@ mp.register_script_message(EVENT, function(json)
     elseif v.open then
       if ev.action == 'forget' then
         rpc.call('books.forget', { id = v.id }, function(err)
-          if err then osd('Olvidar: ' .. fail(err, 'books.forget')) return end
+          if err then osd(tr('Olvidar: %s'):format(fail(err, 'books.forget'))) return end
           reopen_current()
         end, 10)
         return
@@ -742,7 +744,7 @@ end)
 -- bindings and messages
 
 local function open_root()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'root' })

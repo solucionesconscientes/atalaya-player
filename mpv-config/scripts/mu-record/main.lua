@@ -15,6 +15,7 @@ local uosc = require('mu.uosc')
 local prefs = require('mu.prefs')
 local brand = require('mu.brand')
 local nav = require('mu.nav')
+local tr = require('mu.i18n').t
 local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
@@ -117,10 +118,10 @@ end
 local KIND_HINT = { live = 'directo', url = 'tramo del vídeo de internet', ['local'] = 'sin recodificar' }
 
 local FORMATS = {
-  { id = 'copy', title = 'Igual que el original (MKV)', hint = 'sin recodificar · el que nunca falla',
+  { id = 'copy', title = tr('Igual que el original (MKV)'), hint = tr('sin recodificar · el que nunca falla'),
     icon = 'content_copy' },
-  { id = 'mp4', title = 'MP4 si los códecs lo permiten', icon = 'movie' },
-  { id = 'audio', title = 'Solo el audio (Opus 128)', icon = 'mic' },
+  { id = 'mp4', title = tr('MP4 si los códecs lo permiten'), icon = 'movie' },
+  { id = 'audio', title = tr('Solo el audio (Opus 128)'), icon = 'mic' },
 }
 local FORMAT_TITLES = {}
 for _, f in ipairs(FORMATS) do FORMAT_TITLES[f.id] = f.title end
@@ -212,7 +213,7 @@ local function track_job(kind, item, what)
   local id = item.id
   state.jobs[id] = { kind = kind, status = item.status or 'queued', file = item.file or '', message = '' }
   publish()
-  osd('💾 Guardando ' .. what .. '…')
+  osd(tr('💾 Guardando %s…'):format(what))
 end
 
 -- mp4 plays a lossless cut from A exactly (edit list over the lead-in from the previous keyframe); only for codecs
@@ -236,10 +237,10 @@ local function save_range(a, b, audio, gif, kind, path, title_at_start, mp4_at_s
   path = path or current_path()
   if not kind or b <= a then
     fail({ message = string.format('%s %.2f–%.2f', tostring(kind), a, b) }, 'tramo vacío')
-    osd('Tramo vacío: marca un inicio y un final')
+    osd(tr('Tramo vacío: marca un inicio y un final'))
     return
   end
-  if not rpc.connected() then fail(nil, 'mpvd no está conectado'); osd('mpvd no está conectado') return end
+  if not rpc.connected() then fail(nil, 'mpvd no está conectado'); osd(tr('mpvd no está conectado')) return end
   local dir = record_dir()
   local title = sanitize(title_at_start or media_title())
   local what = string.format('%s–%s', hms(a), hms(b))
@@ -252,11 +253,11 @@ local function save_range(a, b, audio, gif, kind, path, title_at_start, mp4_at_s
     -- max_seconds = 0: no cap. The 600 s of «clips de estudio» made every recording over ten minutes fail
     rpc.call('study.clip', { path = path, start = a, ['end'] = b, format = fmt, dir = dir, title = title,
                              notify = SCRIPT, audio_track = nil, max_seconds = 0 }, function(err, item)
-      if err then osd('Grabar: ' .. fail(err, 'study.clip'), 5) return end
+      if err then osd(tr('Grabar: %s'):format(fail(err, 'study.clip')), 5) return end
       track_job('clip', item, what)
     end, 20)
   elseif kind == 'url' then
-    if gif then osd('GIF: solo con archivos locales') return end
+    if gif then osd(tr('GIF: solo con archivos locales')) return end
     local h = mp.get_property_number('height')
     local container = (mp4_at_start or fmt_id() == 'mp4') and 'mp4' or 'mkv'
     local spec = audio and { kind = 'audio_original' } or { kind = 'video', height = h, container = container }
@@ -266,7 +267,7 @@ local function save_range(a, b, audio, gif, kind, path, title_at_start, mp4_at_s
     spec.out_dir = dir
     spec.notify = SCRIPT
     rpc.call('ytdl.download', spec, function(err, item)
-      if err then osd('Grabar: ' .. fail(err, 'ytdl.download'), 5) return end
+      if err then osd(tr('Grabar: %s'):format(fail(err, 'ytdl.download')), 5) return end
       track_job('download', item, what)
     end, 30)
   else
@@ -274,10 +275,10 @@ local function save_range(a, b, audio, gif, kind, path, title_at_start, mp4_at_s
     ensure_dir(dir)
     local file = utils.join_path(dir, title .. ' ' .. os.date('%Y-%m-%d %H.%M.%S') .. (audio and '.mka' or '.mkv'))
     mp.command_native_async({ 'dump-cache', tostring(a), tostring(b), file }, function(ok, _, err)
-      if not ok then osd('No está en la caché: ' .. fail({ message = tostring(err) }, 'dump-cache'), 5) return end
+      if not ok then osd(tr('No está en la caché: %s'):format(fail({ message = tostring(err) }, 'dump-cache')), 5) return end
       state.last = { file = file, status = 'done' }
       publish()
-      osd('✅ Guardado: ' .. basename(file), 5)
+      osd(tr('✅ Guardado: %s'):format(basename(file)), 5)
     end)
   end
 end
@@ -287,16 +288,16 @@ local function start_recording(format)
   local fmt = FORMAT_IDS[format or ''] and format or fmt_id()
   local audio = fmt == 'audio'
   local kind = source_kind()
-  if not kind then osd('Nada que grabar') return end
-  if state.rec then osd('Ya se está grabando') return end
+  if not kind then osd(tr('Nada que grabar')) return end
+  if state.rec then osd(tr('Ya se está grabando')) return end
   if kind == 'live' then
     local dir = record_dir()
-    if not ensure_dir(dir) then osd('No se pudo crear la carpeta ' .. dir) return end
+    if not ensure_dir(dir) then osd(tr('No se pudo crear la carpeta %s'):format(dir)) return end
     local radio = mp.get_property_native('vid') == false
     -- Medido: un VP8 NO entra en MP4 («Could not write header (incorrect codec parameters?)») y el fichero se queda
     -- vacío, así que si los códecs no caben se avisa y se graba en MKV, que es lo que pedía el formato por defecto.
     local mp4 = fmt == 'mp4' and not radio and mp4_friendly()
-    if fmt == 'mp4' and not mp4 then osd('Estos códecs no caben en un MP4: se graba en MKV', 5) end
+    if fmt == 'mp4' and not mp4 then osd(tr('Estos códecs no caben en un MP4: se graba en MKV'), 5) end
     local ext = (audio or radio) and '.mka' or (mp4 and '.mp4' or '.mkv')
     local file = utils.join_path(dir, sanitize(media_title()) .. ' ' .. os.date('%Y-%m-%d %H.%M.%S') .. ext)
     mp.set_property('stream-record', file)
@@ -322,13 +323,13 @@ local function stop_recording(reason)
     publish()
     if rec.audio and mp.get_property_native('vid') ~= false and rpc.connected() then
       rpc.call('record.audio', { file = rec.file, notify = SCRIPT, remove = true }, function(err, item)
-        if err then osd('Solo audio: ' .. fail(err, 'record.audio'), 5) return end
+        if err then osd(tr('Solo audio: %s'):format(fail(err, 'record.audio')), 5) return end
         track_job('extract', item, 'el audio')
       end, 20)
     else
       state.last = { file = rec.file, status = 'done' }
       publish()
-      osd('⏹ Grabación guardada: ' .. basename(rec.file), 5)
+      osd(tr('⏹ Grabación guardada: %s'):format(basename(rec.file)), 5)
     end
     return
   end
@@ -350,11 +351,11 @@ mp.register_script_message('mu-event', function(payload)
   if job.status == 'done' or job.status == 'finished' then
     state.last = { file = job.file, status = 'done' }
     state.jobs[item.id] = nil
-    osd('✅ Guardado: ' .. basename(job.file), 5)
+    osd(tr('✅ Guardado: %s'):format(basename(job.file)), 5)
   elseif job.status == 'failed' or job.status == 'error' or job.status == 'cancelled' then
     state.last = { file = '', status = 'failed', message = job.message }
     state.jobs[item.id] = nil
-    osd('❌ Grabar: ' .. (job.message ~= '' and job.message or job.status), 5)
+    osd(tr('❌ Grabar: %s'):format(job.message ~= '' and job.message or job.status), 5)
   end
   publish()
 end)
@@ -375,7 +376,7 @@ mp.observe_property('stream-record', 'string', function(_, value)
     state.rec = nil
     stop_tick()
     state.last = { file = rec.file, status = 'done' }
-    if (value or '') == '' then osd('⏹ Grabación guardada: ' .. basename(rec.file), 5) end
+    if (value or '') == '' then osd(tr('⏹ Grabación guardada: %s'):format(basename(rec.file)), 5) end
   end
   set_button()
   publish()
@@ -437,39 +438,40 @@ end
 views.root = function()
   local kind = source_kind()
   local items = {
-    { title = 'Captura de pantalla', hint = 'con subtítulos · ctrl+s', icon = 'photo_camera',
+    { title = tr('Captura de pantalla'), hint = tr('con subtítulos · ctrl+s'), icon = 'photo_camera',
       value = { cmd = { 'async', 'screenshot', 'subtitles' } } },
-    { title = 'Captura sin subtítulos', icon = 'photo_camera', value = { cmd = { 'async', 'screenshot', 'video' } },
+    { title = tr('Captura sin subtítulos'), icon = 'photo_camera', value = { cmd = { 'async', 'screenshot', 'video' } },
       separator = true },
   }
   if state.rec then
-    table.insert(items, { title = 'Detener y guardar', icon = 'stop_circle', bold = true, active = true,
+    table.insert(items, { title = tr('Detener y guardar'), icon = 'stop_circle', bold = true, active = true,
       hint = (state.rec.audio and 'audio · ' or '') .. hms(elapsed()), value = { stop = true } })
   elseif kind then
     -- H43/B1 · una sola fila para grabar: el envase ya no es otra puerta, es la fila «Formato» de debajo
-    table.insert(items, { title = 'Grabar desde ahora', icon = 'fiber_manual_record',
+    table.insert(items, { title = tr('Grabar desde ahora'), icon = 'fiber_manual_record',
                           hint = (KIND_HINT[kind] or '') .. ' · ' .. (FORMAT_SHORT[fmt_id()] or ''),
                           value = { start = true } })
   else
-    table.insert(items, { title = 'Abre un vídeo, un canal o una radio para grabar', icon = 'info', selectable = false,
+    table.insert(items, { title = tr('Abre un vídeo, un canal o una radio para grabar'), icon = 'info', selectable = false,
                           muted = true })
   end
   if kind then
-    table.insert(items, { title = 'Formato', icon = 'tune', hint = FORMAT_TITLES[fmt_id()],
+    table.insert(items, { title = tr('Formato'), icon = 'tune', hint = FORMAT_TITLES[fmt_id()],
                           value = { view = 'format' } })
-    table.insert(items, { title = 'Recortar un tramo…', icon = 'content_cut', value = { view = 'cut' },
+    table.insert(items, { title = tr('Recortar un tramo…'), icon = 'content_cut', value = { view = 'cut' },
       hint = (mp.get_property_number('ab-loop-a') and mp.get_property_number('ab-loop-b'))
         and (mark_hint('ab-loop-a') .. '–' .. mark_hint('ab-loop-b')) or nil })
   end
   -- H43/B2 · programar estaba escondido: solo se llegaba con Tab dentro de la lista de un canal
-  table.insert(items, { title = 'Programar una grabación…', hint = 'TV o radio: canal, inicio y fin',
+  table.insert(items, { title = tr('Programar una grabación…'), hint = tr('TV o radio: canal, inicio y fin'),
                         icon = 'add_alarm', value = { child = { script = 'mu_iptv', entry = 'tv-schedule-new' } } })
   items[#items].separator = true
   local dir = P:get('dir')
-  table.insert(items, { title = 'Carpeta de grabaciones', icon = 'folder', hint = dir ~= '' and dir or 'predeterminada',
+  table.insert(items, { title = tr('Carpeta de grabaciones'), icon = 'folder', hint = dir ~= '' and dir or 'predeterminada',
                         value = { choose_dir = true } })
   if state.last and state.last.file and state.last.file ~= '' then
-    table.insert(items, { title = 'Última: ' .. basename(state.last.file), icon = 'check_circle', muted = true,
+    table.insert(items, { title = tr('Última: %s'):format(basename(state.last.file)), icon = 'check_circle',
+                          muted = true,
                           value = { show = state.last.file } })
   end
   local busy = 0
@@ -478,7 +480,7 @@ views.root = function()
     table.insert(items, { title = string.format('Guardando %d…', busy), icon = 'hourglass_top', selectable = false,
                           muted = true })
   end
-  show(ROOT_TITLE, items, { footnote = 'Enter elige · ⌫ atrás · Esc cierra' })
+  show(ROOT_TITLE, items, { footnote = tr('Enter elige · ⌫ atrás · Esc cierra') })
 end
 
 -- H43/B1 · el envase, con lo que de verdad se puede elegir y lo que pasa si no cabe
@@ -495,7 +497,7 @@ views.format = function()
     items[#items + 1] = { title = f.title, hint = hint, icon = f.icon, active = f.id == cur,
                           value = { format = f.id } }
   end
-  show('Formato de la grabación', items, { footnote = 'Se recuerda para la próxima vez' })
+  show(tr('Formato de la grabación'), items, { footnote = tr('Se recuerda para la próxima vez') })
 end
 
 views.cut = function()
@@ -503,20 +505,21 @@ views.cut = function()
   local a, b = mp.get_property_number('ab-loop-a'), mp.get_property_number('ab-loop-b')
   local ready = a ~= nil and b ~= nil and b > a
   local items = {
-    { title = 'Marcar el inicio aquí', icon = 'first_page', hint = mark_hint('ab-loop-a'), value = { mark = 'a' } },
-    { title = 'Marcar el final aquí', icon = 'last_page', hint = mark_hint('ab-loop-b'), value = { mark = 'b' },
+    { title = tr('Marcar el inicio aquí'), icon = 'first_page', hint = mark_hint('ab-loop-a'), value = { mark = 'a' } },
+    { title = tr('Marcar el final aquí'), icon = 'last_page', hint = mark_hint('ab-loop-b'), value = { mark = 'b' },
       separator = true },
-    { title = 'Guardar el tramo', icon = 'save',
+    { title = tr('Guardar el tramo'), icon = 'save',
       hint = ready and (hms(b - a) .. ' · ' .. (FORMAT_SHORT[fmt_id()] or '')) or 'marca inicio y final',
       value = { save = true }, muted = not ready },
-    { title = 'Formato', icon = 'tune', hint = FORMAT_TITLES[fmt_id()], value = { view = 'format' } },
+    { title = tr('Formato'), icon = 'tune', hint = FORMAT_TITLES[fmt_id()], value = { view = 'format' } },
   }
   if kind == 'local' then
-    table.insert(items, { title = 'Guardar el tramo como GIF', icon = 'gif_box', value = { save = 'gif' }, muted = not ready })
+    table.insert(items, { title = tr('Guardar el tramo como GIF'), icon = 'gif_box',
+                          value = { save = 'gif' }, muted = not ready })
   end
   items[#items].separator = true
-  table.insert(items, { title = 'Quitar las marcas', icon = 'backspace', value = { clear = true } })
-  show('Recortar un tramo', items, { footnote = 'Las marcas son las del bucle A-B (tecla l)' })
+  table.insert(items, { title = tr('Quitar las marcas'), icon = 'backspace', value = { clear = true } })
+  show(tr('Recortar un tramo'), items, { footnote = tr('Las marcas son las del bucle A-B (tecla l)') })
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -524,11 +527,12 @@ end
 
 local function input_menu(query)
   state.input.query = query or ''
-  local items = query ~= '' and { { title = 'Usar: ' .. query, icon = 'check', value = { save = query } } }
-    or { { title = 'Escribe o pega la carpeta (vacío = predeterminada)', icon = 'edit', value = { save = '' } } }
-  return { type = INPUT, title = 'Carpeta de grabaciones', items = items, callback = { SCRIPT, INPUT_EVENT },
+  local items = query ~= '' and { { title = tr('Usar: %s'):format(query), icon = 'check',
+                                    value = { save = query } } }
+    or { { title = tr('Escribe o pega la carpeta (vacío = predeterminada)'), icon = 'edit', value = { save = '' } } }
+  return { type = INPUT, title = tr('Carpeta de grabaciones'), items = items, callback = { SCRIPT, INPUT_EVENT },
     search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-    search_suggestion = query, footnote = 'Enter guarda · ⌫ en vacío vuelve' }
+    search_suggestion = query, footnote = tr('Enter guarda · ⌫ en vacío vuelve') }
 end
 
 mp.register_script_message(INPUT_EVENT, function(json)
@@ -539,7 +543,7 @@ mp.register_script_message(INPUT_EVENT, function(json)
   elseif ev.type == 'back' or (ev.type == 'activate' and type(ev.value) == 'table' and ev.value.save ~= nil) then
     if ev.type == 'activate' then
       P:set('dir', ev.value.save)
-      osd('Carpeta de grabaciones: ' .. record_dir())
+      osd(tr('Carpeta de grabaciones: %s'):format(record_dir()))
     end
     state.input = nil
     uosc.close(INPUT)
@@ -575,7 +579,7 @@ mp.register_script_message(EVENT, function(json)
       reopen_current()
     elseif v.save then
       local a, b = mp.get_property_number('ab-loop-a'), mp.get_property_number('ab-loop-b')
-      if not (a and b and b > a) then osd('Marca primero el inicio y el final') return end
+      if not (a and b and b > a) then osd(tr('Marca primero el inicio y el final')) return end
       uosc.close(MENU)
       local gif = v.save == 'gif'
       save_range(a, b, not gif and fmt_id() == 'audio', gif)
@@ -630,7 +634,7 @@ end)
 -- bindings
 
 local function open_root()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'root' })

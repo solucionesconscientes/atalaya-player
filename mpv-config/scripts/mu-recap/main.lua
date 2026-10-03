@@ -14,6 +14,7 @@ package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local nav = require('mu.nav')
+local tr = require('mu.i18n').t
 
 local N = nav.new()
 local SCRIPT = mp.get_script_name()
@@ -161,7 +162,7 @@ local function web_source(title, cb)
   if not url or not is_url(url) then cb(nil) return end
   if state.web and state.web.url == url and state.web.srt ~= '' then cb({ sub_path = state.web.srt }) return end
   if not rpc.connected() then cb(nil) return end
-  show(uosc.loading_items('Buscando los subtítulos del vídeo…'), title, true)
+  show(uosc.loading_items(tr('Buscando los subtítulos del vídeo…')), title, true)
   rpc.call('subs.web.list', { url = url, prefer = 'es' }, function(err, res)
     -- la primera pista es la mejor: el idioma del usuario antes que el original, y manual antes que automática
     local pick = (not err and type(res) == 'table') and (res.tracks or {})[1] or nil
@@ -187,9 +188,9 @@ end
 local function no_source_items()
   local path = abs_path()
   if path and is_url(path) then
-    return uosc.message_items('Este vídeo de internet no ofrece subtítulos, ni propios ni automáticos', 'info')
+    return uosc.message_items(tr('Este vídeo de internet no ofrece subtítulos, ni propios ni automáticos'), 'info')
   end
-  return uosc.message_items('Este vídeo no tiene subtítulos de texto: activa unos o los subtítulos IA (alt+c)', 'info')
+  return uosc.message_items(tr('Este vídeo no tiene subtítulos de texto: activa unos o los subtítulos IA (alt+c)'), 'info')
 end
 
 -- D2 · si los subtítulos que se han usado no están en castellano, se dice y se lleva a traducirlos (OPUS-MT, en el
@@ -198,8 +199,8 @@ local function translate_row(items)
   local w = state.web
   if not w or w.lang == '' then return end
   if w.lang:lower():match('^es') then return end
-  items[#items + 1] = { title = 'Estos subtítulos están en ' .. (w.label or w.lang), icon = 'translate',
-                        hint = 'traducirlos al español sin conexión', value = { translate = true } }
+  items[#items + 1] = { title = tr('Estos subtítulos están en %s'):format(w.label or w.lang), icon = 'translate',
+                        hint = tr('traducirlos al español sin conexión'), value = { translate = true } }
 end
 
 -- -- menu ----------------------------------------------------------------------------------------------
@@ -212,12 +213,12 @@ local function stretch()
 end
 
 local function recap()
-  if mp.get_property_native('idle-active') then osd('Abre un vídeo primero') return end
+  if mp.get_property_native('idle-active') then osd(tr('Abre un vídeo primero')) return end
   local from, to, was_away = stretch()
   local title = string.format('%s · %s–%s', MISSED_TITLE, clock(from), clock(to))
-  if to - from < 5 then osd('Aún no ha pasado nada que resumir') return end
+  if to - from < 5 then osd(tr('Aún no ha pasado nada que resumir')) return end
   if not rpc.connected() then
-    show(uosc.message_items('mpvd no está conectado: espera unos segundos', 'error'), title, true)
+    show(uosc.message_items(tr('mpvd no está conectado: espera unos segundos'), 'error'), title, true)
     return
   end
   state.view = 'recap'
@@ -229,7 +230,7 @@ local function recap()
     return
   end
   state.status, state.last_error = 'working', ''
-  show(uosc.loading_items('Leyendo lo que se dijo…'), title, true)
+  show(uosc.loading_items(tr('Leyendo lo que se dijo…')), title, true)
   src.start, src['end'] = from, to
   rpc.call('recap.summarize', src, function(err, res)
     if uosc.open_type() ~= MENU then state.status = 'idle'; publish(); return end
@@ -245,11 +246,12 @@ local function recap()
       items[#items + 1] = { title = s.text, hint = clock(s.start), value = { seek = s.start } }
     end
     if #items == 0 then
-      items = uosc.message_items('En ese tramo no se dijo nada', 'info')
+      items = uosc.message_items(tr('En ese tramo no se dijo nada'), 'info')
     else
       items[#items].separator = true
-      items[#items + 1] = { title = 'Volver a verlo desde ' .. clock(from), icon = 'replay', value = { seek = from } }
-      items[#items + 1] = { title = 'Índice del vídeo entero', icon = 'list', hint = 'secciones y frases clave',
+      items[#items + 1] = { title = tr('Volver a verlo desde %s'):format(clock(from)), icon = 'replay',
+                            value = { seek = from } }
+      items[#items + 1] = { title = tr('Índice del vídeo entero'), icon = 'list', hint = tr('secciones y frases clave'),
                             value = { outline = true } }
       translate_row(items)
     end
@@ -266,10 +268,10 @@ local play_short, save_short  -- H58: lo mismo, el montaje corto se define abajo
 -- a partir del subtítulo que ya hay (`recap.outline`), sin escribir nada con un modelo y sin lanzar ninguna
 -- transcripción: si no hay subtítulo, se dice, porque transcribir una película para hacer un índice son horas.
 local function outline()
-  if mp.get_property_native('idle-active') then osd('Abre un vídeo primero') return end
-  local title = 'Índice del vídeo'
+  if mp.get_property_native('idle-active') then osd(tr('Abre un vídeo primero')) return end
+  local title = tr('Índice del vídeo')
   if not rpc.connected() then
-    show(uosc.message_items('mpvd no está conectado: espera unos segundos', 'error'), title, true)
+    show(uosc.message_items(tr('mpvd no está conectado: espera unos segundos'), 'error'), title, true)
     return
   end
   state.view = 'outline'
@@ -282,7 +284,7 @@ local function outline()
   end
   src.duration = mp.get_property_number('duration')
   state.status, state.last_error = 'working', ''
-  show(uosc.loading_items('Leyendo todo lo que se dice…'), title, true)
+  show(uosc.loading_items(tr('Leyendo todo lo que se dice…')), title, true)
   if state.llm == nil then ask_llm() end
   rpc.call('recap.outline', src, function(err, res)
     if uosc.open_type() ~= MENU then state.status = 'idle'; publish(); return end
@@ -296,7 +298,8 @@ local function outline()
     state.result = { method = res.method, source = res.source, count = #secs, outline = true }
     local items = {}
     for i, sec in ipairs(secs) do
-      local sub = { { title = 'Ir a ' .. clock(sec.start), icon = 'play_arrow', value = { seek = sec.start } } }
+      local sub = { { title = tr('Ir a %s'):format(clock(sec.start)), icon = 'play_arrow',
+                      value = { seek = sec.start } } }
       for _, pt in ipairs(sec.points or {}) do
         sub[#sub + 1] = { title = pt.text, hint = clock(pt.start), value = { seek = pt.start } }
       end
@@ -304,22 +307,22 @@ local function outline()
                             icon = 'bookmark', items = sub, id = 'sec:' .. i }
     end
     if #items == 0 then
-      items = uosc.message_items('No hay suficiente diálogo para hacer un índice', 'info')
+      items = uosc.message_items(tr('No hay suficiente diálogo para hacer un índice'), 'info')
     end
     items[#items].separator = true
     local llm = state.llm or {}
     if not llm.available then
-      items[#items + 1] = { title = 'Resumen en prosa: falta llama.cpp', hint = 'tools/vendor_llama.sh',
+      items[#items + 1] = { title = tr('Resumen en prosa: falta llama.cpp'), hint = tr('tools/vendor_llama.sh'),
                             icon = 'info', selectable = false, muted = true }
     elseif not llm.present then
       local mb = 0
       for _, m in ipairs(llm.models or {}) do if m.default then mb = m.size_mb or 0 end end
-      items[#items + 1] = { title = 'Descargar el modelo del resumen', hint = mb .. ' MB, una vez',
+      items[#items + 1] = { title = tr('Descargar el modelo del resumen'), hint = mb .. ' MB, una vez',
                             icon = 'cloud_download', value = { download_model = true } }
     else
-      items[#items + 1] = { title = 'Resumen en prosa (corto)', hint = 'unos 40 s', icon = 'notes',
+      items[#items + 1] = { title = tr('Resumen en prosa (corto)'), hint = tr('unos 40 s'), icon = 'notes',
                             value = { prose = 'short' } }
-      items[#items + 1] = { title = 'Resumen en prosa (largo)', hint = 'alrededor de un minuto', icon = 'subject',
+      items[#items + 1] = { title = tr('Resumen en prosa (largo)'), hint = tr('alrededor de un minuto'), icon = 'subject',
                             value = { prose = 'long' } }
     end
     translate_row(items)
@@ -335,7 +338,7 @@ local function prose_items()
   local pr = state.prose or {}
   local items = {}
   if pr.status == 'working' then
-    items[#items + 1] = { title = 'Escribiendo el resumen…', icon = 'spinner', selectable = false, muted = true,
+    items[#items + 1] = { title = tr('Escribiendo el resumen…'), icon = 'spinner', selectable = false, muted = true,
                           hint = pr.model or '' }
   end
   for _, row in ipairs(pr.rows or {}) do
@@ -346,12 +349,12 @@ local function prose_items()
     end
   end
   if pr.status == 'done' and #items == 0 then
-    items = uosc.message_items('El modelo no ha escrito nada aprovechable', 'info')
+    items = uosc.message_items(tr('El modelo no ha escrito nada aprovechable'), 'info')
   end
   if pr.status == 'error' then
     items = uosc.message_items(pr.error or 'no se pudo escribir el resumen', 'error')
   end
-  items[#items + 1] = { title = 'Volver al índice', icon = 'list', value = { outline = true }, separator = false }
+  items[#items + 1] = { title = tr('Volver al índice'), icon = 'list', value = { outline = true }, separator = false }
   return items
 end
 
@@ -375,14 +378,14 @@ ask_llm = function(cb)
 end
 
 local function prose(length)
-  if mp.get_property_native('idle-active') then osd('Abre un vídeo primero') return end
+  if mp.get_property_native('idle-active') then osd(tr('Abre un vídeo primero')) return end
   local src = source_params()
   if not src then
-    show(uosc.message_items('Para el resumen hace falta un subtítulo de texto: pon uno o créalo con IA (alt+c)', 'info'),
+    show(uosc.message_items(tr('Para el resumen hace falta un subtítulo de texto: pon uno o créalo con IA (alt+c)'), 'info'),
          'Resumen', true)
     return
   end
-  if not rpc.connected() then osd('mpvd no está conectado') return end
+  if not rpc.connected() then osd(tr('mpvd no está conectado')) return end
   src.duration = mp.get_property_number('duration')
   src.length = length
   src.language = 'es'
@@ -423,12 +426,12 @@ local function prose(length)
 end
 
 local function download_model()
-  if not rpc.connected() then osd('mpvd no está conectado') return end
+  if not rpc.connected() then osd(tr('mpvd no está conectado')) return end
   local name = (state.llm and state.llm.default_model) or ''
-  if name == '' then osd('No se sabe qué modelo bajar') return end
-  osd('Bajando el modelo del resumen…')
+  if name == '' then osd(tr('No se sabe qué modelo bajar')) return end
+  osd(tr('Bajando el modelo del resumen…'))
   rpc.call('recap.llm.download', { model = name, notify = SCRIPT }, function(err)
-    if err then osd('Modelo: ' .. (err.message or 'error')) return end
+    if err then osd(tr('Modelo: %s'):format(err.message or tr('error'))) return end
   end, 30)
 end
 
@@ -443,14 +446,14 @@ mp.register_script_message('mu-event', function(payload)
                       model = ev.result.model, marks = ev.result.marks, progress = 1 }
       publish()
       if uosc.open_type() == MENU then show_prose() end
-      osd('Resumen listo')
+      osd(tr('Resumen listo'))
       return
     end
     publish()
   elseif ev.event == 'recap-model' and type(ev.job) == 'table' then
     local pct = math.floor((ev.job.progress or 0) * 100 + 0.5)
     if ev.job.status == 'done' then
-      ask_llm(function() osd('Modelo del resumen listo') end)
+      ask_llm(function() osd(tr('Modelo del resumen listo')) end)
     elseif pct % 25 == 0 then
       osd(string.format('Modelo del resumen: %d %%', pct))
     end
@@ -538,14 +541,14 @@ end
 
 play_short = function(minutes)
   local path = current_path()
-  if not path then osd('Esto solo se puede hacer con un archivo de tu equipo') return end
-  if not rpc.connected() then osd('mpvd no está conectado') return end
+  if not path then osd(tr('Esto solo se puede hacer con un archivo de tu equipo')) return end
+  if not rpc.connected() then osd(tr('mpvd no está conectado')) return end
   osd(string.format('Montando la versión de %d minutos…', minutes), 5)
   rpc.call('semantic.highlights', { path = path, minutes = minutes }, function(err, res)
-    if err then osd('No se pudo: ' .. (err.message or 'error'), 5) return end
+    if err then osd(tr('No se pudo: %s'):format(err.message or tr('error')), 5) return end
     local segs = (type(res) == 'table' and res.segments) or {}
     if #segs == 0 then
-      osd('No hay suficiente que resumir en este vídeo', 5)
+      osd(tr('No hay suficiente que resumir en este vídeo'), 5)
       return
     end
     state.short = { minutes = minutes, segments = segs, total = res.total or 0, path = path }
@@ -559,14 +562,14 @@ end
 
 save_short = function()
   local corto = state.short
-  if not corto then osd('Primero monta una versión corta') return end
+  if not corto then osd(tr('Primero monta una versión corta')) return end
   local segs = {}
   for _, s in ipairs(corto.segments) do segs[#segs + 1] = { start = s.start, ['end'] = s['end'] } end
   rpc.call('convert.cut', { path = corto.path, segments = segs, joined = true, preset = 'mp4' },
     function(err, res)
-      if err then osd('No se pudo guardar: ' .. (err.message or 'error'), 5) return end
-      osd('Guardando la versión corta → ' .. ((type(res) == 'table' and res.out_dir) or 'Convertidos')
-            .. '  ·  puedes seguirlo en Tareas', 7)
+      if err then osd(tr('No se pudo guardar: %s'):format(err.message or tr('error')), 5) return end
+      osd(tr('Guardando la versión corta → %s  ·  puedes seguirlo en Tareas')
+        :format((type(res) == 'table' and res.out_dir) or 'Convertidos'), 7)
     end, 60)
 end
 
@@ -577,8 +580,9 @@ local function root_items()
     title = was_away and 'Lo que te has perdido' or ('Resumen de los últimos ' .. opts.minutes .. ' minutos'),
     hint = clock(from) .. '–' .. clock(to) .. (key_for('recap') and (' · ' .. key_for('recap')) or ''),
     icon = 'history_edu', value = { recap = true } }
-  items[#items + 1] = { title = 'Índice del vídeo entero',
-                        hint = 'secciones y frases clave' .. (key_for('outline') and (' · ' .. key_for('outline')) or ''),
+  items[#items + 1] = { title = tr('Índice del vídeo entero'),
+                        hint = tr('secciones y frases clave')
+                          .. (key_for('outline') and (' · ' .. key_for('outline')) or ''),
                         icon = 'list', value = { outline = true } }
   -- H58 · y el vídeo acortado de verdad, no un texto
   local dur = mp.get_property_number('duration') or 0
@@ -591,14 +595,14 @@ local function root_items()
       end
     end
     if state.short then
-      sub[#sub + 1] = { title = 'Guardarlo como archivo', icon = 'save', separator = true,
-                        hint = 'recodifica · va a Tareas', value = { save_short = true } }
-      sub[#sub + 1] = { title = 'Volver al vídeo entero', icon = 'undo', value = { full = true } }
+      sub[#sub + 1] = { title = tr('Guardarlo como archivo'), icon = 'save', separator = true,
+                        hint = tr('recodifica · va a Tareas'), value = { save_short = true } }
+      sub[#sub + 1] = { title = tr('Volver al vídeo entero'), icon = 'undo', value = { full = true } }
     end
-    sub[#sub + 1] = { title = 'Se montan los trozos que mejor lo representan, cortados por frases enteras',
+    sub[#sub + 1] = { title = tr('Se montan los trozos que mejor lo representan, cortados por frases enteras'),
                       icon = 'info', muted = true, selectable = false, separator = true,
-                      hint = 'no recodifica nada: es un montaje, se abre al instante' }
-    items[#items + 1] = { title = 'Verlo acortado', icon = 'fast_forward', id = 'short',
+                      hint = tr('no recodifica nada: es un montaje, se abre al instante') }
+    items[#items + 1] = { title = tr('Verlo acortado'), icon = 'fast_forward', id = 'short',
                           hint = state.short and (clock(state.short.total) .. ' montados') or 'la charla entera, en menos',
                           items = sub }
   end
@@ -606,7 +610,7 @@ local function root_items()
 end
 
 open_root = function()
-  if mp.get_property_native('idle-active') then osd('Abre un vídeo primero') return end
+  if mp.get_property_native('idle-active') then osd(tr('Abre un vídeo primero')) return end
   state.view = 'root'
   publish()
   show(root_items(), ROOT_TITLE, true)

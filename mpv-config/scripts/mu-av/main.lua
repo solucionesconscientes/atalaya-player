@@ -15,6 +15,7 @@ local uosc = require('mu.uosc')
 local nav = require('mu.nav')
 local N = nav.new()
 local prefs = require('mu.prefs')
+local tr = require('mu.i18n').t
 
 local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-av-event'
@@ -32,22 +33,22 @@ options.read_options(opts, 'mu-av')
 -- equalizer presets (H24): peaking biquads; boosts end in a limiter without auto-level so nothing clips
 local LIMIT = 'alimiter=limit=0.97:level=0'
 local EQ_PRESETS = {
-  { id = 'bass', title = 'Más graves', graph = 'equalizer=f=60:t=q:w=0.8:g=5,equalizer=f=150:t=q:w=1:g=2,' .. LIMIT },
-  { id = 'less_bass', title = 'Menos graves', graph = 'equalizer=f=80:t=q:w=0.8:g=-6' },
-  { id = 'treble', title = 'Más agudos', graph = 'equalizer=f=4000:t=q:w=1:g=1.5,equalizer=f=9000:t=q:w=0.7:g=4,' .. LIMIT },
-  { id = 'voice', title = 'Voz', graph = 'equalizer=f=200:t=q:w=1:g=-2,equalizer=f=2500:t=q:w=1:g=4,' .. LIMIT },
-  { id = 'music', title = 'Música', graph = 'equalizer=f=70:t=q:w=0.8:g=4,equalizer=f=1000:t=q:w=1:g=-2,' ..
+  { id = 'bass', title = tr('Más graves'), graph = 'equalizer=f=60:t=q:w=0.8:g=5,equalizer=f=150:t=q:w=1:g=2,' .. LIMIT },
+  { id = 'less_bass', title = tr('Menos graves'), graph = 'equalizer=f=80:t=q:w=0.8:g=-6' },
+  { id = 'treble', title = tr('Más agudos'), graph = 'equalizer=f=4000:t=q:w=1:g=1.5,equalizer=f=9000:t=q:w=0.7:g=4,' .. LIMIT },
+  { id = 'voice', title = tr('Voz'), graph = 'equalizer=f=200:t=q:w=1:g=-2,equalizer=f=2500:t=q:w=1:g=4,' .. LIMIT },
+  { id = 'music', title = tr('Música'), graph = 'equalizer=f=70:t=q:w=0.8:g=4,equalizer=f=1000:t=q:w=1:g=-2,' ..
     'equalizer=f=10000:t=q:w=0.8:g=3,' .. LIMIT },
-  { id = 'laptop', title = 'Altavoces del portátil', graph = 'highpass=f=120,equalizer=f=250:t=q:w=1:g=-2,' ..
+  { id = 'laptop', title = tr('Altavoces del portátil'), graph = 'highpass=f=120,equalizer=f=250:t=q:w=1:g=-2,' ..
     'equalizer=f=3000:t=q:w=1:g=3,' .. LIMIT },
-  { id = 'headphones', title = 'Auriculares', graph = 'equalizer=f=50:t=q:w=0.8:g=3,equalizer=f=3500:t=q:w=1.5:g=-2,' ..
+  { id = 'headphones', title = tr('Auriculares'), graph = 'equalizer=f=50:t=q:w=0.8:g=3,equalizer=f=3500:t=q:w=1.5:g=-2,' ..
     'equalizer=f=8000:t=q:w=1:g=1.5,' .. LIMIT },
   -- H32: generic corrections by headphone type (towards a neutral target; no per-model measurements are shipped)
-  { id = 'hp_inear', title = 'Auriculares de botón', headphones = true,
+  { id = 'hp_inear', title = tr('Auriculares de botón'), headphones = true,
     graph = 'lowshelf=f=90:g=4,equalizer=f=6000:t=q:w=1.5:g=-2.5,' .. LIMIT },
-  { id = 'hp_closed', title = 'Auriculares cerrados', headphones = true,
+  { id = 'hp_closed', title = tr('Auriculares cerrados'), headphones = true,
     graph = 'equalizer=f=250:t=q:w=1:g=-2,equalizer=f=3000:t=q:w=1.2:g=1.5,highshelf=f=9000:g=1,' .. LIMIT },
-  { id = 'hp_open', title = 'Auriculares abiertos', headphones = true,
+  { id = 'hp_open', title = tr('Auriculares abiertos'), headphones = true,
     graph = 'lowshelf=f=60:g=5,equalizer=f=5000:t=q:w=1.5:g=-1.5,' .. LIMIT },
 }
 local EQ_GRAPHS = {}
@@ -56,16 +57,16 @@ for _, e in ipairs(EQ_PRESETS) do EQ_GRAPHS[e.id] = e.graph; EQ_TITLES[e.id] = e
 
 -- graphs verified headless (tools: mpv --af=help, --vf=help; run with --end=3 and no lavfi errors in the log)
 local FILTERS = {
-  dialog = { kind = 'af', title = 'Diálogo claro', icon = 'record_voice_over',
+  dialog = { kind = 'af', title = tr('Diálogo claro'), icon = 'record_voice_over',
     desc = 'realza la voz: paso alto 70 Hz, normalizador dinámico, +2,5 dB en 2,8 kHz',
     graph = function() return 'highpass=f=70,dynaudnorm=f=250:g=11:p=0.85:m=8,equalizer=f=2800:t=q:w=1.2:g=2.5' end },
-  night = { kind = 'af', title = 'Modo noche', icon = 'bedtime',
+  night = { kind = 'af', title = tr('Modo noche'), icon = 'bedtime',
     desc = 'comprime la dinámica y limita los picos (explosiones más bajas, diálogos audibles)',
     graph = function()
       return string.format('acompressor=threshold=-24dB:ratio=6:attack=5:release=400:makeup=4dB,alimiter=limit=%.2f',
         opts.night_limit)
     end },
-  denoise = { kind = 'af', title = 'Reducción de ruido', icon = 'noise_control_off',
+  denoise = { kind = 'af', title = tr('Reducción de ruido'), icon = 'noise_control_off',
     desc = 'RNNoise (arnndn) si hay modelo; si no, afftdn',
     graph = function(state)
       if state.models.rnnoise then
@@ -73,7 +74,7 @@ local FILTERS = {
       end
       return 'afftdn=nr=12:nf=-40'
     end },
-  binaural = { kind = 'af', title = 'Binaural para auriculares', icon = 'headphones',
+  binaural = { kind = 'af', title = tr('Binaural para auriculares'), icon = 'headphones',
     desc = 'HRTF (sofalizer) si hay archivo SOFA; si no, crossfeed',
     graph = function(state)
       if state.models.sofa then return string.format('sofalizer=sofa=%s:type=freq', state.models.sofa) end
@@ -81,13 +82,13 @@ local FILTERS = {
     end },
   -- H24: same loudness from one video to the next. A slow dynaudnorm (7.5 s look-ahead, target RMS): loudnorm was
   -- discarded (resamples to 192 kHz, several times the CPU) and ReplayGain tags are rare outside music (ADR-051)
-  level = { kind = 'af', title = 'Volumen parejo · siempre', icon = 'volume_up',
+  level = { kind = 'af', title = tr('Volumen parejo · siempre'), icon = 'volume_up',
     desc = 'funciona en todo (también sin etiquetas), cuesta algo de CPU',
     graph = function() return 'dynaudnorm=f=500:g=31:p=0.9:m=8:r=0.15' end },
-  eq = { kind = 'af', title = 'Ecualizador', icon = 'graphic_eq',
+  eq = { kind = 'af', title = tr('Ecualizador'), icon = 'graphic_eq',
     desc = 'perfiles de graves, agudos, voz y altavoces',
     graph = function(st) return EQ_GRAPHS[st.eq] or '' end },
-  photo = { kind = 'vf', title = 'Protección fotosensible', icon = 'flash_off',
+  photo = { kind = 'vf', title = tr('Protección fotosensible'), icon = 'flash_off',
     desc = 'atenúa destellos rápidos (photosensitivity)',
     graph = function() return 'photosensitivity=frames=30:threshold=1:bypass=0' end },
 }
@@ -226,7 +227,7 @@ local function set_filter(name, on)
     local _, err = mp.command_native({ f.kind, 'add', '@' .. lbl .. ':lavfi=[' .. graph .. ']' })
     if err ~= nil then
       state.last_error = name .. ': no se pudo aplicar ' .. graph
-      osd('No se pudo activar ' .. f.title)
+      osd(tr('No se pudo activar %s'):format(f.title))
     end
   else
     mp.command_native({ f.kind, 'remove', '@' .. lbl })
@@ -383,29 +384,30 @@ views.root = function()
     -- El ajuste vive en mu-music, que es quien lo aplica; aquí solo se ofrece donde se busca viendo una película.
     if name == 'level' then
       local rg = (mp.get_property_native('user-data/mu/music') or {}).replaygain or 'no'
-      table.insert(items, { title = 'Volumen parejo · con las etiquetas', icon = 'equalizer',
+      table.insert(items, { title = tr('Volumen parejo · con las etiquetas'), icon = 'equalizer',
         hint = RG_HINT[rg] or RG_HINT.no, active = rg ~= 'no', value = { replaygain = rg }, separator = true })
     end
   end
-  table.insert(items, { title = 'Quitar el vídeo al minimizar', hint = yesno(P:get('audio_minimized')),
+  table.insert(items, { title = tr('Quitar el vídeo al minimizar'), hint = yesno(P:get('audio_minimized')),
     icon = 'minimize', active = P:get('audio_minimized'), value = { audio_minimized = true }, separator = true })
-  table.insert(items, { title = 'Perfil ligero (menos GPU/CPU)', hint = yesno(state.light), icon = 'speed',
+  table.insert(items, { title = tr('Perfil ligero (menos GPU/CPU)'), hint = yesno(state.light), icon = 'speed',
     active = state.light, value = { light = true }, separator = true })
-  table.insert(items, { title = 'Diagnóstico de tirones', icon = 'monitor_heart', value = { view = 'diag' } })
-  table.insert(items, { title = 'Modelos (RNNoise, HRTF)', icon = 'cloud_download', value = { view = 'models' } })
-  table.insert(items, { title = 'Quitar todos los filtros', icon = 'filter_alt_off', value = { clear = true },
+  table.insert(items, { title = tr('Diagnóstico de tirones'), icon = 'monitor_heart', value = { view = 'diag' } })
+  table.insert(items, { title = tr('Modelos (RNNoise, HRTF)'), icon = 'cloud_download', value = { view = 'models' } })
+  table.insert(items, { title = tr('Quitar todos los filtros'), icon = 'filter_alt_off', value = { clear = true },
     separator = true })
-  show('Filtros de imagen y sonido', items)
+  show(tr('Filtros de imagen y sonido'), items)
 end
 
 views.eq = function()
-  local items = { { title = 'Plano (sin ecualizar)', icon = state.eq == '' and 'radio_button_checked' or 'radio_button_unchecked',
+  local items = { { title = tr('Plano (sin ecualizar)'),
+                    icon = state.eq == '' and 'radio_button_checked' or 'radio_button_unchecked',
     active = state.eq == '', value = { eq = '' } } }
   for _, e in ipairs(EQ_PRESETS) do
     table.insert(items, { title = e.title, icon = state.eq == e.id and 'radio_button_checked' or 'radio_button_unchecked',
       active = state.eq == e.id, value = { eq = e.id } })
   end
-  show('Ecualizador', items, { footnote = 'se recuerda · ⌫ atrás' })
+  show(tr('Ecualizador'), items, { footnote = tr('se recuerda · ⌫ atrás') })
 end
 
 local function set_eq(id, quiet)
@@ -414,7 +416,7 @@ local function set_eq(id, quiet)
   set_filter('eq', false)
   if id ~= '' then set_filter('eq', true) end
   P:set('eq', id)
-  if not quiet then osd('Ecualizador: ' .. (id ~= '' and EQ_TITLES[id] or 'plano')) end
+  if not quiet then osd(tr('Ecualizador: %s'):format(id ~= '' and EQ_TITLES[id] or tr('plano'))) end
 end
 
 views.diag = function()
@@ -436,10 +438,10 @@ views.diag = function()
     row('Salida de vídeo / sincronía', string.format('%s / %s', d.vo, tostring(d.video_sync)), 'monitor')
     row('Códec / tamaño', string.format('%s %s', d.codec, d.size), 'videocam')
   end
-  table.insert(items, { title = 'Perfil ligero', hint = yesno(state.light), icon = 'speed', active = state.light,
+  table.insert(items, { title = tr('Perfil ligero'), hint = yesno(state.light), icon = 'speed', active = state.light,
     value = { light = true }, separator = true })
-  table.insert(items, { title = 'Actualizar', icon = 'refresh', value = { view = 'diag' } })
-  show('Diagnóstico de tirones', items)
+  table.insert(items, { title = tr('Actualizar'), icon = 'refresh', value = { view = 'diag' } })
+  show(tr('Diagnóstico de tirones'), items)
 end
 
 local function models_items(res)
@@ -463,15 +465,15 @@ end
 
 views.models = function()
   if not rpc.connected() then
-    show('Modelos', { { title = 'mpvd no está disponible', icon = 'error', selectable = false, muted = true },
-      { title = 'Reintentar', icon = 'refresh', value = { view = 'models', ensure = true } } })
+    show(tr('Modelos'), { { title = tr('mpvd no está disponible'), icon = 'error', selectable = false, muted = true },
+      { title = tr('Reintentar'), icon = 'refresh', value = { view = 'models', ensure = true } } })
     return
   end
-  show('Modelos', uosc.loading_items())
+  show(tr('Modelos'), uosc.loading_items())
   rpc.call('av.models', nil, function(err, res)
-    if err then show('Modelos', uosc.message_items(fail(err, 'av.models'), 'error')); return end
+    if err then show(tr('Modelos'), uosc.message_items(fail(err, 'av.models'), 'error')); return end
     state.models_info = res
-    if state.view == 'models' then show('Modelos', models_items(res)) end
+    if state.view == 'models' then show(tr('Modelos'), models_items(res)) end
   end)
 end
 
@@ -487,7 +489,7 @@ mp.register_script_message(EVENT, function(json)
       mp.add_timeout(0.3, reopen_current)   -- mu-music publica su estado y la fila se redibuja con el nuevo modo
     elseif v.audio_minimized then
       P:set('audio_minimized', not P:get('audio_minimized'))
-      osd('Quitar el vídeo al minimizar: ' .. yesno(P:get('audio_minimized')))
+      osd(tr('Quitar el vídeo al minimizar: %s'):format(yesno(P:get('audio_minimized'))))
       reopen_current()
     elseif v.eq ~= nil then
       set_eq(v.eq, true)
@@ -506,11 +508,11 @@ mp.register_script_message(EVENT, function(json)
       state.eq = ''
       P:set('eq', '')
       save_prefs()
-      osd('Filtros de sonido e imagen quitados')
+      osd(tr('Filtros de sonido e imagen quitados'))
       reopen_current()
     elseif v.download then
       rpc.call('av.models.download', { name = v.download, notify = SCRIPT }, function(err, job)
-        if err then osd('Descarga: ' .. fail(err, 'av.models.download')); return end
+        if err then osd(tr('Descarga: %s'):format(fail(err, 'av.models.download'))); return end
         state.downloads[v.download] = job
         reopen_current()
       end)
@@ -552,7 +554,7 @@ mp.register_script_message('mu-event', function(payload)
   if type(ev) ~= 'table' or ev.event ~= 'av-model' or type(ev.job) ~= 'table' then return end
   state.downloads[ev.model] = ev.job
   if ev.job.status == 'done' then
-    osd('Modelo ' .. ev.model .. ' descargado')
+    osd(tr('Modelo %s descargado'):format(ev.model))
     refresh_models(function()
       -- re-apply a filter that was running on its fallback so it picks up the model
       for _, name in ipairs({ 'denoise', 'binaural' }) do
@@ -560,7 +562,7 @@ mp.register_script_message('mu-event', function(payload)
       end
     end)
   elseif ev.job.status == 'failed' then
-    osd('No se pudo descargar ' .. ev.model .. ': ' .. (ev.job.message or ev.job.error or ''))
+    osd(tr('No se pudo descargar %s: %s'):format(ev.model, ev.job.message or ev.job.error or ''))
   end
   if uosc.open_type() == MENU and state.view == 'models' then reopen_current() end
 end)
@@ -577,7 +579,7 @@ set_button_state = function()
 end
 
 local function open_root()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   refresh_models(function() open_view({ name = 'root' }) end)
 end
