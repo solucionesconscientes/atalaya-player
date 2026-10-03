@@ -177,6 +177,17 @@ def titles_cut(v: dict) -> list[str]:
     return [i["title"] for i in v.get("items") or []]
 
 
+def elegir_formato(h, v, preset: str, etiqueta: str):
+    """Pasa por la fila «Formato» y elige uno, como se hace a mano. Desde H62 el de fábrica es «Sin recodificar»,
+    que no puede unir, así que un test sobre unir tiene que pedir antes uno que recodifique."""
+    fila = next(i for i, x in enumerate(titles_cut(v), start=1) if x == "Formato")
+    ev_cut(h, {"type": "activate", "index": fila, "value": {"view": "format"}})
+    v = cut_state(h, lambda s: s["view"] == "format" and any(etiqueta in x for x in titles_cut(s)))
+    fila = next(i for i, x in enumerate(titles_cut(v), start=1) if etiqueta in x)
+    ev_cut(h, {"type": "activate", "index": fila, "value": {"preset": preset}})
+    return cut_state(h, lambda s: s["preset"] == preset and s["view"] == "root")
+
+
 def test_se_eligen_los_tramos_que_se_exportan(cut_mpv):
     """H54 · «no veo la forma de elegir los que exportas». Cada tramo entra elegido y se deja fuera con Enter
     sobre su fila; lo que se guarda son solo los elegidos, y con uno solo no se ofrece unir."""
@@ -190,7 +201,8 @@ def test_se_eligen_los_tramos_que_se_exportan(cut_mpv):
     h.command("script-binding", "mu_cut/cut-menu")
     v = cut_state(h, lambda v: v["view"] == "root" and any(t.startswith("Guardar los 3 elegidos por separado")
                                                            for t in titles_cut(v)))
-    assert any(t.startswith("Guardar los 3 elegidos unidos") for t in titles_cut(v))
+    v = elegir_formato(h, v, "mp4", "MP4")   # unir pide un formato que recodifique (H62)
+    v = cut_state(h, lambda v: any(t.startswith("Guardar los 3 elegidos unidos") for t in titles_cut(v)))
 
     # dejar fuera el segundo
     ev_cut(h, {"type": "activate", "index": 1, "value": {"action": "toggle", "index": 2}})
@@ -292,10 +304,10 @@ def test_unidos_respetan_el_orden_elegido(cut_mpv, media_dir, tmp_path):
     assert abs(dur - 7.0) < 0.6
 
 
-def test_los_formatos_salen_de_mpvd_y_sin_recodificar_no_une(cut_mpv):
-    """H55 · «¿por qué no metemos más?». Hay dos nuevos: «Sin recodificar» (instantáneo y sin pérdida) y AV1 si
-    esta máquina puede. La lista la manda mpvd, que quita lo que su ffmpeg no sabe hacer, y «Sin recodificar» no
-    ofrece unir, porque pegar trozos obliga a recodificar."""
+def test_por_defecto_no_recodifica_y_para_unir_hay_que_elegir_formato(cut_mpv):
+    """H62 · Ser lo daba por supuesto y no era así: el formato por defecto era MP4, o sea RECODIFICAR. Ahora es
+    «Sin recodificar», que copia los flujos tal cual. Unir varios en uno sí obliga a recodificar —pegar trozos es
+    un filtro—, así que con el formato por defecto la lista no ofrece unir: lo explica y señala «Formato»."""
     h, d = cut_mpv
     ids = [p["id"] for p in d.call("convert.presets")["presets"]]
     assert "copy" in ids and "mp4" in ids
@@ -305,17 +317,19 @@ def test_los_formatos_salen_de_mpvd_y_sin_recodificar_no_une(cut_mpv):
     cut_state(h, lambda v: v["count"] == 2)
 
     h.command("script-binding", "mu_cut/cut-menu")
-    v = cut_state(h, lambda v: any(t.startswith("Guardar los 2 elegidos unidos") for t in titles_cut(v)))
+    # de fábrica: copiar, y por eso no hay fila de unir sino la explicación
+    v = cut_state(h, lambda v: v["preset"] == "copy" and v["view"] == "root"
+                  and any("Para unirlos en uno hay que recodificar" in t for t in titles_cut(v)))
+    assert not any("unidos en uno" in t for t in titles_cut(v))
+
+    # y en cuanto se elige un formato que recodifica, aparece
     fila = next(i for i, t in enumerate(titles_cut(v), start=1) if t == "Formato")
     ev_cut(h, {"type": "activate", "index": fila, "value": {"view": "format"}})
-    v = cut_state(h, lambda v: v["view"] == "format"
-                  and any("Sin recodificar" in t for t in titles_cut(v)))
-    fila = next(i for i, t in enumerate(titles_cut(v), start=1) if "Sin recodificar" in t)
-    ev_cut(h, {"type": "activate", "index": fila, "value": {"preset": "copy"}})
-
-    v = cut_state(h, lambda v: v["preset"] == "copy" and v["view"] == "root"
-                  and any("Para unirlos hace falta recodificar" in t for t in titles_cut(v)))
-    assert not any("unidos en uno" in t for t in titles_cut(v))
+    v = cut_state(h, lambda v: v["view"] == "format" and any("MP4" in t for t in titles_cut(v)))
+    fila = next(i for i, t in enumerate(titles_cut(v), start=1) if "MP4" in t)
+    ev_cut(h, {"type": "activate", "index": fila, "value": {"preset": "mp4"}})
+    v = cut_state(h, lambda v: v["preset"] == "mp4" and v["view"] == "root"
+                  and any(t.startswith("Guardar los 2 elegidos unidos") for t in titles_cut(v)))
     assert h.script_errors() == [], h.script_errors()
 
 

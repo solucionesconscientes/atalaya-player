@@ -1,17 +1,18 @@
 # NEEDS_HUMAN — cosas que necesita Ser (con el comando exacto)
 
-## 2026-10-03 · Si quieres el mando del televisor en la Raspberry (H61, no bloquea)
-El puente se puede construir y probar aquí con una entrada falsa, pero que el televisor PASE las teclas solo se
-comprueba en la Pi. Allí, una vez:
+## 2026-10-03 · El mando del televisor en la Raspberry: ya está hecho, falta probarlo (H61)
+**No hay que instalar nada**: el puente lee el aparato del kernel (`/dev/cec0`), no `cec-client`. En la Pi, con el
+reproductor abierto, el mando de la tele debería manejarlo sin pedir permiso. Si no hace nada, en este orden:
 ```bash
-sudo apt install cec-utils            # trae cec-client (libcec)
-cec-client -l                         # tiene que listar un adaptador
-echo "scan" | cec-client -s -d 1      # y verse el televisor
-cec-client -m -d 8                    # pulsa teclas del mando: deben salir líneas «key pressed»
+ls -l /dev/cec*                      # en una Pi con el driver vc4 tiene que existir
+groups | tr ' ' '\n' | grep -x video  # el aparato suele ser de root:video
+sudo usermod -aG video "$USER"       # si no sales en el grupo (hay que volver a entrar en la sesión)
+.venv/bin/python -m mpvd status      # «cec» tiene que salir como servicio disponible
 ```
-Si la última orden no imprime nada al pulsar, es que tu televisor no pasa las teclas (no todos lo hacen, y algunos
-solo mientras somos la fuente activa): en ese caso el camino es el mando del móvil (`alt+z`) o un gamepad, que ya
-funcionan hoy. Guarda la salida de las cuatro órdenes y la construyo con eso.
+Si el aparato existe, estás en el grupo y aun así no pasa nada, es que tu televisor no pasa las teclas: no todos lo
+hacen, y algunos solo mientras somos la fuente activa. Para depurarlo, `sudo apt install cec-utils` y
+`cec-client -m -d 8` enseña lo que llega; pásame esa salida. Mientras, funcionan el mando del móvil (`alt+z`) y un
+gamepad por USB o Bluetooth en modo salón.
 
 ## 2026-10-03 · De las tres que quedan, qué haría yo (y qué no)
 Ser preguntó por las tres cosas que solo puede hacer él. Esto es lo que recomiendo, por orden:

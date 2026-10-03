@@ -128,6 +128,9 @@ class MpvdServer:
         from mpvd import gamepad  # noqa: PLC0415
         self.gamepad = gamepad.GamepadService(self)
         gamepad.register(self, self.gamepad)
+        from mpvd import cec  # noqa: PLC0415
+        self.cec = cec.CecService(self)
+        cec.register(self, self.cec)
         from mpvd import recap  # noqa: PLC0415
         self.recap = recap.RecapService(self)
         recap.register(self, self.recap)
@@ -197,6 +200,7 @@ class MpvdServer:
         await self.remote.close()
         await self.feeds.close()
         self.gamepad.stop()
+        self.cec.stop()
         await self.cast.close()
         await self.ytdl.close()
         await self.convert.close()

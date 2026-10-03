@@ -13,6 +13,27 @@ lista guardada…»**, que enseña las listas de Música, y **«Lo que está pue
 acabaría a y veinte— y al terminar se deja la repetición como estuviera. El título del menú dice «Poner», no
 «Grabar», porque grabar algo que ya está en el disco no tiene sentido.
 
+### H62 · Ver y saber lo que pasa por detrás
+Tres cosas de tu prueba. **Guardar un tramo ya no recodifica**: el formato de fábrica era MP4 —o sea recodificar— y
+tú daba por supuesto lo contrario, con razón, porque cortar es copiar los flujos (0,07 s frente a 1,16 s, y sin
+perder un bit). Unir varios en uno sí obliga, porque pegar trozos es un filtro, y eso lo dice la lista antes de que
+pulses. **«Tareas» enseña ahora TODO** lo que pasa por detrás —subtítulos con IA, traducción, índice por temas,
+intro, música…—, que ya pasaba por la misma cola del servidor pero no se publicaba; con el nombre en castellano y
+sin anunciar lo que dura menos de dos segundos, para que el icono no parpadee y acabes ignorándolo. Y **avisa al
+terminar** con un aviso del escritorio, que es lo que se ve con el reproductor detrás o cerrado: solo si ha tardado
+más de 20 s, y siempre si ha fallado.
+
+### H61 · El mando del televisor en la Raspberry
+Dijiste «podemos hacerlo y que luego sea lo que Dios quiera», y está hecho. Lo que cambió al construirlo: en vez de
+leer la salida de texto de `cec-client` —cuyo formato no puedo comprobar sin tenerlo instalado, y adivinar formatos
+es lo que este proyecto no hace— lee **el aparato del kernel** (`/dev/cec0`), que es una interfaz binaria
+documentada, no necesita instalar nada en la Pi y tiene la misma forma que el joystick que ya lee el gamepad. Las
+teclas se traducen a las mismas acciones del gamepad, así que no hay un segundo mapa que mantener, y **manda
+siempre**, no solo en modo salón: un mando físico que no hace nada al pulsarlo es el fallo silencioso de siempre.
+Probado de punta a punta dándole al demonio los mismos `struct cec_msg` que daría el kernel: play, pausa, avanzar,
+volumen, abrir el menú y cerrarlo. **Falta la última milla**, que tu televisor pase sus teclas, y eso solo se ve en
+la Pi: las órdenes para comprobarlo están en NEEDS_HUMAN.md.
+
 ### K3 · Volumen parejo y temporizador, donde se buscan
 Aquí el trabajo no era construir nada: ya estaba. El volumen parejo funcionaba (etiquetas ReplayGain por pista o por
 álbum, y para música sin etiquetas la ganancia que mide el daemon) pero **solo se ofrecía en Música**, que es el

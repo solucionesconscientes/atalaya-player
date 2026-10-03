@@ -30,7 +30,10 @@ local opts = { osd_seconds = 3 }
 options.read_options(opts, 'mu-cut')
 
 -- what you save them as; remembered, like the recording format (H43)
-local P = prefs.ns('mu-cut', { preset = 'mp4' })
+-- H62 · por defecto NO se recodifica: guardar un tramo es copiar los flujos tal cual (0,07 s para un corte de
+-- 6 s, frente a 1,16 s recodificando, y sin perder un bit). Era lo que Ser daba por supuesto, y no era así. Unir
+-- varios en uno sí obliga a recodificar —pegar trozos es un filtro—, y eso lo dice la lista antes de pulsar.
+local P = prefs.ns('mu-cut', { preset = 'copy' })
 
 -- H55 · la lista la manda mpvd (`convert.presets`), que además quita los que ESTA máquina no puede hacer (AV1
 -- necesita SVT-AV1 y no está en todos los ffmpeg). Esto de aquí es solo el respaldo mientras mpvd no contesta.
@@ -321,8 +324,9 @@ views.root = function()
                                                  el == 1 and clock(chosen_seconds()) or (el .. ' archivos')),
                             value = { action = 'save' }, separator = true }
       if el > 1 and P:get('preset') == SIN_RECODIFICAR then
-        items[#items + 1] = { title = 'Para unirlos hace falta recodificar: cambia el formato', icon = 'info',
-                              muted = true, selectable = false, hint = 'ahora: ' .. format_label() }
+        items[#items + 1] = { title = 'Para unirlos en uno hay que recodificar: elígelo en «Formato», abajo',
+                              icon = 'info', muted = true, selectable = false,
+                              hint = 'ahora: ' .. format_label() .. ' · pegar trozos es un filtro y obliga' }
       elseif el > 1 then
         items[#items + 1] = { title = string.format('Guardar los %d elegidos unidos en uno', el), icon = 'merge',
                               hint = string.format('%s · %s · en el orden de esta lista', format_label(),

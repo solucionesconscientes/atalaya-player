@@ -1170,3 +1170,28 @@
   ruido, así que es una sola vez en la vida de la instalación.
   **De paso se gana el test que faltaba**: el título es observable desde fuera, así que la prueba ya no depende de
   dormir y mirar la CPU — comprueba que el título cambia al minimizar y vuelve al restaurar.
+
+- ADR-102 · Lo que pasa por detrás se ve y se dice, y el mando del televisor se lee del kernel (H62, H61).
+  **Amplía** ADR-095, que puso el indicador de trabajo en la barra pero solo para conversiones y descargas.
+  **(1) Guardar un tramo no recodifica.** El formato de fábrica era MP4, o sea recodificar, y Ser daba por supuesto
+  lo contrario («por defecto no lo transcodifica, ¿no?»). Tenía razón en lo que esperaba: cortar es copiar los
+  flujos (0,07 s frente a 1,16 s, y sin perder un bit). Unir varios en uno sí obliga, porque pegar trozos es un
+  filtro de ffmpeg; eso se dice en la lista **antes** de pulsar y se señala dónde cambiarlo.
+  **(2) «Tareas» enseña todo, no una parte.** Los subtítulos con IA, la traducción, el índice por temas, la intro o
+  la música ya pasaban por la **misma cola de trabajos** del servidor: lo único que faltaba era publicarlos. Dos
+  cuidados que son la decisión de verdad: el nombre interno (`asr.model.small`) **se traduce**, porque un panel que
+  dice `semantic.index` no informa a nadie; y un trabajo sale **solo si es pesado o si lleva más de 2 s corriendo**,
+  porque un indicador que parpadea con cada chapucilla de 50 ms —comprobar un canal, pulsar en una emisora— se
+  aprende a ignorar, y entonces no sirve para nada. Una conversión no se cuenta dos veces: ya tiene su fila.
+  **(3) Avisar al terminar es cosa del escritorio, no del OSD**, porque lo que hay que cubrir es justamente que no
+  estés mirando. Solo por encima de 20 s (avisar de algo que acabó delante de ti es ruido) y siempre si ha fallado.
+  **(4) Y el mando del televisor se lee del kernel, no de `cec-client`.** Esto cambió al construirlo: la idea era
+  leer la salida de texto de `cec-client`, cuyo formato no se puede comprobar sin el programa instalado —y adivinar
+  formatos es justo lo que este proyecto no hace—. El aparato del kernel (`/dev/cec0`, `CEC_S_MODE` para hacerse
+  «follower» y `CEC_RECEIVE` para cada mensaje) es una interfaz binaria **documentada**, no necesita instalar nada
+  en la Pi y tiene la misma forma que el joystick que ya lee el gamepad. El tamaño de `struct cec_msg` (56), el
+  desplazamiento de `msg` (32) y los dos números de ioctl salen de `/usr/include/linux/cec.h` comprobados con
+  ctypes. Una tecla se traduce a **las mismas acciones que ya manda el gamepad**, así que el reproductor no gana un
+  segundo mapa. A diferencia del gamepad **manda siempre**, no solo en modo salón: es un mando físico, y uno que no
+  hace nada al pulsarlo es el fallo silencioso que llevamos toda la semana quitando. Sin televisor aquí, se prueba
+  dándole al demonio los mismos `struct cec_msg` por un FIFO, como el gamepad; la última milla, en la Pi.

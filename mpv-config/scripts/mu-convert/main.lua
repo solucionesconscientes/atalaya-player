@@ -84,7 +84,7 @@ local function compact_tasks()
   for _, key in ipairs(state.task_order) do
     local t = state.tasks[key]
     if t then
-      out[#out + 1] = { type = t.type, id = t.id, status = t.status, progress = t.progress, title = t.title,
+      out[#out + 1] = { type = t.type, kind = t.kind, id = t.id, status = t.status, progress = t.progress, title = t.title,
                         message = t.message }
     end
   end
@@ -392,6 +392,9 @@ local ACTION = {
 local METHODS = {
   download = { cancel = 'ytdl.downloads.cancel', retry = 'ytdl.downloads.retry', remove = 'ytdl.downloads.remove' },
   convert = { cancel = 'convert.cancel', retry = 'convert.retry', remove = 'convert.remove' },
+  -- H62 · lo demás que pasa por detrás (subtítulos, índice, traducción, intro, música…) llega como `job`, y lo
+  -- único que se puede hacer con un trabajo es pararlo: no hay archivo que reintentar ni carpeta que abrir.
+  job = { cancel = 'jobs.cancel' },
 }
 
 local function task_key(t) return tostring(t.type) .. ':' .. tostring(t.id) end
@@ -408,10 +411,14 @@ local function task_item(t)
   local actions = {}
   for _, a in ipairs(t.actions or {}) do if ACTION[a] then actions[#actions + 1] = ACTION[a] end end
   local icon = STATUS_ICON[t.status]
-  if t.status == 'running' then icon = t.type == 'download' and 'downloading' or 'sync' end
+  if t.status == 'running' then
+    icon = (t.type == 'download' and 'downloading') or (t.type == 'job' and 'autorenew') or 'sync'
+  end
   local hint = t.message ~= '' and t.message or t.status
   if t.status == 'failed' then hint = 'error' end
-  local kind = t.type == 'download' and 'Descarga' or 'Conversión'
+  -- el nombre de la clase de tarea lo manda mpvd cuando lo sabe (`kind`), que es quien conoce los trabajos
+  local kind = t.kind
+  if kind == nil or kind == '' then kind = t.type == 'download' and 'Descarga' or 'Conversión' end
   return {
     title = (t.title or '?') .. '  ·  ' .. kind .. (t.description ~= '' and (': ' .. t.description) or ''),
     hint = hint, icon = icon or 'help', value = { task = { type = t.type, id = t.id } }, actions = actions,
@@ -425,7 +432,7 @@ local function tasks_items()
     local t = state.tasks[key]
     if t then items[#items + 1] = task_item(t) end
   end
-  if #items == 0 then return uosc.message_items('No hay descargas ni conversiones', 'pending_actions') end
+  if #items == 0 then return uosc.message_items('Ahora mismo no se está haciendo nada por detrás', 'pending_actions') end
   items[#items].separator = true
   items[#items + 1] = { title = 'Limpiar terminadas', icon = 'cleaning_services', value = { clear = true },
                         keep_open = true }

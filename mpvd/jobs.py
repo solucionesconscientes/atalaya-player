@@ -50,6 +50,86 @@ class Status(str, enum.Enum):
 
 JobFn = Callable[["Job"], Awaitable[Any]]
 
+# H62 · «Tareas» tiene que enseñar TODO lo que pasa por detrás, no solo conversiones y descargas, que era lo único
+# que había. El nombre interno de un trabajo (`asr.subtitles`, `semantic.index`) no se le puede poner delante a
+# nadie, así que aquí está su nombre en castellano. Gana el prefijo más largo, para que `asr.model.` no se lo lleve
+# `asr.`; lo que no esté en la tabla sale con su nombre interno, que es mejor que no salir.
+JOB_LABELS: tuple[tuple[str, str], ...] = (
+    ("asr.model.", "Descargar un modelo de subtítulos"),
+    ("asr.", "Subtítulos con IA"),
+    ("subs.translate.download.", "Descargar un modelo de traducción"),
+    ("subs.translate.", "Traducir los subtítulos"),
+    ("subs.extract.", "Sacar los subtítulos del archivo"),
+    ("semantic.models.download", "Descargar el modelo de búsqueda"),
+    ("semantic.index", "Índice por temas"),
+    ("intro.analyze", "Buscar la intro"),
+    ("intro.prefetch", "Buscar la intro del siguiente"),
+    ("intro.season", "Buscar la intro de la temporada"),
+    ("intro.mark", "Marcar la intro"),
+    ("study.clip", "Recortar un trozo"),
+    ("recap.model.", "Descargar el modelo del resumen"),
+    ("recap.prose.", "Resumen escrito"),
+    ("iptv.epg.refresh", "Guía de TV y radio"),
+    ("iptv.health", "Comprobar los canales"),
+    ("record.audio", "Grabar el audio"),
+    ("av.model.", "Descargar un modelo de sonido"),
+    ("feeds.check:", "Comprobar las suscripciones"),
+    ("music.replaygain", "Medir el volumen de la música"),
+    ("music.scan", "Explorar la música"),
+    ("ytdl.update", "Actualizar yt-dlp"),
+)
+HIDDEN_JOBS = ("convert:",)   # una conversión ya tiene su fila, con su progreso y sus acciones: no se cuenta dos veces
+SHOW_AFTER = 2.0              # s corriendo antes de anunciar un trabajo que no es «heavy»
+
+
+def job_label(name: str) -> str:
+    best = ""
+    for prefix, label in JOB_LABELS:
+        if name.startswith(prefix) and len(prefix) > len(best):
+            best, out = prefix, label
+    return out if best else name
+
+
+def _worth_showing(j: dict[str, Any], now: float) -> bool:
+    """Un trabajo sale en la lista si es pesado o si de verdad está tardando.
+
+    Sin esto el indicador parpadearía con cada chapucilla de fondo de 50 ms (comprobar un canal, pulsar en una
+    emisora), y un indicador que parpadea se aprende a ignorar."""
+    if any(str(j.get("name") or "").startswith(p) for p in HIDDEN_JOBS):
+        return False
+    if j.get("heavy"):
+        return True
+    started, finished = j.get("started_at"), j.get("finished_at")
+    if started and finished:
+        return finished - started >= SHOW_AFTER
+    if started:
+        return now - started >= SHOW_AFTER
+    return False              # en cola y ligero: no se anuncia
+
+
+def job_rows(rows: list[dict[str, Any]], now: float | None = None) -> list[dict[str, Any]]:
+    """Los trabajos del servidor con la misma forma de fila que usa el panel «Tareas»."""
+    now = time.time() if now is None else now
+    out = []
+    for j in rows:
+        if not _worth_showing(j, now):
+            continue
+        name = str(j.get("name") or "?")
+        meta = j.get("meta") or {}
+        detalle = str(meta.get("title") or meta.get("path") or "")
+        if "/" in detalle or "\\" in detalle:
+            detalle = detalle.replace("\\", "/").rsplit("/", 1)[-1]
+        active = j.get("status") in ("queued", "running")
+        out.append({
+            "type": "job", "kind": job_label(name), "id": j.get("id"), "title": job_label(name),
+            "description": detalle or name, "status": j.get("status") or "queued",
+            "progress": j.get("progress") or 0.0, "message": j.get("message") or "",
+            "error": j.get("error") or "", "out_dir": "", "outputs": [], "warnings": [],
+            "created_at": j.get("created_at") or 0.0, "finished_at": j.get("finished_at"),
+            "actions": ["cancel"] if active else [],
+        })
+    return out
+
 
 @dataclass
 class Job:

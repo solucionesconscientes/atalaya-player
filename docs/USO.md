@@ -198,8 +198,14 @@ abre **o no suena** (8 s; `mu-iptv-stall_seconds`). Si un canal entrelazado se v
   de uno en uno en `Convertidos/<nombre de la carpeta>`.
 - **Tarjeta gráfica**: si tu equipo codifica por VA-API (Linux, `vainfo`), MP4 se hace con la GPU (mucho menos CPU);
   si falla, se repite solo por CPU. Se desactiva en *Usar la tarjeta gráfica*.
-- **Tareas** (`alt+T`): descargas y conversiones con su progreso; `Tab` cancela, repite, quita de la lista o abre la
-  carpeta. Nunca se sobrescribe un archivo («(2)» si ya existe) y lo que queda a medias al cerrar sigue al volver.
+- **Tareas** (`alt+T`): **todo lo que el programa está haciendo por detrás**, con su progreso — conversiones y
+  descargas, y también los subtítulos con IA, la traducción, el índice por temas, la búsqueda de la intro o el
+  repaso de la música. `Tab` cancela, repite, quita de la lista o abre la carpeta; en un trabajo del servidor lo
+  único que cabe es pararlo. No sale todo lo que pasa: lo que dura menos de dos segundos no se anuncia, para que el
+  icono de la barra no parpadee con cada chapucilla y acabes ignorándolo. Nunca se sobrescribe un archivo («(2)» si
+  ya existe) y lo que queda a medias al cerrar sigue al volver.
+- **Y avisa al terminar**, con un aviso del escritorio, que es lo que ves con el reproductor detrás o cerrado. Solo
+  si ha tardado más de 20 segundos —avisar de algo que acabó delante de ti es ruido— y siempre si ha fallado.
 - Destino por defecto: `~/Vídeos/Atalaya/Convertidos` (se cambia en *Carpeta de salida*).
 
 ## 2b. Programar una franja: grabarla, ponerla, o las dos
@@ -255,8 +261,9 @@ En *Tramos* (`ctrl+l`, o *Herramientas → Tramos*) está lo que se hace con ell
 - **Guardar los N por separado** → un archivo por tramo, llamado `<película> [inicio-fin].<formato>`.
 - **Guardar los N unidos en uno** → un solo archivo con todos pegados, en una sola pasada; se llama
   `<película> [N tramos].<formato>`.
-- **Formato**: la lista la da el propio programa según lo que tu ffmpeg sepa hacer, y se recuerda:
-  - **Sin recodificar**: instantáneo y **sin perder un bit**, porque copia los flujos tal cual (medido: 0,07 s para
+- **Formato**: la lista la da el propio programa según lo que tu ffmpeg sepa hacer, y se recuerda. **De fábrica es
+  «Sin recodificar»**: guardar un tramo no toca el vídeo.
+  - **Sin recodificar** (el de fábrica): instantáneo y **sin perder un bit**, porque copia los flujos tal cual (medido: 0,07 s para
     un corte de 6 s, frente a recodificarlo). A cambio el corte empieza en el fotograma clave anterior —pueden
     entrar unos segundos de más— y **no puede unir** tramos: pegarlos obliga a recodificar.
   - **Vídeo**: MP4 (H.264, se abre en cualquier sitio), H.265 (la mitad de tamaño), **AV1** (lo más nuevo, el que

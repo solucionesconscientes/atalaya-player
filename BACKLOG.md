@@ -254,24 +254,46 @@ Windows 32/64 y macOS arm64/x86_64, y su API se comprobó completa con el Python
 - [ ] L10 **Medir CPU y RAM antes de prometer nada** en el portátil de cuatro núcleos, y **un aviso legal claro**
       la primera vez: la herramienta es neutra, lo que se baje es responsabilidad de quien lo baje.
 
-## H61 · El mando del televisor (HDMI-CEC) en la Raspberry — preguntado por Ser el 2026-10-03 — [ ]
+## H62 · Ver y saber lo que pasa por detrás — ADR-102 · [x]
+De la prueba de Ser: «debe haber alguna forma de monitorear los procesos en segundo plano, cualquiera… se debe
+poder ver el proceso en algún sitio, y debe avisar al terminar».
+- [x] N1 **Guardar un tramo no recodifica, de fábrica.** El formato por defecto era MP4, o sea recodificar, y Ser
+      daba por supuesto lo contrario. Ahora es «Sin recodificar»: copia los flujos tal cual (0,07 s para un corte
+      de 6 s frente a 1,16 s, y sin perder un bit). Unir varios en uno sí obliga —pegar trozos es un filtro—, y la
+      lista lo dice antes de pulsar y señala «Formato».
+- [x] N2 **«Tareas» enseña TODO lo que pasa por detrás**, no solo conversiones y descargas: también los subtítulos
+      con IA, la traducción, el índice por temas, la intro, la música… Todo eso ya pasaba por la misma cola de
+      trabajos del servidor, pero no se publicaba. Con dos cuidados: el nombre interno (`asr.model.small`) se
+      traduce a castellano, y un trabajo solo sale si es pesado o si lleva más de 2 s, porque un indicador que
+      parpadea con cada chapucilla de 50 ms se aprende a ignorar. Una conversión no se cuenta dos veces.
+- [x] N3 **Avisa al terminar** con un aviso del escritorio, que es lo que se ve con el reproductor detrás o
+      cerrado. Solo si ha tardado más de 20 s (avisar de algo que acabó delante de ti es ruido) y siempre si ha
+      fallado. Se calla con `MPV_UOS_NO_NOTIFY`.
+
+## H61 · El mando del televisor (HDMI-CEC) en la Raspberry — ADR-102 · [x] falta probarlo en la Pi
 Revisa el juicio de `docs/IDEAS.md` 1.8, que lo daba por poco valioso pensando en un portátil. En una Pi conectada
 a la tele no hay teclado, y el mando del televisor es el único que ya tiene en la mano quien está mirando.
-- [ ] M1 **Puente `cec.*` en mpvd**, con la forma que ya tiene el del gamepad (`mpvd/gamepad.py`): lee el aparato,
+- [x] M1 **Puente `cec.*` en mpvd**, con la forma que ya tiene el del gamepad (`mpvd/gamepad.py`): lee el aparato,
       traduce a un verbo y se lo manda por IPC al mpv de la sesión. El vocabulario de acciones **es el mismo que ya
       existe** (`play_pause`, `back`, `forward`, `prev`, `next`, `volume_up`, `volume_down`, `subtitles`, `menu`,
       `close`), así que no hay que inventar ni mantener un segundo mapa.
-- [ ] M2 **Correspondencia de teclas CEC** (códigos de «user control»): 0x00 Select → aceptar, 0x01/0x02 arriba y
+- [x] M2 **Correspondencia de teclas CEC** (códigos de «user control»): 0x00 Select → aceptar, 0x01/0x02 arriba y
       abajo, 0x03/0x04 → atrás y adelante, 0x44 Play y 0x46 Pause → play_pause, 0x45 Stop → cerrar, 0x48/0x49
       rebobinar y avanzar, 0x0D Exit → cerrar, 0x09/0x0A (menú raíz y de ajustes) → el menú, 0x41/0x42 → volumen.
-- [ ] M3 **Probado sin hardware**, como el gamepad: `MPV_UOS_CEC_DEVICE` apuntando a un fifo que escribe las mismas
+- [x] M3 **Probado sin hardware**, como el gamepad: `MPV_UOS_CEC_DEVICE` apuntando a un fifo que escribe las mismas
       líneas que `cec-client`, y un test que comprueba que cada tecla acaba en su acción. La última milla (que el
       televisor pase las teclas, lo que depende de que implemente «remote control pass through» y de que seamos la
       fuente activa) solo se puede comprobar en la Pi → NEEDS_HUMAN.
-- [ ] M4 **Apagado si no hay CEC**, sin ruido: en un equipo sin `/dev/cec*` el servicio no se anuncia en
+- [x] M4 **Apagado si no hay CEC**, sin ruido: en un equipo sin `/dev/cec*` el servicio no se anuncia en
       `capabilities`, igual que ocurre con el gamepad y con `fpcalc`.
-- [ ] M5 Mientras no esté, **ya hay dos mandos que funcionan hoy** y conviene decirlo en la documentación de la Pi:
-      el del móvil (`alt+z`, PWA servida por mpvd) y un gamepad por USB o Bluetooth en modo salón.
+- [x] M5 **No se lee `cec-client` sino el aparato del kernel** (`/dev/cec0`), que es lo que cambió el diseño al
+      construirlo: es una interfaz binaria documentada, no hace falta instalar nada, y es la misma forma que el
+      joystick que ya lee el gamepad. Las constantes y el tamaño de `struct cec_msg` salen de
+      `/usr/include/linux/cec.h` comprobados con ctypes, no inventados.
+- [x] M6 **Manda siempre**, no solo en «modo salón» como el gamepad: es un mando físico y si sus teclas llegan es
+      porque alguien las ha pulsado. Y no hay que pedirlo: el reproductor lo enciende solo si el equipo tiene CEC.
+- [~] M7 **La última milla, en la Pi**: que el televisor pase sus teclas. Órdenes en NEEDS_HUMAN.md. Mientras,
+      siguen los dos mandos que ya funcionan: el del móvil (`alt+z`) y un gamepad en modo salón.
 
 ## H27 · Diferenciales
 - [x] Mini reproductor flotante, modo salón (letra grande, gamepad; HDMI-CEC no: necesita hardware y libcec), modo sencillo.

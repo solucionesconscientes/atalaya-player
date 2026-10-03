@@ -25,14 +25,14 @@ local SALON_UOSC = { scale = '1.8', scale_fullscreen = '1.8', font_scale = '1.2'
 -- uosc's own element names (script-opts/uosc.conf `controls=`): play/pause, subtitles, audio, menu, fullscreen
 local SIMPLE_CONTROLS = 'play-pause,space,<video,audio>subtitles,<has_many_audio>audio,space,button:mu-menu,fullscreen'
 
-local state = { mini = false, salon = false, simple = false, gamepad = '' }
+local state = { mini = false, salon = false, simple = false, gamepad = '', cec = false }
 local saved = { mini = nil, salon = nil, simple = nil }
 
 local function osd(text) mp.osd_message(text, 3) end
 
 local function publish()
   mp.set_property_native('user-data/mu/modes', { mini = state.mini, salon = state.salon, simple = state.simple,
-    gamepad = state.gamepad })
+    gamepad = state.gamepad, cec = state.cec })
 end
 
 local function uosc_opt(key, value)
@@ -123,7 +123,10 @@ local function set_simple(on, quiet)
   publish()
 end
 
--- -- gamepad (salón): mpvd reads the joystick and sends the buttons here ----------------------------
+-- -- mandos: mpvd lee el aparato y manda aquí los botones ------------------------------------------
+-- El gamepad solo manda en «modo salón», que es cuando se ha pedido. El mando del televisor (HDMI-CEC, H61) manda
+-- SIEMPRE: es un mando físico, y si sus teclas llegan hasta aquí es porque alguien las ha pulsado a propósito; un
+-- mando que no hace nada al pulsarlo es justo el fallo silencioso que llevamos toda la semana quitando.
 
 local GAMEPAD_ACTIONS = {
   play_pause = function() mp.commandv('cycle', 'pause') end,
@@ -140,11 +143,26 @@ local GAMEPAD_ACTIONS = {
 
 mp.register_script_message('mu-event', function(payload)
   local ev = require('mp.utils').parse_json(payload or '')
-  if type(ev) ~= 'table' or ev.event ~= 'gamepad' then return end
-  if ev.status == 'lost' then state.gamepad = ''; publish(); osd(tr('Mando desconectado')) return end
+  if type(ev) ~= 'table' then return end
+  if ev.event ~= 'gamepad' and ev.event ~= 'cec' then return end
+  if ev.status == 'lost' then
+    if ev.event == 'gamepad' then state.gamepad = ''; publish(); osd(tr('Mando desconectado')) end
+    return
+  end
   local fn = GAMEPAD_ACTIONS[ev.action or '']
-  if fn and state.salon then fn() end
+  if fn and (ev.event == 'cec' or state.salon) then fn() end
 end)
+
+-- el mando del televisor, si este equipo tiene CEC (una Raspberry conectada a la tele): no hace falta pedirlo
+local function start_cec()
+  if not rpc.connected() then return end
+  rpc.call('cec.start', { notify = SCRIPT }, function(err, res)
+    if err or not res then return end
+    state.cec = res.running == true
+    publish()
+    if state.cec then msg.info('cec: mando del televisor en ' .. tostring(res.device)) end
+  end)
+end
 
 -- -- bindings and restore ---------------------------------------------------------------------------
 
@@ -173,12 +191,14 @@ if P:get('salon') then
   mp.register_event('file-loaded', once)
 end
 mp.observe_property('user-data/mu/core', 'native', function(_, core)
-  if state.salon and core and core.mpvd == 'connected' and state.gamepad == '' then
+  if not (core and core.mpvd == 'connected') then return end
+  if state.salon and state.gamepad == '' then
     rpc.call('gamepad.start', { notify = SCRIPT }, function(err, res)
       state.gamepad = (not err and res and res.device) or ''
       publish()
     end)
   end
+  if not state.cec then start_cec() end
 end)
 publish()
 msg.info('mu-modes loaded')

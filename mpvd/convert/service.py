@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mpvd.asr.audio import AudioError, ffmpeg_path
+from mpvd import notify
 from mpvd.convert import hw as hw_mod
 from mpvd.convert.presets import (
     AUDIO_BITRATE_CHOICES,
@@ -50,7 +51,7 @@ from mpvd.convert.presets import (
     partial_path,
     probe,
 )
-from mpvd.jobs import Job, Priority
+from mpvd.jobs import Job, Priority, job_rows
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, RpcError
 from mpvd.ytdl.downloads import default_media_dir, fmt_eta
 
@@ -62,6 +63,9 @@ log = logging.getLogger("mpvd.convert")
 DEFAULT_NOTIFY = "mu_convert"
 TASKS_NOTIFY = "mu_convert"       # the «Tareas» panel lives in mu-convert
 FINAL = ("done", "failed", "cancelled")
+# H62 · «debe avisar al terminar». Solo si ha tardado lo bastante para que te hayas ido a otra cosa: avisar de algo
+# que acabó en dos segundos delante de ti es ruido. Un fallo avisa siempre, porque eso importa aunque sea rápido.
+NOTIFY_AFTER = 20.0
 MAX_HISTORY = 300
 MAX_FOLDER = 500
 STDERR_TAIL = 12
@@ -196,10 +200,29 @@ class ConvertService:
             if session.connected:
                 session.push_event(target, key, status, payload, min_interval=0.25, final=final)
 
+    def _maybe_notify(self, row: dict[str, Any], kind: str) -> None:
+        """Un aviso del escritorio al terminar, que es lo que se ve con el reproductor detrás o cerrado."""
+        if row["status"] not in ("done", "failed"):
+            return
+        tardo = float(row.get("finished_at") or 0.0) - float(row.get("created_at") or 0.0)
+        if row["status"] == "done" and tardo < NOTIFY_AFTER:
+            return
+        ok = row["status"] == "done"
+        titulo = ("✓ " if ok else "✗ ") + kind + (" terminada" if ok else " ha fallado")
+        cuerpo = str(row.get("title") or "")
+        if ok and row.get("out_dir"):
+            cuerpo += "\n" + str(row["out_dir"])
+        elif not ok and row.get("error"):
+            cuerpo += "\n" + str(row["error"])[:200]
+        with contextlib.suppress(RuntimeError):
+            asyncio.get_running_loop().create_task(notify.notify(titulo, cuerpo))
+
     def _changed(self, item: ConvertItem, persist: bool = False) -> None:
         d = item.to_dict()
         final = item.status in FINAL
         row = task_row(d, "convert")
+        if final:
+            self._maybe_notify(row, "Conversión")
         if item.notify == TASKS_NOTIFY:
             self._push(item.notify, "convert:" + item.id, item.status, {"event": "convert", "convert": d, "task": row},
                        final)
@@ -212,6 +235,8 @@ class ConvertService:
     def download_changed(self, item: Any) -> None:
         """Chained after the download manager's own callback: downloads show up live in «Tareas» too."""
         row = task_row(item.to_dict(), "download")
+        if row["status"] in FINAL:
+            self._maybe_notify(row, "Descarga")
         self._push(TASKS_NOTIFY, "task:download:" + item.id, row["status"], {"event": "task", "task": row},
                    row["status"] in FINAL)
 
@@ -655,6 +680,9 @@ def register(server: MpvdServer, service: ConvertService) -> None:
         rows = [task_row(r, "convert") for r in service.list(include_finished)]
         if ytdl is not None:
             rows += [task_row(r, "download") for r in ytdl.downloads.list(include_finished)]
+        # H62 · y TODO lo demás que pasa por detrás: subtítulos, traducción, índice por temas, intro, música…
+        # Antes solo se veían conversiones y descargas, así que «lo que está trabajando» era media verdad.
+        rows += job_rows(server.jobs.list(include_finished=include_finished))
         order = {"running": 0, "queued": 1}
         rows.sort(key=lambda r: (order.get(r["status"], 2),
                                  r["created_at"] if r["status"] in order else -(r["finished_at"] or r["created_at"])))
