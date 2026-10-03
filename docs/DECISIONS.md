@@ -1195,3 +1195,23 @@
   segundo mapa. A diferencia del gamepad **manda siempre**, no solo en modo salón: es un mando físico, y uno que no
   hace nada al pulsarlo es el fallo silencioso que llevamos toda la semana quitando. Sin televisor aquí, se prueba
   dándole al demonio los mismos `struct cec_msg` por un FIFO, como el gamepad; la última milla, en la Pi.
+
+- ADR-103 · Explorar las carpetas del equipo, y lo que NO se construye para ello (H64).
+  Ser lo pidió pensando en la Raspberry conectada al televisor, y ese detalle manda en todo el diseño: lo único que
+  había para elegir una carpeta era **teclear la ruta**, y en un salón no hay teclado.
+  **(1) Lo que no se construye.** Reproducir una carpeta entera no lleva ni una línea de expansión: mpv 0.41 abre
+  directorios él mismo (`--directory-mode`, `--directory-filter-types`, comprobado contra el mpv instalado), así
+  que se le pasa la ruta. Tampoco se construye un índice: `files.browse` lista un nivel y se olvida. Para indexar
+  ya está la biblioteca, que escanea en segundo plano; un navegador tiene que contestar al instante aunque la
+  carpeta tenga diez mil archivos, y por eso solo cuenta un nivel al decir lo que hay dentro.
+  **(2) Las puertas incluyen las unidades conectadas**, que es lo que de verdad se va a usar en la Pi: un pincho o
+  un disco USB aparece solo (`/media/<usuario>`, `/run/media/<usuario>`, `/mnt`; `/Volumes` en macOS y las letras
+  en Windows). Sin eso, «explorar» en una Pi no sirve para nada, porque las películas están en el disco de fuera.
+  **(3) La forma la decide el mando, no el teclado.** Lo que se puede hacer con una carpeta —reproducirla entera,
+  añadirla a la biblioteca— son **filas**, no acciones de Tab: el mando de un televisor no tiene Tab. Y hay una
+  fila **«Subir»** porque en ese mando la tecla «atrás» está mapeada a cerrar el menú (ADR-102), no a subir un
+  nivel; sin ella se podría entrar en una carpeta y no haber forma de volver.
+  **(4) Orden natural y lo que estorba fuera.** Las subcarpetas primero y «Capítulo 2» antes que «Capítulo 10»,
+  que es lo que espera cualquiera; los archivos que este reproductor no abre no se listan, y los ocultos tampoco,
+  aunque las dos cosas se pueden pedir. Entrar en una carpeta es un marco más de la pila de vistas, así que ⌫
+  sube solo, y un testigo de secuencia evita que una respuesta lenta pinte la carpeta de la que ya has salido.

@@ -1222,6 +1222,13 @@ local function gate_items(query)
     local pegado = gate_classify(clipboard_raw())
     if pegado and pegado.kind ~= 'empty_list' then items[#items + 1] = gate_row(pegado, true) end
   end
+  if typed == '' then
+    -- H64 · sin teclado no se puede pegar ni escribir una ruta (una Raspberry en el salón), así que la puerta
+    -- única lleva también al explorador de carpetas, que se maneja solo con arriba, abajo y aceptar
+    items[#items + 1] = { title = 'Explorar las carpetas del equipo…', icon = 'folder_open',
+                          hint = 'discos, pinchos USB y tus carpetas', separator = #items > 0 or nil,
+                          value = { explore = true } }
+  end
   if #items == 0 then
     items = uosc.message_items('Pega o escribe: un enlace, varios, una lista, un canal, un archivo o una carpeta',
                                'add_link')
@@ -1653,6 +1660,9 @@ local function on_event(source, json)
         load_url(target.url, false, target.title)
         close_menus()
       end
+    elseif v.explore then
+      uosc.close(GATE_MENU)
+      mp.commandv('script-message-to', 'mu_library', 'mu-library-explore')
     elseif v.yt_search then
       local top = state.stack[#state.stack]
       if top and top.name == 'open_url' then top.args = { query = v.yt_search } end  -- «back» keeps the text

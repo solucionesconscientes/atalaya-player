@@ -201,7 +201,9 @@ views.root = function()
       table.insert(items, { title = 'Series', hint = st.shows and st.shows > 0
                               and string.format('%d · %d episodios', st.shows, st.episodes or 0) or '0',
                             icon = 'live_tv', value = { view = 'shows' } })
-      table.insert(items, { title = 'Buscar en la biblioteca…', icon = 'search', value = { input = 'search' },
+      table.insert(items, { title = 'Buscar en la biblioteca…', icon = 'search', value = { input = 'search' } })
+      table.insert(items, { title = 'Explorar las carpetas del equipo', icon = 'folder_open',
+                            hint = 'discos, pinchos USB y tus carpetas', value = { view = 'explore' },
                             separator = true })
       local here = current_path()
       if is_local(here) then
@@ -216,6 +218,81 @@ views.root = function()
       show(ROOT_TITLE, items, { footnote = 'Enter abre · ⌫ atrás · Esc cierra' })
     end)
   end, 15)
+end
+
+-- H64 · explorar las carpetas del equipo. Es la única forma de elegir una película SIN TECLADO, que es el caso de
+-- una Raspberry conectada al televisor. De ahí dos decisiones de forma: (a) lo que se puede hacer con una carpeta
+-- son FILAS y no acciones de Tab, porque el mando de la tele no tiene Tab; y (b) hay una fila «Subir», porque en
+-- ese mando la tecla «atrás» cierra el menú (es `close`), no sube un nivel.
+local PLACE_ICON = { user = 'folder_special', library = 'video_library', drive = 'usb', home = 'home' }
+local KIND_ICON = { dir = 'folder', video = 'movie', audio = 'music_note', image = 'image', playlist = 'queue_music' }
+local browse_seq = 0
+
+local function size_hint(n)
+  n = tonumber(n) or 0
+  if n >= 1024 * 1024 * 1024 then return string.format('%.1f GB', n / 1073741824) end
+  if n >= 1024 * 1024 then return string.format('%.0f MB', n / 1048576) end
+  return string.format('%.0f kB', math.max(1, n / 1024))
+end
+
+local function count_hint(n)
+  n = tonumber(n) or 0
+  if n < 0 then return 'no se puede leer' end
+  if n == 0 then return 'vacía' end
+  return n .. (n == 1 and ' elemento' or ' elementos')
+end
+
+views.explore = function()
+  local title = 'Explorar carpetas'
+  if not require_mpvd(title) then return end
+  show(title, uosc.loading_items())
+  rpc.call('files.places', nil, function(err, res)
+    if not still('explore') then return end
+    if err then show(title, uosc.message_items(fail(err, 'files.places'), 'error')) return end
+    local items = {}
+    for _, pl in ipairs((res or {}).places or {}) do
+      items[#items + 1] = { title = pl.title, hint = pl.path, icon = PLACE_ICON[pl.kind] or 'folder',
+                            value = { view = 'browse', path = pl.path } }
+    end
+    if #items == 0 then items = uosc.message_items('No encuentro ninguna carpeta por donde empezar', 'info') end
+    show(title, items, { footnote = 'Enter entra en la carpeta · ⌫ atrás' })
+  end, 15)
+end
+
+views.browse = function(args)
+  local path = tostring(args.path or '')
+  local title = basename(path) ~= '' and basename(path) or path
+  if not require_mpvd(title) then return end
+  browse_seq = browse_seq + 1
+  local seq = browse_seq
+  show(title, uosc.loading_items())
+  rpc.call('files.browse', { path = path }, function(err, res)
+    -- cada carpeta es un marco más de la pila, así que todas se llaman «browse»: sin este testigo, entrar rápido
+    -- en dos carpetas pintaría la primera respuesta que llegase, que no tiene que ser la de dentro
+    if seq ~= browse_seq or not still('browse') then return end
+    if err then show(title, uosc.message_items(fail(err, 'files.browse'), 'error')) return end
+    local items = {}
+    if (res.parent or '') ~= '' then
+      items[#items + 1] = { title = 'Subir a ' .. (basename(res.parent) ~= '' and basename(res.parent) or res.parent),
+                            icon = 'arrow_upward', value = { view = 'browse', path = res.parent } }
+    end
+    if (res.files or 0) > 0 then
+      items[#items + 1] = { title = 'Reproducir toda esta carpeta', icon = 'playlist_play',
+                            hint = count_hint(res.files), value = { play = res.path } }
+    end
+    items[#items + 1] = { title = 'Añadir esta carpeta a la biblioteca', icon = 'video_library',
+                          value = { add = res.path }, separator = true }
+    for _, e in ipairs(res.entries or {}) do
+      items[#items + 1] = { title = e.name, icon = KIND_ICON[e.kind] or 'insert_drive_file',
+                            hint = e.dir and count_hint(e.items) or size_hint(e.size),
+                            value = e.dir and { view = 'browse', path = e.path } or { play = e.path } }
+    end
+    if res.truncated then
+      items[#items + 1] = { title = 'Hay más de lo que caben en la lista', icon = 'info', selectable = false,
+                            muted = true, hint = 'entra en una subcarpeta' }
+    end
+    show(title, items, { footnote = res.path .. ' · Enter abre · ⌫ atrás' })
+  end, 20)
 end
 
 local function play_item(it, title)
@@ -309,6 +386,8 @@ views.folders = function()
       table.insert(items, { title = 'Añadir la carpeta del archivo actual', hint = dirname(here), icon = 'create_new_folder',
                             value = { add = dirname(here) } })
     end
+    table.insert(items, { title = 'Buscarla explorando el equipo…', icon = 'folder_open',
+                          hint = 'sin teclear nada', value = { view = 'explore' } })
     table.insert(items, { title = 'Escribir o pegar una ruta…', icon = 'edit', value = { input = 'folder' } })
     if #(rows or {}) > 0 then
       table.insert(items, { title = 'Reescanear todo', icon = 'refresh', value = { rescan = true },
@@ -955,6 +1034,11 @@ mp.add_key_binding(nil, 'auto-next-toggle', function()
   publish()
 end)
 mp.register_script_message('mu-library-open', open_root)
+-- H64 · la puerta única (y quien quiera) puede abrir el explorador directamente
+mp.register_script_message('mu-library-explore', function()
+  state.stack = {}
+  open_view({ name = 'explore' })
+end)
 mp.register_script_message('mu-library-home', function() refresh_home() end)
 mp.register_script_message('mu-library-cancel', function() cancel_countdown(true) end)
 P:on_change(function(reason)

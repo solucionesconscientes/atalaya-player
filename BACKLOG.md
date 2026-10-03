@@ -254,6 +254,24 @@ Windows 32/64 y macOS arm64/x86_64, y su API se comprobó completa con el Python
 - [ ] L10 **Medir CPU y RAM antes de prometer nada** en el portátil de cuatro núcleos, y **un aviso legal claro**
       la primera vez: la herramienta es neutra, lo que se baje es responsabilidad de quien lo baje.
 
+## H64 · Explorar las carpetas del equipo — ADR-103 · [x]
+Pedido por Ser el 2026-10-03 pensando en la Raspberry conectada al televisor: «se pueden abrir las carpetas del
+dispositivo y puede cargar el contenido de las deseadas». Lo que había para añadir una carpeta era **teclear la
+ruta**, y en un salón no hay teclado.
+- [x] P1 `files.places` y `files.browse` en mpvd (`mpvd/files.py`), y nada más: las puertas por donde empezar
+      (Vídeos, Música, Descargas, Imágenes, las carpetas de la biblioteca, **las unidades conectadas** —un pincho
+      USB en la Pi sale solo— y la carpeta personal) y el listado de una carpeta. No indexa, no recorre
+      recursivamente y no recuerda nada: para eso está la biblioteca; esto tiene que contestar al instante.
+- [x] P2 **Reproducir una carpeta entera no se construye**: mpv 0.41 abre directorios él mismo
+      (`--directory-mode`, `--directory-filter-types`, comprobado contra el mpv instalado), así que se le pasa la
+      ruta y monta la lista. Comprobado en el test: `playlist-count` 2 al abrir una carpeta con dos vídeos.
+- [x] P3 Vista «Explorar carpetas» en *Biblioteca*, en *Carpetas* («Buscarla explorando el equipo…», sin teclear)
+      y en la **puerta única** con la caja vacía. Las subcarpetas van primero, en orden natural («Capítulo 2» antes
+      que «Capítulo 10»), con cuántas cosas útiles hay dentro; los archivos, con su tamaño.
+- [x] P4 **Pensado para un mando**: lo que se puede hacer con una carpeta son FILAS y no acciones de Tab, porque el
+      mando de la tele no tiene Tab; y hay una fila «Subir», porque en ese mando «atrás» cierra el menú (es
+      `close`) y no sube un nivel.
+
 ## H63 · La batería no es de fiar del todo (encontrado el 2026-10-03) — [ ]
 Cuatro pasadas completas seguidas dieron 864, 867, 868 y 867 pasando, y en cada una falló **una pareja distinta**
 de tests, nunca los mismos y nunca nada de lo recién construido. Eso no es un programa roto: es una batería que no

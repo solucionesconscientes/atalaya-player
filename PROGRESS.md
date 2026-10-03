@@ -13,6 +13,20 @@ lista guardada…»**, que enseña las listas de Música, y **«Lo que está pue
 acabaría a y veinte— y al terminar se deja la repetición como estuviera. El título del menú dice «Poner», no
 «Grabar», porque grabar algo que ya está en el disco no tiene sentido.
 
+### H64 · Explorar las carpetas del equipo
+Lo pediste pensando en la Raspberry conectada a la tele, y ese detalle manda en todo: lo único que había para
+elegir una carpeta era **teclear la ruta**, y en un salón no hay teclado. Ahora se navega con las flechas y Enter,
+desde *Biblioteca*, desde *Carpetas* y desde la puerta única con la caja vacía. Se empieza por tus carpetas, las de
+la biblioteca, **las unidades conectadas** —un pincho USB en la Pi sale solo, que es donde van a estar las
+películas— y la carpeta personal. Dentro, las subcarpetas primero y en orden natural («Capítulo 2» antes que
+«Capítulo 10») con cuántas cosas tienen dentro; los archivos con su tamaño.
+
+Dos cosas que **no** se han construido, y es lo que hace que esto sea pequeño: reproducir una carpeta entera no
+lleva ni una línea, porque **mpv abre directorios él mismo** y monta la lista; y no hay índice ninguno, porque para
+indexar ya está la biblioteca y un navegador tiene que contestar al instante. Y la forma la decide el mando y no el
+teclado: lo que se puede hacer con una carpeta son **filas** —el mando de la tele no tiene Tab— y hay una fila
+**«Subir»**, porque en ese mando «atrás» cierra el menú y no sube un nivel.
+
 ### H62 · Ver y saber lo que pasa por detrás
 Tres cosas de tu prueba. **Guardar un tramo ya no recodifica**: el formato de fábrica era MP4 —o sea recodificar— y
 tú daba por supuesto lo contrario, con razón, porque cortar es copiar los flujos (0,07 s frente a 1,16 s, y sin

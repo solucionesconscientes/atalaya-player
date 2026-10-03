@@ -131,6 +131,8 @@ class MpvdServer:
         from mpvd import cec  # noqa: PLC0415
         self.cec = cec.CecService(self)
         cec.register(self, self.cec)
+        from mpvd import files as files_mod  # noqa: PLC0415
+        files_mod.register(self)
         from mpvd import recap  # noqa: PLC0415
         self.recap = recap.RecapService(self)
         recap.register(self, self.recap)

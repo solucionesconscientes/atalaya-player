@@ -613,7 +613,15 @@ por defecto.
 
 ## 12. Biblioteca: películas, series y subtítulos de internet
 `ctrl+b` (o *Abrir › Biblioteca*, o la pantalla de inicio) abre la **Biblioteca**.
-- **Carpetas**: *Añadir la carpeta del archivo actual* o *Escribir o pegar una ruta…*. Atalaya Player las revisa en segundo plano, sin
+- **Explorar las carpetas del equipo** (*Biblioteca › Explorar las carpetas del equipo*, o la puerta única con la
+  caja vacía): se navega con las flechas y Enter, sin teclear nada — pensado para una Raspberry conectada al
+  televisor, donde no hay teclado. Se empieza por tus carpetas (Vídeos, Música, Descargas, Imágenes), las de la
+  biblioteca, **las unidades conectadas** (un pincho o un disco USB aparece solo) y la carpeta personal. Dentro:
+  las subcarpetas primero y en orden natural («Capítulo 2» antes que «Capítulo 10») diciendo cuántas cosas tienen
+  dentro, y los archivos con su tamaño. Enter en un vídeo lo reproduce; arriba hay una fila para **reproducir la
+  carpeta entera** (la lista la monta mpv), otra para **añadirla a la biblioteca** y otra para **subir** un nivel.
+  Lo que este reproductor no abre no se lista, para no estorbar.
+- **Carpetas**: *Buscarla explorando el equipo…*, *Añadir la carpeta del archivo actual* o *Escribir o pegar una ruta…*. Atalaya Player las revisa en segundo plano, sin
   frenar la reproducción; la segunda vez solo mira lo nuevo. Tab sobre una carpeta: *Reescanear* o *Quitar* (no se borra nada del disco).
 - **Películas** y **Series › Temporada › Episodio**: ✓ = visto, «45 %» = empezado. Se reconocen `Serie S01E02`, `Serie 1x06`,
   `Serie/Temporada 1/01 - Título.mkv`, `Película (1975)`, nombres con etiquetas (1080p, x264, WEB-DL…) y anime `[Grupo] Serie - 05`.
