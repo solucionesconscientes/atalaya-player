@@ -254,6 +254,20 @@ Windows 32/64 y macOS arm64/x86_64, y su API se comprobó completa con el Python
 - [ ] L10 **Medir CPU y RAM antes de prometer nada** en el portátil de cuatro núcleos, y **un aviso legal claro**
       la primera vez: la herramienta es neutra, lo que se baje es responsabilidad de quien lo baje.
 
+## H65 · Un menú cerrado no se reabre solo — ADR-104 · [x]
+Encontrado por la batería completa el 2026-10-03, y era un fallo de verdad y no del test: el test esperaba 30 s a
+que el menú de TV se cerrase y seguía abierto.
+- [x] Q1 Cada vista pinta **dos veces** —las filas de «cargando» al entrar y las de verdad cuando contesta mpvd—.
+      Si entre las dos se cerraba el menú, el segundo pintado lo **volvía a abrir**: `show()` abría siempre que
+      uosc no tuviera ya ese menú. Y el reinicio de la navegación va con 0,2 s de retardo a propósito (uosc pasa
+      por `nil` al sustituir un menú), que es justo la ventana por la que se colaba.
+- [x] Q2 Ahora **abrir hay que haberlo pedido**: `open_view` da permiso (`opening`) y lo consume el primer pintado
+      que abre; el permiso caduca en el instante en que no hay menú, sin esperar al retardo. Una respuesta que
+      llega tarde, como mucho, actualiza un menú que siga abierto. El permiso **no** se apaga al volver de
+      `open_view`, porque hay vistas que solo pintan desde su callback y entonces el primer pintado llega después.
+- [x] Q3 El detector es el test que ya existía (`test_mu_iptv_tracks`, la espera de que el menú se cierre): fallaba
+      con el fallo puesto y pasa con él quitado, y con él los veinte tests de TV.
+
 ## H64 · Explorar las carpetas del equipo — ADR-103 · [x]
 Pedido por Ser el 2026-10-03 pensando en la Raspberry conectada al televisor: «se pueden abrir las carpetas del
 dispositivo y puede cargar el contenido de las deseadas». Lo que había para añadir una carpeta era **teclear la

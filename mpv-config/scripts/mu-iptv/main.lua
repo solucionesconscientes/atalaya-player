@@ -412,12 +412,19 @@ local function publish_menu(title, items)
   mp.set_property_native('user-data/mu/iptv-menu', { title = title, items = menu_rows(items, 1) })
 end
 
+-- H65 · un menú que se ha cerrado NO se reabre. Cada vista pinta dos veces (las filas de «cargando» al entrar y
+-- las de verdad cuando contesta mpvd); si entre las dos se cierra el menú, la segunda lo abría otra vez y volvía a
+-- aparecer solo. El reinicio de la navegación va con un retardo a propósito —uosc pasa por `nil` al sustituir un
+-- menú— y ese retardo es justamente la ventana por la que se colaba. Así que abrir solo se abre cuando se ha
+-- pedido (`opening`, que pone `open_view`, o `force_open`); una respuesta que llega tarde, como mucho, actualiza.
 local function show(title, items, extra)
   publish_menu(title, items)
-  if uosc.open_type() == MENU and not state.force_open then
+  local open = uosc.open_type() == MENU
+  if open and not state.force_open then
     uosc.update(base_menu(title, items, extra))
-  else
+  elseif state.opening or state.force_open or open then
     uosc.open(base_menu(title, items, extra))
+    state.opening = false
   end
   state.force_open = false
 end
@@ -479,6 +486,7 @@ local views = {}
 local function open_view(spec, push)
   if push ~= false then table.insert(state.stack, spec) end
   state.view = spec.name .. (spec.args and spec.args.id and (':' .. spec.args.id) or '')
+  state.opening = true          -- esta vista se ha pedido: su primer pintado SÍ puede abrir el menú
   publish()
   views[spec.name](spec.args or {})
 end
@@ -1438,6 +1446,10 @@ end)
 -- filtered with a short delay before resetting.
 local reset_timer = nil
 mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
+  -- el permiso para ABRIR caduca en el momento en que no hay menú, sin esperar al retardo: si lo que viene es una
+  -- sustitución, el `open_view` de la vista nueva lo dará otra vez. Esa es la ventana por la que un menú cerrado
+  -- se reabría solo al llegar una respuesta tarde.
+  if t == nil then state.opening = false end
   if reset_timer then reset_timer:kill(); reset_timer = nil end
   if t == MENU or t == SEARCH_MENU then return end
   reset_timer = mp.add_timeout(0.2, function()

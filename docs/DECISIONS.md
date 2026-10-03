@@ -1215,3 +1215,23 @@
   que es lo que espera cualquiera; los archivos que este reproductor no abre no se listan, y los ocultos tampoco,
   aunque las dos cosas se pueden pedir. Entrar en una carpeta es un marco más de la pila de vistas, así que ⌫
   sube solo, y un testigo de secuencia evita que una respuesta lenta pinte la carpeta de la que ya has salido.
+
+- ADR-104 · Un menú que se ha cerrado no se reabre solo (H65).
+  Lo encontró la batería completa, y es el mejor argumento a favor de pasarla: el síntoma parecía lentitud —un test
+  esperando a que el menú se cerrase— y era un **fallo real de uso**: cierras el menú de TV mientras está cargando
+  y vuelve a aparecer solo. Con treinta segundos de espera seguía abierto, así que no era lentitud de nadie.
+  **La causa son dos cosas razonables que juntas se estorban.** Cada vista pinta dos veces (las filas de
+  «cargando» al entrar y las de verdad cuando contesta mpvd), y `show()` abría el menú siempre que uosc no tuviera
+  ya ese menú abierto — lo que es correcto para el primer pintado y desastroso para el segundo. Y el reinicio de la
+  navegación está retrasado 0,2 s **a propósito**, porque uosc pasa por `nil` al sustituir un menú y sin ese
+  retardo se perdería la pila al navegar; ese retardo es exactamente la ventana por la que se colaba la respuesta
+  tardía.
+  **La decisión: abrir hay que haberlo pedido.** `open_view` da un permiso y lo consume el primer pintado que
+  abre; el permiso **caduca en el instante** en que no hay menú, sin esperar al retardo, porque si lo que viene es
+  una sustitución el `open_view` de la vista nueva lo dará otra vez. Una respuesta que llega tarde, como mucho,
+  actualiza un menú que siga abierto. Un detalle que costó un intento: el permiso **no** puede apagarse al volver
+  de `open_view`, porque hay vistas que solo pintan desde su callback y entonces el primer pintado llega después
+  —apagarlo allí dejaba el menú sin abrirse nunca—.
+  **Y el detector ya estaba escrito**: el test que espera a que el menú se cierre. Fallaba con el fallo puesto y
+  pasa con él quitado. Que un test «sensible a la carga» resulte ser un fallo de verdad es la razón por la que
+  H63 dice que una batería que falla al azar se deja de leer.
