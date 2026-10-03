@@ -532,7 +532,13 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
 - [x] J3 Se puede programar **una canción, una carpeta, una lista o una dirección**, no solo un canal: se envuelve
       como canal de pega (`media_channel`) y hereda todo.
 - [x] J4 Fila *Qué hacer en esa franja* en el menú de programaciones, recordada.
-- [ ] J5 Listas guardadas con nombre, que es lo que falta para que programar música sea cómodo (docs/IDEAS.md 1.4).
+- [x] J5 **Programar una lista guardada** — ADR-098. Las listas con nombre ya existían (`music.playlists.*`,
+      M3U8 en los datos del usuario) y el RPC ya aceptaba `media`: lo que faltaba era que se pudieran elegir y que
+      una lista se cargara como lista. Ahora en *Programar* hay dos puertas más —«Una lista guardada…», que enseña
+      las de Música, y «Lo que está puesto ahora»—, mpvd usa `loadlist` (no `loadfile`, que intentaría demuxear el
+      .m3u8) y **la repite hasta que acabe la franja**, devolviendo al terminar el `loop-playlist` que hubiera. Con
+      algo del disco el modo es «ponerlo» y el menú lo dice en el título, porque grabar lo que ya está en el disco
+      no tiene sentido.
 
 ## H58 · Repaso de funcionalidades e interfaz — ADR-095 · docs/IDEAS.md
 - [x] K1 **Indicador de trabajo en la barra**: icono con el número de tareas mientras hay algo en marcha, con el

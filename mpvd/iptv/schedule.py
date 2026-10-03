@@ -142,6 +142,18 @@ def ffmpeg_args(ch: dict[str, Any], out: Path, seconds: float) -> list[str]:
     return cmd
 
 
+LIST_SUFFIXES = {".m3u", ".m3u8", ".pls", ".xspf"}
+
+
+def is_playlist_file(url: str) -> bool:
+    """Una lista de este equipo (M3U/PLS/XSPF): se carga con ``loadlist``, no con ``loadfile``.
+
+    Solo ficheros locales: un ``.m3u8`` remoto es HLS —un canal—, no una lista de canciones."""
+    if re.match(r"^[a-zA-Z][\w+.-]*://", url):
+        return False
+    return Path(url).suffix.lower() in LIST_SUFFIXES
+
+
 def media_channel(path: str, title: str | None = None) -> Channel:
     """H57 · una canción, una carpeta, una lista o una dirección, envuelta como canal para poder programarla.
 
@@ -531,7 +543,19 @@ class ScheduleService:
         url = str(rec.channel.get("url") or "")
         if not url:
             raise RpcError(INVALID_PARAMS, "no hay nada que reproducir")
-        await s.client.command("loadfile", url, "replace", timeout=20)
+        # J5 · una lista guardada se carga con `loadlist` (`loadfile` intentaría demuxear el .m3u8) y se repite
+        # mientras dure la franja: «música de 21:00 a 23:00» con una lista de veinte minutos, si no, se acaba a y
+        # veinte. Se guarda el valor que hubiera para devolverlo al terminar.
+        lista = is_playlist_file(url)
+        loop_before: Any = None
+        if lista:
+            with contextlib.suppress(Exception):
+                loop_before = await s.client.get_property("loop-playlist", timeout=10)
+            await s.client.command("loadlist", url, "replace", timeout=20)
+            with contextlib.suppress(Exception):
+                await s.client.set_property("loop-playlist", "inf", timeout=10)
+        else:
+            await s.client.command("loadfile", url, "replace", timeout=20)
         await s.client.set_property("pause", False, timeout=10)
         while not self._closing and rec.id not in self._stopping:
             queda = rec.end - time.time()
@@ -541,6 +565,9 @@ class ScheduleService:
         with contextlib.suppress(Exception):
             # al acabar la franja se para, que es lo que se ha pedido; si además había que suspender o apagar, de
             # eso se encarga `after` como en cualquier grabación
+            if lista:
+                await s.client.set_property("loop-playlist", loop_before if loop_before is not None else "no",
+                                            timeout=10)
             await s.client.command("stop", timeout=10)
         if rec.mode == "play":
             self._finish(rec, "done", "")

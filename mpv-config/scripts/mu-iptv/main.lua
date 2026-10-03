@@ -866,8 +866,16 @@ local function mode_label(id)
   return 'Grabarlo'
 end
 
-local function schedule_params(channel_id, start, stop, title, programme)
-  local p = { channel = channel_id, start = start, stop = stop, title = title, mode = P:get('sched_mode') or 'record' }
+-- J5 · `media` es una lista guardada, una canción, una carpeta o una dirección de este equipo; el programador la
+-- envuelve como canal de pega y hereda franja, despertador y apagado (ADR-094). Con `media` el modo es «ponerlo»:
+-- grabar algo que ya está en el disco no tiene sentido, y mpvd lo fuerza igual por su lado.
+local function schedule_params(channel_id, start, stop, title, programme, media)
+  local p = { start = start, stop = stop, title = title, mode = P:get('sched_mode') or 'record' }
+  if media and media ~= '' then
+    p.media, p.mode = media, (p.mode == 'record' and 'play' or p.mode)
+  else
+    p.channel = channel_id
+  end
   if programme then
     p.programme = programme
     p.margin_before, p.margin_after = opts.epg_margin_before, opts.epg_margin_after
@@ -1071,6 +1079,16 @@ views.sched_new = function()
     end
   end
   if state.current and state.current ~= '' then add(state.current, 'viendo ahora') end
+  -- J5 · no todo lo que se programa es un canal: una lista guardada o lo que está puesto ahora mismo también
+  table.insert(items, { title = 'Una lista guardada…', hint = 'música', icon = 'queue_music',
+                        value = { view = 'sched_lists' } })
+  local ahora = mp.get_property('path') or ''
+  if ahora ~= '' and not (state.current and state.current.url == ahora) then
+    table.insert(items, { title = 'Lo que está puesto ahora', hint = mp.get_property('media-title') or ahora,
+                          icon = 'play_circle', separator = true,
+                          value = { view = 'sched_time', media = ahora,
+                                    name = mp.get_property('media-title') or ahora } })
+  end
   local favs, recents = {}, {}
   local function done()
     pending = pending - 1
@@ -1089,9 +1107,44 @@ views.sched_new = function()
   end)
 end
 
+-- qué se va a hacer en la franja, en infinitivo, para el título y la fila: con algo del disco solo cabe ponerlo
+local function sched_verb(args)
+  local mode = P:get('sched_mode') or 'record'
+  if args and args.media and args.media ~= '' and mode == 'record' then mode = 'play' end
+  if mode == 'play' then return 'Poner' end
+  if mode == 'both' then return 'Ver y grabar' end
+  return 'Grabar'
+end
+
+views.sched_lists = function()
+  local title = 'Programar una lista'
+  if not require_mpvd(title) then return end
+  show_loading(title)
+  local view = state.view
+  rpc.call('music.playlists.list', nil, function(err, rows)
+    if state.view ~= view then return end
+    if err then show(title, uosc.message_items(fail(err, 'music.playlists.list'), 'error')) return end
+    local items = {}
+    for _, l in ipairs(rows or {}) do
+      items[#items + 1] = { title = l.name, icon = 'queue_music',
+                            hint = (l.count or 0) .. (l.count == 1 and ' canción' or ' canciones'),
+                            value = { view = 'sched_time', media = l.file, name = l.name } }
+    end
+    if #items == 0 then
+      items = uosc.message_items('No hay listas guardadas todavía: se crean en Música › Listas', 'info')
+    end
+    show(title, items, { footnote = 'La lista se repite hasta que acabe la franja · ⌫ atrás' })
+  end)
+end
+
+local function sched_time_title(args)
+  return sched_verb(args) .. ' «' .. (args.name or '')
+    .. '»: inicio y fin o minutos (21:30 22:15 · 21:30 90 · ahora 30)'
+end
+
 local function sched_time_menu(args, items, query)
   return {
-    type = MENU, title = 'Grabar «' .. (args.name or '') .. '»: inicio y fin o minutos (21:30 22:15 · 21:30 90 · ahora 30)',
+    type = MENU, title = sched_time_title(args),
     items = items, callback = { SCRIPT, EVENT }, search_style = 'palette', search_debounce = 250,
     on_search = 'callback', on_close = 'callback', search_suggestion = query,
     footnote = 'También «mañana 9:00 1h30» · Enter programa · ⌫ atrás',
@@ -1100,7 +1153,7 @@ end
 
 views.sched_time = function(args)
   local items = uosc.message_items('Escribe la hora de inicio y la de fin (o los minutos)', 'schedule')
-  publish_menu('sched_time', items)
+  publish_menu(sched_time_title(args), items)
   uosc.open(sched_time_menu(args, items))
 end
 
@@ -1121,10 +1174,12 @@ local function sched_time_prompt(args, query)
     elseif res.error then
       items = uosc.message_items(res.error, 'help')
     else
-      items = { { title = 'Grabar «' .. (args.name or '') .. '» ' .. res.label, icon = 'fiber_manual_record',
-                  value = { sched_add = { channel = args.id, start = res.start, stop = res.stop, title = args.name } } } }
+      items = { { title = sched_verb(args) .. ' «' .. (args.name or '') .. '» ' .. res.label,
+                  icon = (args.media and args.media ~= '') and 'play_circle' or 'fiber_manual_record',
+                  value = { sched_add = { channel = args.id, media = args.media, start = res.start,
+                                          stop = res.stop, title = args.name } } } }
     end
-    publish_menu('sched_time', items)
+    publish_menu(sched_time_title(args), items)
     uosc.update(sched_time_menu(args, items, query))
   end)
 end
@@ -1305,7 +1360,7 @@ mp.register_script_message(EVENT, function(json)
                    function() if uosc.open_type() == MENU then reopen_current() end end)
     elseif v.sched_add then
       local p = v.sched_add
-      schedule_add(schedule_params(p.channel, p.start, p.stop, p.title), function()
+      schedule_add(schedule_params(p.channel, p.start, p.stop, p.title, nil, p.media), function()
         state.stack = { { name = 'root' } }
         state.force_open = true  -- the palette is replaced by the list
         open_view({ name = 'schedule' })

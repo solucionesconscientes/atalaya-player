@@ -5,6 +5,14 @@ ESTADO_GLOBAL: EN_CURSO
 De tu tercera prueba y del repaso de `docs/IDEAS.md` salieron cuatro cosas, y están. Detrás van las cinco que
 aprobaste después.
 
+### J5 · Programar una lista de música
+Faltaba la otra mitad de lo que pediste en la prueba anterior («programar canciones o playlist»): la franja ya
+existía, pero desde el menú solo se podían elegir **canales**. Ahora en *Programar* hay dos puertas más: **«Una
+lista guardada…»**, que enseña las listas de Música, y **«Lo que está puesto ahora»**. La lista se encola entera y
+**se repite hasta que acabe la franja** —si no, «música de 21:00 a 23:00» con una lista de veinte minutos se
+acabaría a y veinte— y al terminar se deja la repetición como estuviera. El título del menú dice «Poner», no
+«Grabar», porque grabar algo que ya está en el disco no tiene sentido.
+
 ### H60 · El vídeo se quita solo al minimizar
 Preguntaste si minimizar ya deja de decodificar y si entonces el botón de apagar el vídeo es redundante. Lo medí:
 **minimizar no para nada** (37 % de un núcleo con la ventana visible, 18 % minimizada, 8 % sin vídeo, y los mismos

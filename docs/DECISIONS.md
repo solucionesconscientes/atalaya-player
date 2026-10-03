@@ -1104,3 +1104,20 @@
   **Y cómo se comprueba**: uosc no publica sus botones, así que `mu.uosc` publica en `user-data/mu/bar/<script>` qué
   tiene escondido. El test mira eso, no la opción. Que uosc obedezca a `hide` está verificado en su código
   (`ManagedButton.lua:27-32`) y ya lo usaba el indicador de tareas de H58.
+
+- ADR-098 · Programar una lista guardada: `loadlist` y repetir hasta el final de la franja (J5).
+  **Completa** ADR-094, que envolvió «una canción, una carpeta, una lista o una dirección» como canal de pega pero
+  dejó dos cabos: desde el menú solo se podían elegir **canales**, y `_play` cargaba todo con `loadfile`.
+  **(1) Las listas ya estaban.** `mpvd/music/playlists.py` guarda listas con nombre como M3U8 en los datos del
+  usuario, con crear/renombrar/añadir/ordenar/importar/exportar, y `music.playlists.list` ya devuelve la ruta del
+  fichero. Lo que había que construir no era el almacén, era el camino hasta él.
+  **(2) `loadlist`, no `loadfile`.** Un `.m3u8` abierto con `loadfile` se intenta demuxear; mpv solo encola una
+  lista con `loadlist`. Se distingue por el sufijo **y porque sea local**: un `.m3u8` remoto es HLS, o sea un canal,
+  no una lista de canciones. Así no hay que añadir ningún campo al modelo de `Channel`.
+  **(3) La lista se repite durante la franja.** «Música de 21:00 a 23:00» con una lista de veinte minutos se
+  acabaría a y veinte, que no es lo que se ha pedido: se pone `loop-playlist=inf` mientras dura y se devuelve al
+  terminar el valor que hubiera (es una opción global del usuario, no nuestra).
+  **(4) Con algo del disco, el modo es «ponerlo».** Grabar un fichero que ya está en el disco no tiene sentido;
+  mpvd ya lo forzaba y ahora el menú lo dice en el título («Poner «Cena»…» y no «Grabar»).
+  **(5) De paso**: `views.sched_time` publicaba el nombre de la vista donde las demás publican el título, así que no
+  se podía comprobar desde fuera qué se iba a hacer. Ahora publica el título, como el resto.
