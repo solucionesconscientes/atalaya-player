@@ -1,5 +1,18 @@
 # NEEDS_HUMAN — cosas que necesita Ser (con el comando exacto)
 
+## 2026-10-03 · De las tres que quedan, qué haría yo (y qué no)
+Ser preguntó por las tres cosas que solo puede hacer él. Esto es lo que recomiendo, por orden:
+
+1. **`rtcwake`: sí, y es la única que tapa un agujero real.** Sin esa línea, una grabación o una reproducción
+   programada a las 3:00 simplemente **no ocurre**: el equipo se suspende y no se despierta. El comando exacto está
+   más abajo (sección del 2026-10-01); es una regla limitada a ese binario, no un sudo general.
+2. **Puerto 8790/8791 en `ufw`: NO lo abriría.** Desde H51 la sala sale a internet **por defecto** por el túnel, que
+   no necesita ningún puerto abierto, y compartir es justamente con quien no está en casa. Ese puerto solo sirve
+   para invitados dentro de tu propio wifi, que es el caso secundario: no vale un agujero permanente en el
+   cortafuegos. Si algún día el wifi importa, el comando sigue abajo y se abre entonces.
+3. **Cuenta de OpenSubtitles: sí, pero sin prisa.** Son dos minutos tuyos y da subtítulos humanos al instante en
+   películas conocidas. Todo lo demás ya lo cubre whisper sin cuenta ninguna, y encima mejor en material raro.
+
 ## 2026-09-28 · Notion (no bloquea)
 - La ficha "MPV-UOS" (slug `mpv-uos`, https://app.notion.com/p/3e9d5e4ff9d5818989fddde90c3db7e1) quedó creada, pero el campo Stack solo admite
   opciones existentes (Python, uv, MCP): añadir Lua, Bash, mpv, ffmpeg, yt-dlp exigía modificar el esquema de la base y el permiso fue denegado.
