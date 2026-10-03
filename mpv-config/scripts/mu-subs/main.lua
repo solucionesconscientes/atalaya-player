@@ -21,6 +21,7 @@ local N = nav.new()
 -- llama por lo que es. El nombre sale en la miga de pan del menú.
 local ROOT_TITLE = 'Subtítulos del vídeo'
 local prefs = require('mu.prefs')
+local tr = require('mu.i18n').t
 
 local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-subs-event'
@@ -267,8 +268,8 @@ local function saved_ai_track()
   if not t or not (t.complete or t.status == 'done') then return nil end
   for _, sv in ipairs(t.saved or {}) do
     if sv.complete and sv.path then
-      local tr = find_track(sv.path)
-      if tr then return tr end
+      local pista = find_track(sv.path)
+      if pista then return pista end
     end
   end
   return nil
@@ -330,8 +331,8 @@ local function reload_track()
   if t.lang then table.insert(args, t.lang) end
   mp.command_native(args)
   local nt = nil
-  for _, tr in ipairs(mp.get_property_native('track-list') or {}) do
-    if tr.type == 'sub' and tr['external-filename'] == state.srt and tr.id ~= t.id then nt = tr end
+  for _, pista in ipairs(mp.get_property_native('track-list') or {}) do
+    if pista.type == 'sub' and pista['external-filename'] == state.srt and pista.id ~= t.id then nt = pista end
   end
   if nt then
     if sid == t.id then mp.set_property_native('sid', nt.id) end
@@ -371,7 +372,7 @@ local function notify_wait(t)
   local txt = wait_text(t)
   if not txt then return end
   state.wait_said = queda
-  osd('Subtítulos IA: ' .. txt)
+  osd(tr('Subtítulos IA: %s'):format(txt))
 end
 
 local function apply_task(t, from_event)
@@ -386,17 +387,17 @@ end
 
 local function start(quiet)
   if not rpc.connected() then
-    if not quiet then osd('mpvd no está disponible; reintentando…') end
+    if not quiet then osd(tr('mpvd no está disponible; reintentando…')) end
     mp.commandv('script-message-to', 'mu_core', 'mu-ensure')
     return false
   end
   local path = current_path()
   if path == '' then
-    if not quiet then osd('No hay ningún archivo abierto') end
+    if not quiet then osd(tr('No hay ningún archivo abierto')) end
     return false
   end
   if not is_local(mp.get_property('path')) then
-    if not quiet then osd('Los subtítulos IA solo funcionan con archivos locales por ahora') end
+    if not quiet then osd(tr('Los subtítulos IA solo funcionan con archivos locales por ahora')) end
     return false
   end
   if state.starting then return true end
@@ -417,7 +418,7 @@ local function start(quiet)
     state.starting = false
     if err then
       publish()
-      osd('Subtítulos IA: ' .. fail(err, 'asr.start'))
+      osd(tr('Subtítulos IA: %s'):format(fail(err, 'asr.start')))
       set_button_state()
       return
     end
@@ -426,9 +427,9 @@ local function start(quiet)
     apply_task(t, false)
     add_track()
     if t.status == 'done' then
-      if not quiet then osd('Subtítulos IA listos (caché): ' .. task_label(t)) end
+      if not quiet then osd(tr('Subtítulos IA listos (caché): %s'):format(task_label(t))) end
     elseif not quiet then
-      osd('Subtítulos IA: transcribiendo con ' .. task_label(t) .. '…')
+      osd(tr('Subtítulos IA: transcribiendo con %s…'):format(task_label(t)))
     end
     set_button_state()
     if state.precompute_next then precompute_next() end
@@ -455,7 +456,7 @@ end
 local function toggle()
   if task_running() then
     stop()
-    osd('Subtítulos IA detenidos (lo transcrito queda en caché)')
+    osd(tr('Subtítulos IA detenidos (lo transcrito queda en caché)'))
   else
     start(false)
   end
@@ -523,7 +524,7 @@ local function resync_request(srt, quiet)
     if err then
       state.resync.status = 'failed'
       publish()
-      osd('Resincronizar: ' .. fail(err, 'subs.resync'))
+      osd(tr('Resincronizar: %s'):format(fail(err, 'subs.resync')))
       return
     end
     if res.status == 'pending' then
@@ -531,7 +532,7 @@ local function resync_request(srt, quiet)
       state.resync.task = res.task and res.task.id or nil
       publish()
       if not quiet then
-        osd('Transcribiendo el audio para resincronizar… (' .. math.floor((res.task.progress or 0) * 100) .. '%)')
+        osd(tr('Transcribiendo el audio para resincronizar… (%d%%)'):format(math.floor((res.task.progress or 0) * 100)))
       end
       return
     end
@@ -540,8 +541,8 @@ local function resync_request(srt, quiet)
 end
 
 local function resync_selected()
-  if not rpc.connected() then osd('mpvd no está disponible') return end
-  if not is_local(mp.get_property('path')) then osd('Solo archivos locales por ahora') return end
+  if not rpc.connected() then osd(tr('mpvd no está disponible')) return end
+  if not is_local(mp.get_property('path')) then osd(tr('Solo archivos locales por ahora')) return end
   local t = selected_external_sub()
   if t then
     state.resync = { srt = t['external-filename'], status = 'requested', lang = t.lang }
@@ -551,7 +552,7 @@ local function resync_selected()
   end
   local _, embedded = selected_sub_file()
   if not embedded then
-    osd('Selecciona primero una pista de subtítulos (archivo .srt/.ass/.vtt o pista interna de texto)')
+    osd(tr('Selecciona primero una pista de subtítulos (archivo .srt/.ass/.vtt o pista interna de texto)'))
     return
   end
   with_extracted(embedded, 'Resincronizar', function(srt)
@@ -600,7 +601,7 @@ with_extracted = function(track, what, cb)
       end
       state.extract = { job = res.job and res.job.id or nil, srt = res.srt, status = 'running', cb = cb, what = what }
       publish()
-      osd('Extrayendo la pista de subtítulos (' .. (track.codec or '?') .. ')…')
+      osd(tr('Extrayendo la pista de subtítulos (%s)…'):format(track.codec or '?'))
     end, 60)
 end
 
@@ -609,15 +610,15 @@ local function translated_track()
 end
 
 local function apply_dual(on)
-  local tr = translated_track()
+  local trad = translated_track()
   local orig = state.translate and find_track(state.translate.srt) or nil
   if not orig and state.translate and state.translate.orig_id then   -- an embedded track that was extracted
     for _, t in ipairs(mp.get_property_native('track-list') or {}) do
       if t.type == 'sub' and t.id == state.translate.orig_id then orig = t end
     end
   end
-  if on and tr and orig then
-    mp.set_property_native('sid', tr.id)
+  if on and trad and orig then
+    mp.set_property_native('sid', trad.id)
     mp.set_property_native('secondary-sid', orig.id)
     state.dual = true
   else
@@ -635,7 +636,7 @@ local function translate_apply(res)
   state.translate.progress = 1
   state.translate.engines = table.concat(res.engines or {}, '+')
   local existing = find_track(res.srt)
-  local title = 'Traducción (' .. (res.target or state.translate.target or '?') .. ')'
+  local title = tr('Traducción (%s)'):format(res.target or state.translate.target or '?')
   if existing then
     mp.commandv('sub-reload', tostring(existing.id))
     mp.set_property_native('sid', existing.id)
@@ -645,7 +646,7 @@ local function translate_apply(res)
   publish()  -- after the track exists: whoever sees "done" finds it in track-list
   if state.dual or P:get('dual') then apply_dual(true) end
   if opts.notify_done then
-    osd('✓ ' .. title .. (res.cached and ' (caché)' or '') .. ': ' .. tostring(res.cues or 0) .. ' cues')
+    osd(tr('✓ %s%s: %s cues'):format(title, res.cached and tr(' (caché)') or '', tostring(res.cues or 0)))
   end
   set_button_state()
 end
@@ -657,7 +658,9 @@ local function download_packages(missing, target)
     if engine == 'opus-big' then big = true end
     rpc.call('subs.translate.download', { source = pair[1], target = pair[2], engine = engine, notify = SCRIPT },
       function(err)
-        if err then osd('Modelo ' .. pair[1] .. '→' .. pair[2] .. ': ' .. fail(err, 'subs.translate.download')) end
+        if err then
+          osd(tr('Modelo %s→%s: %s'):format(pair[1], pair[2], fail(err, 'subs.translate.download')))
+        end
       end)
   end
   state.translate.status = 'downloading'
@@ -665,9 +668,9 @@ local function download_packages(missing, target)
   state.translate.pending = #missing
   publish()
   if big then
-    osd('Descargando OPUS-MT (≈860 MB, se convierte a 234 MB una sola vez)… se traducirá al terminar')
+    osd(tr('Descargando OPUS-MT (≈860 MB, se convierte a 234 MB una sola vez)… se traducirá al terminar'))
   else
-    osd('Descargando el paquete de traducción (' .. #missing .. ')… se traducirá al terminar')
+    osd(tr('Descargando el paquete de traducción (%d)… se traducirá al terminar'):format(#missing))
   end
 end
 
@@ -687,14 +690,14 @@ translate_request = function(track, target)
       end
       state.translate.status = 'failed'
       publish()
-      osd('Traducir: ' .. fail(err, 'subs.translate'))
+      osd(tr('Traducir: %s'):format(fail(err, 'subs.translate')))
       return
     end
     if res.status == 'done' then translate_apply(res); return end
     state.translate.status = 'running'
     state.translate.job = res.job and res.job.id or nil
     publish()
-    osd('Traduciendo ' .. tostring(res.cues or 0) .. ' cues al ' .. language_name_for(target) .. '…')
+    osd(tr('Traduciendo %s cues al %s…'):format(tostring(res.cues or 0), language_name_for(target)))
   end, 60)
 end
 
@@ -711,15 +714,15 @@ local function web_video()
 end
 
 local function web_add(url, lang, kind, target)
-  if not rpc.connected() then osd('mpvd no está disponible') return end
+  if not rpc.connected() then osd(tr('mpvd no está disponible')) return end
   state.web = { status = 'fetching', lang = lang, kind = kind }
   publish()
-  osd('Bajando los subtítulos de la web…')
+  osd(tr('Bajando los subtítulos de la web…'))
   rpc.call('subs.web.fetch', { url = url, lang = lang, kind = kind }, function(err, res)
     if err then
       state.web.status = 'failed'
       publish()
-      osd('Subtítulos de la web: ' .. fail(err, 'subs.web.fetch'))
+      osd(tr('Subtítulos de la web: %s'):format(fail(err, 'subs.web.fetch')))
       return
     end
     local t = find_track(res.srt)
@@ -731,16 +734,16 @@ local function web_add(url, lang, kind, target)
       local sid = mp.get_property_number('sid')
       translate_request({ ['external-filename'] = res.srt, lang = lang, id = sid, orig_id = sid }, target)
     else
-      osd('✓ ' .. res.title .. ' (' .. tostring(res.cues or 0) .. ' líneas)')
+      osd(tr('✓ %s (%s líneas)'):format(res.title, tostring(res.cues or 0)))
     end
   end, 90)
 end
 
 local function translate_selected(target)
-  if not rpc.connected() then osd('mpvd no está disponible') return end
+  if not rpc.connected() then osd(tr('mpvd no está disponible')) return end
   local track, embedded = selected_sub_file()
   if track then translate_request(track, target) return end
-  if not embedded then osd('Selecciona primero una pista de subtítulos (o inicia los subtítulos IA)') return end
+  if not embedded then osd(tr('Selecciona primero una pista de subtítulos (o inicia los subtítulos IA)')) return end
   with_extracted(embedded, 'Traducir', function(srt)
     translate_request({ ['external-filename'] = srt, lang = embedded.lang, orig_id = embedded.id }, target)
   end)
@@ -786,33 +789,33 @@ local function save_failed(message)
   state.save.status = 'failed'
   state.save.error = message
   publish()
-  osd('✗ No se pudo guardar: ' .. message)
+  osd(tr('✗ No se pudo guardar: %s'):format(message))
 end
 
 local function save_request(kind, extra)
   extra = extra or {}
-  if not rpc.connected() then osd('mpvd no está disponible') return end
+  if not rpc.connected() then osd(tr('mpvd no está disponible')) return end
   local raw = mp.get_property('path') or ''
-  if raw == '' then osd('No hay ningún archivo abierto') return end
+  if raw == '' then osd(tr('No hay ningún archivo abierto')) return end
   local params = { path = is_local(raw) and current_path() or raw, kind = kind, notify = SCRIPT,
     title = mp.get_property('media-title') }
   if opts.save_dir ~= '' then params.dest_dir = mp.command_native({ 'expand-path', opts.save_dir }) end
   if kind == 'ai' then
-    if state.srt == '' and not state.task then osd('No hay pista IA: inicia los subtítulos IA (alt+c)') return end
+    if state.srt == '' and not state.task then osd(tr('No hay pista IA: inicia los subtítulos IA (alt+c)')) return end
     params.srt = state.srt ~= '' and state.srt or nil
     params.lang = ai_lang()
     params.allow_partial = extra.partial or nil
     params.complete = extra.complete or nil
   elseif kind == 'translation' then
     if not (state.translate and state.translate.out and state.translate.out ~= '') then
-      osd('No hay ninguna traducción que guardar')
+      osd(tr('No hay ninguna traducción que guardar'))
       return
     end
     params.srt = state.translate.out
     params.lang = state.translate.target
   elseif kind == 'resync' then
     if not (state.resync and state.resync.out and state.resync.out ~= '') then
-      osd('No hay ningún subtítulo resincronizado que guardar')
+      osd(tr('No hay ningún subtítulo resincronizado que guardar'))
       return
     end
     params.srt = state.resync.out
@@ -823,11 +826,11 @@ local function save_request(kind, extra)
       local ext, emb = selected_sub_file()
       t = ext or emb
     end
-    if not t then osd('Selecciona primero una pista de subtítulos') return end
+    if not t then osd(tr('Selecciona primero una pista de subtítulos')) return end
     if IMAGE_CODECS[t.codec or ''] then
       state.save = { kind = 'track', status = 'failed', error = IMAGE_MSG }
       publish()
-      osd('✗ No se pudo guardar: ' .. IMAGE_MSG .. ' (' .. t.codec .. ')')
+      osd(tr('✗ No se pudo guardar: %s (%s)'):format(IMAGE_MSG, t.codec))
       return
     end
     if t.external and t['external-filename'] then
@@ -857,7 +860,7 @@ local function save_request(kind, extra)
     else -- queued: an embedded track is being extracted first
       state.save = { kind = kind, status = 'queued' }
       publish()
-      osd('Extrayendo la pista… se guardará al terminar')
+      osd(tr('Extrayendo la pista… se guardará al terminar'))
     end
   end, 60)
 end
@@ -871,7 +874,7 @@ local function save_default()
   elseif state.srt ~= '' or state.task then
     save_request('ai')
   else
-    osd('No hay subtítulos que guardar: selecciona una pista o inicia los subtítulos IA')
+    osd(tr('No hay subtítulos que guardar: selecciona una pista o inicia los subtítulos IA'))
   end
 end
 
@@ -905,7 +908,7 @@ mp.register_script_message('mu-event', function(payload)
         if t.status == 'done' then
           osd(string.format('✓ Subtítulos IA completos (%d cues, %s)', t.cues or 0, task_label(t)))
         else
-          osd('✗ Subtítulos IA: ' .. (t.error or 'error'))
+          osd(tr('✗ Subtítulos IA: %s'):format(t.error or tr('error')))
         end
       end
       reload_track()
@@ -920,7 +923,7 @@ mp.register_script_message('mu-event', function(payload)
     elseif ev.job.status == 'failed' then
       state.translate.status = 'failed'
       publish()
-      osd('✗ Traducción fallida: ' .. (ev.job.error or ev.job.message or ''))
+      osd(tr('✗ Traducción fallida: %s'):format(ev.job.error or ev.job.message or ''))
     else
       state.translate.status = 'running'
       publish()
@@ -949,7 +952,7 @@ mp.register_script_message('mu-event', function(payload)
       elseif ev.job.status == 'failed' then
         ex.status = 'failed'
         publish()
-        osd('✗ ' .. (ex.what or 'Extraer') .. ': ' .. (ev.job.error or 'no se pudo extraer la pista'))
+        osd(tr('✗ %s: %s'):format(ex.what or tr('Extraer'), ev.job.error or tr('no se pudo extraer la pista')))
       end
     end
   elseif ev.event == 'subs-translate-model' and type(ev.job) == 'table' then
@@ -960,16 +963,16 @@ mp.register_script_message('mu-event', function(payload)
     end
     if ev.job.status == 'done' then
       osd((ev.engine == 'opus-big' and 'Modelo OPUS-MT ' or 'Paquete de traducción ') .. (ev.pair or '') .. ' listo')
-      local tr = state.translate
-      if tr and tr.status == 'downloading' and tr.retry_target then
-        tr.pending = (tr.pending or 1) - 1
-        local track = tr.track or find_track(tr.srt)
-        if track and tr.pending <= 0 then translate_request(track, tr.retry_target) end
+      local trad = state.translate
+      if trad and trad.status == 'downloading' and trad.retry_target then
+        trad.pending = (trad.pending or 1) - 1
+        local track = trad.track or find_track(trad.srt)
+        if track and trad.pending <= 0 then translate_request(track, trad.retry_target) end
       end
     elseif ev.job.status == 'failed' then
       if state.translate then state.translate.status = 'failed' end
       publish()
-      osd('✗ No se pudo descargar ' .. (ev.pair or '') .. ': ' .. (ev.job.error or ''))
+      osd(tr('✗ No se pudo descargar %s: %s'):format(ev.pair or '', ev.job.error or ''))
     end
     if uosc.open_type() == MENU and state.view == 'translate' and reopen_current then reopen_current() end
   elseif ev.event == 'asr-model' and type(ev.job) == 'table' then
@@ -977,9 +980,9 @@ mp.register_script_message('mu-event', function(payload)
     state.last_event = { model = ev.model, status = ev.job.status, progress = ev.job.progress }
     if ev.job.status == 'done' then
       state.models = nil
-      if opts.notify_done then osd('Modelo ' .. ev.model .. ' descargado') end
+      if opts.notify_done then osd(tr('Modelo %s descargado'):format(ev.model)) end
     elseif ev.job.status == 'failed' then
-      osd('No se pudo descargar el modelo ' .. ev.model .. ': ' .. (ev.job.message or ev.job.error or ''))
+      osd(tr('No se pudo descargar el modelo %s: %s'):format(ev.model, ev.job.message or ev.job.error or ''))
     end
     publish()
     if uosc.open_type() == MENU and state.view == 'models' and reopen_current then reopen_current() end
@@ -1086,8 +1089,8 @@ local function require_mpvd(title)
   if rpc.connected() then return true end
   local core = mp.get_property_native('user-data/mu/core') or {}
   show(title, {
-    { title = 'mpvd no está disponible', hint = core.mpvd or '', icon = 'error', selectable = false, muted = true },
-    { title = 'Reintentar conexión', icon = 'refresh', value = { view = 'root', ensure = true } },
+    { title = tr('mpvd no está disponible'), hint = core.mpvd or '', icon = 'error', selectable = false, muted = true },
+    { title = tr('Reintentar conexión'), icon = 'refresh', value = { view = 'root', ensure = true } },
   })
   return false
 end
@@ -1106,7 +1109,7 @@ local function apply_chapters(on)
   if not on then
     if state.ai_chapters and state.ai_chapters > 0 then
       mp.commandv('script-message-to', 'mu_marks', 'mu-marks-clear', 'subs')
-      osd('Capítulos IA quitados')
+      osd(tr('Capítulos IA quitados'))
     end
     state.ai_chapters = 0
     state.chapters_status = ''
@@ -1114,8 +1117,8 @@ local function apply_chapters(on)
     return
   end
   local path = current_path()
-  if path == '' or not is_local(path) then osd('Capítulos IA: solo archivos locales') return end
-  if not rpc.connected() then osd('mpvd no está conectado') return end
+  if path == '' or not is_local(path) then osd(tr('Capítulos IA: solo archivos locales')) return end
+  if not rpc.connected() then osd(tr('mpvd no está conectado')) return end
   state.chapters_status = 'calculando'
   publish()
   rpc.call('semantic.chapters', { path = path, min_seconds = opts.chapter_min_seconds, window = opts.chapter_window },
@@ -1124,14 +1127,14 @@ local function apply_chapters(on)
       state.chapters_status = 'error'
       local m = fail(err, 'semantic.chapters')
       if m:find('transcripci') then m = 'primero genera los subtítulos IA (alt+c)' end
-      osd('Capítulos IA: ' .. m)
+      osd(tr('Capítulos IA: %s'):format(m))
       publish()
       return
     end
     local chaps = (type(res) == 'table' and res.chapters) or {}
     if #chaps == 0 then
       state.chapters_status = 'sin cambios de tema'
-      osd('Capítulos IA: no se detectan cambios de tema')
+      osd(tr('Capítulos IA: no se detectan cambios de tema'))
       publish()
       return
     end
@@ -1156,12 +1159,12 @@ local FIABILIDAD = {
 }
 
 local function pick_source(pick, label)
-  if not rpc.connected() then osd('mpvd no está disponible') return end
-  osd('Bajando ' .. (label or 'los subtítulos') .. '…')
+  if not rpc.connected() then osd(tr('mpvd no está disponible')) return end
+  osd(tr('Bajando %s…'):format(label or tr('los subtítulos')))
   rpc.call('subs.pick', { source = pick }, function(err, res)
-    if err then osd('Subtítulos: ' .. fail(err, 'subs.pick')) return end
+    if err then osd(tr('Subtítulos: %s'):format(fail(err, 'subs.pick'))) return end
     local srt = res.srt or res.original
-    if not srt or srt == '' then osd('Subtítulos: la respuesta no trae ningún archivo') return end
+    if not srt or srt == '' then osd(tr('Subtítulos: la respuesta no trae ningún archivo')) return end
     local t = find_track(srt)
     if t then
       mp.set_property_number('sid', t.id)
@@ -1170,7 +1173,8 @@ local function pick_source(pick, label)
     end
     mp.set_property_bool('sub-visibility', true)
     publish()
-    osd('✓ ' .. (label or 'Subtítulos') .. (res.cues and (' (' .. tostring(res.cues) .. ' líneas)') or ''))
+    osd(tr('✓ %s%s'):format(label or tr('Subtítulos'),
+                          res.cues and tr(' (%s líneas)'):format(tostring(res.cues)) or ''))
   end, 120)
 end
 
@@ -1189,7 +1193,7 @@ local function find_items(res)
       value = { pick = src.pick, pick_label = idioma .. ' (' .. (src.provider_name or '') .. ')' } }
   end
   if #items == 0 then
-    items[#items + 1] = { title = 'No se ha encontrado ningún subtítulo para este vídeo', icon = 'subtitles_off',
+    items[#items + 1] = { title = tr('No se ha encontrado ningún subtítulo para este vídeo'), icon = 'subtitles_off',
       selectable = false, muted = true }
   end
   items[#items].separator = true
@@ -1202,18 +1206,18 @@ local function find_items(res)
 end
 
 views.find = function()
-  local title = 'Buscar subtítulos'
+  local title = tr('Buscar subtítulos')
   if not require_mpvd(title) then return end
   local path = current_path()
   if path == '' then
-    show(title, uosc.message_items('Abre un vídeo primero', 'info'))
+    show(title, uosc.message_items(tr('Abre un vídeo primero'), 'info'))
     return
   end
-  show(title, uosc.loading_items('Preguntando a la web y a OpenSubtitles…'))
+  show(title, uosc.loading_items(tr('Preguntando a la web y a OpenSubtitles…')))
   rpc.call('subs.find', { path = path }, function(err, res)
     if state.view ~= 'find' then return end
     if err then show(title, uosc.message_items(fail(err, 'subs.find'), 'error')); return end
-    show(title, find_items(res), { footnote = 'Enter baja la pista y la pone · ⌫ atrás' })
+    show(title, find_items(res), { footnote = tr('Enter baja la pista y la pone · ⌫ atrás') })
   end, 90)
 end
 
@@ -1245,15 +1249,15 @@ end
 local function text_rows(items)
   local scale = mp.get_property_number('sub-scale') or 1
   local delay = mp.get_property_number('sub-delay') or 0
-  items[#items + 1] = { title = 'Tamaño del texto', hint = string.format('%d %%  ·  Enter: más grande', scale * 100 + 0.5),
+  items[#items + 1] = { title = tr('Tamaño del texto'), hint = string.format('%d %%  ·  Enter: más grande', scale * 100 + 0.5),
     icon = 'format_size', value = { scale = 0.1 },
-    actions = { { name = 'menos', icon = 'remove', label = 'Más pequeño' },
-                { name = 'normal', icon = 'restart_alt', label = 'Tamaño normal' } } }
-  items[#items + 1] = { title = 'Retraso', icon = 'schedule',
+    actions = { { name = 'menos', icon = 'remove', label = tr('Más pequeño') },
+                { name = 'normal', icon = 'restart_alt', label = tr('Tamaño normal') } } }
+  items[#items + 1] = { title = tr('Retraso'), icon = 'schedule',
     hint = string.format('%+.1f s  ·  Enter: retrasar (z/x)', delay),
     value = { delay = 0.1 },
-    actions = { { name = 'menos', icon = 'remove', label = 'Adelantar' },
-                { name = 'normal', icon = 'restart_alt', label = 'Sin retraso' } } }
+    actions = { { name = 'menos', icon = 'remove', label = tr('Adelantar') },
+                { name = 'normal', icon = 'restart_alt', label = tr('Sin retraso') } } }
 end
 
 views.root = function()
@@ -1265,51 +1269,52 @@ views.root = function()
   local visible = mp.get_property_bool('sub-visibility', true)
   local sid = mp.get_property_native('sid')
   local n = 0
-  for _, tr in ipairs(mp.get_property_native('track-list') or {}) do
-    if tr.type == 'sub' then
+  for _, pista in ipairs(mp.get_property_native('track-list') or {}) do
+    if pista.type == 'sub' then
       n = n + 1
-      items[#items + 1] = { title = track_label(tr), hint = track_hint(tr), icon = 'subtitles',
-        active = tr.selected and visible, value = { sid = tr.id } }
+      items[#items + 1] = { title = track_label(pista), hint = track_hint(pista), icon = 'subtitles',
+        active = pista.selected and visible, value = { sid = pista.id } }
     end
   end
   if n == 0 then
-    items[#items + 1] = { title = 'Este vídeo no trae ninguna pista de subtítulos', icon = 'subtitles_off',
+    items[#items + 1] = { title = tr('Este vídeo no trae ninguna pista de subtítulos'), icon = 'subtitles_off',
       selectable = false, muted = true }
   else
-    items[#items + 1] = { title = 'Sin subtítulos', icon = 'visibility_off',
+    items[#items + 1] = { title = tr('Sin subtítulos'), icon = 'visibility_off',
       active = (not visible) or sid == false or sid == nil, value = { sid = 0 } }
   end
   text_rows(items)
   if translated_track() then
-    items[#items + 1] = { title = 'Duales: original arriba + traducción abajo', icon = 'vertical_split',
+    items[#items + 1] = { title = tr('Duales: original arriba + traducción abajo'), icon = 'vertical_split',
       hint = yesno(state.dual), value = { dual = true } }
   end
   items[#items].separator = true
 
   -- 2. buscar en internet
-  items[#items + 1] = { title = 'Buscar subtítulos en internet', icon = 'travel_explore',
-    hint = 'la web del vídeo y OpenSubtitles, de más fiable a menos', value = { view = 'find' } }
+  items[#items + 1] = { title = tr('Buscar subtítulos en internet'), icon = 'travel_explore',
+    hint = tr('la web del vídeo y OpenSubtitles, de más fiable a menos'), value = { view = 'find' } }
   -- En un vídeo de internet, los suyos propios siguen a un clic: son los más fiables y además se pueden traducir desde
   -- ahí mismo. (La búsqueda general los incluye, pero esconderlos detrás de ella era peor.)
   if web_video() then
     local w = state.web
-    items[#items + 1] = { title = 'Subtítulos de la web', icon = 'language',
+    items[#items + 1] = { title = tr('Subtítulos de la web'), icon = 'language',
       hint = (w and w.status == 'done') and (language_name_for(w.lang) .. (w.kind == 'auto' and ' · automáticos' or ''))
         or 'los que da esta web, y traducidos sin conexión', value = { view = 'web' } }
   end
   local sel, sel_emb = selected_sub_file()
-  local tr = state.translate
+  local trad = state.translate
   local tr_hint = 'selecciona antes una pista'
-  if tr and tr.status == 'running' then tr_hint = string.format('traduciendo %d%%', math.floor((tr.progress or 0) * 100 + 0.5))
-  elseif tr and tr.status == 'downloading' then tr_hint = string.format('descargando modelo %d%%', pct(tr.dl_progress))
-  elseif tr and tr.status == 'done' then tr_hint = 'lista: ' .. language_name_for(tr.target)
+  if trad and trad.status == 'running' then
+    tr_hint = string.format(tr('traduciendo %d%%'), math.floor((trad.progress or 0) * 100 + 0.5))
+  elseif trad and trad.status == 'downloading' then tr_hint = string.format('descargando modelo %d%%', pct(trad.dl_progress))
+  elseif trad and trad.status == 'done' then tr_hint = tr('lista: %s'):format(language_name_for(trad.target))
   elseif sel then tr_hint = (sel.title or base_name(sel['external-filename']) or '')
-  elseif sel_emb then tr_hint = 'pista interna (' .. (sel_emb.codec or '?') .. ')' end
-  items[#items + 1] = { title = 'Traducir la pista de arriba a…', icon = 'translate', hint = tr_hint,
-    value = { view = 'translate' }, muted = sel == nil and sel_emb == nil and not tr }
+  elseif sel_emb then tr_hint = tr('pista interna (%s)'):format(sel_emb.codec or '?') end
+  items[#items + 1] = { title = tr('Traducir la pista de arriba a…'), icon = 'translate', hint = tr_hint,
+    value = { view = 'translate' }, muted = sel == nil and sel_emb == nil and not trad }
   local ext = selected_external_sub()
   local rs = state.resync
-  items[#items + 1] = { title = 'Cuadrar la pista con la voz', icon = 'sync_alt',
+  items[#items + 1] = { title = tr('Cuadrar la pista con la voz'), icon = 'sync_alt',
     hint = ext and ((rs and rs.srt == ext['external-filename'] and rs.status ~= 'done') and rs.status
       or base_name(ext['external-filename'])) or 'selecciona un .srt/.ass externo',
     value = { resync = true }, muted = ext == nil }
@@ -1318,49 +1323,49 @@ views.root = function()
   if sv and sv.status == 'done' then sv_hint = sv.name or 'guardado'
   elseif sv and sv.status == 'waiting' then sv_hint = string.format('completando %d%%…', pct(sv.coverage))
   elseif sv and sv.status == 'queued' then sv_hint = 'extrayendo…' end
-  items[#items + 1] = { title = 'Guardar subtítulos (SRT)', icon = 'save', hint = sv_hint, value = { view = 'save' },
+  items[#items + 1] = { title = tr('Guardar subtítulos (SRT)'), icon = 'save', hint = sv_hint, value = { view = 'save' },
     separator = true }
 
   -- 3. crear con IA (al final: es lo lento)
   if task_running() or state.starting then
     local done_pct = t and pct(t.progress) or 0
-    items[#items + 1] = { title = 'Detener los subtítulos con IA', icon = 'stop',
+    items[#items + 1] = { title = tr('Detener los subtítulos con IA'), icon = 'stop',
       hint = state.starting and 'iniciando…' or string.format('%d%% · %d cues · %s', done_pct, t.cues or 0, task_label(t)),
       value = { toggle = true } }
     items[#items + 1] = { title = wait_text(t) or 'Calculando cuánto va a tardar…', icon = 'hourglass_top',
       selectable = false, muted = true }
   elseif path == '' then
-    items[#items + 1] = { title = 'Abre un archivo de tu equipo para subtitularlo con IA', icon = 'info',
+    items[#items + 1] = { title = tr('Abre un archivo de tu equipo para subtitularlo con IA'), icon = 'info',
       selectable = false, muted = true }
   elseif not is_local(path) then
-    items[#items + 1] = { title = 'Crear con IA: solo archivos de tu equipo (ADR-023)', icon = 'info',
+    items[#items + 1] = { title = tr('Crear con IA: solo archivos de tu equipo (ADR-023)'), icon = 'info',
       selectable = false, muted = true }
   elseif t and t.status == 'done' then
-    items[#items + 1] = { title = 'Subtítulos con IA listos', icon = 'check_circle',
+    items[#items + 1] = { title = tr('Subtítulos con IA listos'), icon = 'check_circle',
       hint = string.format('%d cues · %s', t.cues or 0, task_label(t)), value = { toggle = true } }
   else
-    items[#items + 1] = { title = 'Crear los subtítulos con IA', icon = 'closed_caption',
-      hint = 'alt+c · tarda, pero luego quedan guardados', value = { toggle = true } }
+    items[#items + 1] = { title = tr('Crear los subtítulos con IA'), icon = 'closed_caption',
+      hint = tr('alt+c · tarda, pero luego quedan guardados'), value = { toggle = true } }
   end
-  items[#items + 1] = { title = 'Idioma del audio', hint = language_name(state.language), icon = 'translate',
+  items[#items + 1] = { title = tr('Idioma del audio'), hint = language_name(state.language), icon = 'translate',
     value = { view = 'language' } }
-  items[#items + 1] = { title = 'Modelo', hint = state.model, icon = 'memory', value = { view = 'models' } }
-  items[#items + 1] = { title = 'Crear los subtítulos al abrir un archivo', hint = yesno(state.auto_start),
+  items[#items + 1] = { title = tr('Modelo'), hint = state.model, icon = 'memory', value = { view = 'models' } }
+  items[#items + 1] = { title = tr('Crear los subtítulos al abrir un archivo'), hint = yesno(state.auto_start),
     icon = 'autorenew', value = { opt = 'auto_start' } }
-  items[#items + 1] = { title = 'Preparar también el siguiente de la lista', hint = yesno(state.precompute_next),
+  items[#items + 1] = { title = tr('Preparar también el siguiente de la lista'), hint = yesno(state.precompute_next),
     icon = 'queue_play_next', value = { opt = 'precompute_next' } }
   if state.precompute then
-    items[#items + 1] = { title = 'Siguiente: ' .. (state.precompute.path:match('[^/\\]+$') or ''),
+    items[#items + 1] = { title = tr('Siguiente: %s'):format(state.precompute.path:match('[^/\\]+$') or ''),
       hint = state.precompute.status, icon = 'skip_next', selectable = false, muted = true }
   end
   local nch = state.ai_chapters or 0
-  items[#items + 1] = { title = 'Capítulos por tema (IA)', icon = 'bookmarks', active = nch > 0,
+  items[#items + 1] = { title = tr('Capítulos por tema (IA)'), icon = 'bookmarks', active = nch > 0,
     hint = nch > 0 and (nch .. ' capítulos · quitar') or (state.chapters_status ~= '' and state.chapters_status
       or 'según la transcripción'), value = { chapters = true } }
-  items[#items + 1] = { title = 'Estado del motor', icon = 'monitor_heart', value = { view = 'status' } }
+  items[#items + 1] = { title = tr('Estado del motor'), icon = 'monitor_heart', value = { view = 'status' } }
   -- H45/D3 · el resumen y el índice salen de los subtítulos, así que su sitio natural es también este panel
-  items[#items + 1] = { title = 'Resumen e índice del vídeo', icon = 'history_edu',
-                        hint = 'lo que te has perdido y las secciones, con su minuto',
+  items[#items + 1] = { title = tr('Resumen e índice del vídeo'), icon = 'history_edu',
+                        hint = tr('lo que te has perdido y las secciones, con su minuto'),
                         value = { child = { script = 'mu_recap', entry = 'recap-menu' } } }
   show(ROOT_TITLE, items)
 end
@@ -1368,19 +1373,20 @@ end
 views.web = function()
   local url = web_video()
   if not url then
-    show('Subtítulos de la web', { { title = 'Abre un vídeo de internet (YouTube y otras webs)', icon = 'info',
+    show(tr('Subtítulos de la web'), { { title = tr('Abre un vídeo de internet (YouTube y otras webs)'), icon = 'info',
       selectable = false, muted = true } })
     return
   end
   if not require_mpvd('Subtítulos de la web') then return end
-  show('Subtítulos de la web', { { title = 'Preguntando a la web…', icon = 'hourglass_empty', selectable = false,
+  show(tr('Subtítulos de la web'), { { title = tr('Preguntando a la web…'), icon = 'hourglass_empty', selectable = false,
     muted = true } })
   local target = P:get('translate_target') or 'es'
   if target == '' then target = 'es' end
   rpc.call('subs.web.list', { url = url, prefer = target }, function(err, res)
     if state.view ~= 'web' then return end
     if err then
-      show('Subtítulos de la web', { { title = 'No se pudo consultar: ' .. fail(err, 'subs.web.list'), icon = 'error',
+      show(tr('Subtítulos de la web'), { { title = tr('No se pudo consultar: %s'):format(fail(err, 'subs.web.list')),
+                                         icon = 'error',
         selectable = false, muted = true } })
       return
     end
@@ -1396,17 +1402,17 @@ views.web = function()
         value = { web = { lang = t.lang, kind = t.kind } } })
     end
     if #items == 0 then
-      table.insert(items, { title = 'Esta web no ofrece subtítulos para este vídeo', icon = 'info', selectable = false,
+      table.insert(items, { title = tr('Esta web no ofrece subtítulos para este vídeo'), icon = 'info', selectable = false,
         muted = true })
     end
     orig = orig or (res.tracks or {})[1]
     if orig and not have_target then
-      table.insert(items, 1, { title = 'Traducir al ' .. language_name_for(target):lower() .. ' (' .. orig.label .. ')',
-        icon = 'translate', hint = 'sin conexión, el archivo entero antes de mostrarlo',
+      table.insert(items, 1, { title = tr('Traducir al %s (%s)'):format(language_name_for(target):lower(), orig.label),
+        icon = 'translate', hint = tr('sin conexión, el archivo entero antes de mostrarlo'),
         value = { web = { lang = orig.lang, kind = orig.kind }, web_translate = target } })
       items[2].separator = true
     end
-    show('Subtítulos de la web', items, { footnote = 'Enter añade la pista · luego alt+S la guarda en SRT · ⌫ atrás' })
+    show(tr('Subtítulos de la web'), items, { footnote = tr('Enter añade la pista · luego alt+S la guarda en SRT · ⌫ atrás') })
   end, 90)
 end
 
@@ -1416,13 +1422,13 @@ views.language = function()
     table.insert(items, { title = l[2], hint = l[1] ~= 'auto' and l[1] or nil,
       icon = l[1] == 'auto' and 'auto_awesome' or 'language', active = state.language == l[1], value = { language = l[1] } })
   end
-  show('Idioma del audio', items)
+  show(tr('Idioma del audio'), items)
 end
 
 local function models_items(res)
   local items = {}
   local rec = res.recommended or {}
-  table.insert(items, { title = 'Automático según el hardware',
+  table.insert(items, { title = tr('Automático según el hardware'),
     hint = (rec.prepare or '?') .. ' (tier ' .. (res.tier or '?') .. ')', icon = 'auto_awesome', active = state.model == 'auto',
     value = { model = 'auto' } })
   for _, m in ipairs(res.models or {}) do
@@ -1446,14 +1452,14 @@ local function models_items(res)
       end
       if m.name == rec.best and m.name ~= rec.prepare then hint = hint .. ' · máxima calidad (lento)' end
       local item = { title = m.name, hint = hint, icon = icon, active = state.model == m.name, value = value }
-      if m.present then item.actions = { { name = 'remove', icon = 'delete', label = 'Borrar modelo' } } end
+      if m.present then item.actions = { { name = 'remove', icon = 'delete', label = tr('Borrar modelo') } } end
       table.insert(items, item)
     end
   end
   local vad = nil
   for _, m in ipairs(res.models or {}) do if m.vad then vad = m end end
   if vad then
-    table.insert(items, { title = 'Detector de voz (VAD Silero)', hint = vad.present and 'presente' or 'descargar 1 MB',
+    table.insert(items, { title = tr('Detector de voz (VAD Silero)'), hint = vad.present and 'presente' or 'descargar 1 MB',
       icon = vad.present and 'graphic_eq' or 'cloud_download', value = vad.present and { noop = true } or { download = vad.name },
       separator = true })
   end
@@ -1462,12 +1468,12 @@ end
 
 views.models = function()
   if not require_mpvd('Modelo de whisper') then return end
-  if state.models then show('Modelo de whisper', models_items(state.models)); return end
-  show('Modelo de whisper', uosc.loading_items('Consultando modelos…'))
+  if state.models then show(tr('Modelo de whisper'), models_items(state.models)); return end
+  show(tr('Modelo de whisper'), uosc.loading_items(tr('Consultando modelos…')))
   rpc.call('asr.models', nil, function(err, res)
-    if err then show('Modelo de whisper', uosc.message_items(fail(err, 'asr.models'), 'error')); return end
+    if err then show(tr('Modelo de whisper'), uosc.message_items(fail(err, 'asr.models'), 'error')); return end
     state.models = res
-    if state.view == 'models' then show('Modelo de whisper', models_items(res)) end
+    if state.view == 'models' then show(tr('Modelo de whisper'), models_items(res)) end
   end)
 end
 
@@ -1491,13 +1497,13 @@ local function translate_items(res)
   for k in pairs(opus_present) do table.insert(listo, (k:gsub('_', '→'))) end
   table.sort(listo)
   local items = {
-    { title = 'Máxima calidad (OPUS-MT donde llegue)',
+    { title = tr('Máxima calidad (OPUS-MT donde llegue)'),
       hint = #listo > 0 and ('listo: ' .. table.concat(listo, ', '))
         or ('español/catalán/francés ↔ inglés · ' .. tostring(opus.size_mb or 234) .. ' MB por par, se descarga una vez'),
       icon = 'workspace_premium', active = eng == 'opus-big', value = { engine = 'opus-big' } },
-    { title = 'Solo lo que ya esté descargado', hint = 'OPUS-MT si está; si no, Argos, sin descargar nada grande',
+    { title = tr('Solo lo que ya esté descargado'), hint = tr('OPUS-MT si está; si no, Argos, sin descargar nada grande'),
       icon = 'auto_awesome', active = eng == 'auto', value = { engine = 'auto' } },
-    { title = 'Rápido (Argos)', hint = 'todos los idiomas · ~90 MB por par', icon = 'bolt', active = eng == 'argos',
+    { title = tr('Rápido (Argos)'), hint = tr('todos los idiomas · ~90 MB por par'), icon = 'bolt', active = eng == 'argos',
       value = { engine = 'argos' }, separator = true },
   }
   local ext, emb = selected_sub_file()
@@ -1510,11 +1516,11 @@ local function translate_items(res)
       local pivot = src ~= 'auto' and present[src .. '_en'] and present['en_' .. l[1]]
       local use_opus = eng ~= 'argos' and opus_pairs[key] and (eng == 'opus-big' or opus_present[key])
       local hint
-      if src == 'auto' then hint = 'idioma de origen según la pista'
+      if src == 'auto' then hint = tr('idioma de origen según la pista')
       elseif use_opus then hint = opus_present[key] and 'OPUS-MT listo' or 'se descargará OPUS-MT (234 MB)'
-      elseif direct then hint = 'paquete listo'
-      elseif pivot then hint = 'vía inglés'
-      else hint = 'se descargará el paquete (~90 MB)' end
+      elseif direct then hint = tr('paquete listo')
+      elseif pivot then hint = tr('vía inglés')
+      else hint = tr('se descargará el paquete (~90 MB)') end
       local ready = direct or pivot or (use_opus and opus_present[key])
       table.insert(items, { title = l[2], hint = hint, icon = ready and 'check' or 'cloud_download',
         active = (state.translate ~= nil and state.translate.target == l[1])
@@ -1522,7 +1528,7 @@ local function translate_items(res)
     end
   end
   if not (res and res.engine and res.engine.available) then
-    table.insert(items, 4, { title = 'Falta el runtime de traducción: uv sync --extra translate', icon = 'error',
+    table.insert(items, 4, { title = tr('Falta el runtime de traducción: uv sync --extra translate'), icon = 'error',
       selectable = false, muted = true })
   end
   return items
@@ -1530,12 +1536,12 @@ end
 
 views.translate = function()
   if not require_mpvd('Traducir a') then return end
-  if state.packages then show('Traducir a', translate_items(state.packages)); return end
-  show('Traducir a', uosc.loading_items('Consultando paquetes…'))
+  if state.packages then show(tr('Traducir a'), translate_items(state.packages)); return end
+  show(tr('Traducir a'), uosc.loading_items(tr('Consultando paquetes…')))
   rpc.call('subs.translate.models', nil, function(err, res)
-    if err then show('Traducir a', uosc.message_items(fail(err, 'subs.translate.models'), 'error')); return end
+    if err then show(tr('Traducir a'), uosc.message_items(fail(err, 'subs.translate.models'), 'error')); return end
     state.packages = res
-    if state.view == 'translate' then show('Traducir a', translate_items(res)) end
+    if state.view == 'translate' then show(tr('Traducir a'), translate_items(res)) end
   end)
 end
 
@@ -1544,28 +1550,30 @@ views.save = function()
   local t = state.task
   if t or state.srt ~= '' then
     local lang = ai_lang()
-    local label = 'Pista IA' .. (lang ~= '' and (' (' .. lang .. ')') or '')
+    local label = lang ~= '' and tr('Pista IA (%s)'):format(lang) or tr('Pista IA')
     if t and (t.complete or t.status == 'done') then
       table.insert(items, { title = label, hint = string.format('completa · %d líneas', t.cues or 0),
         icon = 'closed_caption', value = { save = 'ai' } })
     else
       table.insert(items, { title = label .. ': guardar lo transcrito', icon = 'closed_caption',
         hint = string.format('%d%% hecho', pct(t and t.progress)), value = { save = 'ai', partial = true } })
-      table.insert(items, { title = 'Completar y guardar', hint = 'sigue transcribiendo y guarda al terminar',
+      table.insert(items, { title = tr('Completar y guardar'), hint = tr('sigue transcribiendo y guarda al terminar'),
         icon = 'hourglass_top', value = { save = 'ai', complete = true } })
     end
   else
-    table.insert(items, { title = 'Pista IA: no iniciada', hint = 'alt+c', icon = 'closed_caption',
+    table.insert(items, { title = tr('Pista IA: no iniciada'), hint = 'alt+c', icon = 'closed_caption',
       selectable = false, muted = true })
   end
-  local tr = state.translate
-  if tr and tr.out and tr.out ~= '' then
-    table.insert(items, { title = 'Traducción (' .. (tr.target or '?') .. ')', hint = tr.engines or '', icon = 'translate',
+  local trad = state.translate
+  if trad and trad.out and trad.out ~= '' then
+    table.insert(items, { title = tr('Traducción (%s)'):format(trad.target or '?'), hint = trad.engines or '',
+                          icon = 'translate',
       value = { save = 'translation' } })
   end
   local rs = state.resync
   if rs and rs.out and rs.out ~= '' then
-    table.insert(items, { title = 'Resincronizado', hint = base_name(rs.srt), icon = 'sync_alt', value = { save = 'resync' } })
+    table.insert(items, { title = tr('Resincronizado'), hint = base_name(rs.srt), icon = 'sync_alt',
+                          value = { save = 'resync' } })
   end
   local ext, emb = selected_sub_file()
   local sel = ext or emb
@@ -1574,36 +1582,41 @@ views.save = function()
     local img = IMAGE_CODECS[codec] == true
     local desc = sel.title or base_name(sel['external-filename'])
     if desc == '' then desc = 'pista ' .. tostring(sel.id) end
-    table.insert(items, { title = 'Pista seleccionada (' .. codec .. ')', icon = img and 'image' or 'subtitles',
+    table.insert(items, { title = tr('Pista seleccionada (%s)'):format(codec), icon = img and 'image' or 'subtitles',
       hint = img and IMAGE_MSG or (desc .. ((sel.lang and sel.lang ~= '') and (' · ' .. sel.lang) or '')),
       muted = img or nil, value = { save = 'track' } })
   end
   local sv = state.save
   if sv and sv.status == 'done' and sv.name then
-    table.insert(items, { title = 'Último guardado: ' .. sv.name, hint = string.format('%d líneas', sv.lines or 0),
+    table.insert(items, { title = tr('Último guardado: %s'):format(sv.name), hint = string.format('%d líneas', sv.lines or 0),
       icon = 'check_circle', selectable = false, muted = true })
   end
-  show('Guardar subtítulos (SRT)', items, {
-    footnote = 'Junto al vídeo como <nombre>.<idioma>.srt (si existe: .ia / .resync / (2)). Si la carpeta no admite '
-      .. 'escritura o es una URL: ~/Vídeos/MPV-UOS/Subtítulos. alt+S guarda la pista seleccionada.' })
+  show(tr('Guardar subtítulos (SRT)'), items, {
+    -- dos frases y dos `tr()`: `tr('a' .. 'b')` es una trampa, porque el extractor registra solo el primer trozo
+    -- y en ejecución se busca la cadena entera, que no está en el catálogo
+    footnote = tr('Junto al vídeo como <nombre>.<idioma>.srt (si existe: .ia / .resync / (2)).')
+      .. ' ' .. tr('Si la carpeta no admite escritura o es una URL: ~/Vídeos/MPV-UOS/Subtítulos.')
+      .. ' ' .. tr('alt+S guarda la pista seleccionada.') })
 end
 
 views.status = function()
   if not require_mpvd('Estado del motor') then return end
-  show('Estado del motor', uosc.loading_items())
+  show(tr('Estado del motor'), uosc.loading_items())
   rpc.call('asr.status', nil, function(err, st)
-    if err then show('Estado del motor', uosc.message_items(fail(err, 'asr.status'), 'error')); return end
+    if err then show(tr('Estado del motor'), uosc.message_items(fail(err, 'asr.status'), 'error')); return end
     local e = st.engine or {}
     local items = {
-      { title = 'whisper-cli', hint = e.available and (e.version or 'ok') or 'no encontrado (tools/vendor_whisper.sh)',
+      { title = tr('whisper-cli'), hint = e.available and (e.version or 'ok') or 'no encontrado (tools/vendor_whisper.sh)',
         icon = e.available and 'check_circle' or 'error', selectable = false },
-      { title = 'Hilos', hint = tostring(e.threads or '?'), icon = 'memory', selectable = false },
-      { title = 'VAD Silero', hint = yesno(e.vad), icon = 'graphic_eq', selectable = false },
-      { title = 'Hardware', hint = 'tier ' .. tostring(st.tier or '?'), icon = 'computer', selectable = false },
-      { title = 'Recomendado aquí / en segundo plano', icon = 'auto_awesome', selectable = false,
+      { title = tr('Hilos'), hint = tostring(e.threads or '?'), icon = 'memory', selectable = false },
+      { title = tr('VAD Silero'), hint = yesno(e.vad), icon = 'graphic_eq', selectable = false },
+      { title = tr('Hardware'), hint = tr('tier %s'):format(tostring(st.tier or '?')), icon = 'computer',
+        selectable = false },
+      { title = tr('Recomendado aquí / en segundo plano'), icon = 'auto_awesome', selectable = false,
         hint = ((st.recommended or {}).prepare or '?') .. ' / ' .. ((st.recommended or {}).precompute or '?') },
-      { title = 'Modelos presentes', hint = table.concat(st.models_present or {}, ', '), icon = 'storage', selectable = false },
-      { title = 'RTF medio del motor', hint = e.rtf and string.format('%.2f', e.rtf) or '—', icon = 'speed',
+      { title = tr('Modelos presentes'), hint = table.concat(st.models_present or {}, ', '), icon = 'storage',
+        selectable = false },
+      { title = tr('RTF medio del motor'), hint = e.rtf and string.format('%.2f', e.rtf) or '—', icon = 'speed',
         selectable = false, separator = true },
     }
     for _, t in ipairs(st.tasks or {}) do
@@ -1612,7 +1625,7 @@ views.status = function()
           t.cues or 0, task_label(t), t.rtf and string.format(' · RTF %.2f', t.rtf) or '',
           wait_text(t) and (' · ' .. wait_text(t)) or ''), selectable = false })
     end
-    if state.view == 'status' then show('Estado del motor', items) end
+    if state.view == 'status' then show(tr('Estado del motor'), items) end
   end)
 end
 
@@ -1703,9 +1716,9 @@ mp.register_script_message(EVENT, function(json)
       end
     elseif v.download then
       rpc.call('asr.models.download', { name = v.download, notify = SCRIPT }, function(err, job)
-        if err then osd('Descarga: ' .. fail(err, 'asr.models.download')); return end
+        if err then osd(tr('Descarga: %s'):format(fail(err, 'asr.models.download'))); return end
         state.downloads[v.download] = job
-        osd('Descargando el modelo ' .. v.download .. '…')
+        osd(tr('Descargando el modelo %s…'):format(v.download))
         reopen_current()
       end)
     elseif v.opt then
@@ -1768,7 +1781,7 @@ set_button_state = function()
 end
 
 local function open_root()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   open_view({ name = 'root' })
 end
@@ -1783,7 +1796,7 @@ end
 N:binding('subs-menu', open_root)
 -- H45/D2 · a donde lleva mu-recap cuando los subtítulos de la web no están en español: aquí se traducen con OPUS-MT
 N:binding('subs-web', function()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = { { name = 'root', title = ROOT_TITLE } }
   open_view({ name = 'web' })
 end)

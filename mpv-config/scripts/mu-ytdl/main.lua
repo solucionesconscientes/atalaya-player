@@ -17,6 +17,7 @@ local uosc = require('mu.uosc')
 local nav = require('mu.nav')
 local N = nav.new()
 local prefs = require('mu.prefs')
+local tr = require('mu.i18n').t
 
 local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-ytdl-event'
@@ -368,7 +369,7 @@ mp.register_event('end-file', function(ev)
     mp.commandv('change-list', 'script-opts', 'append', 'ytdl_hook-ytdl_path=' .. value)
     state.hook_path = value
     publish()
-    osd('Probando con yt-dlp nightly (' .. (nb.version or '') .. ')…')
+    osd(tr('Probando con yt-dlp nightly (%s)…'):format(nb.version or ''))
     mp.commandv('loadfile', url, 'replace')
   end, 120)
 end)
@@ -388,7 +389,7 @@ end)
 
 local function reload(format, audio_only)
   if not state.active then
-    osd('No hay ningún vídeo de yt-dlp cargado')
+    osd(tr('No hay ningún vídeo de yt-dlp cargado'))
     return
   end
   local pos = mp.get_property_number('time-pos') or 0
@@ -400,7 +401,7 @@ local function reload(format, audio_only)
   state.active = false -- until file-loaded confirms the reload (tests wait for active again)
   publish()
   local ok = mp.command_native({ 'loadfile', url, 'replace', -1, o })
-  if ok == nil then osd('No se pudo recargar ' .. url) end
+  if ok == nil then osd(tr('No se pudo recargar %s'):format(url)) end
 end
 
 -- ¿Está sonando solo el audio? Lo dice la pista, no lo que creamos recordar.
@@ -414,16 +415,16 @@ end
 -- sin contar una reproducción nueva ni obligar a la sala a rehacer su relay. ADR-096.
 local function toggle_audio()
   local path = mp.get_property('path') or ''
-  if path == '' then osd('No hay nada abierto') return end
+  if path == '' then osd(tr('No hay nada abierto')) return end
   local vid = mp.get_property('vid')
   if vid == 'no' then
     mp.set_property('file-local-options/vid', 'auto')
-    osd('🎬 Vídeo')
+    osd(tr('🎬 Vídeo'))
   else
     local v = mp.get_property_native('current-tracks/video')
-    if type(v) ~= 'table' or v.image then osd('Este archivo no tiene vídeo') return end
+    if type(v) ~= 'table' or v.image then osd(tr('Este archivo no tiene vídeo')) return end
     mp.set_property('file-local-options/vid', 'no')
-    osd('🎧 Solo audio: el vídeo no se decodifica')
+    osd(tr('🎧 Solo audio: el vídeo no se decodifica'))
   end
 end
 
@@ -483,8 +484,8 @@ local function require_mpvd(title)
   if rpc.connected() then return true end
   local core = mp.get_property_native('user-data/mu/core') or {}
   show(title, {
-    { title = 'mpvd no está disponible', hint = core.mpvd or '', icon = 'error', selectable = false, muted = true },
-    { title = 'Reintentar conexión', icon = 'refresh', value = { view = 'root', ensure = true } },
+    { title = tr('mpvd no está disponible'), hint = core.mpvd or '', icon = 'error', selectable = false, muted = true },
+    { title = tr('Reintentar conexión'), icon = 'refresh', value = { view = 'root', ensure = true } },
   })
   return false
 end
@@ -507,7 +508,7 @@ views.root = function()
   -- H42/A1-A3 · una sola puerta. Antes había tres filas distintas aquí («Abrir URL…», «Buscar en YouTube…» y
   -- «Descargar…») y había que saber de antemano qué ibas a pegar. Siguen en el teclado (ctrl+u, ctrl+f).
   local items = {
-    { title = 'Abrir o descargar…', hint = key_for('ytdl-gate') or 'un enlace, varios, una lista, un archivo',
+    { title = tr('Abrir o descargar…'), hint = key_for('ytdl-gate') or 'un enlace, varios, una lista, un archivo',
       icon = 'add_link', value = { view = 'gate' }, separator = true },
   }
   if state.active then
@@ -517,22 +518,22 @@ views.root = function()
       icon = audio_only() and 'movie' or 'videocam_off',
       value = { toggle = true },
     })
-    table.insert(items, { title = 'Calidad', hint = short_format(), icon = 'high_quality', value = { view = 'quality' } })
-    table.insert(items, { title = 'Descargar', icon = 'download', value = { view = 'download' } })
+    table.insert(items, { title = tr('Calidad'), hint = short_format(), icon = 'high_quality', value = { view = 'quality' } })
+    table.insert(items, { title = tr('Descargar'), icon = 'download', value = { view = 'download' } })
   else
-    table.insert(items, { title = 'Con una URL abierta: solo audio, calidad y descargar',
+    table.insert(items, { title = tr('Con una URL abierta: solo audio, calidad y descargar'),
                           icon = 'info', selectable = false, muted = true, align = 'center' })
   end
   local n = count_active()
-  table.insert(items, { title = 'Descargas', hint = n > 0 and (tostring(n) .. ' activas') or nil, icon = 'downloading',
+  table.insert(items, { title = tr('Descargas'), hint = n > 0 and (tostring(n) .. ' activas') or nil, icon = 'downloading',
                         value = { view = 'downloads' } })
   -- H20: conversions and the unified tasks panel live in mu-convert (opened as a child: ⌫ comes back here)
-  table.insert(items, { title = 'Convertir…', hint = 'MP4, más pequeño, solo audio, GIF', icon = 'transform',
+  table.insert(items, { title = tr('Convertir…'), hint = tr('MP4, más pequeño, solo audio, GIF'), icon = 'transform',
                         value = { child = 'convert-menu' } })
-  table.insert(items, { title = 'Tareas', hint = 'descargas y conversiones', icon = 'pending_actions',
+  table.insert(items, { title = tr('Tareas'), hint = tr('descargas y conversiones'), icon = 'pending_actions',
                         value = { child = 'tasks-menu' }, separator = true })
-  table.insert(items, { title = 'Ajustes de descarga', icon = 'tune', value = { view = 'dl_settings' } })
-  table.insert(items, { title = 'Estado de yt-dlp', icon = 'settings', value = { view = 'status' } })
+  table.insert(items, { title = tr('Ajustes de descarga'), icon = 'tune', value = { view = 'dl_settings' } })
+  table.insert(items, { title = tr('Estado de yt-dlp'), icon = 'settings', value = { view = 'status' } })
   show(ROOT_TITLE, items)
 end
 
@@ -551,14 +552,14 @@ local function quality_item(row, group)
     title = row.label, hint = row.hint ~= '' and row.hint or nil, active = is_current(row.id),
     icon = solo_audio and 'audiotrack' or (row.kind == 'video' and 'videocam' or 'movie'),
     value = { quality = { format = format, audio_only = solo_audio, id = row.id, group = group } },
-    actions = { { name = 'download', icon = 'download', label = 'Descargar este formato' } },
+    actions = { { name = 'download', icon = 'download', label = tr('Descargar este formato') } },
   }
 end
 
 local function quality_items(info)
   local groups = {
-    { key = 'combined', title = 'Vídeo + audio' }, { key = 'video', title = 'Solo vídeo (+ mejor audio)' },
-    { key = 'audio', title = 'Solo audio' },
+    { key = 'combined', title = tr('Vídeo + audio') }, { key = 'video', title = tr('Solo vídeo (+ mejor audio)') },
+    { key = 'audio', title = tr('Solo audio') },
   }
   local sections = {}
   for _, g in ipairs(groups) do
@@ -570,7 +571,7 @@ local function quality_items(info)
     end
   end
   if #sections == 1 then return sections[1].items end
-  table.insert(sections, 1, { title = 'Automático (mejor ≤1080p)', hint = default_video_format(), icon = 'auto_awesome',
+  table.insert(sections, 1, { title = tr('Automático (mejor ≤1080p)'), hint = default_video_format(), icon = 'auto_awesome',
                               value = { quality = { format = default_video_format(), audio_only = false, id = 'auto' } } })
   return sections
 end
@@ -587,15 +588,15 @@ local function with_info(cb)
 end
 
 views.quality = function()
-  if not state.active then show('Calidad', uosc.message_items('Abre una URL de yt-dlp primero', 'info')) return end
+  if not state.active then show(tr('Calidad'), uosc.message_items(tr('Abre una URL de yt-dlp primero'), 'info')) return end
   if not require_mpvd('Calidad') then return end
-  show('Calidad', uosc.loading_items('Consultando formatos…'))
+  show(tr('Calidad'), uosc.loading_items(tr('Consultando formatos…')))
   with_info(function(err, info)
-    if err then show('Calidad', uosc.message_items(fail(err, 'ytdl.info'), 'error')) return end
+    if err then show(tr('Calidad'), uosc.message_items(fail(err, 'ytdl.info'), 'error')) return end
     local items = quality_items(info)
-    if #items == 0 then items = uosc.message_items('yt-dlp no devolvió formatos', 'info') end
-    show('Calidad · ' .. (info.title or ''), items, {
-      footnote = 'Enter cambia en caliente · Tab descarga ese formato · / busca · ⌫ atrás',
+    if #items == 0 then items = uosc.message_items(tr('yt-dlp no devolvió formatos'), 'info') end
+    show(tr('Calidad · %s'):format(info.title or ''), items, {
+      footnote = tr('Enter cambia en caliente · Tab descarga ese formato · / busca · ⌫ atrás'),
     })
   end)
 end
@@ -688,14 +689,14 @@ end
 views.download = function(args)
   local target = args.url
   if not target and not state.active then
-    show('Descargar', uosc.message_items('Abre una URL de yt-dlp primero', 'info'))
+    show(tr('Descargar'), uosc.message_items(tr('Abre una URL de yt-dlp primero'), 'info'))
     return
   end
   local target_title = target and (args.title or target) or state.title
   if not require_mpvd('Descargar') then return end
-  show('Descargar', uosc.loading_items())
+  show(tr('Descargar'), uosc.loading_items())
   with_presets(function(err, res)
-    if err then show('Descargar', uosc.message_items(fail(err, 'ytdl.presets'), 'error')) return end
+    if err then show(tr('Descargar'), uosc.message_items(fail(err, 'ytdl.presets'), 'error')) return end
     local o = state.dl_options
     -- H31: the same label as in «Calidad». The download asks for the codec this machine decodes in hardware, so if we
     -- know of any, what comes down plays «fluido en tu equipo»; if we know of none, it will be decoded by the processor.
@@ -707,19 +708,20 @@ views.download = function(args)
       if p.group == 'video' then it.hint = hw_hint end
       if p.group == 'audio' then table.insert(audio, it)
       elseif p.group == 'subs' then
-        it.icon, it.hint = 'subtitles', sub_langs_label(o.sub_langs)
+        it.icon, it.hint = tr('subtitles'), sub_langs_label(o.sub_langs)
         table.insert(subs, it)
       else table.insert(video, it) end
     end
     local items = {
-      { title = 'Vídeo', hint = o.container .. ' · ' .. hw_hint, items = video },
-      { title = 'Audio', hint = tostring(#audio), items = audio },
-      { title = 'Opciones', hint = (o.subtitles and 'subs ' or '') .. (o.sponsorblock ~= 'none' and 'SB ' or '') .. o.container,
+      { title = tr('Vídeo'), hint = o.container .. ' · ' .. hw_hint, items = video },
+      { title = tr('Audio'), hint = tostring(#audio), items = audio },
+      { title = tr('Opciones'),
+        hint = (o.subtitles and 'subs ' or '') .. (o.sponsorblock ~= 'none' and 'SB ' or '') .. o.container,
         items = options_items(o) },
     }
     for i, it in ipairs(subs) do table.insert(items, 2 + i, it) end
-    show('Descargar · ' .. (target_title or ''), items, {
-      footnote = 'Enter descarga con el preset · Opciones: Enter alterna · ⌫ atrás',
+    show(tr('Descargar · %s'):format(target_title or ''), items, {
+      footnote = tr('Enter descarga con el preset · Opciones: Enter alterna · ⌫ atrás'),
     })
   end)
 end
@@ -741,12 +743,13 @@ local function start_download(params)
     end
   end
   rpc.call('ytdl.download', params, function(err, item)
-    if err then osd('Descarga: ' .. fail(err, 'ytdl.download')) return end
+    if err then osd(tr('Descarga: %s'):format(fail(err, 'ytdl.download'))) return end
     state.downloads[item.id] = item
     table.insert(state.download_order, 1, item.id)
     publish()
     set_button_state()
-    osd('⬇ En cola: ' .. (item.title or item.url) .. ' · ' .. (item.description or '') .. '\n→ ' .. (item.out_dir or ''))
+    osd(tr('⬇ En cola: %s · %s\n→ %s'):format(item.title or item.url, item.description or '',
+                                                item.out_dir or ''))
   end, 30)
 end
 
@@ -759,13 +762,13 @@ local STATUS_ICON = {
 local function download_item(d)
   local actions = {}
   if d.status == 'queued' or d.status == 'running' then
-    table.insert(actions, { name = 'cancel', icon = 'cancel', label = 'Cancelar' })
+    table.insert(actions, { name = 'cancel', icon = 'cancel', label = tr('Cancelar') })
   else
-    table.insert(actions, { name = 'retry', icon = 'refresh', label = 'Repetir' })
-    table.insert(actions, { name = 'remove', icon = 'delete', label = 'Quitar de la lista' })
+    table.insert(actions, { name = 'retry', icon = 'refresh', label = tr('Repetir') })
+    table.insert(actions, { name = 'remove', icon = 'delete', label = tr('Quitar de la lista') })
   end
   local hint = d.message or d.status
-  if d.status == 'failed' and d.error and d.error ~= '' then hint = 'error' end
+  if d.status == 'failed' and d.error and d.error ~= '' then hint = tr('error') end
   return {
     title = (d.title or d.url or '?') .. '  ·  ' .. (d.description or ''),
     hint = hint, icon = STATUS_ICON[d.status] or 'help', value = { download = d.id },
@@ -785,15 +788,15 @@ local function downloads_items()
     end
   end
   if #items == 0 then
-    items = uosc.message_items('Sin descargas. Pega algo en «Abrir o descargar»', 'download')
+    items = uosc.message_items(tr('Sin descargas. Pega algo en «Abrir o descargar»'), 'download')
   else
-    table.insert(items, { title = 'Limpiar terminadas', icon = 'cleaning_services', value = { clear = true },
+    table.insert(items, { title = tr('Limpiar terminadas'), icon = 'cleaning_services', value = { clear = true },
                           separator = true, actions = {}, keep_open = true })
   end
   -- H42/A4 · el panel web es un enlace que hay que llevarse a otro aparato: se abre aquí o se copia con Tab
-  table.insert(items, { title = 'Panel de descargas en el navegador', hint = 'Tab copia el enlace',
+  table.insert(items, { title = tr('Panel de descargas en el navegador'), hint = tr('Tab copia el enlace'),
                         icon = 'open_in_browser', value = { panel = true }, separator = #items > 0,
-                        actions = { { name = 'copy', icon = 'content_copy', label = 'Copiar el enlace' } } })
+                        actions = { { name = 'copy', icon = 'content_copy', label = tr('Copiar el enlace') } } })
   return items
 end
 
@@ -809,10 +812,11 @@ end
 views.downloads = function()
   if not require_mpvd('Descargas') then return end
   rpc.call('ytdl.downloads.list', nil, function(err, rows)
-    if err then show('Descargas', uosc.message_items(fail(err, 'ytdl.downloads.list'), 'error')) return end
+    if err then show(tr('Descargas'), uosc.message_items(fail(err, 'ytdl.downloads.list'), 'error')) return end
     merge_list(rows)
     publish()
-    show('Descargas', downloads_items(), { footnote = 'Tab: cancelar / repetir / quitar · Enter muestra detalles · ⌫ atrás' })
+    show(tr('Descargas'), downloads_items(),
+         { footnote = tr('Tab: cancelar / repetir / quitar · Enter muestra detalles · ⌫ atrás') })
   end)
 end
 
@@ -826,7 +830,7 @@ local function refresh_panel()
       local items = downloads_items()
       remember(items)
       publish()
-      uosc.update(base_menu('Descargas', items, { footnote = 'Tab: cancelar / repetir / quitar · ⌫ atrás' }))
+      uosc.update(base_menu('Descargas', items, { footnote = tr('Tab: cancelar / repetir / quitar · ⌫ atrás') }))
     end
   end)
 end
@@ -857,38 +861,39 @@ end
 
 views.status = function()
   if not require_mpvd('Estado de yt-dlp') then return end
-  show('Estado de yt-dlp', uosc.loading_items())
+  show(tr('Estado de yt-dlp'), uosc.loading_items())
   rpc.call('ytdl.status', nil, function(err, st)
-    if err then show('Estado de yt-dlp', uosc.message_items(fail(err, 'ytdl.status'), 'error')) return end
+    if err then show(tr('Estado de yt-dlp'), uosc.message_items(fail(err, 'ytdl.status'), 'error')) return end
     local b = st.binary or {}
     local up = st.update or {}
     local s = st.settings or {}
     local items = {
-      { title = 'Versión', hint = st.version or 'no encontrado', icon = 'info', selectable = false },
-      { title = 'Binario', hint = (b.source or '') .. ' · ' .. (b.path or ''), icon = 'terminal', selectable = false },
-      { title = 'Runtime JS', icon = 'javascript', selectable = false,
+      { title = tr('Versión'), hint = st.version or 'no encontrado', icon = 'info', selectable = false },
+      { title = tr('Binario'), hint = (b.source or '') .. ' · ' .. (b.path or ''), icon = 'terminal', selectable = false },
+      { title = tr('Runtime JS'), icon = 'javascript', selectable = false,
         hint = b.js_runtime and (b.js_runtime.name .. ' ' .. (b.js_runtime.version or ''))
           or 'ninguno (YouTube puede omitir formatos)' },
-      { title = 'Decodifica por hardware', icon = 'memory', selectable = false,
+      { title = tr('Decodifica por hardware'), icon = 'memory', selectable = false,
         hint = #hw.names > 0 and table.concat(hw.names, ', ') or 'desconocido (se usa H.264)' },
-      { title = 'Versión nightly (reintentos)', icon = 'nightlight', selectable = false,
+      { title = tr('Versión nightly (reintentos)'), icon = 'nightlight', selectable = false,
         hint = (st.nightly and st.nightly.version ~= '') and st.nightly.version or 'se descarga si hace falta' },
-      { title = 'Suplantación de navegador (TikTok…)', icon = 'masks', selectable = false,
+      { title = tr('Suplantación de navegador (TikTok…)'), icon = 'masks', selectable = false,
         hint = st.impersonate and 'disponible' or 'falta curl_cffi (tools/install.sh --extras)' },
-      { title = 'Carpeta de vídeo', hint = s.video_dir_resolved or '', icon = 'folder', selectable = false },
-      { title = 'Carpeta de audio', hint = s.audio_dir_resolved or '', icon = 'folder', selectable = false },
-      { title = 'Actualización automática diaria', hint = bool_hint(up.auto), icon = 'update',
+      { title = tr('Carpeta de vídeo'), hint = s.video_dir_resolved or '', icon = 'folder', selectable = false },
+      { title = tr('Carpeta de audio'), hint = s.audio_dir_resolved or '', icon = 'folder', selectable = false },
+      { title = tr('Actualización automática diaria'), hint = bool_hint(up.auto), icon = 'update',
         value = { setting = 'auto_update' }, keep_open = true },
-      { title = 'Buscar actualización ahora', hint = up.latest and up.latest ~= '' and ('última: ' .. up.latest) or nil,
+      { title = tr('Buscar actualización ahora'), hint = up.latest and up.latest ~= '' and ('última: ' .. up.latest) or nil,
         icon = 'system_update_alt', value = { update = 'check' } },
     }
     if up.update_available then
-      table.insert(items, { title = 'Instalar ' .. up.latest, icon = 'download', value = { update = 'apply' }, bold = true })
+      table.insert(items, { title = tr('Instalar %s'):format(up.latest), icon = 'download',
+                            value = { update = 'apply' }, bold = true })
     end
     if up.error and up.error ~= '' then
       table.insert(items, { title = up.error, icon = 'error', selectable = false, muted = true })
     end
-    show('Estado de yt-dlp', items)
+    show(tr('Estado de yt-dlp'), items)
   end)
 end
 
@@ -896,10 +901,11 @@ local function update_action(kind)
   osd(kind == 'apply' and 'Instalando yt-dlp…' or 'Buscando actualización…')
   local function done(err, st)
     if err then osd(fail(err, 'ytdl.update')) return end
-    if st.error and st.error ~= '' then osd('yt-dlp: ' .. st.error)
-    elseif kind == 'apply' then osd('yt-dlp actualizado a ' .. (st.installed or '?'))
-    elseif st.update_available then osd('Disponible yt-dlp ' .. st.latest .. ' (instalado ' .. (st.installed or '?') .. ')')
-    else osd('yt-dlp al día (' .. (st.installed or '?') .. ')') end
+    if st.error and st.error ~= '' then osd(tr('yt-dlp: %s'):format(st.error))
+    elseif kind == 'apply' then osd(tr('yt-dlp actualizado a %s'):format(st.installed or '?'))
+    elseif st.update_available then
+      osd(tr('Disponible yt-dlp %s (instalado %s)'):format(st.latest, st.installed or '?'))
+    else osd(tr('yt-dlp al día (%s)'):format(st.installed or '?')) end
     if state.view == 'status' then open_view({ name = 'status' }, false) end
   end
   -- 'apply' takes no parameters: sending force there answered «parámetros no válidos» and never installed anything
@@ -966,20 +972,20 @@ end
 local function load_url(url, append, title)
   if append then
     mp.commandv('loadfile', url, 'append-play')
-    osd('➕ Añadido a la lista: ' .. (title or url))
+    osd(tr('➕ Añadido a la lista: %s'):format(title or url))
   else
     mp.commandv('loadfile', url, 'replace')
-    osd('Abriendo… ' .. (title or url))
+    osd(tr('Abriendo… %s'):format(title or url))
   end
 end
 
 local ITEM_ACTIONS = {
-  { name = 'append', icon = 'playlist_add', label = 'Añadir a la lista' },
-  { name = 'download', icon = 'download', label = 'Descargar' },
+  { name = 'append', icon = 'playlist_add', label = tr('Añadir a la lista') },
+  { name = 'download', icon = 'download', label = tr('Descargar') },
 }
 
 local function open_item(url)
-  return { title = 'Abrir ' .. url, icon = 'play_arrow', value = { open = url }, actions = ITEM_ACTIONS }
+  return { title = tr('Abrir %s'):format(url), icon = 'play_arrow', value = { open = url }, actions = ITEM_ACTIONS }
 end
 
 -- open_url: palette with instant updates (search_debounce 0): what is typed becomes "Abrir <url>" or
@@ -991,24 +997,24 @@ local function url_items(query)
   if url then
     table.insert(items, open_item(url))
   elseif typed ~= '' then
-    table.insert(items, { title = 'Buscar «' .. typed .. '» en YouTube', icon = 'youtube_searched_for',
+    table.insert(items, { title = tr('Buscar «%s» en YouTube'):format(typed), icon = 'youtube_searched_for',
                           value = { yt_search = typed } })
   end
   if state.clipboard and state.clipboard ~= url then
-    table.insert(items, { title = 'Pegar: ' .. ellipsize(state.clipboard, 100), icon = 'content_paste',
+    table.insert(items, { title = tr('Pegar: %s'):format(ellipsize(state.clipboard, 100)), icon = 'content_paste',
                           value = { open = state.clipboard }, actions = ITEM_ACTIONS })
   end
   if #items == 0 then
-    items = uosc.message_items('YouTube, Twitch, archive.org, radios… o texto para buscarlo en YouTube', 'link')
+    items = uosc.message_items(tr('YouTube, Twitch, archive.org, radios… o texto para buscarlo en YouTube'), 'link')
   end
   return items
 end
 
 local function url_menu(items, extra)
   local menu = {
-    type = URL_MENU, title = 'Pega o escribe una URL y pulsa Enter', items = items, callback = { SCRIPT, URL_EVENT },
+    type = URL_MENU, title = tr('Pega o escribe una URL y pulsa Enter'), items = items, callback = { SCRIPT, URL_EVENT },
     search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-    footnote = 'Enter abre · Tab: añadir a la lista o descargar · ctrl+v pega · ⌫ atrás',
+    footnote = tr('Enter abre · Tab: añadir a la lista o descargar · ctrl+v pega · ⌫ atrás'),
   }
   for k, v in pairs(extra or {}) do menu[k] = v end
   return menu
@@ -1202,7 +1208,7 @@ local function gate_row(what, from_clipboard)
   else
     title, hint, icon = 'Seguir con ese archivo', ellipsize(what.path, 60), 'folder_open'
   end
-  if from_clipboard then hint = 'del portapapeles · ' .. (hint or '') end
+  if from_clipboard then hint = tr('del portapapeles · %s'):format(hint or '') end
   return { title = title, hint = hint, icon = icon, value = { gate = what } }
 end
 
@@ -1216,26 +1222,26 @@ local function gate_items(query)
     if not ok then return items end          -- nada que pulsar: fallaría
   end
   if what and what.kind == 'empty_list' then
-    return uosc.message_items('Ese archivo no tiene ningún enlace', 'description')
+    return uosc.message_items(tr('Ese archivo no tiene ningún enlace'), 'description')
   end
   if what and what.kind == 'torrent' then
     local st = state.torrent or {}
     if st.installed and st.enabled then
-      items[#items + 1] = { title = 'Ver mientras se descarga', icon = 'download_for_offline',
-                            hint = 'torrent · se abre en cuanto haya suficiente', value = { torrent = what.link } }
+      items[#items + 1] = { title = tr('Ver mientras se descarga'), icon = 'download_for_offline',
+                            hint = tr('torrent · se abre en cuanto haya suficiente'), value = { torrent = what.link } }
     elseif st.installed then
-      items[#items + 1] = { title = 'Los torrents están apagados', icon = 'info', selectable = false, muted = true,
-                            hint = 'se encienden en Preferencias › Torrents' }
+      items[#items + 1] = { title = tr('Los torrents están apagados'), icon = 'info', selectable = false, muted = true,
+                            hint = tr('se encienden en Preferencias › Torrents') }
     else
-      items[#items + 1] = { title = 'Falta libtorrent para abrir esto', icon = 'info', selectable = false,
-                            muted = true, hint = 'uv sync --extra torrent' }
+      items[#items + 1] = { title = tr('Falta libtorrent para abrir esto'), icon = 'info', selectable = false,
+                            muted = true, hint = tr('uv sync --extra torrent') }
     end
     return items
   end
   if what then
     items[#items + 1] = gate_row(what, false)
   elseif typed ~= '' then
-    items[#items + 1] = { title = 'Buscar «' .. typed .. '» en YouTube', icon = 'youtube_searched_for',
+    items[#items + 1] = { title = tr('Buscar «%s» en YouTube'):format(typed), icon = 'youtube_searched_for',
                           value = { yt_search = typed } }
   else
     -- la caja vacía ya ofrece lo que haya en el portapapeles: es el «Pegar URL o ruta copiada» de antes
@@ -1245,12 +1251,12 @@ local function gate_items(query)
   if typed == '' then
     -- H64 · sin teclado no se puede pegar ni escribir una ruta (una Raspberry en el salón), así que la puerta
     -- única lleva también al explorador de carpetas, que se maneja solo con arriba, abajo y aceptar
-    items[#items + 1] = { title = 'Explorar las carpetas del equipo…', icon = 'folder_open',
-                          hint = 'discos, pinchos USB y tus carpetas', separator = #items > 0 or nil,
+    items[#items + 1] = { title = tr('Explorar las carpetas del equipo…'), icon = 'folder_open',
+                          hint = tr('discos, pinchos USB y tus carpetas'), separator = #items > 0 or nil,
                           value = { explore = true } }
   end
   if #items == 0 then
-    items = uosc.message_items('Pega o escribe: un enlace, varios, una lista, un canal, un archivo o una carpeta',
+    items = uosc.message_items(tr('Pega o escribe: un enlace, varios, una lista, un canal, un archivo o una carpeta'),
                                'add_link')
   end
   return items
@@ -1260,7 +1266,7 @@ local function gate_menu(items, extra)
   local menu = {
     type = GATE_MENU, title = GATE_TITLE, items = items, callback = { SCRIPT, GATE_EVENT },
     search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-    footnote = 'ctrl+v pega · un enlace, varios, una lista, un canal, un archivo · vacío usa el portapapeles · ⌫ atrás',
+    footnote = tr('ctrl+v pega · un enlace, varios, una lista, un canal, un archivo · vacío usa el portapapeles · ⌫ atrás'),
   }
   for k, v in pairs(extra or {}) do menu[k] = v end
   return menu
@@ -1325,21 +1331,21 @@ local function show_what(what, status)
   local cuenta = plural(what.count or 1, 'elemento', 'elementos')
   local items = {
     { title = what_desc(what), hint = status or cuenta, icon = 'info', selectable = false, muted = true },
-    { title = 'Reproducir', hint = cuenta, icon = 'play_arrow', value = { gate_play = true } },
+    { title = tr('Reproducir'), hint = cuenta, icon = 'play_arrow', value = { gate_play = true } },
   }
   if what.kind == 'file' then
-    items[#items + 1] = { title = 'Descargar', hint = cuenta .. ' · ya está aquí: convertir', icon = 'transform',
+    items[#items + 1] = { title = tr('Descargar'), hint = cuenta .. ' · ya está aquí: convertir', icon = 'transform',
                           value = { gate_download = true } }
   else
-    items[#items + 1] = { title = 'Descargar', hint = cuenta, icon = 'download', value = { gate_download = true } }
+    items[#items + 1] = { title = tr('Descargar'), hint = cuenta, icon = 'download', value = { gate_download = true } }
   end
-  show('¿Reproducir o descargar?', items, { footnote = 'Enter elige · ⌫ vuelve a la caja con el texto puesto' })
+  show(tr('¿Reproducir o descargar?'), items, { footnote = tr('Enter elige · ⌫ vuelve a la caja con el texto puesto') })
 end
 
 views.what = function(args)
   local what = args.what or state.gate
   if type(what) ~= 'table' then
-    show('¿Reproducir o descargar?', uosc.message_items('No hay nada que abrir', 'info'))
+    show(tr('¿Reproducir o descargar?'), uosc.message_items(tr('No hay nada que abrir'), 'info'))
     return
   end
   state.gate = what
@@ -1366,7 +1372,7 @@ local function gate_play()
   local g = state.gate or {}
   if g.kind == 'links' then
     for i, u in ipairs(g.urls or {}) do mp.commandv('loadfile', u, i == 1 and 'replace' or 'append-play') end
-    osd('Abriendo ' .. plural(#(g.urls or {}), 'enlace', 'enlaces'))
+    osd(tr('Abriendo %s'):format(plural(#(g.urls or {}), tr('enlace'), tr('enlaces'))))
   elseif g.kind == 'file' then
     load_url(g.path, false)
   elseif g.url then
@@ -1404,7 +1410,7 @@ views.picklist = function(args)
   if not require_mpvd('Elegir qué bajar') then return end
   local pk = state.pick
   if args.url and (not pk or pk.asked ~= args.url) then
-    show('Elegir qué bajar', uosc.loading_items('Mirando qué trae…'))
+    show(tr('Elegir qué bajar'), uosc.loading_items(tr('Mirando qué trae…')))
     rpc.call('ytdl.playlist', { url = args.url }, function(err, res)
       if state.view ~= 'picklist' then return end
       -- Si no se puede leer como lista (un vídeo suelto, o una web que no deja), se trata como un enlace y punto: una
@@ -1418,21 +1424,21 @@ views.picklist = function(args)
     end, 90)
     return
   end
-  if not pk then show('Elegir qué bajar', uosc.message_items('No hay nada que elegir', 'info')) return end
+  if not pk then show(tr('Elegir qué bajar'), uosc.message_items(tr('No hay nada que elegir'), 'info')) return end
   with_presets(function()
     if state.view ~= 'picklist' then return end
     local n, total = pick_count()
     local propios = 0
     for i = 1, total do if pk.fmt[i] or pk.srt[i] ~= nil then propios = propios + 1 end end
     local items = {
-      { title = 'Para todos: ' .. pick_preset_title(pk.common),
+      { title = tr('Para todos: %s'):format(pick_preset_title(pk.common)),
         hint = propios > 0 and (propios .. ' con formato propio') or 'Enter para cambiarlo',
         icon = 'tune', value = { pick_fmt = 'all' } },
-      { title = 'Subtítulos (SRT) aparte', hint = pk.common_srt and 'sí' or 'no', active = pk.common_srt,
+      { title = tr('Subtítulos (SRT) aparte'), hint = pk.common_srt and 'sí' or 'no', active = pk.common_srt,
         icon = 'closed_caption', value = { pick_srt = 'all' }, keep_open = true },
       { title = n == total and 'Desmarcar todo' or 'Marcar todo', hint = n .. ' de ' .. total,
         icon = n == total and 'check_box' or 'check_box_outline_blank', value = { pick_all = true }, keep_open = true },
-      { title = 'Descargar ' .. n, icon = 'download', value = { pick_download = true }, muted = n == 0,
+      { title = tr('Descargar %s'):format(n), icon = 'download', value = { pick_download = true }, muted = n == 0,
         separator = true },
     }
     for i, e in ipairs(pk.entries) do
@@ -1443,12 +1449,12 @@ views.picklist = function(args)
       items[#items + 1] = {
         title = e.title or e.url or ('#' .. i), hint = table.concat(marcas, ' · '),
         icon = pk.sel[i] and 'check_box' or 'check_box_outline_blank', value = { pick_toggle = i }, keep_open = true,
-        actions = { { name = 'formato', icon = 'tune', label = 'Formato solo para este' },
-                    { name = 'srt', icon = 'closed_caption', label = 'SRT solo para este' } },
+        actions = { { name = 'formato', icon = 'tune', label = tr('Formato solo para este') },
+                    { name = 'srt', icon = 'closed_caption', label = tr('SRT solo para este') } },
       }
     end
     local titulo = pk.source == 'url' and ('Elegir · ' .. ellipsize(pk.title or '', 46)) or 'Elegir qué bajar'
-    show(titulo, items, { footnote = 'Enter marca / desmarca · la primera fila cambia el formato de todos · ⌫ atrás' })
+    show(titulo, items, { footnote = tr('Enter marca / desmarca · la primera fila cambia el formato de todos · ⌫ atrás') })
   end)
 end
 
@@ -1456,13 +1462,13 @@ views.pickfmt = function(args)
   if not require_mpvd('Formato') then return end
   with_presets(function(err)
     if state.view ~= 'pickfmt' then return end
-    if err then show('Formato', uosc.message_items(fail(err, 'ytdl.presets'), 'error')) return end
+    if err then show(tr('Formato'), uosc.message_items(fail(err, 'ytdl.presets'), 'error')) return end
     local pk = state.pick or {}
     local target = args.target
     local actual = target == 'all' and pk.common or (pk.fmt and pk.fmt[target]) or nil
     local items = {}
     if target ~= 'all' then
-      items[#items + 1] = { title = 'Como todos (' .. pick_preset_title(pk.common or PICK_DEFAULT) .. ')',
+      items[#items + 1] = { title = tr('Como todos (%s)'):format(pick_preset_title(pk.common or PICK_DEFAULT)),
                             icon = 'done_all', active = actual == nil, value = { pick_choose = { target = target } } }
     end
     for _, pr in ipairs((state.presets and state.presets.presets) or {}) do
@@ -1482,7 +1488,7 @@ local function pick_download()
   local pk = state.pick
   if not pk then return end
   local n = select(1, pick_count())
-  if n == 0 then osd('Marca al menos uno') return end
+  if n == 0 then osd(tr('Marca al menos uno')) return end
   local propios = false
   for i = 1, #pk.entries do if pk.fmt[i] or pk.srt[i] ~= nil then propios = true end end
   local srt_opts = function(on)
@@ -1521,7 +1527,7 @@ local function pick_download()
     rpc.call('ytdl.download.batch', { urls = g.urls, preset = g.preset, options = srt_opts(g.srt), notify = SCRIPT },
       function(err, res)
         pendientes = pendientes - 1
-        if err then osd('Descargar: ' .. fail(err, 'ytdl.download.batch'))
+        if err then osd(tr('Descargar: %s'):format(fail(err, 'ytdl.download.batch')))
         else total = total + (res.count or 0) end
         if pendientes == 0 then
           osd(string.format('⬇ %d descargas en cola', total))
@@ -1540,21 +1546,22 @@ views.dl_settings = function()
   if not require_mpvd('Ajustes de descarga') then return end
   rpc.call('ytdl.settings.get', nil, function(err, st)
     if state.view ~= 'dl_settings' then return end
-    if err then show('Ajustes de descarga', uosc.message_items(fail(err, 'ytdl.settings.get'), 'error')) return end
+    if err then show(tr('Ajustes de descarga'), uosc.message_items(fail(err, 'ytdl.settings.get'), 'error')) return end
     state.dl_settings = st
-    show('Ajustes de descarga', {
-      { title = 'Descargas a la vez', hint = tostring(st.concurrent or 2), icon = 'stacks', value = { dlset = 'concurrent' } },
-      { title = 'Límite de velocidad', hint = (st.rate_limit or '') ~= '' and (st.rate_limit .. 'B/s') or 'sin límite',
+    show(tr('Ajustes de descarga'), {
+      { title = tr('Descargas a la vez'), hint = tostring(st.concurrent or 2), icon = 'stacks',
+        value = { dlset = 'concurrent' } },
+      { title = tr('Límite de velocidad'), hint = (st.rate_limit or '') ~= '' and (st.rate_limit .. 'B/s') or 'sin límite',
         icon = 'speed', value = { dlset = 'rate_limit' } },
-      { title = 'No repetir lo ya descargado', hint = st.archive and 'sí' or 'no', active = st.archive, icon = 'history',
+      { title = tr('No repetir lo ya descargado'), hint = st.archive and 'sí' or 'no', active = st.archive, icon = 'history',
         value = { dlset = 'archive' } },
-      { title = 'Listas y canales en su carpeta, numerados', hint = st.list_folders and 'sí' or 'no',
+      { title = tr('Listas y canales en su carpeta, numerados'), hint = st.list_folders and 'sí' or 'no',
         active = st.list_folders, icon = 'folder_special', value = { dlset = 'list_folders' } },
-      { title = 'Usar mi sesión del navegador', hint = (st.cookies_browser or '') ~= '' and st.cookies_browser or 'no',
+      { title = tr('Usar mi sesión del navegador'), hint = (st.cookies_browser or '') ~= '' and st.cookies_browser or 'no',
         active = (st.cookies_browser or '') ~= '', icon = 'cookie', value = { dlset = 'cookies_browser' }, separator = true },
-      { title = 'Solo para lo que ya puedes ver con tu cuenta; nunca contenido con DRM', icon = 'info',
+      { title = tr('Solo para lo que ya puedes ver con tu cuenta; nunca contenido con DRM'), icon = 'info',
         selectable = false, muted = true },
-    }, { footnote = 'Enter cambia · se aplica a las descargas nuevas y a lo próximo que abras · ⌫ atrás' })
+    }, { footnote = tr('Enter cambia · se aplica a las descargas nuevas y a lo próximo que abras · ⌫ atrás') })
   end, 15)
 end
 
@@ -1573,7 +1580,7 @@ local function dl_setting(key)
     value = not st[key]
   end
   rpc.call('ytdl.settings.set', { [key] = value }, function(err)
-    if err then osd('Ajustes: ' .. fail(err, 'ytdl.settings.set')) end
+    if err then osd(tr('Ajustes: %s'):format(fail(err, 'ytdl.settings.set'))) end
     if key == 'cookies_browser' and not err then apply_cookies(value) end
     reopen_current()
   end, 15)
@@ -1605,10 +1612,10 @@ end
 
 local function search_menu(items, extra)
   local menu = {
-    type = SEARCH_MENU, title = 'Buscar en YouTube', items = items, callback = { SCRIPT, SEARCH_EVENT },
+    type = SEARCH_MENU, title = tr('Buscar en YouTube'), items = items, callback = { SCRIPT, SEARCH_EVENT },
     search_style = 'palette', search_debounce = 'submit', on_search = 'callback', on_close = 'callback',
     item_actions = ITEM_ACTIONS,
-    footnote = 'Enter busca / reproduce · Tab: añadir a la lista o descargar · ⌫ atrás',
+    footnote = tr('Enter busca / reproduce · Tab: añadir a la lista o descargar · ⌫ atrás'),
   }
   for k, v in pairs(extra or {}) do menu[k] = v end
   return menu
@@ -1662,7 +1669,7 @@ local function run_search(query)
   if not rpc.connected() then
     set_search(q, 'error')
     mp.commandv('script-message-to', 'mu_core', 'mu-ensure')
-    show_search(uosc.message_items('mpvd no está disponible: reintentando la conexión, vuelve a pulsar Enter', 'error'))
+    show_search(uosc.message_items(tr('mpvd no está disponible: reintentando la conexión, vuelve a pulsar Enter'), 'error'))
     return
   end
   set_search(q, 'loading')
@@ -1671,13 +1678,13 @@ local function run_search(query)
     if seq ~= search_seq then return end
     if err then
       set_search(q, 'error')
-      show_search(uosc.message_items('No se pudo buscar: ' .. fail(err, 'ytdl.search'), 'error'))
+      show_search(uosc.message_items(tr('No se pudo buscar: %s'):format(fail(err, 'ytdl.search')), 'error'))
       return
     end
     state.results = { query = q, rows = rows }
     set_search(q, 'done', #rows)
     local items = result_items(rows)
-    if #items == 0 then items = uosc.message_items('Sin resultados para «' .. q .. '»', 'search_off') end
+    if #items == 0 then items = uosc.message_items(tr('Sin resultados para «%s»'):format(q), 'search_off') end
     show_search(items)
   end, 45)
 end
@@ -1704,16 +1711,16 @@ local function on_event(source, json)
       end
     elseif v.torrent then
       uosc.close(GATE_MENU)
-      osd('Buscando quién lo tenga…')
+      osd(tr('Buscando quién lo tenga…'))
       rpc.call('torrent.open', { link = v.torrent }, function(err, res)
-        if err then osd('Torrent: ' .. fail(err, 'torrent.open'), 6) return end
+        if err then osd(tr('Torrent: %s'):format(fail(err, 'torrent.open')), 6) return end
         if not P:get('torrent_warned') then
           P:set('torrent_warned', true)
           osd(res.aviso or '', 8)
         end
         mp.commandv('loadfile', res.url, 'replace')
         mp.set_property_bool('pause', false)
-        osd('▶ ' .. (res.name or '') .. ' · se ve mientras se descarga')
+        osd(tr('▶ %s · se ve mientras se descarga'):format(res.name or ''))
       end, 120)
     elseif v.explore then
       uosc.close(GATE_MENU)
@@ -1759,7 +1766,7 @@ local function on_event(source, json)
     elseif v.gate and v.gate.kind == 'room' then
       -- una sala no tiene esa pregunta: se entra. Lo hace mu-share, que es quien sabe de salas.
       close_menus()
-      osd('Entrando en la sala…')
+      osd(tr('Entrando en la sala…'))
       mp.commandv('script-message-to', 'mu_share', 'mu-share-join', v.gate.url)
     elseif v.gate then
       -- A2 · de la caja a la única pregunta. La caja se queda debajo en la pila: ⌫ vuelve a ella con el texto puesto.
@@ -1885,9 +1892,10 @@ mp.register_script_message('mu-event', function(payload)
   publish()
   if opts.notify_done and (not prev or prev.status ~= d.status) then
     if d.status == 'done' then
-      osd('✓ Descarga completada: ' .. (d.title or d.url) .. '\n→ ' .. ((d.outputs or {})[1] or d.out_dir or ''))
+      osd(tr('✓ Descarga completada: %s\n→ %s'):format(d.title or d.url,
+                                                     (d.outputs or {})[1] or d.out_dir or ''))
     elseif d.status == 'failed' then
-      osd('✗ Descarga fallida: ' .. (d.title or d.url) .. '\n' .. (d.error or ''))
+      osd(tr('✗ Descarga fallida: %s\n%s'):format(d.title or d.url, d.error or ''))
     end
   end
   set_button_state()
@@ -1908,7 +1916,7 @@ set_button_state = function()
 end
 
 local function open_root()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   open_view({ name = 'root' })
 end
@@ -1916,7 +1924,7 @@ end
 -- H42 · la puerta única: tecla propia, entrada del menú principal (mu-menu la abre como hija) y mensaje para otros
 -- scripts, con un texto inicial opcional.
 local function open_gate(text)
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   open_view({ name = 'gate', args = { query = text } })
 end
@@ -1937,7 +1945,7 @@ N:binding('ytdl-downloads', function() open_under_root('downloads') end)
 -- (`script-message-to mu_ytdl mu-ytdl-open-url [texto]`, `script-message-to mu_ytdl mu-ytdl-search [consulta]`;
 -- a search query is submitted right away).
 local function open_palette(name, text)
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   open_view({ name = name, args = { query = text } })
 end

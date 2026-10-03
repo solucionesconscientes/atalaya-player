@@ -15,6 +15,7 @@ local uosc = require('mu.uosc')
 local nav = require('mu.nav')
 local clip = require('mu.clip')
 local prefs = require('mu.prefs')
+local tr = require('mu.i18n').t
 local N = nav.new()
 
 -- H57 · qué se hace en una franja programada: grabarlo (lo de siempre), ponerlo o las dos. Se recuerda.
@@ -171,7 +172,7 @@ end
 
 local function play(channel_id, cb)
   rpc.call('iptv.play', { id = channel_id }, function(err, info)
-    if err then osd('No se pudo reproducir: ' .. fail(err, 'iptv.play')) return end
+    if err then osd(tr('No se pudo reproducir: %s'):format(fail(err, 'iptv.play'))) return end
     apply_play_info(info)
     if cb then cb() end
   end)
@@ -179,11 +180,11 @@ end
 
 local function zap(delta)
   if not state.current or state.current == '' then
-    osd('Sin canal activo: abre TV y radio (alt+t)')
+    osd(tr('Sin canal activo: abre TV y radio (alt+t)'))
     return
   end
   rpc.call('iptv.zap', { id = state.current.id, delta = delta }, function(err, info)
-    if err then osd('Zapping: ' .. fail(err, 'iptv.zap')) return end
+    if err then osd(tr('Zapping: %s'):format(fail(err, 'iptv.zap'))) return end
     apply_play_info(info)
   end)
 end
@@ -256,7 +257,7 @@ mp.observe_property('metadata/by-key/icy-title', 'string', function(_, value)
   state.icy_title = value or ''
   publish()
   if value and value ~= '' and state.current and state.current ~= '' then
-    osd('♪ ' .. value)
+    osd(tr('♪ %s'):format(value))
   end
 end)
 
@@ -274,7 +275,7 @@ local function record_toggle()
     return
   end
   if (mp.get_property('path') or '') == '' then
-    osd('Nada que grabar')
+    osd(tr('Nada que grabar'))
     return
   end
   mp.commandv('script-message-to', 'mu_record', 'mu-record-start')
@@ -290,10 +291,10 @@ local function copy_to_clipboard(text) clip.copy_osd(text, osd, 'la URL del cana
 -- menu building
 
 local ACTIONS = {
-  { name = 'fav', icon = 'star', label = 'Favorito (añadir/quitar)' },
-  { name = 'guide', icon = 'event_note', label = 'Guía de programación' },
-  { name = 'schedule', icon = 'schedule', label = 'Programar grabación…' },
-  { name = 'copy', icon = 'content_copy', label = 'Copiar URL' },
+  { name = 'fav', icon = 'star', label = tr('Favorito (añadir/quitar)') },
+  { name = 'guide', icon = 'event_note', label = tr('Guía de programación') },
+  { name = 'schedule', icon = 'schedule', label = tr('Programar grabación…') },
+  { name = 'copy', icon = 'content_copy', label = tr('Copiar URL') },
 }
 
 -- Cut a UTF-8 string to `n` characters (with an ellipsis).
@@ -357,7 +358,7 @@ end
 -- «Buscar en esta lista»: first row of every list of channels. `scope` says which list ({kind, id, name}); the
 -- palette asks mpvd's search (every word, accents ignored) limited to it.
 local function search_row(scope)
-  return { title = 'Buscar en esta lista…', icon = 'search', hint = 'sin acentos vale', actions = {},
+  return { title = tr('Buscar en esta lista…'), icon = 'search', hint = tr('sin acentos vale'), actions = {},
            value = { view = 'scoped_search', scope = scope } }
 end
 
@@ -390,7 +391,7 @@ local function base_menu(title, items, extra)
   local menu = {
     type = MENU, title = title, items = items, callback = { SCRIPT, EVENT },
     on_close = 'callback', keep_open = false, item_actions = ACTIONS, search_submenus = true,
-    footnote = 'Enter reproduce · Tab acciones (★ favorito, guía, grabar, copiar URL) · / busca · ⌫ atrás',
+    footnote = tr('Enter reproduce · Tab acciones (★ favorito, guía, grabar, copiar URL) · / busca · ⌫ atrás'),
   }
   for k, v in pairs(extra or {}) do menu[k] = v end
   return N:frame(menu, state.stack)
@@ -500,22 +501,22 @@ local function require_mpvd(title)
   if rpc.connected() then return true end
   local core = mp.get_property_native('user-data/mu/core') or {}
   show(title, {
-    { title = 'mpvd no está disponible', hint = core.mpvd or '', icon = 'error', selectable = false, muted = true },
-    { title = 'Reintentar conexión', icon = 'refresh', value = { view = 'root', ensure = true } },
+    { title = tr('mpvd no está disponible'), hint = core.mpvd or '', icon = 'error', selectable = false, muted = true },
+    { title = tr('Reintentar conexión'), icon = 'refresh', value = { view = 'root', ensure = true } },
   })
   return false
 end
 
 views.root = function()
   local items = {
-    { title = 'Buscar canal o emisora…', icon = 'search', value = { view = 'search' } },
-    { title = 'España · TV', icon = 'live_tv', value = { view = 'source', id = 'tdt_tv' } },
-    { title = 'España · Radio', icon = 'radio', value = { view = 'source', id = 'tdt_radio' } },
-    { title = 'Mundo · TV por país', icon = 'public', value = { view = 'world' } },
-    { title = 'Radio mundial', icon = 'language', value = { view = 'radio' } },
-    { title = 'Favoritos', icon = 'star', value = { view = 'favorites' } },
-    { title = 'Recientes', icon = 'history', value = { view = 'recents' } },
-    { title = 'Mis listas', icon = 'playlist_add', value = { view = 'lists' }, separator = true },
+    { title = tr('Buscar canal o emisora…'), icon = 'search', value = { view = 'search' } },
+    { title = tr('España · TV'), icon = 'live_tv', value = { view = 'source', id = 'tdt_tv' } },
+    { title = tr('España · Radio'), icon = 'radio', value = { view = 'source', id = 'tdt_radio' } },
+    { title = tr('Mundo · TV por país'), icon = 'public', value = { view = 'world' } },
+    { title = tr('Radio mundial'), icon = 'language', value = { view = 'radio' } },
+    { title = tr('Favoritos'), icon = 'star', value = { view = 'favorites' } },
+    { title = tr('Recientes'), icon = 'history', value = { view = 'recents' } },
+    { title = tr('Mis listas'), icon = 'playlist_add', value = { view = 'lists' }, separator = true },
   }
   if state.current and state.current ~= '' then
     local rec = (mp.get_property('stream-record') or '') ~= ''
@@ -526,22 +527,22 @@ views.root = function()
     })
   end
   if state.current and state.current ~= '' and state.current.kind ~= 'radio' then
-    table.insert(items, { title = 'Guía de «' .. state.current.name .. '»', icon = 'event_note',
+    table.insert(items, { title = tr('Guía de «%s»'):format(state.current.name), icon = 'event_note',
                           hint = now_title(state.current.id) and ('ahora: ' .. cut(now_title(state.current.id), 30)) or nil,
                           value = { view = 'guide', id = state.current.id, name = state.current.name } })
   end
   if channel_playing() and state.current.kind ~= 'radio' then
-    table.insert(items, { title = 'Audio y subtítulos del canal', icon = 'subtitles',
+    table.insert(items, { title = tr('Audio y subtítulos del canal'), icon = 'subtitles',
                           hint = #state.badges > 0 and table.concat(state.badges, ' ') or nil,
                           value = { view = 'tracks' } })
   end
   -- H43/B2 · programar una grabación nueva, en el primer nivel: antes solo se llegaba con Tab dentro de la lista
   -- de un canal, y nadie lo encontraba.
-  table.insert(items, { title = 'Programar una grabación…', hint = 'TV o radio: canal, inicio y fin',
+  table.insert(items, { title = tr('Programar una grabación…'), hint = tr('TV o radio: canal, inicio y fin'),
                         icon = 'add_alarm', value = { view = 'sched_new' } })
-  table.insert(items, { title = 'Grabaciones programadas', icon = 'schedule', value = { view = 'schedule' } })
-  table.insert(items, { title = 'Actualizar listas', icon = 'refresh', value = { view = 'refresh' } })
-  show('TV y radio', items)
+  table.insert(items, { title = tr('Grabaciones programadas'), icon = 'schedule', value = { view = 'schedule' } })
+  table.insert(items, { title = tr('Actualizar listas'), icon = 'refresh', value = { view = 'refresh' } })
+  show(tr('TV y radio'), items)
 end
 
 local SOURCE_TITLES = { tdt_tv = 'España · TV', tdt_radio = 'España · Radio' }
@@ -553,14 +554,14 @@ views.source = function(args)
   rpc.call('iptv.channels', { source = args.id, compact = true, merge = true, limit = 5000 }, function(err, res)
     if err then show(title, uosc.message_items(fail(err, 'iptv.channels'), 'error')) return end
     if #res.items == 0 then
-      show(title, uosc.message_items('Lista vacía o no descargada (Actualizar listas)', 'info'))
+      show(title, uosc.message_items(tr('Lista vacía o no descargada (Actualizar listas)'), 'info'))
       return
     end
     show_channels(title, res.items, function()
       local items = grouped_items(res.items, 'group')
       table.insert(items, 1, search_row({ kind = 'source', id = args.id, name = title }))
       table.insert(items, {
-        title = 'Comprobar canales en segundo plano', hint = tostring(#res.items), icon = 'network_check',
+        title = tr('Comprobar canales en segundo plano'), hint = tostring(#res.items), icon = 'network_check',
         value = { health = args.id }, keep_open = true, actions = {}, separator = true,
       })
       return items
@@ -570,8 +571,8 @@ end
 
 local function health_check(source_id)
   rpc.call('iptv.health.check', { source = source_id, limit = 500 }, function(err, job)
-    if err then osd('Comprobación: ' .. fail(err, 'iptv.health.check')) return end
-    osd('Comprobando canales en segundo plano (trabajo ' .. tostring(job.id or '?') .. '); los caídos saldrán con ✕')
+    if err then osd(tr('Comprobación: %s'):format(fail(err, 'iptv.health.check'))) return end
+    osd(tr('Comprobando canales en segundo plano (trabajo %s); los caídos saldrán con ✕'):format(tostring(job.id or '?')))
   end, 60)
 end
 
@@ -587,16 +588,16 @@ end
 local function add_list(url)
   url = (url or ''):gsub('^%s+', ''):gsub('%s+$', '')
   if not url:match('^https?://') and not url:match('^file://') then
-    osd('No parece una URL de lista M3U: ' .. url)
+    osd(tr('No parece una URL de lista M3U: %s'):format(url))
     return
   end
   show_loading('Descargando lista…')
   rpc.call('iptv.sources.add', { url = url, name = list_name_from_url(url) }, function(err, st)
-    if err then show('Mis listas', uosc.message_items(fail(err, 'iptv.sources.add'), 'error')) return end
+    if err then show(tr('Mis listas'), uosc.message_items(fail(err, 'iptv.sources.add'), 'error')) return end
     if st.error then
-      osd('Lista añadida, pero no se pudo cargar: ' .. st.error)
+      osd(tr('Lista añadida, pero no se pudo cargar: %s'):format(st.error))
     else
-      osd('Lista añadida: ' .. st.name .. ' (' .. tostring(st.channels) .. ' canales)')
+      osd(tr('Lista añadida: %s (%s canales)'):format(st.name, tostring(st.channels)))
     end
     state.stack = { { name = 'root' }, { name = 'lists' } }
     state.force_open = true  -- the palette is replaced by a normal list menu
@@ -608,9 +609,9 @@ views.lists = function()
   if not require_mpvd('Mis listas') then return end
   show_loading('Mis listas')
   rpc.call('iptv.sources', nil, function(err, rows)
-    if err then show('Mis listas', uosc.message_items(fail(err, 'iptv.sources'), 'error')) return end
+    if err then show(tr('Mis listas'), uosc.message_items(fail(err, 'iptv.sources'), 'error')) return end
     local items = {
-      { title = 'Añadir lista M3U…', hint = 'URL', icon = 'add', value = { view = 'add_list' }, actions = {} },
+      { title = tr('Añadir lista M3U…'), hint = tr('URL'), icon = 'add', value = { view = 'add_list' }, actions = {} },
     }
     local n = 0
     for _, st in ipairs(rows) do
@@ -620,47 +621,47 @@ views.lists = function()
           title = st.name, icon = st.kind == 'radio' and 'radio' or 'playlist_play',
           hint = st.error and 'error' or (tostring(st.channels) .. ' canales'), muted = st.error ~= nil,
           value = { view = 'source', id = st.id, name = st.name },
-          actions = { { name = 'remove', icon = 'delete', label = 'Quitar lista' } },
+          actions = { { name = 'remove', icon = 'delete', label = tr('Quitar lista') } },
         })
       end
     end
     if n == 0 then
-      table.insert(items, { title = 'Sin listas propias: añade una URL M3U/M3U8', icon = 'info',
+      table.insert(items, { title = tr('Sin listas propias: añade una URL M3U/M3U8'), icon = 'info',
                             align = 'center', selectable = false, muted = true })
     end
-    show('Mis listas', items)
+    show(tr('Mis listas'), items)
   end)
 end
 
 views.add_list = function()
   uosc.open({
-    type = MENU, title = 'Pega (ctrl+v) o escribe la URL de la lista M3U y pulsa Enter',
-    items = uosc.message_items('La lista se descarga y queda en «Mis listas»', 'playlist_add'),
+    type = MENU, title = tr('Pega (ctrl+v) o escribe la URL de la lista M3U y pulsa Enter'),
+    items = uosc.message_items(tr('La lista se descarga y queda en «Mis listas»'), 'playlist_add'),
     callback = { SCRIPT, EVENT }, search_style = 'palette', search_debounce = 200,
     on_search = 'callback', on_paste = 'callback', on_close = 'callback',
-    footnote = 'Enter añade · ⌫ atrás',
+    footnote = tr('Enter añade · ⌫ atrás'),
   })
 end
 
 local function add_list_prompt(query)
   local items
   if (query or '') == '' then
-    items = uosc.message_items('La lista se descarga y queda en «Mis listas»', 'playlist_add')
+    items = uosc.message_items(tr('La lista se descarga y queda en «Mis listas»'), 'playlist_add')
   else
-    items = { { title = 'Añadir ' .. query, icon = 'add', value = { add_url = query }, actions = {} } }
+    items = { { title = tr('Añadir %s'):format(query), icon = 'add', value = { add_url = query }, actions = {} } }
   end
   uosc.update({
-    type = MENU, title = 'Pega (ctrl+v) o escribe la URL de la lista M3U y pulsa Enter', items = items,
+    type = MENU, title = tr('Pega (ctrl+v) o escribe la URL de la lista M3U y pulsa Enter'), items = items,
     callback = { SCRIPT, EVENT }, search_style = 'palette', search_debounce = 200,
     on_search = 'callback', on_paste = 'callback', on_close = 'callback', search_suggestion = query,
-    footnote = 'Enter añade · ⌫ atrás',
+    footnote = tr('Enter añade · ⌫ atrás'),
   })
 end
 
 local function remove_list(source_id)
   rpc.call('iptv.sources.remove', { id = source_id }, function(err)
-    if err then osd('Quitar lista: ' .. fail(err, 'iptv.sources.remove')) return end
-    osd('Lista quitada')
+    if err then osd(tr('Quitar lista: %s'):format(fail(err, 'iptv.sources.remove'))) return end
+    osd(tr('Lista quitada'))
     if uosc.open_type() == MENU then reopen_current() end
   end)
 end
@@ -669,15 +670,15 @@ views.world = function()
   if not require_mpvd('Mundo · TV') then return end
   show_loading('Mundo · TV')
   rpc.call('iptv.countries', { source = 'iptv_org' }, function(err, rows)
-    if err then show('Mundo · TV', uosc.message_items(fail(err, 'iptv.countries'), 'error')) return end
+    if err then show(tr('Mundo · TV'), uosc.message_items(fail(err, 'iptv.countries'), 'error')) return end
     local items = {}
     for _, c in ipairs(rows) do
       -- the user's country comes first (mpvd marks it `home`), set apart from the A-Z list
       table.insert(items, { title = ((c.flag or '') ~= '' and (c.flag .. ' ') or '') .. c.name, hint = tostring(c.count),
                             value = { view = 'country', id = c.code, name = c.name }, separator = c.home or nil })
     end
-    if #items == 0 then items = uosc.message_items('Sin canales (Actualizar listas)', 'info') end
-    show('Mundo · TV', items)
+    if #items == 0 then items = uosc.message_items(tr('Sin canales (Actualizar listas)'), 'info') end
+    show(tr('Mundo · TV'), items)
   end, 120)
 end
 
@@ -701,15 +702,15 @@ views.radio = function()
   if not require_mpvd('Radio mundial') then return end
   show_loading('Radio mundial')
   rpc.call('radio.countries', nil, function(err, rows)
-    if err then show('Radio mundial', uosc.message_items(fail(err, 'radio.countries'), 'error')) return end
+    if err then show(tr('Radio mundial'), uosc.message_items(fail(err, 'radio.countries'), 'error')) return end
     local items = { search_row({ kind = 'radio', name = 'Radio mundial' }),
-                    { title = 'Más votadas del mundo', icon = 'trending_up', value = { view = 'radio_top' } } }
+                    { title = tr('Más votadas del mundo'), icon = 'trending_up', value = { view = 'radio_top' } } }
     for i, c in ipairs(rows) do
       if i > opts.radio_countries then break end
       table.insert(items, { title = ((c.flag or '') ~= '' and (c.flag .. ' ') or '') .. c.name, hint = tostring(c.count),
                             value = { view = 'radio_country', id = c.code, name = c.name }, separator = c.home or nil })
     end
-    show('Radio mundial', items)
+    show(tr('Radio mundial'), items)
   end, 60)
 end
 
@@ -724,7 +725,7 @@ local function radio_list(title, params, scope)
       it.hint = st.category or it.hint
       table.insert(items, it)
     end
-    if #items == 0 then items = uosc.message_items('Sin emisoras', 'info') end
+    if #items == 0 then items = uosc.message_items(tr('Sin emisoras'), 'info') end
     show(title, items)
   end, 60)
 end
@@ -768,14 +769,14 @@ views.refresh = function()
   if not require_mpvd('TV y radio') then return end
   show_loading('Actualizando listas…')
   rpc.call('iptv.refresh', { force = true }, function(err, states)
-    if err then show('TV y radio', uosc.message_items(fail(err, 'iptv.refresh'), 'error')) return end
+    if err then show(tr('TV y radio'), uosc.message_items(fail(err, 'iptv.refresh'), 'error')) return end
     local items = {}
     for _, st in ipairs(states) do
       table.insert(items, { title = st.name, hint = st.error and 'error' or (tostring(st.channels) .. ' canales'),
                             icon = st.error and 'error' or 'check_circle', selectable = false, muted = st.error ~= nil })
     end
-    table.insert(items, { title = 'Volver', icon = 'arrow_back', value = { view = 'root' }, separator = false })
-    show('Listas actualizadas', items)
+    table.insert(items, { title = tr('Volver'), icon = 'arrow_back', value = { view = 'root' }, separator = false })
+    show(tr('Listas actualizadas'), items)
   end, 300)
 end
 
@@ -798,9 +799,9 @@ end
 
 views.tracks = function()
   local name = type(state.current) == 'table' and state.current.name or ''
-  local title = 'Audio y subtítulos' .. (name ~= '' and (' · ' .. name) or '')
+  local title = name ~= '' and tr('Audio y subtítulos · %s'):format(name) or tr('Audio y subtítulos')
   if not channel_playing() then
-    show('Audio y subtítulos', uosc.message_items('Pon un canal de TV para elegir su audio y sus subtítulos', 'info'))
+    show(tr('Audio y subtítulos'), uosc.message_items(tr('Pon un canal de TV para elegir su audio y sus subtítulos'), 'info'))
     return
   end
   local view = state.view
@@ -817,21 +818,21 @@ views.tracks = function()
       end
     end
     local items = {}
-    table.insert(items, { title = 'Audio', icon = 'graphic_eq', selectable = false, muted = true })
+    table.insert(items, { title = tr('Audio'), icon = 'graphic_eq', selectable = false, muted = true })
     if #audio == 0 then
-      table.insert(items, { title = 'Sin audio', selectable = false, muted = true })
+      table.insert(items, { title = tr('Sin audio'), selectable = false, muted = true })
     end
     for _, it in ipairs(audio) do table.insert(items, it) end
     items[#items].separator = true
-    table.insert(items, { title = 'Subtítulos', icon = 'subtitles', selectable = false, muted = true })
-    table.insert(items, { title = 'Sin subtítulos', icon = sub_on and 'radio_button_unchecked' or 'radio_button_checked',
+    table.insert(items, { title = tr('Subtítulos'), icon = 'subtitles', selectable = false, muted = true })
+    table.insert(items, { title = tr('Sin subtítulos'), icon = sub_on and 'radio_button_unchecked' or 'radio_button_checked',
                           active = (not sub_on) or nil, keep_open = true, actions = {},
-                          value = { track = { type = 'sub', id = 'no', label = 'Sin subtítulos' } } })
+                          value = { track = { type = 'sub', id = 'no', label = tr('Sin subtítulos') } } })
     for _, it in ipairs(subs) do table.insert(items, it) end
     if #subs == 0 then
-      table.insert(items, { title = 'Este canal no trae subtítulos', icon = 'info', selectable = false, muted = true })
+      table.insert(items, { title = tr('Este canal no trae subtítulos'), icon = 'info', selectable = false, muted = true })
     end
-    show(title, items, { footnote = 'Pistas del propio canal (sin traducción en directo) · Enter elige · ⌫ atrás' })
+    show(title, items, { footnote = tr('Pistas del propio canal (sin traducción en directo) · Enter elige · ⌫ atrás') })
   end)
 end
 
@@ -865,9 +866,9 @@ end
 
 -- H57 · qué se hace en la franja: grabarlo, verlo/oírlo, o las dos cosas. Se recuerda, como el formato de grabar.
 local MODES = {
-  { id = 'record', title = 'Grabarlo', hint = 'queda el archivo', icon = 'fiber_manual_record' },
-  { id = 'play', title = 'Ponerlo', hint = 'se enciende y suena a esa hora', icon = 'play_circle' },
-  { id = 'both', title = 'Las dos cosas', hint = 'se ve y además queda grabado', icon = 'library_add' },
+  { id = 'record', title = tr('Grabarlo'), hint = tr('queda el archivo'), icon = 'fiber_manual_record' },
+  { id = 'play', title = tr('Ponerlo'), hint = tr('se enciende y suena a esa hora'), icon = 'play_circle' },
+  { id = 'both', title = tr('Las dos cosas'), hint = tr('se ve y además queda grabado'), icon = 'library_add' },
 }
 local function mode_label(id)
   for _, m in ipairs(MODES) do if m.id == id then return m.title end end
@@ -894,7 +895,7 @@ end
 
 local function schedule_add(params, after)
   rpc.call('iptv.schedule.add', params, function(err, rec)
-    if err then osd('No se pudo programar: ' .. fail(err, 'iptv.schedule.add')) return end
+    if err then osd(tr('No se pudo programar: %s'):format(fail(err, 'iptv.schedule.add'))) return end
     local verbo = (rec.mode == 'play' and '▶ Programado') or (rec.mode == 'both' and '⏺▶ Programado')
       or '⏺ Grabación programada'
     osd(verbo .. ': ' .. (rec.title or '') .. ' · ' .. (rec.label or ''))
@@ -903,7 +904,7 @@ local function schedule_add(params, after)
 end
 
 views.guide = function(args, tries)
-  local title = 'Guía · ' .. (args.name or '')
+  local title = tr('Guía · %s'):format(args.name or '')
   if not require_mpvd(title) then return end
   show_loading(title)
   local view = state.view
@@ -912,7 +913,7 @@ views.guide = function(args, tries)
     if state.view ~= view then return end
     if err then show(title, uosc.message_items(fail(err, 'iptv.epg.channel'), 'error')) return end
     local name = res.channel and res.channel.name or args.name or ''
-    title = 'Guía · ' .. name
+    title = tr('Guía · %s'):format(name)
     local progs = res.programmes or {}
     state.guide = { id = args.id, programmes = #progs, epg_id = res.epg_id or '' }
     publish()
@@ -922,7 +923,7 @@ views.guide = function(args, tries)
         or (not res.epg_id and 'La guía no incluye este canal') or 'Sin programas en las próximas horas'
       show(title, {
         { title = text, icon = res.loading and 'spinner' or 'info', selectable = false, muted = true, align = 'center' },
-        { title = 'Ver el canal', icon = 'live_tv', value = { play = args.id } },
+        { title = tr('Ver el canal'), icon = 'live_tv', value = { play = args.id } },
       })
       -- first download of the guide: look again in a moment, but not for ever (the server may be down)
       if res.loading and tries < 20 then
@@ -941,9 +942,9 @@ views.guide = function(args, tries)
       day = d
       local hint
       if p.now then
-        hint = 'ahora · quedan ' .. minutes(p.stop - now)
+        hint = tr('ahora · quedan %s'):format(minutes(p.stop - now))
       elseif i == 2 and progs[1].now then
-        hint = 'después'
+        hint = tr('después')
       else
         hint = minutes(p.stop - p.start)
       end
@@ -954,12 +955,12 @@ views.guide = function(args, tries)
         table.insert(sub, { title = cut(p.desc, 160), selectable = false, muted = true, icon = 'notes' })
       end
       if p.scheduled then
-        table.insert(sub, { title = 'Ya está programada', icon = 'check', selectable = false, muted = true })
-        table.insert(sub, { title = 'Grabaciones programadas', icon = 'schedule', value = { view = 'schedule' } })
+        table.insert(sub, { title = tr('Ya está programada'), icon = 'check', selectable = false, muted = true })
+        table.insert(sub, { title = tr('Grabaciones programadas'), icon = 'schedule', value = { view = 'schedule' } })
       elseif p.now then
-        table.insert(sub, { title = 'Grabar lo que queda', icon = 'fiber_manual_record', value = rec })
+        table.insert(sub, { title = tr('Grabar lo que queda'), icon = 'fiber_manual_record', value = rec })
       else
-        table.insert(sub, { title = 'Grabar este programa', icon = 'fiber_manual_record', value = rec })
+        table.insert(sub, { title = tr('Grabar este programa'), icon = 'fiber_manual_record', value = rec })
       end
       table.insert(sub, { title = p.now and 'Ver ahora' or 'Ver el canal ahora', icon = 'live_tv',
                           value = { play = args.id } })
@@ -968,7 +969,7 @@ views.guide = function(args, tries)
                             id = 'prog:' .. tostring(p.start),
                             bold = p.now or nil, icon = p.now and 'play_arrow' or nil })
     end
-    show(title, items, { footnote = 'Enter abre el programa (grabar, ver) · ⌫ atrás' })
+    show(title, items, { footnote = tr('Enter abre el programa (grabar, ver) · ⌫ atrás') })
   end, 30)
 end
 
@@ -986,22 +987,22 @@ local function power_rows(d, out)
   local wake_hint
   if d and d.wake then wake_hint = 'sí' else wake_hint = 'no' end
   if p.can_wake == false then wake_hint = wake_hint .. ' · ' .. (p.reason or 'este equipo no puede') end
-  out[#out + 1] = { title = 'Despertar el equipo 5 min antes', hint = wake_hint, icon = 'alarm',
+  out[#out + 1] = { title = tr('Despertar el equipo 5 min antes'), hint = wake_hint, icon = 'alarm',
                     active = (d and d.wake) or false, value = { sched_pref = 'wake' } }
   local after = (d and d.after) or 'nothing'
   local hint = AFTER_LABEL[after] or after
   if after == 'suspend' and p.can_suspend == false then hint = hint .. ' · este equipo no deja suspender' end
   if after == 'shutdown' and p.can_shutdown == false then hint = hint .. ' · este equipo no deja apagar' end
-  out[#out + 1] = { title = 'Al terminar la grabación', hint = hint, icon = 'bedtime',
+  out[#out + 1] = { title = tr('Al terminar la grabación'), hint = hint, icon = 'bedtime',
                     active = after ~= 'nothing', value = { sched_pref = 'after' } }
   if p.install_hint and p.install_hint ~= '' and d and d.wake then
-    out[#out + 1] = { title = 'Para el despertador hace falta una orden con sudo, una sola vez',
-                      hint = 'está en NEEDS_HUMAN.md', icon = 'info', selectable = false, muted = true }
+    out[#out + 1] = { title = tr('Para el despertador hace falta una orden con sudo, una sola vez'),
+                      hint = tr('está en NEEDS_HUMAN.md'), icon = 'info', selectable = false, muted = true }
   end
 end
 
 views.schedule = function(args)
-  local title = 'Grabaciones programadas'
+  local title = tr('Grabaciones programadas')
   if not require_mpvd(title) then return end
   -- Un refresco (una grabación que empieza o termina mientras se mira la lista) no debe dejarla en «Cargando…»:
   -- parpadea, y además encoger a dos filas un menú que uosc tiene abierto le hace perder el alto de sus submenús
@@ -1017,8 +1018,8 @@ views.schedule = function(args)
     -- H57 · lo mismo sirve para grabar y para que SUENE: el modo es una fila y se recuerda
     local modo = P:get('sched_mode') or 'record'
     local items = {
-      { title = 'Programar una franja…', hint = 'canal, inicio y fin', icon = 'add', value = { view = 'sched_new' } },
-      { title = 'Qué hacer en esa franja', icon = 'tune', hint = mode_label(modo), value = { view = 'sched_mode' } },
+      { title = tr('Programar una franja…'), hint = tr('canal, inicio y fin'), icon = 'add', value = { view = 'sched_new' } },
+      { title = tr('Qué hacer en esa franja'), icon = 'tune', hint = mode_label(modo), value = { view = 'sched_mode' } },
     }
     local list = res.items or {}
     for i, r in ipairs(list) do
@@ -1027,14 +1028,14 @@ views.schedule = function(args)
         table.insert(sub, { title = cut(r.message, 120), icon = 'info', selectable = false, muted = true })
       end
       if r.status == 'scheduled' then
-        table.insert(sub, { title = 'Cancelar grabación', icon = 'block', value = { sched_cancel = r.id } })
+        table.insert(sub, { title = tr('Cancelar grabación'), icon = 'block', value = { sched_cancel = r.id } })
       elseif r.status == 'recording' then
-        table.insert(sub, { title = 'Detener grabación', icon = 'stop_circle', value = { sched_cancel = r.id } })
+        table.insert(sub, { title = tr('Detener grabación'), icon = 'stop_circle', value = { sched_cancel = r.id } })
       else
         if r.file and r.file ~= '' then
-          table.insert(sub, { title = 'Reproducir', icon = 'play_arrow', value = { open_file = r.file } })
+          table.insert(sub, { title = tr('Reproducir'), icon = 'play_arrow', value = { open_file = r.file } })
         end
-        table.insert(sub, { title = 'Quitar de la lista', hint = 'el archivo se queda', icon = 'delete',
+        table.insert(sub, { title = tr('Quitar de la lista'), hint = tr('el archivo se queda'), icon = 'delete',
                             value = { sched_remove = r.id } })
       end
       local ch = r.channel and r.channel.name or ''
@@ -1047,13 +1048,14 @@ views.schedule = function(args)
       })
     end
     if #list == 0 then
-      table.insert(items, { title = 'No hay grabaciones: prográmalas desde la guía de un canal (Tab › Guía)',
+      table.insert(items, { title = tr('No hay grabaciones: prográmalas desde la guía de un canal (Tab › Guía)'),
                             icon = 'info', selectable = false, muted = true })
     end
     power_rows(state.sched_defaults, items)
-    table.insert(items, { title = 'Carpeta: ' .. (opts.schedule_dir ~= '' and opts.schedule_dir or res.dir or ''),
+    table.insert(items, { title = tr('Carpeta: %s'):format(opts.schedule_dir ~= '' and opts.schedule_dir
+                                                          or res.dir or ''),
                           icon = 'folder', selectable = false, muted = true })
-    show(title, items, { footnote = 'Se graba aunque veas otra cosa o cierres el reproductor (con el equipo encendido)' })
+    show(title, items, { footnote = tr('Se graba aunque veas otra cosa o cierres el reproductor (con el equipo encendido)') })
   end)
 end
 
@@ -1066,14 +1068,14 @@ views.sched_mode = function()
     items[#items + 1] = { title = m.title, hint = m.hint, icon = m.id == cur and 'radio_button_checked'
                           or 'radio_button_unchecked', active = m.id == cur, value = { sched_mode = m.id } }
   end
-  items[#items + 1] = { title = 'Ponerlo enciende el reproductor a esa hora, aunque esté cerrado', icon = 'info',
+  items[#items + 1] = { title = tr('Ponerlo enciende el reproductor a esa hora, aunque esté cerrado'), icon = 'info',
                         muted = true, selectable = false, separator = true,
-                        hint = 'con el despertador, también si el equipo está suspendido' }
-  show('Qué hacer en esa franja', items)
+                        hint = tr('con el despertador, también si el equipo está suspendido') }
+  show(tr('Qué hacer en esa franja'), items)
 end
 
 views.sched_new = function()
-  local title = 'Programar grabación'
+  local title = tr('Programar grabación')
   if not require_mpvd(title) then return end
   show_loading(title)
   local view = state.view
@@ -1088,11 +1090,11 @@ views.sched_new = function()
   end
   if state.current and state.current ~= '' then add(state.current, 'viendo ahora') end
   -- J5 · no todo lo que se programa es un canal: una lista guardada o lo que está puesto ahora mismo también
-  table.insert(items, { title = 'Una lista guardada…', hint = 'música', icon = 'queue_music',
+  table.insert(items, { title = tr('Una lista guardada…'), hint = tr('música'), icon = 'queue_music',
                         value = { view = 'sched_lists' } })
   local ahora = mp.get_property('path') or ''
   if ahora ~= '' and not (state.current and state.current.url == ahora) then
-    table.insert(items, { title = 'Lo que está puesto ahora', hint = mp.get_property('media-title') or ahora,
+    table.insert(items, { title = tr('Lo que está puesto ahora'), hint = mp.get_property('media-title') or ahora,
                           icon = 'play_circle', separator = true,
                           value = { view = 'sched_time', media = ahora,
                                     name = mp.get_property('media-title') or ahora } })
@@ -1104,9 +1106,9 @@ views.sched_new = function()
     for _, ch in ipairs(favs) do add(ch, '★') end
     for _, ch in ipairs(recents) do add(ch, 'reciente') end
     if #items == 0 then
-      items = uosc.message_items('Elige el canal en su lista: Tab › Programar grabación…', 'info')
+      items = uosc.message_items(tr('Elige el canal en su lista: Tab › Programar grabación…'), 'info')
     end
-    show(title, items, { footnote = 'Otro canal: en su lista, Tab › Programar grabación…' })
+    show(title, items, { footnote = tr('Otro canal: en su lista, Tab › Programar grabación…') })
   end
   rpc.call('iptv.favorites.list', { compact = true }, function(err, rows) if not err then favs = rows end done() end)
   rpc.call('iptv.recents.list', { limit = 15, compact = true }, function(err, rows)
@@ -1125,7 +1127,7 @@ local function sched_verb(args)
 end
 
 views.sched_lists = function()
-  local title = 'Programar una lista'
+  local title = tr('Programar una lista')
   if not require_mpvd(title) then return end
   show_loading(title)
   local view = state.view
@@ -1139,9 +1141,9 @@ views.sched_lists = function()
                             value = { view = 'sched_time', media = l.file, name = l.name } }
     end
     if #items == 0 then
-      items = uosc.message_items('No hay listas guardadas todavía: se crean en Música › Listas', 'info')
+      items = uosc.message_items(tr('No hay listas guardadas todavía: se crean en Música › Listas'), 'info')
     end
-    show(title, items, { footnote = 'La lista se repite hasta que acabe la franja · ⌫ atrás' })
+    show(title, items, { footnote = tr('La lista se repite hasta que acabe la franja · ⌫ atrás') })
   end)
 end
 
@@ -1155,12 +1157,12 @@ local function sched_time_menu(args, items, query)
     type = MENU, title = sched_time_title(args),
     items = items, callback = { SCRIPT, EVENT }, search_style = 'palette', search_debounce = 250,
     on_search = 'callback', on_close = 'callback', search_suggestion = query,
-    footnote = 'También «mañana 9:00 1h30» · Enter programa · ⌫ atrás',
+    footnote = tr('También «mañana 9:00 1h30» · Enter programa · ⌫ atrás'),
   }
 end
 
 views.sched_time = function(args)
-  local items = uosc.message_items('Escribe la hora de inicio y la de fin (o los minutos)', 'schedule')
+  local items = uosc.message_items(tr('Escribe la hora de inicio y la de fin (o los minutos)'), 'schedule')
   publish_menu(sched_time_title(args), items)
   uosc.open(sched_time_menu(args, items))
 end
@@ -1170,7 +1172,7 @@ local function sched_time_prompt(args, query)
   sched_seq = sched_seq + 1
   local seq = sched_seq
   if (query or '') == '' then
-    uosc.update(sched_time_menu(args, uosc.message_items('Escribe la hora de inicio y la de fin (o los minutos)',
+    uosc.update(sched_time_menu(args, uosc.message_items(tr('Escribe la hora de inicio y la de fin (o los minutos)'),
                                                          'schedule'), query))
     return
   end
@@ -1195,7 +1197,7 @@ end
 local function sched_cancel(id, remove)
   local method = remove and 'iptv.schedule.remove' or 'iptv.schedule.cancel'
   rpc.call(method, { id = id }, function(err)
-    if err then osd('Grabaciones: ' .. fail(err, method)) return end
+    if err then osd(tr('Grabaciones: %s'):format(fail(err, method))) return end
     osd(remove and 'Quitada de la lista' or 'Grabación cancelada')
     if uosc.open_type() == MENU then reopen_current() end
   end, 40)
@@ -1247,7 +1249,7 @@ views.search = function()
   if not rpc.connected() then require_mpvd('Buscar') return end
   state.search_scope = ''
   publish()
-  uosc.open(search_menu(uosc.message_items('Escribe para buscar (sin acentos vale)', 'search')))
+  uosc.open(search_menu(uosc.message_items(tr('Escribe para buscar (sin acentos vale)'), 'search')))
 end
 
 views.scoped_search = function(args)
@@ -1256,7 +1258,7 @@ views.scoped_search = function(args)
   state.search_scope = (scope.kind or '') .. (scope.id and (':' .. scope.id) or '')
   state.search_results = 0
   publish()
-  uosc.open(search_menu(uosc.message_items('Escribe para buscar en esta lista (sin acentos vale)', 'search'), nil,
+  uosc.open(search_menu(uosc.message_items(tr('Escribe para buscar en esta lista (sin acentos vale)'), 'search'), nil,
                         scope))
 end
 
@@ -1286,7 +1288,9 @@ local function render_results(seq, query, results, scope)
       if where ~= '' then it.hint = it.hint and (where .. ' · ' .. it.hint) or where end
       table.insert(items, it)
     end
-    if #items == 0 then items = uosc.message_items('Sin resultados para «' .. query .. '»', 'search_off') end
+    if #items == 0 then
+      items = uosc.message_items(tr('Sin resultados para «%s»'):format(query), 'search_off')
+    end
     publish_menu('Buscar: ' .. query, items)
     uosc.update(search_menu(items, query, scope))
   end
@@ -1298,7 +1302,7 @@ local function run_search(query, scope)
   search_seq = search_seq + 1
   local seq = search_seq
   if query == '' then
-    uosc.update(search_menu(uosc.message_items('Escribe para buscar', 'search'), query, scope))
+    uosc.update(search_menu(uosc.message_items(tr('Escribe para buscar'), 'search'), query, scope))
     return
   end
   if scope then
@@ -1335,7 +1339,7 @@ end
 
 local function toggle_favorite(channel_id)
   rpc.call('iptv.favorites.toggle', { id = channel_id }, function(err, res)
-    if err then osd('Favoritos: ' .. fail(err, 'favorites.toggle')) return end
+    if err then osd(tr('Favoritos: %s'):format(fail(err, 'favorites.toggle'))) return end
     osd(res.favorite and '★ Añadido a favoritos' or '☆ Quitado de favoritos')
     if uosc.open_type() == MENU then reopen_current() end
   end)
@@ -1343,7 +1347,7 @@ end
 
 local function copy_channel(channel_id)
   rpc.call('iptv.channel', { id = channel_id }, function(err, ch)
-    if err then osd('Copiar: ' .. fail(err, 'iptv.channel')) return end
+    if err then osd(tr('Copiar: %s'):format(fail(err, 'iptv.channel'))) return end
     copy_to_clipboard(ch.url)
   end)
 end
@@ -1385,7 +1389,7 @@ mp.register_script_message(EVENT, function(json)
       if v.sched_pref == 'wake' then params.wake = not d.wake
       else params.after = AFTER_NEXT[d.after or 'nothing'] or 'nothing' end
       rpc.call('iptv.schedule.defaults', params, function(err, res)
-        if err then osd('No se pudo guardar: ' .. fail(err, 'iptv.schedule.defaults')) return end
+        if err then osd(tr('No se pudo guardar: %s'):format(fail(err, 'iptv.schedule.defaults'))) return end
         state.sched_defaults = res
         publish()
         reopen_current()
@@ -1470,7 +1474,7 @@ end)
 
 local function open_root()
   if not uosc.available() then
-    osd('uosc no está cargado')
+    osd(tr('uosc no está cargado'))
     return
   end
   state.stack = {}
@@ -1485,29 +1489,29 @@ N:binding('tv-search', function()
 end)
 -- Guide of the channel being watched (or the channel menu when none is), and the scheduled recordings.
 N:binding('tv-guide', function()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   if state.current and state.current ~= '' and state.current.kind ~= 'radio' then
     open_view({ name = 'guide', args = { id = state.current.id, name = state.current.name } })
   else
-    osd('Elige un canal: Tab › Guía de programación')
+    osd(tr('Elige un canal: Tab › Guía de programación'))
     open_view({ name = 'root' })
   end
 end)
 -- Audio and subtitles of the channel being watched (its own tracks with readable names).
 N:binding('tv-tracks', function()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   open_view({ name = 'tracks' })
 end)
 N:binding('tv-schedule', function()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   open_view({ name = 'schedule' })
 end)
 -- H43/B2 · entrada para «Programar una grabación…» desde el menú de Grabar (mu-record la abre como hija)
 N:binding('tv-schedule-new', function()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   open_view({ name = 'sched_new' })
 end)

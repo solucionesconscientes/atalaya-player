@@ -19,6 +19,7 @@ local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local prefs = require('mu.prefs')
 local nav = require('mu.nav')
+local tr = require('mu.i18n').t
 local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
@@ -174,24 +175,26 @@ local function resolve(v, cb)
     method, params, pick = 'music.smart', { kind = v.smart, value = v.smart_value }, function(r) return r.tracks end
   else cb({}) return end
   rpc.call(method, params, function(err, res)
-    if err then osd('Música: ' .. fail(err, method)) cb({}) return end
+    if err then osd(tr('Música: %s'):format(fail(err, method))) cb({}) return end
     cb(paths_of(pick(res)))
   end, 20)
 end
 
 local function do_play(v, how)
   resolve(v, function(paths)
-    if #paths == 0 then osd('No hay pistas que reproducir') return end
+    if #paths == 0 then osd(tr('No hay pistas que reproducir')) return end
     if how == 'next' then
       play_next(paths)
-      osd('⏭ A continuación: ' .. (#paths == 1 and basename(paths[1]) or plural(#paths, 'pista', 'pistas')))
+      osd(tr('⏭ A continuación: %s'):format(#paths == 1 and basename(paths[1])
+                                             or plural(#paths, tr('pista'), tr('pistas'))))
     elseif how == 'queue' then
       enqueue(paths)
-      osd('➕ En la cola: ' .. (#paths == 1 and basename(paths[1]) or plural(#paths, 'pista', 'pistas')))
+      osd(tr('➕ En la cola: %s'):format(#paths == 1 and basename(paths[1])
+                                        or plural(#paths, tr('pista'), tr('pistas'))))
     else
       uosc.close(MENU)
       play_paths(paths, v.start or 1)
-      osd('▶ ' .. basename(paths[v.start or 1]))
+      osd(tr('▶ %s'):format(basename(paths[v.start or 1])))
     end
     publish()
   end)
@@ -251,23 +254,23 @@ end
 
 local function require_mpvd(title)
   if rpc.connected() then return true end
-  show(title, uosc.message_items('mpvd no está conectado', 'error'))
+  show(title, uosc.message_items(tr('mpvd no está conectado'), 'error'))
   return false
 end
 
 local function still(view) return state.view == view end
 
 local PLAY_ACTIONS = {
-  { name = 'play', icon = 'play_arrow', label = 'Reproducir' },
-  { name = 'next', icon = 'playlist_play', label = 'Reproducir a continuación' },
-  { name = 'queue', icon = 'playlist_add', label = 'Añadir a la cola' },
-  { name = 'list', icon = 'library_add', label = 'Añadir a una lista…' },
+  { name = 'play', icon = 'play_arrow', label = tr('Reproducir') },
+  { name = 'next', icon = 'playlist_play', label = tr('Reproducir a continuación') },
+  { name = 'queue', icon = 'playlist_add', label = tr('Añadir a la cola') },
+  { name = 'list', icon = 'library_add', label = tr('Añadir a una lista…') },
 }
 local TRACK_ACTIONS = { PLAY_ACTIONS[2], PLAY_ACTIONS[3], PLAY_ACTIONS[4] }
 local MOVE_ACTIONS = {
-  { name = 'up', icon = 'arrow_upward', label = 'Subir' },
-  { name = 'down', icon = 'arrow_downward', label = 'Bajar' },
-  { name = 'remove', icon = 'delete', label = 'Quitar' },
+  { name = 'up', icon = 'arrow_upward', label = tr('Subir') },
+  { name = 'down', icon = 'arrow_downward', label = tr('Bajar') },
+  { name = 'remove', icon = 'delete', label = tr('Quitar') },
 }
 
 local function track_row(t, value, title)
@@ -282,10 +285,10 @@ end
 
 local function group_rows(value, what)
   return {
-    { title = 'Reproducir ' .. what, icon = 'play_arrow', value = { play = value } },
-    { title = 'Reproducir a continuación', icon = 'playlist_play', value = { next = value } },
-    { title = 'Añadir a la cola', icon = 'playlist_add', value = { queue = value } },
-    { title = 'Añadir a una lista…', icon = 'library_add', value = { pick = value }, separator = true },
+    { title = tr('Reproducir %s'):format(what), icon = 'play_arrow', value = { play = value } },
+    { title = tr('Reproducir a continuación'), icon = 'playlist_play', value = { next = value } },
+    { title = tr('Añadir a la cola'), icon = 'playlist_add', value = { queue = value } },
+    { title = tr('Añadir a una lista…'), icon = 'library_add', value = { pick = value }, separator = true },
   }
 end
 
@@ -301,36 +304,38 @@ views.root = function()
     publish()
     local items = {}
     if (st.folders or 0) == 0 then
-      table.insert(items, { title = 'Añade la carpeta con tu música', icon = 'info', selectable = false, muted = true })
+      table.insert(items, { title = tr('Añade la carpeta con tu música'), icon = 'info', selectable = false, muted = true })
     elseif (st.tracks or 0) == 0 and st.scanning then
-      table.insert(items, { title = 'Buscando tu música…', icon = 'spinner', selectable = false, muted = true })
+      table.insert(items, { title = tr('Buscando tu música…'), icon = 'spinner', selectable = false, muted = true })
     end
     local pos, pl = playing_pos(), playlist()
     local queued = pos >= 0 and math.max(0, #pl - pos - 1) or 0
-    table.insert(items, { title = 'Artistas', hint = tostring(st.artists or 0), icon = 'person', value = { view = 'artists' } })
-    table.insert(items, { title = 'Álbumes', hint = tostring(st.albums or 0), icon = 'album', value = { view = 'albums' } })
-    table.insert(items, { title = 'Géneros', hint = tostring(st.genres or 0), icon = 'category', value = { view = 'genres' } })
-    table.insert(items, { title = 'Buscar…', icon = 'search', value = { input = 'search' }, separator = true })
-    table.insert(items, { title = 'Listas', hint = tostring(st.playlists or 0), icon = 'queue_music',
+    table.insert(items, { title = tr('Artistas'), hint = tostring(st.artists or 0), icon = 'person',
+                          value = { view = 'artists' } })
+    table.insert(items, { title = tr('Álbumes'), hint = tostring(st.albums or 0), icon = 'album', value = { view = 'albums' } })
+    table.insert(items, { title = tr('Géneros'), hint = tostring(st.genres or 0), icon = 'category',
+                          value = { view = 'genres' } })
+    table.insert(items, { title = tr('Buscar…'), icon = 'search', value = { input = 'search' }, separator = true })
+    table.insert(items, { title = tr('Listas'), hint = tostring(st.playlists or 0), icon = 'queue_music',
                           value = { view = 'lists' } })
-    table.insert(items, { title = 'Cola', hint = queued > 0 and plural(queued, 'pista', 'pistas') or 'vacía',
+    table.insert(items, { title = tr('Cola'), hint = queued > 0 and plural(queued, 'pista', 'pistas') or 'vacía',
                           icon = 'playlist_play', value = { view = 'queue' } })
-    table.insert(items, { title = 'Historial', hint = tostring(st.history or 0), icon = 'history',
+    table.insert(items, { title = tr('Historial'), hint = tostring(st.history or 0), icon = 'history',
                           value = { view = 'history' }, separator = true })
     local scan = st.scanning and string.format('buscando %d %%', math.floor((st.progress or 0) * 100))
-    table.insert(items, { title = 'Carpetas', hint = scan or tostring(st.folders or 0), icon = 'folder',
+    table.insert(items, { title = tr('Carpetas'), hint = scan or tostring(st.folders or 0), icon = 'folder',
                           value = { view = 'folders' } })
-    table.insert(items, { title = 'Ajustes', icon = 'settings', value = { view = 'settings' } })
-    show(ROOT_TITLE, items, { footnote = 'Enter abre · Tab: acciones · ⌫ atrás · Esc cierra' })
+    table.insert(items, { title = tr('Ajustes'), icon = 'settings', value = { view = 'settings' } })
+    show(ROOT_TITLE, items, { footnote = tr('Enter abre · Tab: acciones · ⌫ atrás · Esc cierra') })
   end, 15)
 end
 
 views.artists = function()
   if not require_mpvd('Artistas') then return end
-  show('Artistas', uosc.loading_items())
+  show(tr('Artistas'), uosc.loading_items())
   rpc.call('music.artists', nil, function(err, rows)
     if not still('artists') then return end
-    if err then show('Artistas', uosc.message_items(fail(err, 'music.artists'), 'error')) return end
+    if err then show(tr('Artistas'), uosc.message_items(fail(err, 'music.artists'), 'error')) return end
     local items = {}
     for _, a in ipairs(rows or {}) do
       table.insert(items, { title = a.name, hint = plural(a.albums or 0, 'álbum', 'álbumes') .. ' · ' ..
@@ -338,8 +343,8 @@ views.artists = function()
                             value = { view = 'artist', key = a.key, title = a.name, artist = a.key },
                             actions = PLAY_ACTIONS })
     end
-    if #items == 0 then items = uosc.message_items('No hay música en tus carpetas', 'music_off') end
-    show('Artistas', items, { footnote = 'Enter abre · Tab: reproducir, a continuación, a la cola',
+    if #items == 0 then items = uosc.message_items(tr('No hay música en tus carpetas'), 'music_off') end
+    show(tr('Artistas'), items, { footnote = tr('Enter abre · Tab: reproducir, a continuación, a la cola'),
                               search_style = 'on_demand' })
   end, 15)
 end
@@ -362,7 +367,7 @@ views.artist = function(args)
     if err then show(title, uosc.message_items(fail(err, 'music.artist'), 'error')) return end
     local items = group_rows({ artist = args.key }, 'todo')
     for _, a in ipairs(res.albums or {}) do table.insert(items, album_row(a, false)) end
-    show(title, items, { footnote = 'Enter abre · Tab: acciones · ⌫ atrás' })
+    show(title, items, { footnote = tr('Enter abre · Tab: acciones · ⌫ atrás') })
   end, 15)
 end
 
@@ -377,9 +382,9 @@ views.albums = function(args)
     local items = args.genre and group_rows({ genre = args.genre }, 'todo') or {}
     for _, a in ipairs(rows or {}) do table.insert(items, album_row(a, true)) end
     if #(rows or {}) == 0 then
-      for _, it in ipairs(uosc.message_items('No hay álbumes', 'album')) do table.insert(items, it) end
+      for _, it in ipairs(uosc.message_items(tr('No hay álbumes'), 'album')) do table.insert(items, it) end
     end
-    show(title, items, { footnote = 'Enter abre · Tab: acciones · ⌫ atrás', search_style = 'on_demand' })
+    show(title, items, { footnote = tr('Enter abre · Tab: acciones · ⌫ atrás'), search_style = 'on_demand' })
   end, 15)
 end
 
@@ -399,23 +404,23 @@ views.album = function(args)
     for i, t in ipairs(res.tracks or {}) do
       table.insert(items, track_row(t, { track = t.path, paths = paths, start = at[i] }))
     end
-    show(title, items, { footnote = 'Enter reproduce desde esa pista · Tab: a continuación, a la cola, a una lista' })
+    show(title, items, { footnote = tr('Enter reproduce desde esa pista · Tab: a continuación, a la cola, a una lista') })
   end, 15)
 end
 
 views.genres = function()
   if not require_mpvd('Géneros') then return end
-  show('Géneros', uosc.loading_items())
+  show(tr('Géneros'), uosc.loading_items())
   rpc.call('music.genres', nil, function(err, rows)
     if not still('genres') then return end
-    if err then show('Géneros', uosc.message_items(fail(err, 'music.genres'), 'error')) return end
+    if err then show(tr('Géneros'), uosc.message_items(fail(err, 'music.genres'), 'error')) return end
     local items = {}
     for _, g in ipairs(rows or {}) do
       table.insert(items, { title = g.name, hint = plural(g.albums or 0, 'álbum', 'álbumes'), icon = 'category',
                             value = { view = 'genre', genre = g.key, title = g.name }, actions = PLAY_ACTIONS })
     end
-    if #items == 0 then items = uosc.message_items('Tus pistas no tienen género', 'category') end
-    show('Géneros', items, { footnote = 'Enter abre · Tab: acciones · ⌫ atrás', search_style = 'on_demand' })
+    if #items == 0 then items = uosc.message_items(tr('Tus pistas no tienen género'), 'category') end
+    show(tr('Géneros'), items, { footnote = tr('Enter abre · Tab: acciones · ⌫ atrás'), search_style = 'on_demand' })
   end, 15)
 end
 
@@ -437,7 +442,7 @@ local function track_list_view(name, title, method, params, pick, extra_rows, va
       table.insert(items, row)
     end
     if #tracks == 0 then
-      for _, it in ipairs(uosc.message_items('Nada por aquí todavía', 'music_off')) do table.insert(items, it) end
+      for _, it in ipairs(uosc.message_items(tr('Nada por aquí todavía'), 'music_off')) do table.insert(items, it) end
     end
     if name == 'list' then state.move = { kind = 'list', first = first, name = params.name } end
     show(title, items, { footnote = name == 'list' and 'Enter reproduce · Ctrl+↑/↓ o Tab: mover, quitar · ⌫ atrás'
@@ -448,10 +453,10 @@ end
 
 views.lists = function()
   if not require_mpvd('Listas') then return end
-  show('Listas', uosc.loading_items())
+  show(tr('Listas'), uosc.loading_items())
   rpc.call('music.playlists.list', nil, function(err, lists)
     if not still('lists') then return end
-    if err then show('Listas', uosc.message_items(fail(err, 'music.playlists.list'), 'error')) return end
+    if err then show(tr('Listas'), uosc.message_items(fail(err, 'music.playlists.list'), 'error')) return end
     rpc.call('music.smart', nil, function(err2, smart)
       if not still('lists') then return end
       local items = {}
@@ -461,9 +466,9 @@ views.lists = function()
                               actions = PLAY_ACTIONS })
       end
       if #items > 0 then items[#items].separator = true end
-      table.insert(items, { title = 'Nueva lista…', icon = 'playlist_add', value = { input = 'new_list' } })
-      table.insert(items, { title = 'Guardar la cola como lista…', icon = 'save', value = { input = 'save_queue' } })
-      table.insert(items, { title = 'Importar una lista (M3U)…', icon = 'file_open', value = { input = 'import' },
+      table.insert(items, { title = tr('Nueva lista…'), icon = 'playlist_add', value = { input = 'new_list' } })
+      table.insert(items, { title = tr('Guardar la cola como lista…'), icon = 'save', value = { input = 'save_queue' } })
+      table.insert(items, { title = tr('Importar una lista (M3U)…'), icon = 'file_open', value = { input = 'import' },
                             separator = true })
       if not err2 then
         for _, s in ipairs(smart or {}) do
@@ -473,8 +478,8 @@ views.lists = function()
         end
         if #(smart or {}) > 0 then items[#items].separator = true end
       end
-      table.insert(items, { title = 'Por género…', icon = 'category', value = { view = 'genres' } })
-      show('Listas', items, { footnote = 'Enter abre · Tab: acciones · ⌫ atrás' })
+      table.insert(items, { title = tr('Por género…'), icon = 'category', value = { view = 'genres' } })
+      show(tr('Listas'), items, { footnote = tr('Enter abre · Tab: acciones · ⌫ atrás') })
     end, 15)
   end, 15)
 end
@@ -485,10 +490,10 @@ views.list = function(args)
     function(res)
       local rows = group_rows({ list = args.name }, 'la lista')
       rows[1].hint = hms(res.duration)
-      table.insert(rows, { title = 'Ordenar…', icon = 'sort', value = { view = 'sort', name = args.name } })
-      table.insert(rows, { title = 'Renombrar…', icon = 'edit', value = { input = 'rename_list', name = args.name } })
-      table.insert(rows, { title = 'Exportar (M3U8)…', icon = 'ios_share', value = { input = 'export', name = args.name } })
-      table.insert(rows, { title = 'Borrar la lista', icon = 'delete', value = { delete_list = args.name },
+      table.insert(rows, { title = tr('Ordenar…'), icon = 'sort', value = { view = 'sort', name = args.name } })
+      table.insert(rows, { title = tr('Renombrar…'), icon = 'edit', value = { input = 'rename_list', name = args.name } })
+      table.insert(rows, { title = tr('Exportar (M3U8)…'), icon = 'ios_share', value = { input = 'export', name = args.name } })
+      table.insert(rows, { title = tr('Borrar la lista'), icon = 'delete', value = { delete_list = args.name },
                            separator = true })
       return rows
     end,
@@ -496,13 +501,13 @@ views.list = function(args)
 end
 
 views.sort = function(args)
-  show('Ordenar', {
-    { title = 'Por artista', icon = 'person', value = { sort = 'artist', name = args.name } },
-    { title = 'Por álbum', icon = 'album', value = { sort = 'album', name = args.name } },
-    { title = 'Por título', icon = 'sort_by_alpha', value = { sort = 'title', name = args.name } },
-    { title = 'Por año', icon = 'event', value = { sort = 'year', name = args.name } },
-    { title = 'Al azar', icon = 'shuffle', value = { sort = 'shuffle', name = args.name } },
-  }, { footnote = 'Se guarda en la lista · ⌫ atrás' })
+  show(tr('Ordenar'), {
+    { title = tr('Por artista'), icon = 'person', value = { sort = 'artist', name = args.name } },
+    { title = tr('Por álbum'), icon = 'album', value = { sort = 'album', name = args.name } },
+    { title = tr('Por título'), icon = 'sort_by_alpha', value = { sort = 'title', name = args.name } },
+    { title = tr('Por año'), icon = 'event', value = { sort = 'year', name = args.name } },
+    { title = tr('Al azar'), icon = 'shuffle', value = { sort = 'shuffle', name = args.name } },
+  }, { footnote = tr('Se guarda en la lista · ⌫ atrás') })
 end
 
 views.smart = function(args)
@@ -523,7 +528,7 @@ views.queue = function()
     items = {}
     if pos >= 0 and pl[pos + 1] then
       local d = desc[pos + 1] or {}
-      table.insert(items, { title = d.title or basename(pl[pos + 1].filename), hint = 'sonando ahora', icon = 'graphic_eq',
+      table.insert(items, { title = d.title or basename(pl[pos + 1].filename), hint = tr('sonando ahora'), icon = 'graphic_eq',
                             active = true, selectable = false, separator = true })
     end
     for i = pos + 2, #pl do
@@ -537,14 +542,14 @@ views.queue = function()
     local n = #pl - pos - 1
     if pos < 0 then n = 0 end
     if n <= 0 then
-      table.insert(items, { title = 'No hay nada después de esta pista', icon = 'info', selectable = false, muted = true })
+      table.insert(items, { title = tr('No hay nada después de esta pista'), icon = 'info', selectable = false, muted = true })
     end
     if #items > 0 then items[#items].separator = true end
     if #pl > 0 then
-      table.insert(items, { title = 'Guardar la cola como lista…', icon = 'save', value = { input = 'save_queue' } })
+      table.insert(items, { title = tr('Guardar la cola como lista…'), icon = 'save', value = { input = 'save_queue' } })
     end
-    if n > 0 then table.insert(items, { title = 'Vaciar la cola', icon = 'clear_all', value = { clear_queue = true } }) end
-    show('Cola', items, { footnote = 'Enter salta a la pista · Ctrl+↑/↓ o Tab: mover, quitar · ⌫ atrás',
+    if n > 0 then table.insert(items, { title = tr('Vaciar la cola'), icon = 'clear_all', value = { clear_queue = true } }) end
+    show(tr('Cola'), items, { footnote = tr('Enter salta a la pista · Ctrl+↑/↓ o Tab: mover, quitar · ⌫ atrás'),
                           on_move = 'callback' })
   end
   if #paths > 0 and rpc.connected() then
@@ -553,7 +558,7 @@ views.queue = function()
       if err then fail(err, 'music.describe') build({}) return end
       build(res or {})
     end, 15)
-    if uosc.open_type() ~= MENU then show('Cola', uosc.loading_items()) end
+    if uosc.open_type() ~= MENU then show(tr('Cola'), uosc.loading_items()) end
   else
     build({})
   end
@@ -561,10 +566,10 @@ end
 
 views.history = function()
   if not require_mpvd('Historial') then return end
-  show('Historial', uosc.loading_items())
+  show(tr('Historial'), uosc.loading_items())
   rpc.call('music.history', { limit = 200 }, function(err, rows)
     if not still('history') then return end
-    if err then show('Historial', uosc.message_items(fail(err, 'music.history'), 'error')) return end
+    if err then show(tr('Historial'), uosc.message_items(fail(err, 'music.history'), 'error')) return end
     local items = {}
     for _, h in ipairs(rows or {}) do
       table.insert(items, { title = h.title ~= '' and h.title or basename(h.path),
@@ -573,40 +578,40 @@ views.history = function()
                             actions = TRACK_ACTIONS })
     end
     if #items == 0 then
-      items = uosc.message_items('Aún no has escuchado nada (solo se guarda en tu equipo)', 'history')
+      items = uosc.message_items(tr('Aún no has escuchado nada (solo se guarda en tu equipo)'), 'history')
     else
       items[#items].separator = true
-      table.insert(items, { title = 'Borrar el historial', icon = 'delete', value = { clear_history = true } })
+      table.insert(items, { title = tr('Borrar el historial'), icon = 'delete', value = { clear_history = true } })
     end
-    show('Historial', items, { footnote = 'Solo en tu equipo, sin enviar nada · ⌫ atrás', search_style = 'on_demand' })
+    show(tr('Historial'), items, { footnote = tr('Solo en tu equipo, sin enviar nada · ⌫ atrás'), search_style = 'on_demand' })
   end, 15)
 end
 
 views.folders = function()
   if not require_mpvd('Carpetas') then return end
-  show('Carpetas', uosc.loading_items())
+  show(tr('Carpetas'), uosc.loading_items())
   rpc.call('music.folders.list', nil, function(err, rows)
     if not still('folders') then return end
-    if err then show('Carpetas', uosc.message_items(fail(err, 'music.folders.list'), 'error')) return end
+    if err then show(tr('Carpetas'), uosc.message_items(fail(err, 'music.folders.list'), 'error')) return end
     local items = {}
     for _, f in ipairs(rows or {}) do
       table.insert(items, { title = f.path, icon = f.exists and 'folder' or 'folder_off',
         hint = f.exists and plural(f.files or 0, 'pista', 'pistas') or 'no se encuentra', value = { folder = f.path },
-        actions = { { name = 'rescan', icon = 'refresh', label = 'Volver a buscar' },
-                    { name = 'remove', icon = 'delete', label = 'Quitar' } } })
+        actions = { { name = 'rescan', icon = 'refresh', label = tr('Volver a buscar') },
+                    { name = 'remove', icon = 'delete', label = tr('Quitar') } } })
     end
     if #items > 0 then items[#items].separator = true end
     local here = current_path()
     if is_local(here) and is_music() then
-      table.insert(items, { title = 'Añadir la carpeta de lo que suena', hint = dirname(here), icon = 'create_new_folder',
+      table.insert(items, { title = tr('Añadir la carpeta de lo que suena'), hint = dirname(here), icon = 'create_new_folder',
                             value = { add = dirname(here) } })
     end
-    table.insert(items, { title = 'Escribir o pegar una ruta…', icon = 'edit', value = { input = 'folder' } })
+    table.insert(items, { title = tr('Escribir o pegar una ruta…'), icon = 'edit', value = { input = 'folder' } })
     if #(rows or {}) > 0 then
-      table.insert(items, { title = 'Volver a buscar en todas', icon = 'refresh', value = { rescan = true },
+      table.insert(items, { title = tr('Volver a buscar en todas'), icon = 'refresh', value = { rescan = true },
         hint = state.scanning and string.format('buscando %d %%', math.floor(state.scan_progress * 100)) or nil })
     end
-    show('Carpetas', items, { footnote = 'Tab: volver a buscar / quitar (no se borra nada) · ⌫ atrás' })
+    show(tr('Carpetas'), items, { footnote = tr('Tab: volver a buscar / quitar (no se borra nada) · ⌫ atrás') })
   end, 15)
 end
 
@@ -614,33 +619,33 @@ views.settings = function()
   if not require_mpvd('Ajustes') then return end
   rpc.call('music.status', { default_folder = false }, function(err, st)
     if not still('settings') then return end
-    if err then show('Ajustes', uosc.message_items(fail(err, 'music.status'), 'error')) return end
+    if err then show(tr('Ajustes'), uosc.message_items(fail(err, 'music.status'), 'error')) return end
     state.rg, state.settings = st.replaygain or {}, st.settings or {}
     local rg = state.rg
     local av = mp.get_property_native('user-data/mu/av') or {}
     local eq_title = 'plano'
     for _, e in ipairs(av.eq_presets or {}) do if e.id == av.eq then eq_title = e.title end end
     local measuring = (rg.pending or 0) > 0 and string.format('faltan %d', rg.pending) or 'al día'
-    show('Ajustes', {
-      { title = 'Sin cortes entre pistas', hint = opts.gapless and 'siempre' or 'si el formato coincide',
+    show(tr('Ajustes'), {
+      { title = tr('Sin cortes entre pistas'), hint = opts.gapless and 'siempre' or 'si el formato coincide',
         icon = 'join_inner', active = opts.gapless, value = { toggle = 'gapless' } },
-      { title = 'Fundido entre pistas', hint = opts.fade > 0 and (opts.fade .. ' s') or 'no', icon = 'blur_linear',
+      { title = tr('Fundido entre pistas'), hint = opts.fade > 0 and (opts.fade .. ' s') or 'no', icon = 'blur_linear',
         active = opts.fade > 0, value = { cycle = 'fade' } },
-      { title = 'Volumen igualado', hint = RG_LABEL[opts.replaygain], icon = 'equalizer',
+      { title = tr('Volumen igualado'), hint = RG_LABEL[opts.replaygain], icon = 'equalizer',
         active = opts.replaygain ~= 'no', value = { cycle = 'replaygain' } },
-      { title = 'Calcular el volumen de las pistas sin etiquetas', icon = 'calculate',
+      { title = tr('Calcular el volumen de las pistas sin etiquetas'), icon = 'calculate',
         hint = (state.settings.auto_replaygain and 'sí' or 'no') .. ' · ' .. measuring,
         active = state.settings.auto_replaygain, value = { toggle = 'auto_replaygain' } },
-      { title = 'Salida exclusiva', hint = opts.exclusive and 'sí' or 'no', icon = 'speaker', active = opts.exclusive,
+      { title = tr('Salida exclusiva'), hint = opts.exclusive and 'sí' or 'no', icon = 'speaker', active = opts.exclusive,
         value = { toggle = 'exclusive' }, separator = true },
-      { title = 'Ecualizador', hint = eq_title, icon = 'graphic_eq', value = { view = 'eq' } },
-    }, { footnote = 'Se recuerda · Salida exclusiva: solo algunos sistemas (PipeWire, WASAPI, CoreAudio)' })
+      { title = tr('Ecualizador'), hint = eq_title, icon = 'graphic_eq', value = { view = 'eq' } },
+    }, { footnote = tr('Se recuerda · Salida exclusiva: solo algunos sistemas (PipeWire, WASAPI, CoreAudio)') })
   end, 15)
 end
 
 views.eq = function()
   local av = mp.get_property_native('user-data/mu/av') or {}
-  local items = { { title = 'Plano (sin ecualizar)', icon = (av.eq or '') == '' and 'radio_button_checked'
+  local items = { { title = tr('Plano (sin ecualizar)'), icon = (av.eq or '') == '' and 'radio_button_checked'
                       or 'radio_button_unchecked', active = (av.eq or '') == '', value = { eq = '' }, separator = true } }
   local rest = {}
   for _, e in ipairs(av.eq_presets or {}) do
@@ -651,23 +656,23 @@ views.eq = function()
   if #items > 1 then items[#items].separator = true end
   for _, r in ipairs(rest) do table.insert(items, r) end
   if #(av.eq_presets or {}) == 0 then
-    table.insert(items, { title = 'Los perfiles vienen de «Sonido e imagen» (mu-av)', icon = 'info', selectable = false,
+    table.insert(items, { title = tr('Los perfiles vienen de «Sonido e imagen» (mu-av)'), icon = 'info', selectable = false,
                           muted = true })
   end
-  show('Ecualizador', items, { footnote = 'Perfiles para auriculares arriba · se recuerda · ⌫ atrás' })
+  show(tr('Ecualizador'), items, { footnote = tr('Perfiles para auriculares arriba · se recuerda · ⌫ atrás') })
 end
 
 views.pick = function()
   if not require_mpvd('Añadir a una lista') then return end
   rpc.call('music.playlists.list', nil, function(err, lists)
     if not still('pick') then return end
-    if err then show('Añadir a una lista', uosc.message_items(fail(err, 'music.playlists.list'), 'error')) return end
-    local items = { { title = 'Nueva lista…', icon = 'playlist_add', value = { input = 'new_list' }, separator = true } }
+    if err then show(tr('Añadir a una lista'), uosc.message_items(fail(err, 'music.playlists.list'), 'error')) return end
+    local items = { { title = tr('Nueva lista…'), icon = 'playlist_add', value = { input = 'new_list' }, separator = true } }
     for _, l in ipairs(lists or {}) do
       table.insert(items, { title = l.name, hint = plural(l.count or 0, 'pista', 'pistas'), icon = 'queue_music',
                             value = { add_to = l.name } })
     end
-    show('Añadir a una lista', items, { footnote = (state.pick and plural(#state.pick, 'pista', 'pistas') or '') ..
+    show(tr('Añadir a una lista'), items, { footnote = (state.pick and plural(#state.pick, 'pista', 'pistas') or '') ..
                                           ' · Enter añade · ⌫ atrás' })
   end, 15)
 end
@@ -727,12 +732,12 @@ local function search_results(query)
       items = uosc.message_items(fail(err, 'music.search'), 'error')
     else
       for _, a in ipairs(res.artists or {}) do
-        table.insert(items, { title = a.name, hint = 'artista', icon = 'person',
+        table.insert(items, { title = a.name, hint = tr('artista'), icon = 'person',
                               value = { view = 'artist', key = a.key, title = a.name, artist = a.key } })
       end
       for _, a in ipairs(res.albums or {}) do table.insert(items, album_row(a, true)) end
       for _, t in ipairs(res.tracks or {}) do table.insert(items, track_row(t, nil, t.title)) end
-      if #items == 0 then items = uosc.message_items('Nada con «' .. query .. '»', 'search_off') end
+      if #items == 0 then items = uosc.message_items(tr('Nada con «%s»'):format(query), 'search_off') end
     end
     remember(items)
     publish()
@@ -744,13 +749,13 @@ local function scan_started(res)
   state.scanning = true
   state.scan_progress = 0
   publish()
-  osd('🎵 Buscando música en ' .. (res and res.path or 'tus carpetas') .. '…')
+  osd(tr('🎵 Buscando música en %s…'):format(res and res.path or tr('tus carpetas')))
 end
 
 local function add_folder(path)
   rpc.call('music.folders.add', { path = path, notify = SCRIPT }, function(err, res)
-    if err then osd('Carpeta: ' .. fail(err, 'music.folders.add'), 5) return end
-    if res.added then scan_started(res) else osd('Esa carpeta ya estaba') end
+    if err then osd(tr('Carpeta: %s'):format(fail(err, 'music.folders.add')), 5) return end
+    if res.added then scan_started(res) else osd(tr('Esa carpeta ya estaba')) end
     if still('folders') then reopen_current() end
   end, 15)
 end
@@ -777,7 +782,7 @@ local function save_input(text, inp)
     local paths = mode == 'save_queue' and queue_paths() or (state.pick or {})
     close_input(true)
     rpc.call('music.playlists.create', { name = text, paths = #paths > 0 and paths or nil }, function(err, res)
-      if err then osd('Lista: ' .. fail(err, 'music.playlists.create'), 5) return end
+      if err then osd(tr('Lista: %s'):format(fail(err, 'music.playlists.create')), 5) return end
       state.pick = nil
       if still('pick') then
         table.remove(state.stack)
@@ -788,7 +793,7 @@ local function save_input(text, inp)
   elseif mode == 'rename_list' then
     close_input(false)
     rpc.call('music.playlists.rename', { name = inp.name, new_name = text }, function(err, res)
-      if err then osd('Renombrar: ' .. fail(err, 'music.playlists.rename'), 5) reopen_current(true) return end
+      if err then osd(tr('Renombrar: %s'):format(fail(err, 'music.playlists.rename')), 5) reopen_current(true) return end
       local top = state.stack[#state.stack]
       if top and top.name == 'list' then
         top.args = { name = res.name, title = res.name, list = res.name }
@@ -800,15 +805,15 @@ local function save_input(text, inp)
   elseif mode == 'import' then
     close_input(true)
     rpc.call('music.playlists.import', { path = mp.command_native({ 'expand-path', text }) or text }, function(err, res)
-      if err then osd('Importar: ' .. fail(err, 'music.playlists.import'), 5) return end
+      if err then osd(tr('Importar: %s'):format(fail(err, 'music.playlists.import')), 5) return end
       list_changed(res.name, '✓ Importada «' .. res.name .. '» (' .. plural(#(res.tracks or {}), 'pista', 'pistas') .. ')')
     end, 15)
   elseif mode == 'export' then
     close_input(true)
     rpc.call('music.playlists.export', { name = inp.name, path = mp.command_native({ 'expand-path', text }) or text },
       function(err, res)
-        if err then osd('Exportar: ' .. fail(err, 'music.playlists.export'), 5) return end
-        osd('✓ Exportada a ' .. res.path, 5)
+        if err then osd(tr('Exportar: %s'):format(fail(err, 'music.playlists.export')), 5) return end
+        osd(tr('✓ Exportada a %s'):format(res.path), 5)
       end, 15)
   end
 end
@@ -823,7 +828,7 @@ mp.register_script_message(INPUT_EVENT, function(json)
     local q = ev.query or ''
     if inp.mode == 'search' and q ~= '' then
       inp.query = q
-      uosc.update(input_menu(q, uosc.loading_items('Buscando…')))
+      uosc.update(input_menu(q, uosc.loading_items(tr('Buscando…'))))
       search_results(q)
     else
       uosc.update(input_menu(q))
@@ -881,7 +886,7 @@ local function list_move_at(a, b)
   if not m then return end
   if a < 0 or b < 0 or a == b then reopen_current() return end
   rpc.call('music.playlists.move', { name = m.name, src = a, dst = b }, function(err)
-    if err then osd('Mover: ' .. fail(err, 'music.playlists.move')) end
+    if err then osd(tr('Mover: %s'):format(fail(err, 'music.playlists.move'))) end
     reopen_current()
   end, 15)
 end
@@ -905,13 +910,14 @@ handle_activate = function(ev)
   if v.folder then
     if action == 'remove' then
       rpc.call('music.folders.remove', { path = v.folder }, function(err, res)
-        if err then osd('Quitar: ' .. fail(err, 'music.folders.remove')) return end
-        osd('Carpeta quitada (' .. plural(res.removed or 0, 'pista', 'pistas') .. '; no se borra ningún archivo)')
+        if err then osd(tr('Quitar: %s'):format(fail(err, 'music.folders.remove'))) return end
+        osd(tr('Carpeta quitada (%s; no se borra ningún archivo)')
+          :format(plural(res.removed or 0, tr('pista'), tr('pistas'))))
         reopen_current()
       end, 15)
     else
       rpc.call('music.scan', { path = v.folder, notify = SCRIPT }, function(err)
-        if err then osd('Buscar: ' .. fail(err, 'music.scan')) return end
+        if err then osd(tr('Buscar: %s'):format(fail(err, 'music.scan'))) return end
         scan_started({ path = v.folder })
       end, 15)
     end
@@ -933,7 +939,7 @@ handle_activate = function(ev)
       mp.add_timeout(0.05, function() reopen_current() end)
     elseif state.move and state.move.kind == 'list' and v.index then
       rpc.call('music.playlists.remove', { name = state.move.name, index = v.index }, function(err)
-        if err then osd('Quitar: ' .. fail(err, 'music.playlists.remove')) end
+        if err then osd(tr('Quitar: %s'):format(fail(err, 'music.playlists.remove'))) end
         reopen_current()
       end, 15)
     end
@@ -980,30 +986,30 @@ handle_activate = function(ev)
   elseif v.add then add_folder(v.add)
   elseif v.rescan then
     rpc.call('music.scan', { notify = SCRIPT }, function(err)
-      if err then osd('Buscar: ' .. fail(err, 'music.scan')) return end
+      if err then osd(tr('Buscar: %s'):format(fail(err, 'music.scan'))) return end
       scan_started()
       reopen_current()
     end, 15)
   elseif v.add_to then
     local paths = state.pick or {}
     rpc.call('music.playlists.add', { name = v.add_to, paths = paths }, function(err, res)
-      if err then osd('Lista: ' .. fail(err, 'music.playlists.add')) return end
+      if err then osd(tr('Lista: %s'):format(fail(err, 'music.playlists.add'))) return end
       state.pick = nil
-      osd('✓ ' .. plural(#paths, 'pista añadida', 'pistas añadidas') .. ' a «' .. res.name .. '»')
+      osd(tr('✓ %s a «%s»'):format(plural(#paths, tr('pista añadida'), tr('pistas añadidas')), res.name))
       table.remove(state.stack)
       if #state.stack == 0 then uosc.close(MENU) else reopen_current() end
       publish()
     end, 15)
   elseif v.sort then
     rpc.call('music.playlists.sort', { name = v.name, by = v.sort }, function(err)
-      if err then osd('Ordenar: ' .. fail(err, 'music.playlists.sort')) return end
+      if err then osd(tr('Ordenar: %s'):format(fail(err, 'music.playlists.sort'))) return end
       table.remove(state.stack)
       reopen_current()
     end, 15)
   elseif v.delete_list then
     rpc.call('music.playlists.delete', { name = v.delete_list }, function(err)
-      if err then osd('Borrar: ' .. fail(err, 'music.playlists.delete')) return end
-      osd('Lista borrada (queda una copia en la papelera de listas)')
+      if err then osd(tr('Borrar: %s'):format(fail(err, 'music.playlists.delete'))) return end
+      osd(tr('Lista borrada (queda una copia en la papelera de listas)'))
       table.remove(state.stack)
       reopen_current()
     end, 15)
@@ -1013,8 +1019,8 @@ handle_activate = function(ev)
     mp.add_timeout(0.05, function() reopen_current() end)
   elseif v.clear_history then
     rpc.call('music.history.clear', nil, function(err)
-      if err then osd('Historial: ' .. fail(err, 'music.history.clear')) return end
-      osd('Historial borrado')
+      if err then osd(tr('Historial: %s'):format(fail(err, 'music.history.clear'))) return end
+      osd(tr('Historial borrado'))
       reopen_current()
     end, 15)
   elseif v.toggle == 'gapless' or v.toggle == 'exclusive' then
@@ -1023,7 +1029,7 @@ handle_activate = function(ev)
     reopen_current()
   elseif v.toggle == 'auto_replaygain' then
     rpc.call('music.settings.set', { auto_replaygain = not state.settings.auto_replaygain }, function(err, s)
-      if err then osd('Ajustes: ' .. fail(err, 'music.settings.set')) return end
+      if err then osd(tr('Ajustes: %s'):format(fail(err, 'music.settings.set'))) return end
       state.settings = s
       reopen_current()
     end, 15)
@@ -1033,12 +1039,12 @@ handle_activate = function(ev)
       if s == opts.fade then nxt = FADE_STEPS[i % #FADE_STEPS + 1] end
     end
     set_pref('fade', nxt)
-    osd('Fundido entre pistas: ' .. (nxt > 0 and (nxt .. ' s') or 'no'))
+    osd(tr('Fundido entre pistas: %s'):format(nxt > 0 and (nxt .. ' s') or tr('no')))
     reopen_current()
   elseif v.cycle == 'replaygain' then
     set_pref('replaygain', RG_NEXT[opts.replaygain] or 'no')
     apply_audio_settings()
-    osd('Volumen igualado: ' .. RG_LABEL[opts.replaygain])
+    osd(tr('Volumen igualado: %s'):format(RG_LABEL[opts.replaygain]))
     reopen_current()
   elseif v.eq ~= nil then
     mp.commandv('script-message-to', 'mu_av', 'mu-av-eq', v.eq)
@@ -1099,8 +1105,8 @@ end
 
 apply_gain = function()
   local here = current_path()
-  local tr = mp.get_property_native('current-tracks/audio') or {}
-  if tr['replaygain-track-gain'] ~= nil then
+  local pista = mp.get_property_native('current-tracks/audio') or {}
+  if pista['replaygain-track-gain'] ~= nil then
     state.gain = { source = opts.replaygain ~= 'no' and 'tags' or 'none', db = nil, path = here }
   else
     local db = fallback_db(state.gains[here])
@@ -1308,7 +1314,7 @@ mp.register_script_message('mu-event', function(payload)
         reopen_current()
       end
     elseif j.status == 'failed' then
-      osd('Música: ' .. (j.error or 'error'), 5)
+      osd(tr('Música: %s'):format(j.error or tr('error')), 5)
     end
   elseif j.name == 'music.replaygain' and j.status == 'done' then
     state.gains = {}                -- computed album gains may have changed
@@ -1323,7 +1329,7 @@ end)
 -- bindings and script messages
 
 local function open_root()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'root' })
@@ -1331,7 +1337,7 @@ end
 
 local function open_sub(view)
   return function()
-    if not uosc.available() then osd('uosc no está cargado') return end
+    if not uosc.available() then osd(tr('uosc no está cargado')) return end
     state.stack = { { name = 'root', title = ROOT_TITLE } }
     state.force_open = uosc.open_type() ~= MENU
     open_view({ name = view })
@@ -1342,14 +1348,14 @@ N:binding('music-menu', open_root)
 N:binding('music-queue', open_sub('queue'))
 N:binding('music-lists', open_sub('lists'))
 mp.add_key_binding(nil, 'music-search', function()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = { { name = 'root', title = ROOT_TITLE } }
   state.view = 'root'
   open_input('search', '')
 end)
 mp.add_key_binding(nil, 'music-add-to-list', function()
   local here = current_path()
-  if not is_local(here) then osd('Solo archivos de tu equipo') return end
+  if not is_local(here) then osd(tr('Solo archivos de tu equipo')) return end
   state.stack = { { name = 'root', title = ROOT_TITLE } }
   state.pick = { here }
   state.force_open = true
@@ -1362,7 +1368,7 @@ mp.register_script_message('mu-music-replaygain', function(mode)
   set_pref('replaygain', mode)
   apply_audio_settings()
   apply_gain()
-  osd('Volumen igualado: ' .. RG_LABEL[mode])
+  osd(tr('Volumen igualado: %s'):format(RG_LABEL[mode]))
 end)
 mp.register_script_message('mu-music-open', open_root)
 mp.register_script_message('mu-music-play-next', function(path) if path then play_next({ path }) end end)

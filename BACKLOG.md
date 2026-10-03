@@ -529,7 +529,7 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
       valor imposible o un `prefs.json` roto se ignoran sin ruido y se vuelve al idioma del sistema.
 - [x] G3 Lo primero que se ve: mu-menu (menú, paleta, ayuda, inicio, preferencias) y mu-modes, con **196 cadenas**
       traducidas a inglés y francés y un test que arranca el reproductor en los tres idiomas.
-- [ ] G4 Los módulos grandes: ytdl, iptv, subs, record, share, library, music.
+- [x] G4 Los módulos grandes: ytdl, iptv, subs, record, share, library, music.
 - [ ] G5 Los mensajes de mpvd que salen en el OSD.
 - [ ] G6 Las páginas servidas (sala, mando, descargas), que siguen al **navegador del invitado**, no al sistema del
       anfitrión: las abre otra persona y puede estar en otro idioma.
