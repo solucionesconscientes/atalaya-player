@@ -59,8 +59,11 @@ delante, y **ya no se recuerda**: todo vídeo se abre con su imagen.
   bin/mpv-uos pelicula.mkv      # g → 00:02:15 · menú › Resumen e índice › Verlo acortado
   bin/mpv-uos conferencia.mp4   # tramos (barra) → guardar: el icono de Tareas aparece mientras trabaja
   ```
-- `tools/check.sh`: 859 pasan, 16 con red. Falló `test_books` por la carrera de siempre (el estado publica la vista
-  antes que sus filas); pasa aislado y se ha arreglado el test para que espere las filas y no el nombre de la vista.
+- `tools/check.sh` al cerrar la tanda: **863 pasan**, 2 omitidos, 16 con red. En las dos pasadas completas falló un
+  test distinto por la **misma carrera** —el estado publica la vista antes que sus filas, así que esperar el nombre
+  de la vista devuelve las filas de la anterior en cuanto la máquina va cargada—: `test_books` en la primera y
+  `test_mu_subs` en la segunda. Los dos pasan aislados y en los dos se ha arreglado la causa, no el síntoma: ahora
+  esperan una fila de la vista nueva. Es la tercera vez que esta carrera muerde, y ya está escrita abajo.
 
 ## Resumen para Ser (2026-10-02, iteración 7) · H42-H46
 De tu segunda prueba salieron cinco hitos. **Están los cinco**, menos una pieza del de la sala que digo al final.

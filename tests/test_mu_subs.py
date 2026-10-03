@@ -35,9 +35,13 @@ def send_event(h, ev: dict) -> None:
     h.command("script-message-to", "mu_subs", "mu-subs-event", json.dumps({**base, **ev}))
 
 
-def wait_view(h, view: str, timeout: float = 30.0):
+def wait_view(h, view: str, timeout: float = 30.0, row: str | None = None):
+    """El estado publica la vista ANTES que sus filas, así que esperar solo el nombre devuelve las de la anterior
+    en cuanto la máquina va cargada. `row` es el título de una fila de la vista nueva: con él la espera es firme."""
     return h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("view") == view
-                           and any(i.get("title") for i in v.get("items", [])), timeout=timeout)
+                           and any(i.get("title") for i in v.get("items", []))
+                           and (row is None or any(i.get("title") == row for i in v.get("items", []))),
+                           timeout=timeout)
 
 
 def external_sub(h, srt: str):
@@ -163,7 +167,7 @@ def test_subtitulos_preparados_pista_precompute_y_menu(subs_mpv, media_dir, tmp_
     idioma = next(i for i in st["items"] if i["title"] == "Idioma del audio")
     assert idioma["hint"] == "Español"
     send_event(h, {"type": "activate", "index": 2, "value": {"view": "language"}})
-    st = wait_view(h, "language")
+    st = wait_view(h, "language", row="Detectar automáticamente")
     assert st["items"][0]["title"] == "Detectar automáticamente" and any(i["active"] and i["hint"] == "es" for i in st["items"])
     send_event(h, {"type": "activate", "index": 3, "value": {"language": "en"}})
     st = h.wait_property("user-data/mu/subs", lambda v: bool(v) and v.get("language") == "en" and v.get("view") == "root",
