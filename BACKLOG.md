@@ -228,31 +228,38 @@ traducción en directo. Fuera también: imagen (mejoras de imagen, visor de foto
 - [~] La propuesta de 2026-09-30 (integrarse con qBittorrent por su interfaz web) queda aparcada en favor de
       libtorrent en el .venv, que es lo que se acordó el 2026-10-03. Ver H59.
 
-## H59 · Ver un torrent mientras se descarga (aprobado por Ser el 2026-10-03) — [ ]
+## H59 · Ver un torrent mientras se descarga — ADR-106 · [x]
 Diseño acordado en la conversación del 2026-10-03, que **no estaba escrito aquí** (error mío: lo di por escrito al
 recapitular). libtorrent 2.1.1 tiene ruedas oficiales en PyPI (BSD) para cp312 en Linux x86_64/aarch64, musl,
 Windows 32/64 y macOS arm64/x86_64, y su API se comprobó completa con el Python del proyecto (`set_piece_deadline`,
 `have_piece`, `piece_priority`, `file_priority`, `set_sequential_download`, `clear_piece_deadlines`).
-- [ ] L1 **Extra opcional y APAGADO por defecto**, como los servicios de nube: un reproductor no tiene por qué
+- [x] L1 **Extra opcional y APAGADO por defecto**, como los servicios de nube: un reproductor no tiene por qué
       traer un cliente de torrents encendido. Se activa en Preferencias y se dice en una línea qué implica.
-- [ ] L2 **La ventana de reproducción manda**: `set_piece_deadline` sobre los trozos que hacen falta YA, no
+- [x] L2 **La ventana de reproducción manda**: `set_piece_deadline` sobre los trozos que hacen falta YA, no
       `set_sequential_download` a lo bruto, que pelea con el salto hacia delante y desperdicia la bajada.
-- [ ] L3 **mpvd sirve el fichero que crece** por HTTP local con Range, igual que ya sirve el fichero original de
+- [x] L3 **mpvd sirve el fichero que crece** por HTTP local con Range, igual que ya sirve el fichero original de
       una sala (H44/C1): así mpv no necesita saber nada de torrents y los saltos funcionan dentro de lo bajado.
-- [ ] L4 **Al acabar se deja de sembrar**; seguir sembrando es un interruptor explícito, no el comportamiento.
-- [ ] L5 **Trackers**: `trackers_best` (20, de ngosang/trackerslist) en caché semanal con copia incluida en el
+- [x] L4 **Al acabar se deja de sembrar**; seguir sembrando es un interruptor explícito, no el comportamiento.
+- [x] L5 **Trackers**: `trackers_best` (20, de ngosang/trackerslist) en caché semanal con copia incluida en el
       repo como respaldo, y **nunca** en un torrent privado (`priv()`), que es motivo de expulsión. **Sin
       blocklist**: la del nivel 2 bloquea rangos enteros por reputación, rompe conexiones legítimas y hay que
       mantenerla; no paga.
-- [ ] L6 **Privacidad por interruptor**, no por defecto: SOCKS5 y `anonymous_mode`, con las credenciales en
+- [x] L6 **Privacidad por interruptor**, no por defecto: SOCKS5 y `anonymous_mode`, con las credenciales en
       `~/.config/mpv-uos/` con permisos 600 y fuera del repo. Lo demás se queda como lo trae libtorrent (DHT, LSD,
       cifrado 1, 200 conexiones), que son valores sensatos y probados.
-- [ ] L7 **Sin estrangular la subida**: un cliente que no devuelve nada es un cliente que no baja.
-- [ ] L8 **Entrada por la puerta única**: un magnet pegado en `ctrl+o` se reconoce y se ofrece ver o descargar,
+- [x] L7 **Sin estrangular la subida**: un cliente que no devuelve nada es un cliente que no baja.
+- [x] L8 **Entrada por la puerta única**: un magnet pegado en `ctrl+o` se reconoce y se ofrece ver o descargar,
       como cualquier otro enlace. Nada de un sitio nuevo.
-- [ ] L9 **Tests sin red**: un sembrador y un cliente locales en el mismo equipo, como se probó el relay.
-- [ ] L10 **Medir CPU y RAM antes de prometer nada** en el portátil de cuatro núcleos, y **un aviso legal claro**
-      la primera vez: la herramienta es neutra, lo que se baje es responsabilidad de quien lo baje.
+- [x] L9 **Tests sin red**: un sembrador y un cliente locales en el mismo equipo, como se probó el relay.
+- [x] L10 **Medido** en este portátil, con un sembrador local: **12,1 ms de CPU por MB** descargado (191 MB a
+      68 MB/s costaron 2,30 s de CPU) y **110 MB** de RSS. O sea, bajando a 5 MB/s —una conexión doméstica buena—
+      el torrent cuesta un **6 % de un núcleo**, encima del 24 % que ya gasta el reproductor. Crear el .torrent de
+      un fichero de 200 MB: 0,9 s. Y el **aviso legal** sale la primera vez que se abre uno: la herramienta es
+      neutra, lo que se baje es responsabilidad de quien lo baje.
+- [x] L11 (añadido al construirlo) Los tests **no pueden escribir en la configuración de verdad**: el interruptor y
+      las credenciales del proxy viven en `~/.config/mpv-uos/`, y la primera pasada del test dejó ahí un
+      `torrent.json` con los torrents ENCENDIDOS. Ahora `MPV_UOS_CONFIG_DIR` apunta a la carpeta del test, como ya
+      hacían el resto de rutas.
 
 ## H65 · Un menú cerrado no se reabre solo — ADR-104 · [x]
 Encontrado por la batería completa el 2026-10-03, y era un fallo de verdad y no del test: el test esperaba 30 s a

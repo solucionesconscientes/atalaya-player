@@ -205,8 +205,11 @@ class DaemonEnv:
 
     @property
     def env(self) -> dict[str, str]:
+        # H59 · también la carpeta de configuración: un test que la cambie (los torrents guardan ahí su
+        # interruptor y las credenciales del proxy) NO puede tocar la de verdad de quien ejecuta la batería
         return {"MPV_UOS_RUNTIME_DIR": str(self.runtime_dir), "MPV_UOS_CACHE_DIR": str(self.cache_dir),
-                "MPV_UOS_DATA_DIR": str(self.data_dir), "MPVD_IDLE_TIMEOUT": "120", **self.extra_env}
+                "MPV_UOS_DATA_DIR": str(self.data_dir), "MPV_UOS_CONFIG_DIR": str(self.base / "config"),
+                "MPVD_IDLE_TIMEOUT": "120", **self.extra_env}
 
     def cli(self, *args: str, timeout: float = 60.0) -> subprocess.CompletedProcess[str]:
         return subprocess.run(

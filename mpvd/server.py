@@ -133,6 +133,9 @@ class MpvdServer:
         cec.register(self, self.cec)
         from mpvd import files as files_mod  # noqa: PLC0415
         files_mod.register(self)
+        from mpvd.torrent import service as torrent_mod  # noqa: PLC0415
+        self.torrent = torrent_mod.TorrentService(self)
+        torrent_mod.register(self, self.torrent)
         from mpvd import recap  # noqa: PLC0415
         self.recap = recap.RecapService(self)
         recap.register(self, self.recap)
@@ -203,6 +206,7 @@ class MpvdServer:
         await self.feeds.close()
         self.gamepad.stop()
         self.cec.stop()
+        await self.torrent.close()   # sin esto queda sembrando y sirviendo cuando ya no hay nadie
         await self.cast.close()
         await self.ytdl.close()
         await self.convert.close()

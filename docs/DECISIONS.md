@@ -1251,3 +1251,29 @@
   por una razón que conviene recordar: su helper hacía `next(...)` sin valor por defecto **dentro de un
   `wait_property`**, así que la excepción tumbaba la espera entera en lugar de volver a mirar un instante después.
   Un predicado no puede reventar; tiene que contestar que todavía no.
+
+- ADR-106 · Ver un torrent mientras se descarga: lo que lo hace posible es el lector, no el cliente (H59).
+  **Reabre y sustituye** la decisión de H26 (2026-09-30), que descartó los torrents y proponía integrarse con
+  qBittorrent por su interfaz web. Ser lo aprobó el 2026-10-03 con una condición que ordena todo lo demás: extra
+  **opcional y apagado**, como los servicios de nube.
+  **(1) La pieza de verdad es el lector, no el cliente.** Bajar un torrent lo hace libtorrent; lo que convierte
+  «descargar» en «ver» es que mpv pida un rango por HTTP y que a las piezas de **ese** rango se les ponga
+  `set_piece_deadline`. Se descarta `set_sequential_download`, que es lo que hace medio mundo: va bien hasta que
+  alguien salta hacia delante, y entonces hay que esperar a que la descarga llegue allí. Con fechas límite por
+  rango, un salto es otro rango y se pide igual; el test lo comprueba leyendo **el final del fichero** cuando
+  todavía no está descargado.
+  **(2) mpv no sabe nada de torrents**, y eso es deliberado: recibe `http://127.0.0.1:<puerto>/t/<id>/<n>?k=…` y
+  pide rangos como a cualquier servidor. Así «ver mientras baja» no es un modo aparte con sus propios fallos: es el
+  reproductor de siempre, con sus subtítulos, su resumen y su «ver juntos».
+  **(3) Medido antes de prometer** (L10): 12,1 ms de CPU por MB y 110 MB de RSS, o sea un 6 % de un núcleo bajando
+  a 5 MB/s. Eso es lo que permite decir que se puede ver una película mientras baja en un portátil de cuatro
+  núcleos sin GPU, en vez de suponerlo.
+  **(4) Lo que NO se toca**: los valores de libtorrent (DHT, LSD, cifrado, 200 conexiones) se quedan como vienen,
+  porque los ha probado muchísima más gente que nosotros; la subida **no** se estrangula, porque un cliente que no
+  devuelve nada es un cliente que no baja; y **no hay blocklist**, que bloquea rangos enteros por reputación, rompe
+  conexiones legítimas y hay que mantenerla. Los trackers extra (20, en caché semanal con copia en el repo)
+  **nunca** se añaden a un torrent privado: anunciarse fuera de su tracker es motivo de expulsión.
+  **(5) Un error propio que conviene recordar**: la primera pasada del test escribió en `~/.config/mpv-uos/` —la
+  configuración DE VERDAD de quien ejecuta la batería— y dejó los torrents encendidos. El resto de rutas ya estaban
+  aisladas en los tests; esta era nueva y se me pasó. Ahora `MPV_UOS_CONFIG_DIR` también apunta a la carpeta del
+  test, y el fichero que se creó se borró a mano.

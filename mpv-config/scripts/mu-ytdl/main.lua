@@ -44,7 +44,7 @@ local opts = {
 options.read_options(opts, 'mu-ytdl')
 -- remembered choices: the download options (container, subtitles…). H60 dropped "prefer_audio": an internet video
 -- always opens with its picture, and taking the video away is a thing of the moment (alt+a, or minimizing).
-local P = prefs.ns('mu-ytdl', { dl_options = {}, pick_preset = 'video_1080' })
+local P = prefs.ns('mu-ytdl', { dl_options = {}, pick_preset = 'video_1080', torrent_warned = false })
 
 local platform = mp.get_property_native('platform') or ''
 local is_windows = platform == 'windows'
@@ -111,6 +111,7 @@ local function publish()
     active = state.active, url = state.url, mode = state.mode, format = state.format, title = state.title,
     -- H60 · quitar el vídeo ya no recarga, así que `mode` no lo refleja: lo dice la pista de verdad
     audio_only = mp.get_property('vid') == 'no',
+    torrent = state.torrent or nil,
     current_ids = state.current_ids, view = state.view, depth = #state.stack, downloads_active = count_active(),
     last_event = state.last_event or '', last_error = state.last_error, hook_path = state.hook_path,
     items = state.items, search_query = state.search_query, search_status = state.search_status,
@@ -1156,6 +1157,9 @@ end
 local function gate_classify(text)
   local typed = trim(text)
   if typed == '' then return nil end
+  -- H59 · un magnet no es una URL que se pueda abrir ni descargar como las demás: lo resuelve mpvd con libtorrent
+  -- y devuelve una dirección local que mpv reproduce mientras baja
+  if typed:lower():match('^magnet:%?') then return { kind = 'torrent', link = typed, count = 1 } end
   local urls = urls_in(typed)
   if #urls > 1 then
     return { kind = 'links', urls = urls, count = #urls, title = plural(#urls, 'enlace', 'enlaces') }
@@ -1174,6 +1178,7 @@ local function gate_classify(text)
   local info = utils.file_info(path)
   if not info then return nil end
   if info.is_dir then return { kind = 'file', path = path, count = 1, dir = true } end
+  if path:lower():match('%.torrent$') then return { kind = 'torrent', link = path, count = 1 } end
   if is_link_file(path, info) then
     local links = read_links(path) or {}
     if #links == 0 then return { kind = 'empty_list', path = path, count = 0 } end
@@ -1213,6 +1218,20 @@ local function gate_items(query)
   if what and what.kind == 'empty_list' then
     return uosc.message_items('Ese archivo no tiene ningún enlace', 'description')
   end
+  if what and what.kind == 'torrent' then
+    local st = state.torrent or {}
+    if st.installed and st.enabled then
+      items[#items + 1] = { title = 'Ver mientras se descarga', icon = 'download_for_offline',
+                            hint = 'torrent · se abre en cuanto haya suficiente', value = { torrent = what.link } }
+    elseif st.installed then
+      items[#items + 1] = { title = 'Los torrents están apagados', icon = 'info', selectable = false, muted = true,
+                            hint = 'se encienden en Preferencias › Torrents' }
+    else
+      items[#items + 1] = { title = 'Falta libtorrent para abrir esto', icon = 'info', selectable = false,
+                            muted = true, hint = 'uv sync --extra torrent' }
+    end
+    return items
+  end
   if what then
     items[#items + 1] = gate_row(what, false)
   elseif typed ~= '' then
@@ -1247,10 +1266,32 @@ local function gate_menu(items, extra)
   return menu
 end
 
+-- H59 · el interruptor de los torrents se puede haber movido desde que arrancó el reproductor, y la puerta tiene
+-- que decir la verdad ANTES de que se pulse: se pregunta al abrirla, que es una llamada diminuta
+local function refresh_torrent(after)
+  if not rpc.connected() then if after then after() end return end
+  rpc.call('torrent.capabilities', nil, function(err, res)
+    local antes = state.torrent
+    state.torrent = (not err and type(res) == 'table') and res or { installed = false }
+    if antes == nil or antes.enabled ~= state.torrent.enabled or antes.installed ~= state.torrent.installed then
+      publish()
+      if after then after() end
+    end
+  end, 10)
+end
+
 views.gate = function(args)
   state.gate = nil
   state.site = nil
   state.gate_query = trim(args.query)
+  refresh_torrent(function()
+    if uosc.open_type() == GATE_MENU then
+      local items = gate_items(state.gate_query)
+      remember(items)
+      publish()
+      uosc.update(gate_menu(items))
+    end
+  end)
   local items = gate_items(state.gate_query)
   remember(items)
   publish()
@@ -1661,6 +1702,19 @@ local function on_event(source, json)
         load_url(target.url, false, target.title)
         close_menus()
       end
+    elseif v.torrent then
+      uosc.close(GATE_MENU)
+      osd('Buscando quién lo tenga…')
+      rpc.call('torrent.open', { link = v.torrent }, function(err, res)
+        if err then osd('Torrent: ' .. fail(err, 'torrent.open'), 6) return end
+        if not P:get('torrent_warned') then
+          P:set('torrent_warned', true)
+          osd(res.aviso or '', 8)
+        end
+        mp.commandv('loadfile', res.url, 'replace')
+        mp.set_property_bool('pause', false)
+        osd('▶ ' .. (res.name or '') .. ' · se ve mientras se descarga')
+      end, 120)
     elseif v.explore then
       uosc.close(GATE_MENU)
       mp.commandv('script-message-to', 'mu_library', 'mu-library-explore')
@@ -1898,7 +1952,14 @@ mp.observe_property('vid', 'string', function() publish() end)
 
 mp.observe_property('user-data/mu/core', 'native', function(_, core)
   if core and core.uosc then set_button_state() end
-  if core and core.mpvd == 'connected' then sync_hook_with_mpvd() end
+  if core and core.mpvd == 'connected' then
+    sync_hook_with_mpvd()
+    -- H59 · para que la puerta pueda decir ANTES de pulsar si los torrents están apagados o falta libtorrent
+    rpc.call('torrent.capabilities', nil, function(err, res)
+      state.torrent = (not err and type(res) == 'table') and res or { installed = false }
+      publish()
+    end, 10)
+  end
 end)
 
 apply_hook_path()
