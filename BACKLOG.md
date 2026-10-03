@@ -462,8 +462,12 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
       puerta única de H42 y por *Compartir → Entrar en una sala de otro…*. Las rutas `media/` y `subs/` aceptan la
       credencial en la query, porque un reproductor de verdad no manda cookies.
 - [x] C7 ADR: WebTorrent como no-objetivo, con los números (ADR-082).
-- [ ] C8 (nuevo, menor) Remux `-c copy` a fMP4/WebM para el navegador cuando los códecs lo permitan, en vez del relay
-      recodificando: 9,64 s para 115 min frente a 2,2× tiempo real. Ahorra CPU del anfitrión; no arregla nada roto.
+- [~] C8 **Descartado al medirlo** — ADR-099. La premisa era falsa: el relay **ya** copia cuando los códecs lo
+      permiten (comprobado, `plans_for` devuelve modo `copy` con `-c:v copy -c:a copy` para un MKV de H.264+AAC),
+      así que no había nada que recodificar de lo que ahorrar. Remux a MP4 frente al relay HLS del mismo fichero:
+      0,08 s los dos, y 1.690.840 bytes frente a 1.814.052 (un 7 % menos, por la cabecera de MPEG-TS). Donde el
+      relay sí recodifica —HEVC + Opus, que es lo que graba esta casa— un remux no sirve, porque eso no lo abre
+      ningún navegador; ese caso ya lo cubre C6 (el invitado usa su propio reproductor con el fichero original).
 
 ## H51 · Compartir, de la prueba de Ser (2026-10-02) — ADR-089 · [x]
 - [x] D1 La sala sale a internet **por defecto** (compartir es con quien no está en casa) y `tools/vendor.sh`

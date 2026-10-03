@@ -1121,3 +1121,21 @@
   mpvd ya lo forzaba y ahora el menú lo dice en el título («Poner «Cena»…» y no «Grabar»).
   **(5) De paso**: `views.sched_time` publicaba el nombre de la vista donde las demás publican el título, así que no
   se podía comprobar desde fuera qué se iba a hacer. Ahora publica el título, como el resto.
+
+- ADR-099 · El remux para el navegador se descarta: medido, no mejora nada (H44/C8).
+  **Cierra** el único cabo que quedaba de ADR-082/H44, y **corrige la nota del BACKLOG** que lo justificaba.
+  La idea era «remux `-c copy` para el navegador cuando los códecs lo permitan, **en vez del relay recodificando**:
+  9,64 s para 115 min frente a 2,2× tiempo real». La premisa estaba mal: el relay **ya** copia cuando los códecs lo
+  permiten. Comprobado llamando a `plans_for` con un MKV de H.264 8-bit + AAC —el caso típico— devuelve modo `copy`
+  con `-c:v copy -c:a copy`. No había recodificación de la que ahorrar.
+  **Medido para el mismo fichero**: remux a MP4 con `+faststart` 0,08 s, relay HLS en copia 0,08 s; 1.690.840 bytes
+  frente a 1.814.052, un 7 % menos por la cabecera de MPEG-TS. Nada que justifique tocar la parte del programa de
+  la que más se ha quejado Ser.
+  **Donde el relay sí recodifica** (HEVC + Opus en MP4, que es lo que graba esta casa, a 2,2× tiempo real) un remux
+  **no sirve**: eso no lo abre ningún navegador por mucho que se reempaquete. Ese caso ya está resuelto por otro
+  lado desde C6: al invitado se le ofrece su propio reproductor con el fichero original, sin recomprimir nada.
+  **Lo único que daría un fichero completo** es poder saltar a cualquier punto de golpe, en vez de rehacer el relay
+  cuando el salto cae fuera (H54). Pero cuesta una copia del tamaño de la película en la caché y hasta diez segundos
+  antes de que el invitado pueda empezar, justo lo contrario de la queja de Ser («tarda un min aprox en cargar»);
+  y un fMP4 que crece empieza rápido pero no salta mejor que ahora. Si el salto vuelve a dar problemas, la palanca
+  barata es la reconstrucción del relay que ya existe.
