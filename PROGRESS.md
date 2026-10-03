@@ -240,27 +240,31 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-Ser probó el reproductor el 2026-10-02 y de ahí salieron **H51** (compartir) y **H52** (la barra y la línea de
-tiempo), los dos hechos. Lo que queda, por orden:
+El 2026-10-03 Ser dio el visto bueno a todo lo que quedaba del repaso y se hizo de una tanda: **H58**, **H60**,
+**J5**, **H53** y **K3**, más **H44/C8 descartado al medirlo**. El código no tiene pendientes abiertos.
 
-1. **Que Ser vuelva a probar.** De su segunda prueba salió H54, ya hecho: saltar hacia atrás en una sala, el
-   enlace para VLC (*Compartir → Copiar el enlace para VLC o mpv*; el de la sala NO puede valer para eso) y elegir
-   qué tramos se exportan.
+Lo que queda, por orden:
+
+1. **Que Ser vuelva a probar.** Es el único paso que puede desbloquear lo demás: su orden fue «primero termina de
+   construir el programa, lo pruebo, y cuando te dé el ok, luego haces web y traducción».
 2. **Arreglar lo que salga.**
-3. **Traducir (H49/G4-G7) — lo último de todo**, porque multiplica por tres cualquier cambio posterior: quedan
-   ~1.600 cadenas, y las de H51 y H52 se suman a ellas.
+3. **Traducir (H49/G4-G7) — lo último de todo**, porque multiplica por tres cualquier cambio posterior: ~1.600
+   cadenas.
 4. **La web (H50)**, diseñada en `docs/SITIO-WEB.md`. Las capturas las puedo hacer yo (comprobado); faltan dos
-   decisiones de Ser: qué se ve de fondo en ellas y si el repo se hace público.
+   decisiones de Ser: qué se ve de fondo en ellas y si el repo se hace público. Aquí es donde encajan, si se
+   quieren, los enlaces `mpv-uos://` para canales y categorías: solos no valen (hay que registrar un `.desktop`
+   fuera del proyecto, y la puerta única de `ctrl+o` ya se traga cualquier cosa pegada), pero con una web que los
+   reparta sí tendrían sentido.
 
-Para programar música con comodidad falta **H57/J5**: listas guardadas con nombre (docs/IDEAS.md 1.4).
+**H59 · torrents con libtorrent** sigue aprobado y sin empezar; el diseño completo está en el BACKLOG (extra
+opcional y apagado, `set_piece_deadline` sobre la ventana de reproducción, mpvd sirviendo el fichero que crece por
+HTTP con Range, `trackers_best` en caché semanal y nunca en torrents privados, sin blocklist, SOCKS5 y
+`anonymous_mode` como interruptores, entrada por la puerta única, tests sin red con sembrador local). Reabre H26.
 
-Pendientes menores del código: **H44/C8** (remux `-c copy` a fMP4/WebM para el navegador) y **H53**, encontrado de
-paso: el *modo sencillo* dice «barra mínima» pero **no encoge la barra**, porque uosc solo lee `controls` al
-arrancar. Comprobado con capturas; el arreglo y el porqué están en el BACKLOG.
-
-Lo que Ser tiene que hacer una vez, y sin lo cual no puede probar bien: la línea de sudoers de `rtcwake`, `ufw`
-abierto para 8790 (mando) y 8791 (salas, solo si no usa internet), y la cuenta de OpenSubtitles para los
-subtítulos. Los comandos exactos están en NEEDS_HUMAN.md.
+Lo que Ser tiene que hacer una vez: **la línea de sudoers de `rtcwake`** (sin ella, una grabación o reproducción
+programada de madrugada no ocurre) y, sin prisa, **la cuenta de OpenSubtitles**. El puerto en `ufw` **no** hace
+falta: la sala sale por el túnel, que no necesita puertos abiertos. Los comandos exactos y el porqué de cada uno,
+en NEEDS_HUMAN.md.
 
 Avisos para quien siga, todos aprendidos a golpes en esta iteración:
 - **uosc deriva el id de un submenú de su TÍTULO** (`elements/Menu.lua:192`). Dos filas hermanas con el mismo título
