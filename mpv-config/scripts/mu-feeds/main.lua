@@ -18,6 +18,7 @@ package.path = mp.command_native({ 'expand-path', '~~/script-modules/?.lua' }) .
 local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local nav = require('mu.nav')
+local tr = require('mu.i18n').t
 local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
@@ -53,7 +54,7 @@ local function fail(err, what, show_osd)
   local m = err and (err.message or tostring(err)) or 'error'
   msg.warn(what .. ': ' .. m)
   state.last_error = what .. ': ' .. m
-  if show_osd ~= false then osd('Suscripciones: ' .. m, 4) end
+  if show_osd ~= false then osd(tr('Suscripciones: %s'):format(m), 4) end
   return m
 end
 
@@ -107,7 +108,7 @@ local SPONSOR_TEXT = { [''] = 'como en Descargas', remove = 'quitarlos', mark = 
                        none = 'no' }
 local KEEP = { 0, 3, 5, 10, 20, 50 }
 local INITIAL = { 3, 0, 1, 5, 10, -1 }
-local FIELD_NAME = { date = 'fecha', title = 'título', uploader = 'autor', feed = 'suscripción', id = 'id' }
+local FIELD_NAME = { date = 'fecha', title = tr('título'), uploader = 'autor', feed = 'suscripción', id = 'id' }
 local WINDOWS = {
   { '', 'Siempre' }, { '01:00-07:00', 'De 1:00 a 7:00' }, { '02:00-06:00', 'De 2:00 a 6:00' },
   { '00:00-08:00', 'De 0:00 a 8:00' }, { '23:00-07:00', 'De 23:00 a 7:00' }, { '09:00-17:00', 'De 9:00 a 17:00' },
@@ -238,7 +239,7 @@ local function notice_new(s)
   -- a check that just ended (not old news pushed again) and found something
   if now <= (prev or 0) or os.time() - now > 120 or (tonumber(s.last_found) or 0) <= 0 then return end
   state.last_notice = string.format('%s: %s', s.title or '', plural(s.last_found, 'nuevo', 'nuevos'))
-  if opts.notify then osd('Suscripciones · ' .. state.last_notice) end
+  if opts.notify then osd(tr('Suscripciones · %s'):format(state.last_notice)) end
 end
 
 local function store_sub(s, announce)
@@ -387,7 +388,7 @@ end
 
 local function not_connected(title)
   if rpc.connected() then return false end
-  show(title, uosc.message_items('mpvd no está conectado: espera unos segundos', 'error'))
+  show(title, uosc.message_items(tr('mpvd no está conectado: espera unos segundos'), 'error'))
   return true
 end
 
@@ -395,19 +396,19 @@ end
 -- views
 
 local ROW_ACTIONS = {
-  check = { name = 'check', icon = 'refresh', label = 'Comprobar ahora' },
-  pause = { name = 'pause', icon = 'pause', label = 'Pausar' },
-  resume = { name = 'resume', icon = 'play_arrow', label = 'Reanudar' },
-  remove = { name = 'remove', icon = 'delete', label = 'Borrar' },
+  check = { name = 'check', icon = 'refresh', label = tr('Comprobar ahora') },
+  pause = { name = 'pause', icon = 'pause', label = tr('Pausar') },
+  resume = { name = 'resume', icon = 'play_arrow', label = tr('Reanudar') },
+  remove = { name = 'remove', icon = 'delete', label = tr('Borrar') },
 }
 
 views.root = {
   fetch = function(_, done) fetch_list(done) end,
   render = function()
     if not_connected(ROOT_TITLE) then return end
-    if not state.list then show(ROOT_TITLE, uosc.loading_items('Cargando suscripciones…')) return end
+    if not state.list then show(ROOT_TITLE, uosc.loading_items(tr('Cargando suscripciones…'))) return end
     local items = {
-      { title = 'Añadir suscripción…', hint = 'canal, lista o podcast', icon = 'add', value = { add = true } },
+      { title = tr('Añadir suscripción…'), hint = tr('canal, lista o podcast'), icon = 'add', value = { add = true } },
     }
     for _, s in ipairs(subs()) do
       local hint = (s.kind_label or s.kind or '') .. ' · ' .. status_text(s)
@@ -419,22 +420,22 @@ views.root = {
       }
     end
     if #subs() == 0 then
-      items[#items + 1] = { title = 'Aún no sigues nada: pega la dirección de un canal, una lista o un podcast',
+      items[#items + 1] = { title = tr('Aún no sigues nada: pega la dirección de un canal, una lista o un podcast'),
                             icon = 'info', muted = true, selectable = false }
     end
     items[#items].separator = true
-    items[#items + 1] = { title = 'Comprobar todas ahora', icon = 'refresh', value = { check_all = true },
+    items[#items + 1] = { title = tr('Comprobar todas ahora'), icon = 'refresh', value = { check_all = true },
                           keep_open = true }
-    items[#items + 1] = { title = 'Ajustes de suscripciones', icon = 'tune', hint = 'horario: ' .. window_text(),
+    items[#items + 1] = { title = tr('Ajustes de suscripciones'), icon = 'tune', hint = tr('horario: %s'):format(window_text()),
                           value = { view = 'settings' } }
     local st = state_text()
     if st then items[#items + 1] = { title = st, icon = 'schedule', muted = true, selectable = false } end
-    show(ROOT_TITLE, items, { footnote = 'Enter abre · Tab: comprobar, pausar, borrar · ⌫ atrás' })
+    show(ROOT_TITLE, items, { footnote = tr('Enter abre · Tab: comprobar, pausar, borrar · ⌫ atrás') })
   end,
 }
 
 local function gone(title)
-  show(title or 'Suscripción', uosc.message_items('Esta suscripción ya no existe', 'delete'))
+  show(title or 'Suscripción', uosc.message_items(tr('Esta suscripción ya no existe'), 'delete'))
 end
 
 views.sub = {
@@ -445,22 +446,23 @@ views.sub = {
     local info = (s.kind_label or s.kind) .. ' · ' .. status_text(s) .. ' · comprobada ' .. ago(s.last_check)
     local items = { { title = info, icon = KIND_ICON[s.kind] or 'rss_feed', muted = true, selectable = false } }
     if (s.last_error or '') ~= '' then
-      items[#items + 1] = { title = 'Último error: ' .. s.last_error, icon = 'error', muted = true, selectable = false }
+      items[#items + 1] = { title = tr('Último error: %s'):format(s.last_error), icon = 'error',
+                            muted = true, selectable = false }
     end
     items[#items].separator = true
-    items[#items + 1] = { title = 'Comprobar ahora', icon = 'refresh', value = { check = s.id }, keep_open = true }
+    items[#items + 1] = { title = tr('Comprobar ahora'), icon = 'refresh', value = { check = s.id }, keep_open = true }
     local rules = preset_short(s)
     if (s.keep or 0) > 0 then rules = rules .. ' · conservar ' .. s.keep end
-    items[#items + 1] = { title = 'Reglas', icon = 'rule', hint = rules, value = { view = 'rules', id = s.id } }
-    items[#items + 1] = { title = 'Pendientes y descargados', icon = 'video_library',
+    items[#items + 1] = { title = tr('Reglas'), icon = 'rule', hint = rules, value = { view = 'rules', id = s.id } }
+    items[#items + 1] = { title = tr('Pendientes y descargados'), icon = 'video_library',
                           hint = (s.pending or 0) .. ' pendientes · ' .. (s.files or 0) .. ' guardados',
                           value = { view = 'files', id = s.id } }
-    items[#items + 1] = { title = 'Cambiar el nombre…', icon = 'edit', value = { rename = s.id } }
+    items[#items + 1] = { title = tr('Cambiar el nombre…'), icon = 'edit', value = { rename = s.id } }
     items[#items + 1] = { title = s.paused and 'Reanudar' or 'Pausar', icon = s.paused and 'play_arrow' or 'pause',
                           hint = s.paused and 'ahora en pausa' or nil,
                           value = { pause = s.id, paused = not s.paused }, keep_open = true, separator = true }
-    items[#items + 1] = { title = 'Borrar la suscripción', icon = 'delete', value = { view = 'remove', id = s.id } }
-    show(s.title, items, { footnote = 'Enter elige · ⌫ atrás · Esc cierra' })
+    items[#items + 1] = { title = tr('Borrar la suscripción'), icon = 'delete', value = { view = 'remove', id = s.id } }
+    show(s.title, items, { footnote = tr('Enter elige · ⌫ atrás · Esc cierra') })
   end,
 }
 
@@ -471,18 +473,18 @@ local function chain_rows(chain, ref)
   local move = copy(ref)
   move.view = 'move'
   local items = {
-    { title = 'Tras descargar', icon = 'auto_fix_high', muted = true, selectable = false },
-    { title = 'Volumen igualado', icon = 'graphic_eq', hint = yes(chain.loudnorm), value = v('loudnorm') },
-    { title = 'Subtítulos IA', icon = 'subtitles', hint = yes(chain.subtitles), value = v('subtitles') },
+    { title = tr('Tras descargar'), icon = 'auto_fix_high', muted = true, selectable = false },
+    { title = tr('Volumen igualado'), icon = 'graphic_eq', hint = yes(chain.loudnorm), value = v('loudnorm') },
+    { title = tr('Subtítulos IA'), icon = 'subtitles', hint = yes(chain.subtitles), value = v('subtitles') },
   }
   if chain.subtitles then
-    items[#items + 1] = { title = 'Traducir los subtítulos', icon = 'translate',
+    items[#items + 1] = { title = tr('Traducir los subtítulos'), icon = 'translate',
                           hint = (chain.translate or '') ~= '' and (LANG_NAME[chain.translate] or chain.translate) or 'no',
                           value = v('translate') }
   end
-  items[#items + 1] = { title = 'Renombrar', icon = 'drive_file_rename_outline', hint = template_label(chain.rename),
+  items[#items + 1] = { title = tr('Renombrar'), icon = 'drive_file_rename_outline', hint = template_label(chain.rename),
                         value = v('rename') }
-  items[#items + 1] = { title = 'Mover a la biblioteca', icon = 'drive_file_move',
+  items[#items + 1] = { title = tr('Mover a la biblioteca'), icon = 'drive_file_move',
                         hint = (chain.move_to or '') ~= '' and chain.move_to or 'no', value = move }
   return items
 end
@@ -493,33 +495,33 @@ views.rules = {
     local s = state.byid[args.id]
     if not s then gone('Reglas') return end
     local items = {
-      { title = 'Calidad', icon = 'high_quality', hint = preset_short(s), value = { view = 'quality', id = s.id } },
-      { title = 'Solo audio', icon = 'headphones', hint = yes(is_audio(s)), value = { rule = 'audio', id = s.id } },
+      { title = tr('Calidad'), icon = 'high_quality', hint = preset_short(s), value = { view = 'quality', id = s.id } },
+      { title = tr('Solo audio'), icon = 'headphones', hint = yes(is_audio(s)), value = { rule = 'audio', id = s.id } },
     }
     if s.kind ~= 'rss' then
-      items[#items + 1] = { title = 'Saltar patrocinios (SponsorBlock)', icon = 'content_cut',
+      items[#items + 1] = { title = tr('Saltar patrocinios (SponsorBlock)'), icon = 'content_cut',
                             hint = SPONSOR_TEXT[s.sponsorblock or ''] or s.sponsorblock,
                             value = { rule = 'sponsorblock', id = s.id } }
     end
-    items[#items + 1] = { title = 'Conservar', icon = 'inventory_2', hint = keep_label(s.keep),
+    items[#items + 1] = { title = tr('Conservar'), icon = 'inventory_2', hint = keep_label(s.keep),
                           value = { rule = 'keep', id = s.id } }
     if (s.keep or 0) > 0 then
-      items[#items + 1] = { title = 'Al quitar, solo lo ya visto', icon = 'visibility',
+      items[#items + 1] = { title = tr('Al quitar, solo lo ya visto'), icon = 'visibility',
                             hint = yes(s.keep_watched_only), value = { rule = 'keep_watched_only', id = s.id } }
     end
-    items[#items + 1] = { title = 'Borrar lo que ya hayas visto', icon = 'auto_delete',
+    items[#items + 1] = { title = tr('Borrar lo que ya hayas visto'), icon = 'auto_delete',
                           hint = s.delete_watched and ('sí · tras ' .. hours_label(settings().watched_grace_h or 24))
                             or 'no',
                           value = { rule = 'delete_watched', id = s.id }, separator = true }
     for _, it in ipairs(chain_rows(s.chain, { id = s.id })) do items[#items + 1] = it end
     if s.chain_custom then
-      items[#items + 1] = { title = 'Usar lo general de «tras descargar»', icon = 'settings_backup_restore',
-                            hint = 'Ajustes de suscripciones', value = { chain_global = s.id } }
+      items[#items + 1] = { title = tr('Usar lo general de «tras descargar»'), icon = 'settings_backup_restore',
+                            hint = tr('Ajustes de suscripciones'), value = { chain_global = s.id } }
     end
     items[#items].separator = true
-    items[#items + 1] = { title = 'Aplicar ya «conservar» y «borrar lo visto»', icon = 'cleaning_services',
+    items[#items + 1] = { title = tr('Aplicar ya «conservar» y «borrar lo visto»'), icon = 'cleaning_services',
                           value = { apply = s.id }, keep_open = true }
-    show('Reglas', items, { footnote = 'Enter cambia · se guarda al momento · ⌫ atrás' })
+    show(tr('Reglas'), items, { footnote = tr('Enter cambia · se guarda al momento · ⌫ atrás') })
   end,
 }
 
@@ -533,8 +535,8 @@ views.quality = {
                             icon = p.id:sub(1, 5) == 'audio' and 'music_note' or 'movie',
                             value = { set_preset = p.id, id = s.id } }
     end
-    if #items == 0 then items = uosc.message_items('No hay calidades: ¿está mpvd conectado?', 'error') end
-    show('Calidad', items)
+    if #items == 0 then items = uosc.message_items(tr('No hay calidades: ¿está mpvd conectado?'), 'error') end
+    show(tr('Calidad'), items)
   end,
 }
 
@@ -555,9 +557,9 @@ views.move = {
     end
     local cur = chain.move_to or ''
     local function v(path) return { move = path, id = args.id, global = args.global } end
-    local items = { { title = 'No mover', icon = 'block', active = cur == '' or nil, value = v('') } }
+    local items = { { title = tr('No mover'), icon = 'block', active = cur == '' or nil, value = v('') } }
     if not state.folders then
-      items[#items + 1] = { title = 'Buscando las carpetas de la biblioteca…', icon = 'spinner', muted = true,
+      items[#items + 1] = { title = tr('Buscando las carpetas de la biblioteca…'), icon = 'spinner', muted = true,
                             selectable = false }
     end
     for _, f in ipairs(state.folders or {}) do
@@ -565,13 +567,13 @@ views.move = {
                             value = v(f.path) }
     end
     if state.folders and #state.folders == 0 then
-      items[#items + 1] = { title = 'Tu biblioteca aún no tiene carpetas', icon = 'info', muted = true,
+      items[#items + 1] = { title = tr('Tu biblioteca aún no tiene carpetas'), icon = 'info', muted = true,
                             selectable = false }
     end
     items[#items].separator = true
-    items[#items + 1] = { title = 'Otra carpeta…', icon = 'edit', hint = cur ~= '' and cur or nil,
+    items[#items + 1] = { title = tr('Otra carpeta…'), icon = 'edit', hint = cur ~= '' and cur or nil,
                           value = { move_input = true, id = args.id, global = args.global } }
-    show('Mover a la biblioteca', items, { footnote = 'Cada suscripción va a su propia subcarpeta' })
+    show(tr('Mover a la biblioteca'), items, { footnote = tr('Cada suscripción va a su propia subcarpeta') })
   end,
 }
 
@@ -617,7 +619,7 @@ views.files = {
     local items = {}
     local pend = d.pending_entries or {}
     if #pend > 0 then
-      items[#items + 1] = { title = 'Pendientes', icon = 'schedule', hint = tostring(#pend), muted = true,
+      items[#items + 1] = { title = tr('Pendientes'), icon = 'schedule', hint = tostring(#pend), muted = true,
                             selectable = false }
       for i, e in ipairs(pend) do
         if i > 30 then break end
@@ -628,7 +630,7 @@ views.files = {
     end
     local recs = d.file_records or {}
     if #recs > 0 then
-      items[#items + 1] = { title = 'Descargados', icon = 'download_done', hint = tostring(#recs), muted = true,
+      items[#items + 1] = { title = tr('Descargados'), icon = 'download_done', hint = tostring(#recs), muted = true,
                             selectable = false }
       for i = #recs, math.max(1, #recs - 29), -1 do
         local r = recs[i]
@@ -642,7 +644,7 @@ views.files = {
       items = uosc.message_items(s.status == 'checking' and 'Comprobando…' or 'Nada pendiente ni descargado todavía',
                                  'inbox')
     end
-    show('Pendientes y descargados', items, { footnote = 'Enter reproduce · a la derecha, cómo va «tras descargar»' })
+    show(tr('Pendientes y descargados'), items, { footnote = tr('Enter reproduce · a la derecha, cómo va «tras descargar»') })
   end,
 }
 
@@ -650,10 +652,10 @@ views.remove = {
   render = function(args)
     local s = state.byid[args.id]
     if not s then gone('Borrar') return end
-    show('Borrar «' .. s.title .. '»', {
-      { title = 'Sí, borrar la suscripción', hint = 'los archivos descargados se quedan', icon = 'delete',
+    show(tr('Borrar «%s»'):format(s.title), {
+      { title = tr('Sí, borrar la suscripción'), hint = tr('los archivos descargados se quedan'), icon = 'delete',
         value = { remove = s.id } },
-      { title = 'No, mantenerla', icon = 'close', value = { nav_back = true } },
+      { title = tr('No, mantenerla'), icon = 'close', value = { nav_back = true } },
     })
   end,
 }
@@ -679,31 +681,32 @@ views.add = {
   end,
   render = function()
     local a = state.add
-    if not a then show('Añadir suscripción', uosc.message_items('Nada que añadir', 'info')) return end
-    if a.busy then show('Añadir suscripción', uosc.loading_items('Mirando qué es… (puede tardar un poco)')) return end
+    if not a then show(tr('Añadir suscripción'), uosc.message_items(tr('Nada que añadir'), 'info')) return end
+    if a.busy then show(tr('Añadir suscripción'), uosc.loading_items(tr('Mirando qué es… (puede tardar un poco)'))) return end
     if a.error then
-      show('Añadir suscripción', {
-        { title = 'No se puede seguir esta dirección', icon = 'error', muted = true, selectable = false },
+      show(tr('Añadir suscripción'), {
+        { title = tr('No se puede seguir esta dirección'), icon = 'error', muted = true, selectable = false },
         { title = a.error, muted = true, selectable = false, separator = true },
-        { title = 'Probar otra dirección…', icon = 'edit', value = { add = true } },
+        { title = tr('Probar otra dirección…'), icon = 'edit', value = { add = true } },
       })
       return
     end
     local items = {
-      { title = 'Suscribirse', icon = 'add_task', bold = true, hint = a.kind_label, value = { subscribe = true },
+      { title = tr('Suscribirse'), icon = 'add_task', bold = true, hint = a.kind_label, value = { subscribe = true },
         separator = true },
-      { title = 'Nombre', icon = 'edit', hint = a.title, value = { name_input = true } },
-      { title = 'Es un ' .. a.kind_label, icon = KIND_ICON[a.kind] or 'rss_feed', muted = true, selectable = false },
-      { title = 'Al suscribirte, descargar', icon = 'download', hint = initial_label(a.initial),
+      { title = tr('Nombre'), icon = 'edit', hint = a.title, value = { name_input = true } },
+      { title = tr('Es un %s'):format(a.kind_label), icon = KIND_ICON[a.kind] or 'rss_feed',
+        muted = true, selectable = false },
+      { title = tr('Al suscribirte, descargar'), icon = 'download', hint = initial_label(a.initial),
         value = { initial = true }, separator = true },
     }
     if #(a.entries or {}) > 0 then
-      items[#items + 1] = { title = 'Lo más reciente', icon = 'new_releases', muted = true, selectable = false }
+      items[#items + 1] = { title = tr('Lo más reciente'), icon = 'new_releases', muted = true, selectable = false }
       for _, e in ipairs(a.entries) do
         items[#items + 1] = { title = e.title or e.url or '?', icon = 'movie', muted = true, selectable = false }
       end
     end
-    show('Añadir suscripción', items, { footnote = 'Enter elige · ⌫ atrás' })
+    show(tr('Añadir suscripción'), items, { footnote = tr('Enter elige · ⌫ atrás') })
   end,
 }
 
@@ -711,7 +714,7 @@ views.settings = {
   fetch = function(_, done) fetch_list(done) end,
   render = function()
     if not_connected('Ajustes de suscripciones') then return end
-    if not state.list then show('Ajustes de suscripciones', uosc.loading_items()) return end
+    if not state.list then show(tr('Ajustes de suscripciones'), uosc.loading_items()) return end
     local st = settings()
     local fs = state.list.state or {}
     local chain = st.chain or {}
@@ -721,23 +724,23 @@ views.settings = {
     if (chain.rename or '') ~= '' then steps[#steps + 1] = 'nombre' end
     if (chain.move_to or '') ~= '' then steps[#steps + 1] = 'mover' end
     local items = {
-      { title = 'Comprobar cada', icon = 'update', hint = hours_label(st.interval_h), value = { set = 'interval_h' } },
-      { title = 'Horario de descarga', icon = 'schedule', hint = window_text(st), value = { view = 'window' } },
-      { title = 'Límite por franja', icon = 'filter_list', hint = items_label(st.max_items),
+      { title = tr('Comprobar cada'), icon = 'update', hint = hours_label(st.interval_h), value = { set = 'interval_h' } },
+      { title = tr('Horario de descarga'), icon = 'schedule', hint = window_text(st), value = { view = 'window' } },
+      { title = tr('Límite por franja'), icon = 'filter_list', hint = items_label(st.max_items),
         value = { set = 'max_items' } },
-      { title = 'Límite de datos por franja', icon = 'data_usage', hint = mb_label(st.max_mb),
+      { title = tr('Límite de datos por franja'), icon = 'data_usage', hint = mb_label(st.max_mb),
         value = { set = 'max_mb' } },
-      { title = 'Pausar con conexión medida', icon = 'signal_cellular_alt',
+      { title = tr('Pausar con conexión medida'), icon = 'signal_cellular_alt',
         hint = yes(st.pause_metered) .. ' · ' .. metered_text(fs.metered), value = { set = 'pause_metered' } },
-      { title = 'Seguir comprobando con el reproductor cerrado', icon = 'nightlight',
+      { title = tr('Seguir comprobando con el reproductor cerrado'), icon = 'nightlight',
         hint = yes(st.keep_running), value = { set = 'keep_running' } },
-      { title = 'Descargas a la vez', icon = 'downloading', hint = tostring(st.parallel or 1),
+      { title = tr('Descargas a la vez'), icon = 'downloading', hint = tostring(st.parallel or 1),
         value = { set = 'parallel' } },
-      { title = 'Esperar antes de borrar lo visto', icon = 'hourglass_bottom', hint = hours_label(st.watched_grace_h),
+      { title = tr('Esperar antes de borrar lo visto'), icon = 'hourglass_bottom', hint = hours_label(st.watched_grace_h),
         value = { set = 'watched_grace_h' }, separator = true },
-      { title = 'Tras descargar (para las nuevas)', icon = 'auto_fix_high',
+      { title = tr('Tras descargar (para las nuevas)'), icon = 'auto_fix_high',
         hint = #steps > 0 and table.concat(steps, ', ') or 'nada', value = { view = 'chain_global' } },
-      { title = 'También en las descargas normales', icon = 'download', hint = yes(st.chain_downloads),
+      { title = tr('También en las descargas normales'), icon = 'download', hint = yes(st.chain_downloads),
         value = { set = 'chain_downloads' } },
     }
     local sx = state_text()
@@ -745,7 +748,7 @@ views.settings = {
       items[#items].separator = true
       items[#items + 1] = { title = sx, icon = 'info', muted = true, selectable = false }
     end
-    show('Ajustes de suscripciones', items, { footnote = 'Enter cambia · se guarda al momento · ⌫ atrás' })
+    show(tr('Ajustes de suscripciones'), items, { footnote = tr('Enter cambia · se guarda al momento · ⌫ atrás') })
   end,
 }
 
@@ -760,9 +763,9 @@ views.window = {
     items[#items].separator = true
     local known = false
     for _, w in ipairs(WINDOWS) do if w[1] == cur then known = true end end
-    items[#items + 1] = { title = 'Otra franja…', icon = 'edit', hint = not known and window_text() or nil,
+    items[#items + 1] = { title = tr('Otra franja…'), icon = 'edit', hint = not known and window_text() or nil,
                           active = not known or nil, value = { window_input = true } }
-    show('Horario de descarga', items, { footnote = 'Fuera de la franja solo se comprueba, no se descarga' })
+    show(tr('Horario de descarga'), items, { footnote = tr('Fuera de la franja solo se comprueba, no se descarga') })
   end,
 }
 
@@ -770,9 +773,9 @@ views.chain_global = {
   render = function()
     local items = chain_rows(settings().chain, { global = true })
     table.remove(items, 1)   -- the «Tras descargar» heading is this view's title
-    items[#items + 1] = { title = 'Cuenta para las suscripciones sin cambios propios', icon = 'info', muted = true,
+    items[#items + 1] = { title = tr('Cuenta para las suscripciones sin cambios propios'), icon = 'info', muted = true,
                           selectable = false }
-    show('Tras descargar', items, { footnote = 'Enter cambia · se guarda al momento · ⌫ atrás' })
+    show(tr('Tras descargar'), items, { footnote = tr('Enter cambia · se guarda al momento · ⌫ atrás') })
   end,
 }
 
@@ -819,7 +822,7 @@ local function check(id)
     if err then fail(err, 'feeds.check') return end
     state.last_action = 'check:' .. id
     publish()
-    osd('Comprobando «' .. (s and s.title or '') .. '»…')
+    osd(tr('Comprobando «%s»…'):format(s and s.title or ''))
   end, 20)
 end
 
@@ -851,7 +854,7 @@ local function remove(id)
     if err then fail(err, 'feeds.remove') return end
     drop_sub(id)
     state.last_action = 'remove:' .. id
-    osd('Suscripción borrada: ' .. (s and s.title or '') .. ' (los archivos se quedan)')
+    osd(tr('Suscripción borrada: %s (los archivos se quedan)'):format(s and s.title or ''))
     -- back to the list, whatever was open for it
     while #state.stack > 1 do table.remove(state.stack) end
     if #state.stack == 0 then state.stack = { { name = 'root' } } end
@@ -864,7 +867,7 @@ local function subscribe()
   if not a or a.busy or a.error then return end
   a.busy = true
   publish()
-  show('Añadir suscripción', uosc.loading_items('Suscribiendo…'))
+  show(tr('Añadir suscripción'), uosc.loading_items(tr('Suscribiendo…')))
   rpc.call('feeds.add', { url = a.url, title = a.title, rules = { initial = a.initial } }, function(err, res)
     a.busy = false
     if err then
@@ -876,7 +879,7 @@ local function subscribe()
     state.add = nil
     store_sub(res)
     state.last_action = 'add:' .. res.id
-    osd('Suscrito a «' .. res.title .. '»: comprobando…')
+    osd(tr('Suscrito a «%s»: comprobando…'):format(res.title))
     -- the confirmation view is replaced by the new subscription
     if state.stack[#state.stack] and state.stack[#state.stack].name == 'add' then table.remove(state.stack) end
     open_view({ name = 'sub', args = { id = res.id } })
@@ -946,11 +949,11 @@ end
 
 local INPUT_TITLES = {
   url = 'Dirección del canal, la lista o el podcast', name = 'Nombre de la suscripción',
-  title = 'Nombre nuevo', window = 'Franja de descarga (ejemplo: de 1:00 a 7:00)', move = 'Carpeta a la que mover',
+  title = tr('Nombre nuevo'), window = 'Franja de descarga (ejemplo: de 1:00 a 7:00)', move = 'Carpeta a la que mover',
 }
 local INPUT_EMPTY = {
   url = 'Pega la dirección (Ctrl+V): YouTube, una lista o el RSS de un podcast', name = 'Escribe el nombre',
-  title = 'Escribe el nombre', window = 'Escribe la franja: «de 1:00 a 7:00», «23 a 6»…',
+  title = tr('Escribe el nombre'), window = 'Escribe la franja: «de 1:00 a 7:00», «23 a 6»…',
   move = 'Escribe o pega la ruta de la carpeta',
 }
 
@@ -965,7 +968,7 @@ local function input_menu(query)
   end
   return { type = INPUT, title = INPUT_TITLES[mode], items = items, callback = { SCRIPT, INPUT_EVENT },
     search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-    search_suggestion = query, footnote = 'Enter elige · ⌫ en vacío vuelve' }
+    search_suggestion = query, footnote = tr('Enter elige · ⌫ en vacío vuelve') }
 end
 
 local function open_input(mode, text, extra)
@@ -1159,7 +1162,7 @@ end)
 -- bindings
 
 local function open_root()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'root' })

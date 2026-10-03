@@ -16,6 +16,7 @@ local rpc = require('mu.rpc')
 local uosc = require('mu.uosc')
 local prefs = require('mu.prefs')
 local nav = require('mu.nav')
+local tr = require('mu.i18n').t
 local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
@@ -93,7 +94,7 @@ end
 
 local function home_item(r)
   local hint
-  if r.row == 'next' then hint = 'Siguiente episodio'
+  if r.row == 'next' then hint = tr('Siguiente episodio')
   elseif r.duration and r.duration > 0 then hint = hms(r.position) .. ' / ' .. hms(r.duration)
   else hint = progress_hint(r) end
   return { title = r.full_title or r.title or basename(r.path), hint = hint,
@@ -167,7 +168,7 @@ end
 
 local function require_mpvd(title)
   if rpc.connected() then return true end
-  show(title, uosc.message_items('mpvd no está conectado', 'error'))
+  show(title, uosc.message_items(tr('mpvd no está conectado'), 'error'))
   return false
 end
 
@@ -187,36 +188,37 @@ views.root = function()
       if not still('root') then return end
       local items = {}
       if #state.home > 0 then
-        table.insert(items, { title = 'Seguir viendo', hint = tostring(#state.home), icon = 'history',
+        table.insert(items, { title = tr('Seguir viendo'), hint = tostring(#state.home), icon = 'history',
                               items = state.home, separator = true })
       end
       if state.next and state.next.source == 'library' then
-        table.insert(items, { title = 'Siguiente episodio', hint = state.next.full_title, icon = 'skip_next',
+        table.insert(items, { title = tr('Siguiente episodio'), hint = state.next.full_title, icon = 'skip_next',
                               value = { play = state.next.path }, separator = true })
       end
       if (st.folders or 0) == 0 then
-        table.insert(items, { title = 'Tu biblioteca está vacía: añade la carpeta de tus películas o series',
+        table.insert(items, { title = tr('Tu biblioteca está vacía: añade la carpeta de tus películas o series'),
                               icon = 'info', selectable = false, muted = true })
       end
-      table.insert(items, { title = 'Películas', hint = tostring(st.movies or 0), icon = 'movie', value = { view = 'movies' } })
-      table.insert(items, { title = 'Series', hint = st.shows and st.shows > 0
+      table.insert(items, { title = tr('Películas'), hint = tostring(st.movies or 0), icon = 'movie',
+                            value = { view = 'movies' } })
+      table.insert(items, { title = tr('Series'), hint = st.shows and st.shows > 0
                               and string.format('%d · %d episodios', st.shows, st.episodes or 0) or '0',
                             icon = 'live_tv', value = { view = 'shows' } })
-      table.insert(items, { title = 'Buscar en la biblioteca…', icon = 'search', value = { input = 'search' } })
-      table.insert(items, { title = 'Explorar las carpetas del equipo', icon = 'folder_open',
-                            hint = 'discos, pinchos USB y tus carpetas', value = { view = 'explore' },
+      table.insert(items, { title = tr('Buscar en la biblioteca…'), icon = 'search', value = { input = 'search' } })
+      table.insert(items, { title = tr('Explorar las carpetas del equipo'), icon = 'folder_open',
+                            hint = tr('discos, pinchos USB y tus carpetas'), value = { view = 'explore' },
                             separator = true })
       local here = current_path()
       if is_local(here) then
-        table.insert(items, { title = 'Buscar subtítulos en internet', icon = 'subtitles',
+        table.insert(items, { title = tr('Buscar subtítulos en internet'), icon = 'subtitles',
                               hint = state.settings.osub_active and SUB_TITLE or 'desactivado',
                               value = { view = 'subs' } })
       end
       local scan = state.scanning and (st.progress and string.format('escaneando %d %%', math.floor(st.progress * 100)))
-      table.insert(items, { title = 'Carpetas', hint = scan or tostring(st.folders or 0), icon = 'folder',
+      table.insert(items, { title = tr('Carpetas'), hint = scan or tostring(st.folders or 0), icon = 'folder',
                             value = { view = 'folders' } })
-      table.insert(items, { title = 'Ajustes', icon = 'settings', value = { view = 'settings' } })
-      show(ROOT_TITLE, items, { footnote = 'Enter abre · ⌫ atrás · Esc cierra' })
+      table.insert(items, { title = tr('Ajustes'), icon = 'settings', value = { view = 'settings' } })
+      show(ROOT_TITLE, items, { footnote = tr('Enter abre · ⌫ atrás · Esc cierra') })
     end)
   end, 15)
 end
@@ -244,7 +246,7 @@ local function count_hint(n)
 end
 
 views.explore = function()
-  local title = 'Explorar carpetas'
+  local title = tr('Explorar carpetas')
   if not require_mpvd(title) then return end
   show(title, uosc.loading_items())
   rpc.call('files.places', nil, function(err, res)
@@ -255,8 +257,8 @@ views.explore = function()
       items[#items + 1] = { title = pl.title, hint = pl.path, icon = PLACE_ICON[pl.kind] or 'folder',
                             value = { view = 'browse', path = pl.path } }
     end
-    if #items == 0 then items = uosc.message_items('No encuentro ninguna carpeta por donde empezar', 'info') end
-    show(title, items, { footnote = 'Enter entra en la carpeta · ⌫ atrás' })
+    if #items == 0 then items = uosc.message_items(tr('No encuentro ninguna carpeta por donde empezar'), 'info') end
+    show(title, items, { footnote = tr('Enter entra en la carpeta · ⌫ atrás') })
   end, 15)
 end
 
@@ -274,14 +276,15 @@ views.browse = function(args)
     if err then show(title, uosc.message_items(fail(err, 'files.browse'), 'error')) return end
     local items = {}
     if (res.parent or '') ~= '' then
-      items[#items + 1] = { title = 'Subir a ' .. (basename(res.parent) ~= '' and basename(res.parent) or res.parent),
+      items[#items + 1] = { title = tr('Subir a %s'):format(basename(res.parent) ~= '' and basename(res.parent)
+                                                       or res.parent),
                             icon = 'arrow_upward', value = { view = 'browse', path = res.parent } }
     end
     if (res.files or 0) > 0 then
-      items[#items + 1] = { title = 'Reproducir toda esta carpeta', icon = 'playlist_play',
+      items[#items + 1] = { title = tr('Reproducir toda esta carpeta'), icon = 'playlist_play',
                             hint = count_hint(res.files), value = { play = res.path } }
     end
-    items[#items + 1] = { title = 'Añadir esta carpeta a la biblioteca', icon = 'video_library',
+    items[#items + 1] = { title = tr('Añadir esta carpeta a la biblioteca'), icon = 'video_library',
                           value = { add = res.path }, separator = true }
     for _, e in ipairs(res.entries or {}) do
       items[#items + 1] = { title = e.name, icon = KIND_ICON[e.kind] or 'insert_drive_file',
@@ -289,8 +292,8 @@ views.browse = function(args)
                             value = e.dir and { view = 'browse', path = e.path } or { play = e.path } }
     end
     if res.truncated then
-      items[#items + 1] = { title = 'Hay más de lo que caben en la lista', icon = 'info', selectable = false,
-                            muted = true, hint = 'entra en una subcarpeta' }
+      items[#items + 1] = { title = tr('Hay más de lo que caben en la lista'), icon = 'info', selectable = false,
+                            muted = true, hint = tr('entra en una subcarpeta') }
     end
     show(title, items, { footnote = res.path .. ' · Enter abre · ⌫ atrás' })
   end, 20)
@@ -304,23 +307,23 @@ end
 
 views.movies = function()
   if not require_mpvd('Películas') then return end
-  show('Películas', uosc.loading_items())
+  show(tr('Películas'), uosc.loading_items())
   rpc.call('library.list', { kind = 'movies' }, function(err, rows)
     if not still('movies') then return end
-    if err then show('Películas', uosc.message_items(fail(err, 'library.list'), 'error')) return end
+    if err then show(tr('Películas'), uosc.message_items(fail(err, 'library.list'), 'error')) return end
     local items = {}
     for _, m in ipairs(rows or {}) do table.insert(items, play_item(m, m.label)) end
-    if #items == 0 then items = uosc.message_items('No hay películas en tus carpetas', 'movie') end
-    show('Películas', items, { footnote = 'Enter reproduce · ⌫ atrás', search_style = 'on_demand' })
+    if #items == 0 then items = uosc.message_items(tr('No hay películas en tus carpetas'), 'movie') end
+    show(tr('Películas'), items, { footnote = tr('Enter reproduce · ⌫ atrás'), search_style = 'on_demand' })
   end, 15)
 end
 
 views.shows = function()
   if not require_mpvd('Series') then return end
-  show('Series', uosc.loading_items())
+  show(tr('Series'), uosc.loading_items())
   rpc.call('library.list', { kind = 'shows' }, function(err, rows)
     if not still('shows') then return end
-    if err then show('Series', uosc.message_items(fail(err, 'library.list'), 'error')) return end
+    if err then show(tr('Series'), uosc.message_items(fail(err, 'library.list'), 'error')) return end
     local items = {}
     for _, s in ipairs(rows or {}) do
       local hint = string.format('%d/%d ✓', s.watched or 0, s.episodes or 0)
@@ -329,8 +332,8 @@ views.shows = function()
       table.insert(items, { title = s.title, hint = hint, icon = 'live_tv',
                             value = { view = 'show', key = s.key, title = s.title } })
     end
-    if #items == 0 then items = uosc.message_items('No hay series en tus carpetas', 'live_tv') end
-    show('Series', items, { footnote = 'Enter abre · ⌫ atrás', search_style = 'on_demand' })
+    if #items == 0 then items = uosc.message_items(tr('No hay series en tus carpetas'), 'live_tv') end
+    show(tr('Series'), items, { footnote = tr('Enter abre · ⌫ atrás'), search_style = 'on_demand' })
   end, 15)
 end
 
@@ -347,7 +350,7 @@ views.show = function(args)
       table.insert(items, { title = s.label, hint = hint, icon = 'folder',
                             value = { view = 'season', key = args.key, season = s.season, title = s.label } })
     end
-    show(title, items, { footnote = 'Enter abre · ⌫ atrás' })
+    show(title, items, { footnote = tr('Enter abre · ⌫ atrás') })
   end, 15)
 end
 
@@ -363,38 +366,38 @@ views.season = function(args)
       table.insert(items, play_item(e))
       if not sel and not e.finished then sel = i end
     end
-    show(title, items, { footnote = 'Enter reproduce · ⌫ atrás', selected_index = sel })
+    show(title, items, { footnote = tr('Enter reproduce · ⌫ atrás'), selected_index = sel })
   end, 15)
 end
 
 views.folders = function()
   if not require_mpvd('Carpetas') then return end
-  show('Carpetas', uosc.loading_items())
+  show(tr('Carpetas'), uosc.loading_items())
   rpc.call('library.folders.list', nil, function(err, rows)
     if not still('folders') then return end
-    if err then show('Carpetas', uosc.message_items(fail(err, 'library.folders.list'), 'error')) return end
+    if err then show(tr('Carpetas'), uosc.message_items(fail(err, 'library.folders.list'), 'error')) return end
     local items = {}
     for _, f in ipairs(rows or {}) do
       table.insert(items, { title = f.path, icon = f.exists and 'folder' or 'folder_off',
         hint = f.exists and ((f.files or 0) .. ' archivos') or 'no se encuentra',
         value = { folder = f.path },
-        actions = { { name = 'rescan', icon = 'refresh', label = 'Reescanear' },
-                    { name = 'remove', icon = 'delete', label = 'Quitar' } } })
+        actions = { { name = 'rescan', icon = 'refresh', label = tr('Reescanear') },
+                    { name = 'remove', icon = 'delete', label = tr('Quitar') } } })
     end
     if #items > 0 then items[#items].separator = true end
     local here = current_path()
     if is_local(here) then
-      table.insert(items, { title = 'Añadir la carpeta del archivo actual', hint = dirname(here), icon = 'create_new_folder',
+      table.insert(items, { title = tr('Añadir la carpeta del archivo actual'), hint = dirname(here), icon = 'create_new_folder',
                             value = { add = dirname(here) } })
     end
-    table.insert(items, { title = 'Buscarla explorando el equipo…', icon = 'folder_open',
-                          hint = 'sin teclear nada', value = { view = 'explore' } })
-    table.insert(items, { title = 'Escribir o pegar una ruta…', icon = 'edit', value = { input = 'folder' } })
+    table.insert(items, { title = tr('Buscarla explorando el equipo…'), icon = 'folder_open',
+                          hint = tr('sin teclear nada'), value = { view = 'explore' } })
+    table.insert(items, { title = tr('Escribir o pegar una ruta…'), icon = 'edit', value = { input = 'folder' } })
     if #(rows or {}) > 0 then
-      table.insert(items, { title = 'Reescanear todo', icon = 'refresh', value = { rescan = true },
+      table.insert(items, { title = tr('Reescanear todo'), icon = 'refresh', value = { rescan = true },
         hint = state.scanning and string.format('escaneando %d %%', math.floor(state.scan_progress * 100)) or nil })
     end
-    show('Carpetas', items, { footnote = 'Enter: Reescanear / Quitar (Tab) · ⌫ atrás' })
+    show(tr('Carpetas'), items, { footnote = tr('Enter: Reescanear / Quitar (Tab) · ⌫ atrás') })
   end, 15)
 end
 
@@ -445,16 +448,16 @@ end
 
 local function osub_rows(s, out)
   if not s.has_osub_key then
-    out[#out + 1] = { title = 'Paso 1 · Abrir la página de la clave (es gratis)', icon = 'open_in_new',
-                      hint = 'opensubtitles.com › API › Consumers', value = { osub_help = true } }
-    out[#out + 1] = { title = 'Paso 2 · Pegar la clave del portapapeles', icon = 'content_paste',
-                      hint = 'cópiala en el navegador y pulsa aquí', value = { paste = 'osub_api_key' } }
-    out[#out + 1] = { title = '…o escribirla a mano', icon = 'keyboard', value = { input = 'osub_api_key' } }
+    out[#out + 1] = { title = tr('Paso 1 · Abrir la página de la clave (es gratis)'), icon = 'open_in_new',
+                      hint = tr('opensubtitles.com › API › Consumers'), value = { osub_help = true } }
+    out[#out + 1] = { title = tr('Paso 2 · Pegar la clave del portapapeles'), icon = 'content_paste',
+                      hint = tr('cópiala en el navegador y pulsa aquí'), value = { paste = 'osub_api_key' } }
+    out[#out + 1] = { title = tr('…o escribirla a mano'), icon = 'keyboard', value = { input = 'osub_api_key' } }
   else
-    out[#out + 1] = { title = 'Api-Key de OpenSubtitles', hint = 'guardada', icon = 'key',
+    out[#out + 1] = { title = tr('Api-Key de OpenSubtitles'), hint = tr('guardada'), icon = 'key',
                       value = { input = 'osub_api_key' } }
     local q = state.quota
-    out[#out + 1] = { title = 'Cupo de hoy', icon = 'speed', selectable = false, muted = true,
+    out[#out + 1] = { title = tr('Cupo de hoy'), icon = 'speed', selectable = false, muted = true,
                       hint = q and q.text or 'consultando…' }
   end
 end
@@ -463,31 +466,31 @@ views.settings = function()
   if not require_mpvd('Ajustes') then return end
   rpc.call('library.settings.get', nil, function(err, s)
     if not still('settings') then return end
-    if err then show('Ajustes', uosc.message_items(fail(err, 'library.settings.get'), 'error')) return end
+    if err then show(tr('Ajustes'), uosc.message_items(fail(err, 'library.settings.get'), 'error')) return end
     state.settings = s
     local function onoff(v) return v and 'sí' or 'no' end
     local items = {
-      { title = 'Siguiente episodio automático', hint = onoff(opts.auto_next), icon = 'skip_next',
+      { title = tr('Siguiente episodio automático'), hint = onoff(opts.auto_next), icon = 'skip_next',
         active = opts.auto_next, value = { toggle = 'auto_next' }, separator = true },
-      { title = 'Carátulas y datos de internet (TMDB)', hint = onoff(s.tmdb_enabled), icon = 'image',
+      { title = tr('Carátulas y datos de internet (TMDB)'), hint = onoff(s.tmdb_enabled), icon = 'image',
         active = s.tmdb_enabled, value = { set = 'tmdb_enabled', to = not s.tmdb_enabled } },
-      { title = 'Clave de TMDB…', hint = s.has_tmdb_key and 'guardada' or 'sin clave', icon = 'key',
+      { title = tr('Clave de TMDB…'), hint = s.has_tmdb_key and 'guardada' or 'sin clave', icon = 'key',
         value = { input = 'tmdb_key' }, separator = true },
-      { title = 'Subtítulos de internet (OpenSubtitles)', hint = onoff(s.osub_enabled), icon = 'subtitles',
+      { title = tr('Subtítulos de internet (OpenSubtitles)'), hint = onoff(s.osub_enabled), icon = 'subtitles',
         active = s.osub_enabled, value = { set = 'osub_enabled', to = not s.osub_enabled } },
     }
     osub_rows(s, items)
     for _, it in ipairs({
-      { title = 'Usuario de OpenSubtitles…', hint = s.osub_username ~= '' and s.osub_username or 'sin cuenta',
+      { title = tr('Usuario de OpenSubtitles…'), hint = s.osub_username ~= '' and s.osub_username or 'sin cuenta',
         icon = 'person', value = { input = 'osub_username' } },
-      { title = 'Contraseña de OpenSubtitles…', hint = s.has_osub_password and 'guardada' or '', icon = 'password',
+      { title = tr('Contraseña de OpenSubtitles…'), hint = s.has_osub_password and 'guardada' or '', icon = 'password',
         value = { input = 'osub_password' } },
-      { title = 'Idiomas de los subtítulos…', hint = s.osub_languages, icon = 'translate',
+      { title = tr('Idiomas de los subtítulos…'), hint = s.osub_languages, icon = 'translate',
         value = { input = 'osub_languages' } },
-      { title = 'Resincronizar con la voz', hint = RESYNC_LABEL[s.osub_resync] or s.osub_resync, icon = 'sync',
+      { title = tr('Resincronizar con la voz'), hint = RESYNC_LABEL[s.osub_resync] or s.osub_resync, icon = 'sync',
         value = { set = 'osub_resync', to = RESYNC_NEXT[s.osub_resync] or 'auto' } },
     }) do items[#items + 1] = it end
-    show('Ajustes', items, { footnote = 'Las claves se guardan solo en tu equipo · ⌫ atrás' })
+    show(tr('Ajustes'), items, { footnote = tr('Las claves se guardan solo en tu equipo · ⌫ atrás') })
     if s.has_osub_key and state.quota == nil then ask_quota() end
   end, 15)
 end
@@ -507,22 +510,22 @@ local function add_subtitle(res, silent)
     local extra = ''
     if res.resync == 'pending' then extra = ' · resincronizando con la voz…'
     elseif res.resync == 'failed' then extra = ' · sin resincronizar (' .. (res.resync_reason or '') .. ')' end
-    osd('💬 Subtítulos ' .. (res.language or '') .. ' añadidos' .. extra, 4)
+    osd(tr('💬 Subtítulos %s añadidos%s'):format(res.language or '', extra), 4)
   end
 end
 
 local function download_subs(file_id)
   local path = current_path()
-  if not is_local(path) then osd('Solo en archivos locales') return end
+  if not is_local(path) then osd(tr('Solo en archivos locales')) return end
   state.subs_status = 'downloading'
   publish()
-  osd('💬 Descargando subtítulos…')
+  osd(tr('💬 Descargando subtítulos…'))
   local audio = mp.get_property_native('current-tracks/audio') or {}
   rpc.call('library.subs.download', { path = path, file_id = file_id, audio_lang = audio.lang, notify = SCRIPT },
     function(err, res)
       if err then
         state.subs_status = 'error'
-        osd('Subtítulos: ' .. fail(err, 'library.subs.download'), 5)
+        osd(tr('Subtítulos: %s'):format(fail(err, 'library.subs.download')), 5)
         return
       end
       if current_path() ~= path then return end
@@ -534,20 +537,20 @@ end
 -- nada más es un callejón sin salida justo cuando alguien quiere ver una película.
 local function subs_setup_items(h)
   local items = {
-    { title = 'Para buscar subtítulos hace falta una clave de OpenSubtitles', icon = 'info', selectable = false,
+    { title = tr('Para buscar subtítulos hace falta una clave de OpenSubtitles'), icon = 'info', selectable = false,
       muted = true },
-    { title = 'Es gratis y se saca en dos minutos', icon = 'info', selectable = false, muted = true,
+    { title = tr('Es gratis y se saca en dos minutos'), icon = 'info', selectable = false, muted = true,
       separator = true },
-    { title = 'Paso 1 · Abrir la página de la clave', icon = 'open_in_new',
-      hint = 'opensubtitles.com › API › Consumers', value = { osub_help = true } },
-    { title = 'Paso 2 · Pegar la clave del portapapeles', icon = 'content_paste',
-      hint = 'cópiala en el navegador y pulsa aquí', value = { paste = 'osub_api_key' } },
-    { title = '…o escribirla a mano', icon = 'keyboard', value = { input = 'osub_api_key' }, separator = true },
-    { title = 'Ajustes de la biblioteca', icon = 'settings', value = { view = 'settings' } },
+    { title = tr('Paso 1 · Abrir la página de la clave'), icon = 'open_in_new',
+      hint = tr('opensubtitles.com › API › Consumers'), value = { osub_help = true } },
+    { title = tr('Paso 2 · Pegar la clave del portapapeles'), icon = 'content_paste',
+      hint = tr('cópiala en el navegador y pulsa aquí'), value = { paste = 'osub_api_key' } },
+    { title = tr('…o escribirla a mano'), icon = 'keyboard', value = { input = 'osub_api_key' }, separator = true },
+    { title = tr('Ajustes de la biblioteca'), icon = 'settings', value = { view = 'settings' } },
   }
   if h and h.has_key and not h.enabled then
-    table.insert(items, 1, { title = 'La clave está guardada, pero los subtítulos de internet están apagados',
-                             icon = 'toggle_off', hint = 'encenderlos', value = { set = 'osub_enabled', to = true } })
+    table.insert(items, 1, { title = tr('La clave está guardada, pero los subtítulos de internet están apagados'),
+                             icon = 'toggle_off', hint = tr('encenderlos'), value = { set = 'osub_enabled', to = true } })
   end
   return items
 end
@@ -555,11 +558,11 @@ end
 local search_subs_now   -- definido justo debajo: no es una vista navegable, es el cuerpo de `subs`
 
 views.subs = function()
-  local title = 'Subtítulos de internet'
+  local title = tr('Subtítulos de internet')
   if not require_mpvd(title) then return end
   local path = current_path()
-  if not is_local(path) then show(title, uosc.message_items('Abre un archivo de tu equipo', 'info')) return end
-  show(title, uosc.loading_items('Buscando en OpenSubtitles…'))
+  if not is_local(path) then show(title, uosc.message_items(tr('Abre un archivo de tu equipo'), 'info')) return end
+  show(title, uosc.loading_items(tr('Buscando en OpenSubtitles…')))
   rpc.call('library.subs.help', nil, function(herr, h)
     if not still('subs') then return end
     if not herr and type(h) == 'table' and not h.active then
@@ -582,7 +585,7 @@ search_subs_now = function(path, title)
       state.subs_status = 'error'
       local m = fail(err, 'library.subs.search')
       show(title, { { title = m, icon = 'error', selectable = false, muted = true },
-                    { title = 'Ajustes de la biblioteca', icon = 'settings', value = { view = 'settings' } } })
+                    { title = tr('Ajustes de la biblioteca'), icon = 'settings', value = { view = 'settings' } } })
       return
     end
     state.subs_status = 'results'
@@ -599,12 +602,13 @@ search_subs_now = function(path, title)
                             value = { sub = r.file_id } })
     end
     if #items == 0 then
-      items = uosc.message_items('No hay subtítulos en ' .. (res.languages or '') .. ' para este vídeo', 'subtitles_off')
+      items = uosc.message_items(tr('No hay subtítulos en %s para este vídeo'):format(res.languages or ''),
+                                 'subtitles_off')
     else
-      table.insert(items, 1, { title = 'Descargar el mejor', hint = items[1].title, icon = 'download',
+      table.insert(items, 1, { title = tr('Descargar el mejor'), hint = items[1].title, icon = 'download',
                                value = { sub = res.results[1].file_id }, separator = true })
     end
-    show(title, items, { footnote = '✓ exacto = hecho para este mismo archivo · Enter descarga y activa' })
+    show(title, items, { footnote = tr('✓ exacto = hecho para este mismo archivo · Enter descarga y activa') })
   end, 60)
 end
 
@@ -633,7 +637,7 @@ local function input_menu(query, items)
         or 'Escribe o pega la ruta'
       table.insert(items, { title = empty, icon = 'edit', selectable = false, muted = true })
       if inp.mode ~= 'search' and inp.mode ~= 'folder' and inp.mode ~= 'osub_languages' then
-        table.insert(items, { title = 'Borrar el valor guardado', icon = 'delete', value = { save = '' } })
+        table.insert(items, { title = tr('Borrar el valor guardado'), icon = 'delete', value = { save = '' } })
       end
     end
   end
@@ -665,12 +669,14 @@ local function search_results(query)
       items = uosc.message_items(fail(err, 'library.search'), 'error')
     else
       for _, s in ipairs(res.shows or {}) do
-        table.insert(items, { title = s.title, hint = 'serie', icon = 'live_tv',
+        table.insert(items, { title = s.title, hint = tr('serie'), icon = 'live_tv',
                               value = { view = 'show', key = s.key, title = s.title } })
       end
       for _, m in ipairs(res.movies or {}) do table.insert(items, play_item(m, m.label)) end
       for _, e in ipairs(res.episodes or {}) do table.insert(items, play_item(e, e.full_title)) end
-      if #items == 0 then items = uosc.message_items('Nada en la biblioteca con «' .. query .. '»', 'search_off') end
+      if #items == 0 then
+        items = uosc.message_items(tr('Nada en la biblioteca con «%s»'):format(query), 'search_off')
+      end
     end
     remember(items)
     publish()
@@ -682,20 +688,20 @@ local function scan_started(res)
   state.scanning = true
   state.scan_progress = 0
   publish()
-  osd('📚 Escaneando ' .. (res and res.path or 'la biblioteca') .. '…')
+  osd(tr('📚 Escaneando %s…'):format(res and res.path or tr('la biblioteca')))
 end
 
 local function add_folder(path)
   rpc.call('library.folders.add', { path = path, notify = SCRIPT }, function(err, res)
-    if err then osd('Carpeta: ' .. fail(err, 'library.folders.add'), 5) return end
-    if res.added then scan_started(res) else osd('Esa carpeta ya estaba: reescaneando') end
+    if err then osd(tr('Carpeta: %s'):format(fail(err, 'library.folders.add')), 5) return end
+    if res.added then scan_started(res) else osd(tr('Esa carpeta ya estaba: reescaneando')) end
     if still('folders') then reopen_current() end
   end, 15)
 end
 
 local function set_setting(key, value, after)
   rpc.call('library.settings.set', { [key] = value }, function(err, s)
-    if err then osd('Ajustes: ' .. fail(err, 'library.settings.set'), 5) return end
+    if err then osd(tr('Ajustes: %s'):format(fail(err, 'library.settings.set')), 5) return end
     state.settings = s
     publish()
     if after then after(s) end
@@ -710,7 +716,7 @@ mp.register_script_message(INPUT_EVENT, function(json)
     local q = ev.query or ''
     if inp.mode == 'search' and q ~= '' then
       inp.query = q
-      uosc.update(input_menu(q, uosc.loading_items('Buscando…')))
+      uosc.update(input_menu(q, uosc.loading_items(tr('Buscando…'))))
       search_results(q)
     else
       uosc.update(input_menu(q))
@@ -723,7 +729,7 @@ mp.register_script_message(INPUT_EVENT, function(json)
       close_input(false)
       uosc.close(MENU)
       mp.commandv('loadfile', v.play, 'replace')
-      osd('▶ ' .. basename(v.play))
+      osd(tr('▶ %s'):format(basename(v.play)))
     elseif v.view then
       close_input(false)
       state.force_open = true
@@ -754,7 +760,7 @@ local function play_next(nxt)
   if not nxt or not nxt.path then return end
   mp.commandv('loadfile', nxt.path, 'replace')
   mp.set_property_bool('pause', false)   -- keep-open paused the finished episode: the next one must play
-  osd('▶ ' .. (nxt.full_title or basename(nxt.path)))
+  osd(tr('▶ %s'):format(nxt.full_title or basename(nxt.path)))
 end
 
 local function cancel_countdown(by_user)
@@ -763,7 +769,7 @@ local function cancel_countdown(by_user)
   cd = nil
   mp.remove_key_binding('mu-library-cancel')
   mp.remove_key_binding('mu-library-now')
-  if by_user then osd('Siguiente episodio cancelado') end
+  if by_user then osd(tr('Siguiente episodio cancelado')) end
   publish()
 end
 
@@ -880,7 +886,7 @@ mp.register_script_message(EVENT, function(json)
       uosc.close(MENU)
       local p = v.play or v.open
       mp.commandv('loadfile', p, 'replace')
-      osd('▶ ' .. basename(p))
+      osd(tr('▶ %s'):format(basename(p)))
     elseif v.view then
       if v.view == 'subs' then forget_view('subs') end
       open_view({ name = v.view, args = v })
@@ -888,7 +894,7 @@ mp.register_script_message(EVENT, function(json)
       rpc.call('library.subs.help', nil, function(err, h)
         local url = (not err and type(h) == 'table' and h.key_url) or 'https://www.opensubtitles.com/es/consumers'
         open_in_browser(url)
-        osd('Abierta la página de la clave. Cópiala y vuelve al Paso 2.')
+        osd(tr('Abierta la página de la clave. Cópiala y vuelve al Paso 2.'))
       end, 10)
     elseif v.paste then
       paste_secret(v.paste, v.paste == 'osub_api_key' and 'Api-Key' or 'Clave')
@@ -898,14 +904,14 @@ mp.register_script_message(EVENT, function(json)
     elseif v.folder then
       if ev.action == 'remove' then
         rpc.call('library.folders.remove', { path = v.folder }, function(err, res)
-          if err then osd('Quitar: ' .. fail(err, 'library.folders.remove')) return end
-          osd('Carpeta quitada de la biblioteca (' .. (res.removed or 0) .. ' archivos; no se borra nada)')
+          if err then osd(tr('Quitar: %s'):format(fail(err, 'library.folders.remove'))) return end
+          osd(tr('Carpeta quitada de la biblioteca (%d archivos; no se borra nada)'):format(res.removed or 0))
           refresh_home()
           reopen_current()
         end, 15)
       else
         rpc.call('library.scan', { path = v.folder, notify = SCRIPT }, function(err)
-          if err then osd('Escanear: ' .. fail(err, 'library.scan')) return end
+          if err then osd(tr('Escanear: %s'):format(fail(err, 'library.scan'))) return end
           scan_started({ path = v.folder })
         end, 15)
       end
@@ -913,7 +919,7 @@ mp.register_script_message(EVENT, function(json)
       add_folder(v.add)
     elseif v.rescan then
       rpc.call('library.scan', { notify = SCRIPT }, function(err)
-        if err then osd('Escanear: ' .. fail(err, 'library.scan')) return end
+        if err then osd(tr('Escanear: %s'):format(fail(err, 'library.scan'))) return end
         scan_started()
         reopen_current()
       end, 15)
@@ -921,7 +927,7 @@ mp.register_script_message(EVENT, function(json)
       opts.auto_next = not opts.auto_next
       P:set('auto_next', opts.auto_next)
       if not opts.auto_next then cancel_countdown(false) end
-      osd('Siguiente episodio automático: ' .. (opts.auto_next and 'activado' or 'desactivado'))
+      osd(tr('Siguiente episodio automático: %s'):format(opts.auto_next and tr('activado') or tr('desactivado')))
       publish()
       reopen_current()
     elseif v.set then
@@ -986,7 +992,7 @@ mp.register_script_message('mu-event', function(payload)
       refresh_open_view()
       if state.path ~= '' then refresh_next(state.path) end
     elseif j.status == 'failed' then
-      osd('Biblioteca: ' .. (j.error or 'error'), 5)
+      osd(tr('Biblioteca: %s'):format(j.error or tr('error')), 5)
       refresh_open_view()
     end
   elseif ev.event == 'library-subs' then
@@ -999,9 +1005,9 @@ mp.register_script_message('mu-event', function(payload)
           mp.commandv('sub-remove', tostring(t.id))
         end
       end
-      osd('💬 Subtítulos resincronizados con la voz')
+      osd(tr('💬 Subtítulos resincronizados con la voz'))
     else
-      osd('💬 Sin resincronizar: ' .. (ev.resync_reason or 'error'), 4)
+      osd(tr('💬 Sin resincronizar: %s'):format(ev.resync_reason or tr('error')), 4)
     end
   end
 end)
@@ -1010,14 +1016,14 @@ end)
 -- bindings
 
 local function open_root()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'root' })
 end
 
 local function open_subs()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = { { name = 'root', title = ROOT_TITLE } }
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'subs' })
@@ -1026,12 +1032,12 @@ end
 N:binding('library-menu', open_root)
 N:binding('library-subs', open_subs)
 mp.add_key_binding(nil, 'library-next', function()
-  if state.next then play_next(state.next) else osd('No hay siguiente episodio') end
+  if state.next then play_next(state.next) else osd(tr('No hay siguiente episodio')) end
 end)
 mp.add_key_binding(nil, 'auto-next-toggle', function()
   opts.auto_next = not opts.auto_next
   P:set('auto_next', opts.auto_next)
-  osd('Siguiente episodio automático: ' .. (opts.auto_next and 'activado' or 'desactivado'))
+  osd(tr('Siguiente episodio automático: %s'):format(opts.auto_next and tr('activado') or tr('desactivado')))
   publish()
 end)
 mp.register_script_message('mu-library-open', open_root)

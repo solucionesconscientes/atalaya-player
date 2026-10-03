@@ -20,6 +20,7 @@ local uosc = require('mu.uosc')
 local nav = require('mu.nav')
 local prefs = require('mu.prefs')
 local clip = require('mu.clip')
+local tr = require('mu.i18n').t
 local N = nav.new()
 
 local SCRIPT = mp.get_script_name()
@@ -107,7 +108,7 @@ local function fail(err, what)
   msg.warn(what .. ': ' .. m)
   state.last_error = what .. ': ' .. m
   publish()
-  osd('Compartir: ' .. m)
+  osd(tr('Compartir: %s'):format(m))
   return m
 end
 
@@ -378,36 +379,37 @@ views.root = function()
   local items = {}
   local inside = st.guest_of
   if not rpc.connected() then
-    items = uosc.message_items('mpvd no está conectado: espera unos segundos', 'error')
+    items = uosc.message_items(tr('mpvd no está conectado: espera unos segundos'), 'error')
   elseif inside then
     -- estamos de invitados en la sala de otro: eso es lo único que importa aquí
     local host = (inside.room or {}).host
-    items[#items + 1] = { title = 'Estás en la sala' .. (host and (' de ' .. host) or ''), icon = 'groups',
+    items[#items + 1] = { title = host and tr('Estás en la sala de %s'):format(host) or tr('Estás en la sala'),
+                        icon = 'groups',
                           hint = guest_hint(inside), muted = true, selectable = false }
     if inside.title and inside.title ~= '' then
       items[#items + 1] = { title = inside.title, icon = 'movie', muted = true, selectable = false,
                             hint = inside.kind == 'file' and 'el archivo original del anfitrión' or nil }
     end
-    items[#items + 1] = { title = 'Salir de la sala', icon = 'logout', value = { action = 'leave' } }
-    items[#items + 1] = { title = 'Mientras estés dentro, el reproductor sigue al anfitrión', icon = 'info',
-                          muted = true, selectable = false, hint = 'pausa, saltos y velocidad' }
+    items[#items + 1] = { title = tr('Salir de la sala'), icon = 'logout', value = { action = 'leave' } }
+    items[#items + 1] = { title = tr('Mientras estés dentro, el reproductor sigue al anfitrión'), icon = 'info',
+                          muted = true, selectable = false, hint = tr('pausa, saltos y velocidad') }
   elseif not st.open then
-    items[#items + 1] = { title = 'Crear una sala para ver juntos', icon = 'group_add', value = { action = 'create' },
-                          hint = 'enlace y QR' }
-    items[#items + 1] = { title = 'Crear una sala pública (solo ver)', icon = 'public',
+    items[#items + 1] = { title = tr('Crear una sala para ver juntos'), icon = 'group_add', value = { action = 'create' },
+                          hint = tr('enlace y QR') }
+    items[#items + 1] = { title = tr('Crear una sala pública (solo ver)'), icon = 'public',
                           value = { action = 'create', mode = 'public' },
                           hint = string.format('sin nombres ni chat · hasta %d', opts.max_viewers) }
-    items[#items + 1] = { title = 'Tus invitados verán lo mismo que tú, a la vez, en su navegador', icon = 'info',
+    items[#items + 1] = { title = tr('Tus invitados verán lo mismo que tú, a la vez, en su navegador'), icon = 'info',
                           muted = true, selectable = false }
     local internet = P:get('internet') == true
     local can = st.tunnel_available ~= false
-    items[#items + 1] = { title = 'Que se pueda entrar desde internet', icon = internet and 'public' or 'wifi',
+    items[#items + 1] = { title = tr('Que se pueda entrar desde internet'), icon = internet and 'public' or 'wifi',
                           value = { action = 'toggle_internet' }, active = internet,
                           hint = (not can and 'falta cloudflared')
                             or (internet and 'túnel de Cloudflare mientras la sala esté abierta')
                             or 'ahora solo desde tu wifi' }
     if internet and not can then
-      items[#items + 1] = { title = 'Instálalo con: MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh', icon = 'info',
+      items[#items + 1] = { title = tr('Instálalo con: MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh'), icon = 'info',
                             muted = true, selectable = false }
     end
   else
@@ -424,30 +426,31 @@ views.root = function()
     end
     -- H56 · lo primero, los DOS enlaces explicados: es lo que se pega en un mensaje. Que esté aquí además de
     -- copiarse solo al abrir la sala importa, porque si no pillas ese momento parece que no ha copiado nada.
-    items[#items + 1] = { title = 'Copiar los enlaces', icon = 'content_copy',
-                          hint = 'navegador y VLC, con lo que hace cada uno · ' .. copiar_hint,
+    items[#items + 1] = { title = tr('Copiar los enlaces'), icon = 'content_copy',
+                          hint = tr('navegador y VLC, con lo que hace cada uno · %s'):format(copiar_hint),
                           value = { action = 'copy-invite' } }
-    items[#items + 1] = { title = 'Copiar solo el del navegador', icon = 'link', hint = copiar_hint,
+    items[#items + 1] = { title = tr('Copiar solo el del navegador'), icon = 'link', hint = copiar_hint,
                           value = { action = 'copy' } }
     if tunel == 'starting' or tunel == 'warming' then
-      items[#items + 1] = { title = 'Abriendo la puerta a internet…', icon = 'hourglass_top', muted = true,
+      items[#items + 1] = { title = tr('Abriendo la puerta a internet…'), icon = 'hourglass_top', muted = true,
                             selectable = false,
                             hint = tunel == 'starting' and 'arrancando' or 'esperando a que la dirección conteste' }
     elseif tunel == 'failed' and (st.tunnel_error or '') ~= '' then
-      items[#items + 1] = { title = 'Sin puerta a internet: ' .. st.tunnel_error, icon = 'info', muted = true,
-                            selectable = false, hint = 'la sala funciona en tu red' }
+      items[#items + 1] = { title = tr('Sin puerta a internet: %s'):format(st.tunnel_error), icon = 'info',
+                          muted = true,
+                            selectable = false, hint = tr('la sala funciona en tu red') }
     end
     -- H54 · el enlace de la sala NO puede abrirse en VLC ni en mpv: su token va en el fragmento (#k=) y un
     -- navegador no manda nunca el fragmento al servidor. Este es el que sí vale, y da calidad original.
-    items[#items + 1] = { title = 'Copiar el enlace para VLC o mpv', icon = 'play_circle',
-                          hint = 'calidad original · el de la sala solo vale en el navegador',
+    items[#items + 1] = { title = tr('Copiar el enlace para VLC o mpv'), icon = 'play_circle',
+                          hint = tr('calidad original · el de la sala solo vale en el navegador'),
                           value = { action = 'copy-player' } }
     items[#items + 1] = { title = state.qr_visible and 'Ocultar el código QR' or 'Mostrar el código QR',
                           icon = state.qr_visible and 'qr_code_scanner' or 'qr_code_2', active = state.qr_visible,
                           hint = state.qr_visible and 'también con alt+Q' or 'para quien esté delante',
                           value = { action = 'qr' } }
     if public then
-      items[#items + 1] = { title = 'Sala pública (solo ver)', icon = 'public', muted = true, selectable = false,
+      items[#items + 1] = { title = tr('Sala pública (solo ver)'), icon = 'public', muted = true, selectable = false,
                             hint = string.format('%d viendo · máximo %d', st.viewers or 0, st.max_viewers or 0) }
     else
       local guests = st.guests or {}
@@ -456,17 +459,17 @@ views.root = function()
       -- H55 · lo que hace que «ver juntos» sea ver juntos: que puedan pausar y saltar ellos. Encendido por
       -- defecto en una sala privada, donde a quien entra lo has invitado tú.
       local libre = st.open_control ~= false
-      items[#items + 1] = { title = 'Los invitados pueden controlar', icon = libre and 'lock_open' or 'lock',
+      items[#items + 1] = { title = tr('Los invitados pueden controlar'), icon = libre and 'lock_open' or 'lock',
                             active = libre, value = { action = 'open-control' },
                             hint = libre and 'pueden pausar y saltar' or 'solo pueden mirar' }
-      items[#items + 1] = { title = 'Invitados', icon = 'group', value = { view = 'guests' },
+      items[#items + 1] = { title = tr('Invitados'), icon = 'group', value = { view = 'guests' },
                             hint = string.format('%d en la sala · %d conectados', #guests, online) }
       for _, g in ipairs(st.pending or {}) do
-        items[#items + 1] = { title = g.name .. ' pide el control', icon = 'front_hand', hint = 'responder',
+        items[#items + 1] = { title = g.name .. ' pide el control', icon = 'front_hand', hint = tr('responder'),
                               value = { view = 'guest', id = g.id } }
       end
       local n = #(st.chat or {})
-      items[#items + 1] = { title = 'Chat', icon = 'chat', value = { view = 'chat' },
+      items[#items + 1] = { title = tr('Chat'), icon = 'chat', value = { view = 'chat' },
                             hint = n > 0 and string.format('%d mensajes', n) or 'escribir a los invitados' }
     end
     local media = st.media or {}
@@ -489,25 +492,25 @@ views.root = function()
                  'hourglass_top' }
       end
     end
-    items[#items + 1] = { title = 'Ven: ' .. mt, icon = 'live_tv', muted = true, selectable = false }
+    items[#items + 1] = { title = tr('Ven: %s'):format(mt), icon = 'live_tv', muted = true, selectable = false }
     if prep then
       items[#items + 1] = { title = prep[1], hint = prep[2], icon = prep[3], muted = true, selectable = false }
     end
     if type(st.firewall) == 'table' and st.firewall.command then
-      items[#items + 1] = { title = 'El cortafuegos (' .. st.firewall.tool .. ') puede bloquear a los invitados',
-                            hint = 'copiar la orden', icon = 'shield', value = { action = 'copy-fw' } }
+      items[#items + 1] = { title = tr('El cortafuegos (%s) puede bloquear a los invitados'):format(st.firewall.tool),
+                            hint = tr('copiar la orden'), icon = 'shield', value = { action = 'copy-fw' } }
     end
-    items[#items + 1] = { title = 'Enlace nuevo', hint = 'el anterior deja de valer', icon = 'autorenew',
+    items[#items + 1] = { title = tr('Enlace nuevo'), hint = tr('el anterior deja de valer'), icon = 'autorenew',
                           value = { action = 'rotate' }, separator = true }
-    items[#items + 1] = { title = 'Cerrar la sala', icon = 'close', value = { action = 'close' } }
+    items[#items + 1] = { title = tr('Cerrar la sala'), icon = 'close', value = { action = 'close' } }
     local donde = (st.tunnel_state == 'ready') and 'desde internet' or 'solo tu red'
     items[#items + 1] = { title = expires_text(st.room) .. ' · ' .. donde, icon = 'schedule', muted = true,
                           selectable = false }
   end
   if rpc.connected() and not inside then
-    items[#items + 1] = { title = 'Entrar en una sala de otro…', icon = 'login', value = { view = 'join' },
-                          hint = 'te han pasado un enlace', separator = true }
-    items[#items + 1] = { title = 'Emitir en directo…', icon = 'sensors', value = { view = 'live' },
+    items[#items + 1] = { title = tr('Entrar en una sala de otro…'), icon = 'login', value = { view = 'join' },
+                          hint = tr('te han pasado un enlace'), separator = true }
+    items[#items + 1] = { title = tr('Emitir en directo…'), icon = 'sensors', value = { view = 'live' },
                           hint = live_hint() }
   end
   show(ROOT_TITLE, items)
@@ -518,29 +521,29 @@ views.join = function()
   local es_sala = pegado:match('^https?://[^%s]+/s/[%w_-]+#k=.') ~= nil
   local items = {}
   if es_sala then
-    items[#items + 1] = { title = 'Entrar con el enlace copiado', icon = 'content_paste_go',
+    items[#items + 1] = { title = tr('Entrar con el enlace copiado'), icon = 'content_paste_go',
                           hint = (#pegado > 60 and (pegado:sub(1, 57) .. '…') or pegado),
                           value = { action = 'join-clipboard' } }
   end
-  items[#items + 1] = { title = 'Escribir o pegar el enlace…', icon = 'edit', value = { action = 'join-write' } }
+  items[#items + 1] = { title = tr('Escribir o pegar el enlace…'), icon = 'edit', value = { action = 'join-write' } }
   if not es_sala and pegado ~= '' then
-    items[#items + 1] = { title = 'Lo que tienes copiado no es un enlace de sala', icon = 'info', muted = true,
-                          selectable = false, hint = 'tiene que acabar en #k=…' }
+    items[#items + 1] = { title = tr('Lo que tienes copiado no es un enlace de sala'), icon = 'info', muted = true,
+                          selectable = false, hint = tr('tiene que acabar en #k=…') }
   end
-  items[#items + 1] = { title = 'Verás lo mismo que el anfitrión, a la vez y con su archivo original', icon = 'info',
+  items[#items + 1] = { title = tr('Verás lo mismo que el anfitrión, a la vez y con su archivo original'), icon = 'info',
                         muted = true, selectable = false, separator = true }
-  show('Entrar en una sala', items)
+  show(tr('Entrar en una sala'), items)
 end
 
 views.chat = function()
   local items = {
-    { title = 'Escribir un mensaje', icon = 'edit', value = { action = 'chat-write' } },
-    { title = 'Mostrar el chat en pantalla', icon = opts.chat_osd and 'toggle_on' or 'toggle_off',
+    { title = tr('Escribir un mensaje'), icon = 'edit', value = { action = 'chat-write' } },
+    { title = tr('Mostrar el chat en pantalla'), icon = opts.chat_osd and 'toggle_on' or 'toggle_off',
       hint = opts.chat_osd and 'sí' or 'no', value = { action = 'chat-osd' } },
   }
   local rows = state.status and state.status.chat or {}
   if #rows == 0 then
-    items[#items + 1] = { title = 'Aún no hay mensajes', icon = 'chat_bubble_outline', muted = true,
+    items[#items + 1] = { title = tr('Aún no hay mensajes'), icon = 'chat_bubble_outline', muted = true,
                           selectable = false, separator = true }
   end
   for i = #rows, 1, -1 do
@@ -548,7 +551,7 @@ views.chat = function()
     items[#items + 1] = { title = r.who .. ': ' .. clip_utf8(tostring(r.text or ''), 80), muted = true,
                           selectable = false, icon = r.host and 'star' or 'person', separator = i == #rows }
   end
-  show('Chat', items)
+  show(tr('Chat'), items)
 end
 
 -- -- «Emitir en directo» ---------------------------------------------------------------------------
@@ -595,39 +598,39 @@ views.live = function()
   local lv = state.live or {}
   local run = type(lv.run) == 'table' and lv.run or nil
   local items = {
-    { title = 'Emite solo lo que tengas derecho a compartir', icon = 'gavel', muted = true, selectable = false,
-      hint = 'tuyo, libre o con permiso' },
-    { title = 'Películas, series, fútbol o canales de TV: normalmente no', icon = 'block', muted = true,
+    { title = tr('Emite solo lo que tengas derecho a compartir'), icon = 'gavel', muted = true, selectable = false,
+      hint = tr('tuyo, libre o con permiso') },
+    { title = tr('Películas, series, fútbol o canales de TV: normalmente no'), icon = 'block', muted = true,
       selectable = false },
   }
   if lv.ffmpeg == false then
-    items[#items + 1] = { title = 'ffmpeg no está instalado', icon = 'error', muted = true, selectable = false }
+    items[#items + 1] = { title = tr('ffmpeg no está instalado'), icon = 'error', muted = true, selectable = false }
   end
   if lv.active then
     items[#items + 1] = { title = live_status_text(run), icon = 'sensors', muted = true, selectable = false,
                           separator = true }
-    items[#items + 1] = { title = 'Parar la emisión', icon = 'stop_circle', value = { live = 'stop' } }
+    items[#items + 1] = { title = tr('Parar la emisión'), icon = 'stop_circle', value = { live = 'stop' } }
   elseif lv.configured then
-    items[#items + 1] = { title = 'Emitir lo que estoy viendo', hint = 'desde este punto', icon = 'sensors',
+    items[#items + 1] = { title = tr('Emitir lo que estoy viendo'), hint = tr('desde este punto'), icon = 'sensors',
                           value = { live = 'start' }, separator = true }
-    items[#items + 1] = { title = 'Emitir desde el principio', icon = 'replay',
+    items[#items + 1] = { title = tr('Emitir desde el principio'), icon = 'replay',
                           value = { live = 'start', from_start = true } }
     if run and run.status == 'failed' then
       items[#items + 1] = { title = live_status_text(run), icon = 'error', muted = true, selectable = false }
     end
   else
-    items[#items + 1] = { title = 'Para emitir, elige el servidor y pega tu clave de emisión', icon = 'info',
+    items[#items + 1] = { title = tr('Para emitir, elige el servidor y pega tu clave de emisión'), icon = 'info',
                           muted = true, selectable = false, separator = true }
   end
-  items[#items + 1] = { title = 'Servidor', icon = 'dns', value = { view = 'live_server' }, separator = true,
+  items[#items + 1] = { title = tr('Servidor'), icon = 'dns', value = { view = 'live_server' }, separator = true,
                         hint = lv.has_server and (lv.server_host or '') or 'sin elegir' }
-  items[#items + 1] = { title = 'Pegar la clave de emisión', icon = 'key', value = { live = 'key' },
+  items[#items + 1] = { title = tr('Pegar la clave de emisión'), icon = 'key', value = { live = 'key' },
                         hint = lv.has_key and string.format('guardada (%d caracteres)', lv.key_length or 0)
                           or 'cópiala antes · no se muestra' }
   if lv.has_key then
-    items[#items + 1] = { title = 'Olvidar la clave', icon = 'key_off', value = { live = 'forget' } }
+    items[#items + 1] = { title = tr('Olvidar la clave'), icon = 'key_off', value = { live = 'forget' } }
   end
-  show('Emitir en directo', items)
+  show(tr('Emitir en directo'), items)
   if lv.active and not live_timer then live_timer = mp.add_periodic_timer(2, live_tick) end
 end
 
@@ -637,9 +640,9 @@ views.live_server = function()
   for _, p in ipairs(lv.presets or {}) do
     items[#items + 1] = { title = p.name, hint = p.server, icon = 'dns', value = { live = 'preset', preset = p.id } }
   end
-  items[#items + 1] = { title = 'Otro servidor (PeerTube, Owncast…)', hint = 'escribir la dirección rtmp://',
+  items[#items + 1] = { title = tr('Otro servidor (PeerTube, Owncast…)'), hint = 'escribir la dirección rtmp://',
                         icon = 'edit', value = { action = 'server-write' } }
-  show('Servidor', items)
+  show(tr('Servidor'), items)
 end
 
 views.guests = function()
@@ -650,9 +653,9 @@ views.guests = function()
                           value = { view = 'guest', id = g.id } }
   end
   if #items == 0 then
-    items = uosc.message_items('Aún no ha entrado nadie: comparte el enlace', 'group')
+    items = uosc.message_items(tr('Aún no ha entrado nadie: comparte el enlace'), 'group')
   end
-  show('Invitados', items)
+  show(tr('Invitados'), items)
 end
 
 local function find_guest(id)
@@ -665,20 +668,20 @@ end
 views.guest = function(args)
   local g = find_guest(args.id)
   if not g then
-    show('Invitado', uosc.message_items('Ya no está en la sala', 'person_off'))
+    show(tr('Invitado'), uosc.message_items(tr('Ya no está en la sala'), 'person_off'))
     return
   end
   local items = {}
   if g.perm == 'control' then
-    items[#items + 1] = { title = 'Quitar el control', icon = 'remove_moderator', value = { perm = 'view', id = g.id } }
+    items[#items + 1] = { title = tr('Quitar el control'), icon = 'remove_moderator', value = { perm = 'view', id = g.id } }
   else
-    items[#items + 1] = { title = 'Dar el control', hint = 'podrá pausar y saltar', icon = 'sports_esports',
+    items[#items + 1] = { title = tr('Dar el control'), hint = tr('podrá pausar y saltar'), icon = 'sports_esports',
                           value = { perm = 'control', id = g.id } }
   end
   if g.pending then
-    items[#items + 1] = { title = 'Rechazar la petición', icon = 'block', value = { deny = g.id } }
+    items[#items + 1] = { title = tr('Rechazar la petición'), icon = 'block', value = { deny = g.id } }
   end
-  items[#items + 1] = { title = 'Sacar de la sala', icon = 'person_remove', value = { kick = g.id }, separator = true }
+  items[#items + 1] = { title = tr('Sacar de la sala'), icon = 'person_remove', value = { kick = g.id }, separator = true }
   items[#items + 1] = { title = perm_text(g), icon = 'info', muted = true, selectable = false }
   show(g.name, items)
 end
@@ -724,7 +727,7 @@ local function copy_text(text, what)
 end
 
 local function create_room(then_menu, mode)
-  if not rpc.connected() then osd('Compartir: mpvd no está conectado'); return end
+  if not rpc.connected() then osd(tr('Compartir: mpvd no está conectado')); return end
   local params = { ttl_hours = opts.ttl_hours, internet = P:get('internet') == true,
                    control = P:get('control') ~= false }
   if mode == 'public' then params.mode = 'public'; params.max_viewers = opts.max_viewers end
@@ -739,9 +742,9 @@ local function create_room(then_menu, mode)
     -- y hay algo que compartir— y entonces copia LOS DOS enlaces explicados, el del navegador y el de VLC/mpv.
     local st = res.status or {}
     if st.tunnel_state == 'starting' or st.tunnel_state == 'warming' then
-      osd('Sala abierta · abriendo la puerta a internet, suele tardar un minuto. Te aviso y te copio el enlace', 6)
+      osd(tr('Sala abierta · abriendo la puerta a internet, suele tardar un minuto. Te aviso y te copio el enlace'), 6)
     else
-      osd('Sala abierta · preparando lo que se va a ver; te copio los enlaces en un momento', 4)
+      osd(tr('Sala abierta · preparando lo que se va a ver; te copio los enlaces en un momento'), 4)
     end
     if then_menu then reopen_current() else uosc.close(MENU) end
   end, 30)
@@ -749,7 +752,7 @@ end
 
 local function toggle_qr()
   if state.qr_visible then hide_qr(); return end
-  if not rpc.connected() then osd('Compartir: mpvd no está conectado'); return end
+  if not rpc.connected() then osd(tr('Compartir: mpvd no está conectado')); return end
   rpc.call('share.link', nil, function(err, res)
     if err then create_room(false); return end
     show_qr(res)
@@ -775,7 +778,7 @@ local function input_menu(query)
   end
   return { type = INPUT, title = INPUT_TITLES[mode], items = items, callback = { SCRIPT, INPUT_EVENT },
     search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-    search_suggestion = query, footnote = 'Enter elige · ⌫ en vacío vuelve' }
+    search_suggestion = query, footnote = tr('Enter elige · ⌫ en vacío vuelve') }
 end
 
 local function open_input(mode)
@@ -797,25 +800,26 @@ end
 
 local function join_room(url)
   url = tostring(url or ''):gsub('^%s+', ''):gsub('%s+$', '')
-  if url == '' then osd('No hay ningún enlace'); reopen_forced(); return end
-  osd('Entrando en la sala…')
+  if url == '' then osd(tr('No hay ningún enlace')); reopen_forced(); return end
+  osd(tr('Entrando en la sala…'))
   rpc.call('share.join', { url = url }, function(err, res)
     if err then fail(err, 'entrar en la sala'); reopen_forced(); return end
-    osd('Ya estás en la sala' .. ((res and res.room and res.room.host) and (' de ' .. res.room.host) or ''))
+    osd((res and res.room and res.room.host) and tr('Ya estás en la sala de %s'):format(res.room.host)
+        or tr('Ya estás en la sala'))
     refresh_status(reopen_forced)
   end, 30)
 end
 
 local function join_from_clipboard()
   local url = clip.first_line()
-  if url == '' then osd('El portapapeles está vacío'); reopen_current(); return end
+  if url == '' then osd(tr('El portapapeles está vacío')); reopen_current(); return end
   join_room(url)
 end
 
 local function leave_room()
   rpc.call('share.leave', {}, function(err)
     if err then fail(err, 'salir de la sala'); reopen_current(); return end
-    osd('Has salido de la sala')
+    osd(tr('Has salido de la sala'))
     refresh_status(reopen_forced)
   end)
 end
@@ -832,7 +836,7 @@ local function input_done(mode, text)
     rpc.call('live.configure', { server = text }, function(err, st)
       if err then fail(err, 'servidor'); reopen_forced(); return end
       state.live = st
-      osd('Servidor guardado: ' .. (st.server_host or ''))
+      osd(tr('Servidor guardado: %s'):format(st.server_host or ''))
       publish()
       if (state.stack[#state.stack] or {}).name == 'live_server' then table.remove(state.stack) end
       reopen_forced()
@@ -874,7 +878,7 @@ end
 
 local function live_action(v)
   if v.live == 'start' then
-    osd('Preparando la emisión…')
+    osd(tr('Preparando la emisión…'))
     live_call('live.start', { from_start = v.from_start == true }, 'emitir en directo', nil, function()
       if not live_timer then live_timer = mp.add_periodic_timer(2, live_tick) end
     end)
@@ -889,7 +893,7 @@ local function live_action(v)
     live_call('live.configure', { key = '' }, 'olvidar la clave', 'Clave olvidada')
   elseif v.live == 'preset' then
     live_call('live.configure', { preset = v.preset }, 'servidor', nil, function(st)
-      osd('Servidor: ' .. (st.server_host or ''))
+      osd(tr('Servidor: %s'):format(st.server_host or ''))
       if state.view == 'live_server' then table.remove(state.stack); state.view = 'live' end
     end)
   end
@@ -956,7 +960,7 @@ local function menu_action(v)
       if err then fail(err, 'enlace nuevo'); return end
       state.status = res.status
       if state.qr_visible then show_qr(res, true) end
-      osd('Enlace nuevo creado: el anterior ya no vale')
+      osd(tr('Enlace nuevo creado: el anterior ya no vale'))
       publish()
       reopen_current()
     end)
@@ -966,7 +970,7 @@ local function menu_action(v)
       state.status = st
       hide_qr()
       chat_clear()
-      osd('Sala cerrada')
+      osd(tr('Sala cerrada'))
       publish()
       reopen_current()
     end)
@@ -1014,7 +1018,7 @@ mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
 end)
 
 local function open_root()
-  if not uosc.available() then osd('uosc no está cargado') return end
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
   state.stack = {}
   state.force_open = uosc.open_type() ~= MENU
   open_view({ name = 'root' })
@@ -1047,8 +1051,8 @@ local function ask(guest)
   uosc.open({
     type = ASK_MENU, title = guest.name .. ' pide el control', callback = { SCRIPT, ASK_EVENT }, on_close = 'callback',
     items = {
-      { title = 'Dar el control', hint = 'podrá pausar y saltar', icon = 'check', value = { id = guest.id, yes = true } },
-      { title = 'Ahora no', icon = 'close', value = { id = guest.id, yes = false } },
+      { title = tr('Dar el control'), hint = tr('podrá pausar y saltar'), icon = 'check', value = { id = guest.id, yes = true } },
+      { title = tr('Ahora no'), icon = 'close', value = { id = guest.id, yes = false } },
     },
   })
   if ask_timer then ask_timer:kill() end
