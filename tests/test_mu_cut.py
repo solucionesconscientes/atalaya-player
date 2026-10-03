@@ -60,6 +60,20 @@ def mark_at(h, seconds: float) -> None:
         h.command("set_property", "pause", False)
 
 
+def esperar_marcas(h, pred, timeout: float = 10.0):
+    """Las marcas de la línea de tiempo las escribe mu-marks cuando se entera, no en el mismo instante en que el
+    tramo entra en la lista: hay que esperarlas y no muestrearlas (con el vídeo parado no hay ningún tic que
+    disimule la diferencia)."""
+    fin = time.monotonic() + timeout
+    while True:
+        marcas = chapters(h)
+        if pred(marcas):
+            return marcas
+        if time.monotonic() >= fin:
+            raise AssertionError(f"las marcas no llegaron en {timeout}s: {marcas}")
+        time.sleep(0.2)
+
+
 def test_un_tramo_se_pinta_en_la_linea_de_tiempo_sin_perder_los_capitulos(cut_mpv):
     h, _d = cut_mpv
     originales = chapters(h)
@@ -74,7 +88,7 @@ def test_un_tramo_se_pinta_en_la_linea_de_tiempo_sin_perder_los_capitulos(cut_mp
     assert v["segments"][0]["a"] == 3.0 and v["segments"][0]["b"] == 9.0
     assert v["pending"] == -1 and h.get("ab-loop-a") == "no"
 
-    marcas = chapters(h)
+    marcas = esperar_marcas(h, lambda m: (3.0, "tramo 1 · 0:03-0:09") in m)
     # el tramo, de su marca de inicio a la de fin (es lo que uosc colorea), y los capítulos de la peli INTACTOS
     assert (3.0, "tramo 1 · 0:03-0:09") in marcas
     assert (9.0, "fin del tramo 1") in marcas
@@ -90,7 +104,7 @@ def test_un_tramo_se_pinta_en_la_linea_de_tiempo_sin_perder_los_capitulos(cut_mp
     mark_at(h, 25.0)
     v = cut_state(h, lambda v: v["count"] == 2)
     assert [(s["a"], s["b"]) for s in v["segments"]] == [(3.0, 9.0), (22.0, 25.0)]
-    assert any(t.startswith("tramo 2") for _, t in chapters(h))
+    esperar_marcas(h, lambda m: any(x.startswith("tramo 2") for _, x in m))
     assert h.script_errors() == [], h.script_errors()
 
 
@@ -115,7 +129,7 @@ def test_al_cambiar_de_pelicula_los_tramos_se_van(cut_mpv, media_dir):
     h.command("loadfile", str(media_dir / "video30.mkv"))
     h.wait_property("path", lambda v: isinstance(v, str) and v.endswith("video30.mkv"), timeout=20)
     cut_state(h, lambda v: v["count"] == 0, timeout=20)
-    assert not any("tramo" in t for _, t in chapters(h))
+    esperar_marcas(h, lambda m: not any("tramo" in x for _, x in m))
 
 
 def test_guardar_los_tramos_unidos_da_un_archivo_con_la_suma(cut_mpv, media_dir, tmp_path):
@@ -173,7 +187,7 @@ def test_una_nota_sale_en_la_linea_de_tiempo(cut_mpv):
     h.wait_property("chapter-list", lambda v: any("nota · aquí pasa algo" in (c.get("title") or "")
                                                   for c in (v or [])), timeout=20)
     # y sigue conviviendo con los capítulos de la película
-    assert any(t == "Capítulo dos" for _, t in chapters(h))
+    esperar_marcas(h, lambda m: any(x == "Capítulo dos" for _, x in m))
     assert h.script_errors() == [], h.script_errors()
 
 
