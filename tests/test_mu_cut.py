@@ -46,9 +46,18 @@ def chapters(h) -> list[tuple[float, str]]:
 
 
 def mark_at(h, seconds: float) -> None:
+    """Marca en un punto exacto, con el vídeo PARADO mientras se marca.
+
+    Con el vídeo corriendo, entre confirmar la posición y que el script procese la marca pasa tiempo: bajo la carga
+    de la pasada completa la marca caía más de 1,5 s después, y cerca del final del fichero se pasaba del todo
+    —y acabar el fichero vacía la lista—. Pausar quita la deriva y deja la pausa como estaba."""
+    corriendo = h.get("pause") is False
+    h.command("set_property", "pause", True)
     h.command("set_property", "time-pos", seconds)
-    h.wait_property("time-pos", lambda v: isinstance(v, (int, float)) and abs(v - seconds) < 1.5, timeout=10)
+    h.wait_property("time-pos", lambda v: isinstance(v, (int, float)) and abs(v - seconds) < 0.5, timeout=10)
     h.command("script-binding", "mu_cut/cut-mark")
+    if corriendo:
+        h.command("set_property", "pause", False)
 
 
 def test_un_tramo_se_pinta_en_la_linea_de_tiempo_sin_perder_los_capitulos(cut_mpv):
