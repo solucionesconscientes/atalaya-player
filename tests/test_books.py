@@ -264,7 +264,10 @@ def test_mu_books_resume_speed_bookmarks_and_skips(books_mpv, tmp_path, media_di
         h.command("script-message-to", "mu_books", "mu-books-event", json.dumps(ev))
 
     event({"view": "chapters"})
-    st = h.wait_property("user-data/mu/books", lambda v: v.get("view") == "chapters", timeout=10)
+    # el estado se publica dos veces (la vista primero, sus filas cuando están): esperar solo el nombre de la vista
+    # da las filas de la anterior en cuanto la máquina va cargada
+    st = h.wait_property("user-data/mu/books", lambda v: v.get("view") == "chapters" and
+                         any(i.get("title") == "Capítulo 1" for i in v.get("items") or []), timeout=10)
     assert [i["title"] for i in st["items"]] == ["Capítulo 1", "Capítulo 2", "Capítulo 3"]
     assert [i["hint"] for i in st["items"]] == ["0:00", "0:06", "0:12"] and st["items"][1]["active"]
     h.command("script-binding", "mu_books/books-menu")
@@ -280,7 +283,8 @@ def test_mu_books_resume_speed_bookmarks_and_skips(books_mpv, tmp_path, media_di
     h.command("script-binding", "mu_books/books-menu")
     h.wait_property("user-data/mu/books", lambda v: v.get("view") == "root", timeout=10)
     event({"view": "bookmarks"})
-    h.wait_property("user-data/mu/books", lambda v: v.get("view") == "bookmarks", timeout=10)
+    h.wait_property("user-data/mu/books", lambda v: v.get("view") == "bookmarks" and
+                    any(i.get("title") == "Me gusta esta parte" for i in v.get("items") or []), timeout=10)
     event(mark["value"], action="delete")
     h.wait_property("user-data/mu/books", lambda v: v.get("bookmarks") == 0, timeout=10)
     assert h.script_errors() == [], h.script_errors()

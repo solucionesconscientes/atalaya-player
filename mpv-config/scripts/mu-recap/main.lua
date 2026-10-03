@@ -260,6 +260,7 @@ end
 
 local ask_llm   -- se define con el nivel 2, más abajo; el índice ya lo usa para saber qué ofrecer
 local open_root -- la raíz «Resumen e índice» se define con las teclas, al final; el despacho ya la necesita
+local play_short, save_short  -- H58: lo mismo, el montaje corto se define abajo y el despacho lo necesita
 
 -- H38/G2-G5 · el índice del vídeo: secciones con su título y, dentro, las frases clave con su minuto. Lo compone mpvd
 -- a partir del subtítulo que ya hay (`recap.outline`), sin escribir nada con un modelo y sin lanzar ninguna
@@ -469,6 +470,17 @@ mp.register_script_message(EVENT, function(json)
   elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.translate then
     -- H45/D2 · traducir el SRT de la web al español con OPUS-MT vive en el panel de subtítulos, con su progreso
     nav.open_child('mu_subs', 'subs-web', { nav.HOME, ROOT_TITLE }, 'root')
+  elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.short then
+    uosc.close(MENU)
+    play_short(ev.value.short)
+  elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.save_short then
+    save_short()
+  elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.full then
+    local corto = state.short
+    state.short = nil
+    publish()
+    if corto then mp.commandv('loadfile', corto.path, 'replace') end
+    uosc.close(MENU)
   elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.outline then
     outline()
   elseif ev.type == 'activate' and type(ev.value) == 'table' and ev.value.prose then
@@ -494,6 +506,70 @@ local function key_for(name)
   return nil
 end
 
+-- ---------------------------------------------------------------------------------------------
+-- H58 · «ponme esta charla de una hora en quince minutos»
+--
+-- Esto NO es el resumen escrito que hay arriba: es el vídeo montado y acortado, para verlo del tirón. mpvd elige
+-- los tramos (semantic.highlights: los que mejor representan lo dicho, cortados por frases enteras) y aquí se
+-- montan en una LÍNEA DE TIEMPO VIRTUAL de mpv (`edl://`), que no recodifica nada y se abre al instante. Guardar
+-- un archivo de verdad sigue estando, pero es otra cosa y cuesta: para eso está «Guardarlo».
+
+local DURACIONES = { 5, 10, 15, 30 }
+
+local function current_path()
+  local p = mp.get_property('path') or ''
+  if p == '' or p:match('^%a[%w+.-]*://') then return nil end
+  return mp.command_native({ 'expand-path', p })
+end
+
+-- `edl://` separa los campos por comas, así que una ruta con una coma rompe el montaje («EDL parsing failed»,
+-- comprobado). La forma de escaparla es %<bytes>%<texto>, y los nombres de película llevan comas a menudo.
+local function edl_quote(path)
+  return '%' .. #path .. '%' .. path
+end
+
+local function edl_url(path, segs)
+  local partes = {}
+  for _, s in ipairs(segs) do
+    partes[#partes + 1] = string.format('%s,start=%.3f,length=%.3f', edl_quote(path), s.start, s['end'] - s.start)
+  end
+  return 'edl://' .. table.concat(partes, ';')
+end
+
+play_short = function(minutes)
+  local path = current_path()
+  if not path then osd('Esto solo se puede hacer con un archivo de tu equipo') return end
+  if not rpc.connected() then osd('mpvd no está conectado') return end
+  osd(string.format('Montando la versión de %d minutos…', minutes), 5)
+  rpc.call('semantic.highlights', { path = path, minutes = minutes }, function(err, res)
+    if err then osd('No se pudo: ' .. (err.message or 'error'), 5) return end
+    local segs = (type(res) == 'table' and res.segments) or {}
+    if #segs == 0 then
+      osd('No hay suficiente que resumir en este vídeo', 5)
+      return
+    end
+    state.short = { minutes = minutes, segments = segs, total = res.total or 0, path = path }
+    publish()
+    mp.commandv('loadfile', edl_url(path, segs), 'replace')
+    mp.set_property_bool('pause', false)
+    osd(string.format('Versión de %s en %d trozos · es un montaje, el archivo original no se toca',
+                      clock(res.total or 0), #segs), 6)
+  end, 300)
+end
+
+save_short = function()
+  local corto = state.short
+  if not corto then osd('Primero monta una versión corta') return end
+  local segs = {}
+  for _, s in ipairs(corto.segments) do segs[#segs + 1] = { start = s.start, ['end'] = s['end'] } end
+  rpc.call('convert.cut', { path = corto.path, segments = segs, joined = true, preset = 'mp4' },
+    function(err, res)
+      if err then osd('No se pudo guardar: ' .. (err.message or 'error'), 5) return end
+      osd('Guardando la versión corta → ' .. ((type(res) == 'table' and res.out_dir) or 'Convertidos')
+            .. '  ·  puedes seguirlo en Tareas', 7)
+    end, 60)
+end
+
 local function root_items()
   local from, to, was_away = stretch()
   local items = {}
@@ -504,6 +580,28 @@ local function root_items()
   items[#items + 1] = { title = 'Índice del vídeo entero',
                         hint = 'secciones y frases clave' .. (key_for('outline') and (' · ' .. key_for('outline')) or ''),
                         icon = 'list', value = { outline = true } }
+  -- H58 · y el vídeo acortado de verdad, no un texto
+  local dur = mp.get_property_number('duration') or 0
+  if current_path() and dur > 300 then
+    local sub = {}
+    for _, m in ipairs(DURACIONES) do
+      if m * 60 < dur * 0.9 then
+        sub[#sub + 1] = { title = string.format('En %d minutos', m), icon = 'content_cut',
+                          hint = string.format('de %s', clock(dur)), value = { short = m } }
+      end
+    end
+    if state.short then
+      sub[#sub + 1] = { title = 'Guardarlo como archivo', icon = 'save', separator = true,
+                        hint = 'recodifica · va a Tareas', value = { save_short = true } }
+      sub[#sub + 1] = { title = 'Volver al vídeo entero', icon = 'undo', value = { full = true } }
+    end
+    sub[#sub + 1] = { title = 'Se montan los trozos que mejor lo representan, cortados por frases enteras',
+                      icon = 'info', muted = true, selectable = false, separator = true,
+                      hint = 'no recodifica nada: es un montaje, se abre al instante' }
+    items[#items + 1] = { title = 'Verlo acortado', icon = 'fast_forward', id = 'short',
+                          hint = state.short and (clock(state.short.total) .. ' montados') or 'la charla entera, en menos',
+                          items = sub }
+  end
   return items
 end
 

@@ -220,6 +220,23 @@ No es solo para canales: se puede programar **una canción, una carpeta, una lis
 —despertador, franja y apagado—, así que vale igual para «la radio a las 7:00» que para «esta lista mientras
 cenamos, y al acabar suspende».
 
+## 2c. Ir a un minuto escribiéndolo
+Icono del reloj en la barra, o `g`. Escribes y Enter. Admite lo que uno escribiría de verdad: `2:15`, `00:02:15`,
+`1:02:15`, `135` (segundos sueltos) y también relativos: `+30` adelanta medio minuto y `-30` lo retrocede. Si el
+minuto se sale del archivo, te lo dice en vez de dejarte pulsar.
+
+## 2d. Verlo acortado: la charla de una hora en quince minutos
+En *Resumen e índice → **Verlo acortado*** (solo con archivos de tu equipo de más de cinco minutos). Eliges cuánto
+quieres que dure —5, 10, 15 o 30 minutos— y el reproductor **monta los trozos que mejor lo representan** y los
+pone seguidos.
+
+Tres cosas que conviene saber:
+- **No es el resumen escrito**, que ya existe ahí al lado: esto es el vídeo, acortado y reproducible.
+- **No recodifica nada ni toca el original**: es un montaje virtual, se abre al instante y no ocupa disco. Si lo
+  quieres como archivo, *Guardarlo como archivo* lo manda a Tareas (eso sí recodifica).
+- **Corta por frases enteras**, nunca a mitad de palabra: usa la transcripción para saber dónde empieza y acaba
+  cada frase. Necesita que el vídeo tenga subtítulos IA generados (`alt+c`).
+
 ## 3c. Tramos: quedarte con trozos de lo que estás viendo
 En la barra hay tres iconos nuevos, que son los que se pulsan **con la película andando** (el porqué de cada uno
 está en `docs/INTERFAZ.md`):

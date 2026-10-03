@@ -242,3 +242,32 @@ def test_abrir_varios_archivos_ensena_la_lista_y_se_quita_sola(tv, media_dir):  
         assert h.script_errors() == [], h.script_errors()
     finally:
         h.stop()
+
+
+def test_una_reproduccion_se_cuenta_una_vez(menu_mpv, media_dir, tmp_path):
+    """H58 · «Continuar viendo» contaba de más. Dos cosas lo rompían y las dos dependían de quién ganara una
+    carrera, así que el mismo vídeo salía unas veces con 2 reproducciones y otras con 3: el reproductor reintenta
+    las llamadas que no contesta a tiempo (y sumar no es idempotente), y la fila la puede crear un guardado de
+    posición, cuyo INSERT ya pone plays=1, de modo que el «he empezado esto» que llegaba detrás sumaba otra.
+    Ahora el identificador de la reproducción viaja en todas las llamadas y se cuenta una vez por identificador."""
+    h, d = menu_mpv
+    h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
+    video = media_dir / "video30.mkv"
+
+    h.command("loadfile", str(video))
+    h.wait_property("user-data/mu/menu", lambda v: bool(v) and v.get("tracked") is True, timeout=30)
+    h.command("seek", "10", "absolute", "exact")
+    h.command("set_property", "pause", True)
+    d.wait(lambda: any(r["position"] >= 9 for r in d.call("watch.recents")), timeout=20)
+    assert [r["plays"] for r in d.call("watch.recents")] == [1]
+
+    # otra reproducción cuenta una vez, y sus reintentos NO: es el identificador el que manda, no cuántas
+    # llamadas lleguen ni cuándo
+    for _ in range(3):
+        d.call("watch.update", {"path": str(video), "position": 11, "new_play": True, "play_id": "segunda"})
+    assert [r["plays"] for r in d.call("watch.recents")] == [2]
+    d.call("watch.update", {"path": str(video), "position": 12, "new_play": True, "play_id": "tercera"})
+    assert [r["plays"] for r in d.call("watch.recents")] == [3]
+    # y un guardado de posición sin declarar reproducción no cuenta nunca
+    d.call("watch.update", {"path": str(video), "position": 13})
+    assert [r["plays"] for r in d.call("watch.recents")] == [3]

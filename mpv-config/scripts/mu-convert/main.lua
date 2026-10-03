@@ -91,6 +91,35 @@ local function compact_tasks()
   return out
 end
 
+-- H58 · el indicador de que hay algo en marcha. La queja de Ser («guardar los tramos no hace nada») era falsa:
+-- los archivos se creaban, pero no había NINGUNA señal de que estuviera pasando algo. Mientras haya trabajo, un
+-- icono en la barra con cuántas tareas van y por dónde va la primera; al pulsarlo, la lista. Sin trabajo, no está.
+local function set_tasks_button()
+  if not uosc.available() then return end
+  local n = count_active()
+  local corriendo, pct, titulo = nil, nil, nil
+  for _, t in pairs(state.tasks or {}) do
+    if t.status == 'running' then
+      corriendo = corriendo or t
+      pct = t.progress and math.floor(t.progress * 100) or nil
+      titulo = t.title
+    end
+  end
+  local tip
+  if n == 0 then tip = ''
+  elseif corriendo then
+    tip = string.format('%s%s · %d en marcha · ver Tareas', (titulo or 'Trabajando'):sub(1, 40),
+                        pct and (' ' .. pct .. ' %') or '', n)
+  else
+    tip = string.format('%d en cola · ver Tareas', n)
+  end
+  uosc.set_button('mu-tasks', {
+    icon = corriendo and 'sync' or 'hourglass_top', hide = n == 0, badge = n > 0 and tostring(n) or nil,
+    active = corriendo ~= nil, tooltip = tip,
+    command = { 'script-binding', SCRIPT .. '/tasks-menu' },
+  })
+end
+
 local function publish()
   local job = state.job
   mp.set_property_native('user-data/mu/convert', {
@@ -101,6 +130,7 @@ local function publish()
     last_started = state.last_started, last_error = state.last_error, input = state.input and state.input.mode or '',
     opened = state.opened, last_done = state.last_done or { status = '' },
   })
+  set_tasks_button()
 end
 
 local function osd(text, secs) mp.osd_message(text, secs or 3) end

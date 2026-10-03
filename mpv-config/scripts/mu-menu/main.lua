@@ -18,6 +18,7 @@ local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-menu-event'
 local MENU = 'mu-menu'
 local PALETTE = 'mu-palette'
+local GOTO = 'mu-goto'          -- H58 · la caja para escribir un minuto («2:15», «1:02:15», «135», «+30»)
 
 local opts = {
   start_screen = true,     -- open the start menu when mpv starts without a file
@@ -106,7 +107,10 @@ end
 local function save_position(final, reason)
   if not state.tracked or state.path == '' then return end
   local pos = state.position
-  local params = { path = state.path, title = state.title, duration = state.duration, position = pos }
+  -- el identificador de ESTA reproducción viaja también al guardar la posición: así mpvd sabe que la fila que
+  -- crea un guardado y el «he empezado a ver esto» que llega detrás son la misma reproducción, y no cuenta dos
+  local params = { path = state.path, title = state.title, duration = state.duration, position = pos,
+                   play_id = state.play_id }
   if final then
     if reason == 'eof' then params.finished = true end
   end
@@ -130,8 +134,10 @@ mp.observe_property('media-title', 'string', function(_, v)
 end)
 
 local function register_play()
+  -- H58 · un identificador por reproducción: si la llamada se reintenta (mu-core lo hace cuando no contesta a
+  -- tiempo), mpvd sabe que es la misma y no la cuenta dos veces.
   rpc.call('watch.update', { path = state.path, title = state.title, duration = state.duration,
-                             position = state.position, new_play = true },
+                             position = state.position, new_play = true, play_id = state.play_id },
            function(err) if err then fail(err, 'watch.update') end end, 10)
 end
 
@@ -185,6 +191,7 @@ end
 mp.register_event('file-loaded', function()
   local path = mp.get_property('path') or ''
   state.path, state.resumed, state.position = path, false, mp.get_property_number('time-pos') or 0
+  state.play_id = string.format('%d-%06d', os.time(), math.random(0, 999999))
   state.duration = mp.get_property_number('duration') or 0
   state.title = mp.get_property('media-title') or path
   state.tracked = trackable(path)
@@ -633,6 +640,8 @@ local CURATED = {
     kw = 'tramos cortar trozos clips guardar unir recortar' },
   { title = tr('Marcar un tramo desde aquí / hasta aquí'), cmd = 'script-binding mu_cut/cut-mark', key = 'ctrl+x',
     kw = 'tramo cortar corte segmento clip trozo recortar' },
+  { title = tr('Ir a un minuto'), cmd = 'script-binding mu_menu/goto', key = 'g',
+    kw = 'ir minuto tiempo saltar hora posicion goto' },
   { title = tr('Anotar este minuto'), cmd = 'script-binding mu_notes/notes-add', key = 'n',
     kw = 'nota notas anotar apuntar minuto' },
   { title = tr('Repetir archivo'), cmd = 'cycle-values loop-file inf no', key = 'L' },
@@ -792,6 +801,47 @@ local function score(folded, words)
   return total
 end
 
+-- H58 · ir a un minuto escribiéndolo, que es lo que pidió Ser: un icono, se escribe «00:02:15» y va allí.
+-- Admite h:mm:ss, mm:ss, segundos sueltos y relativos con + o −, porque es lo que la gente escribe de verdad.
+local function parse_time(text)
+  local t = (text or ''):gsub('%s', ''):gsub(',', '.')
+  if t == '' then return nil end
+  local signo = t:sub(1, 1)
+  local rel = (signo == '+' or signo == '-' or signo == '−') and (signo == '+' and 1 or -1) or nil
+  if rel then t = t:sub(2) end
+  local partes = {}
+  for trozo in t:gmatch('[^:]+') do partes[#partes + 1] = trozo end
+  if #partes == 0 or #partes > 3 then return nil end
+  local total = 0
+  for i, trozo in ipairs(partes) do
+    local n = tonumber(trozo)
+    if not n or n < 0 then return nil end
+    if i < #partes and n ~= math.floor(n) then return nil end
+    total = total + n * 60 ^ (#partes - i)
+  end
+  return total, rel
+end
+
+local function goto_menu(query)
+  local secs, rel = parse_time(query)
+  local items
+  if secs then
+    local dur = mp.get_property_number('duration')
+    local destino = rel and ((mp.get_property_number('time-pos') or 0) + rel * secs) or secs
+    local fuera = dur and (destino < -0.5 or destino > dur + 0.5)
+    items = { { title = (rel and (rel > 0 and 'Avanzar ' or 'Retroceder ') or 'Ir a ') .. fmt_time(secs),
+                hint = fuera and 'se sale del archivo' or (dur and ('de ' .. fmt_time(dur)) or nil),
+                icon = fuera and 'error' or 'play_arrow', selectable = not fuera, muted = fuera,
+                value = fuera and '' or { goto_secs = secs, goto_rel = rel or 0 } } }
+  else
+    items = { { title = tr('Escribe un minuto: 2:15, 1:02:15, 135 segundos, o +30 / −30'), icon = 'timer',
+                selectable = false, muted = true } }
+  end
+  return { type = GOTO, title = tr('Ir a un minuto'), items = items, callback = { SCRIPT, EVENT },
+           search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
+           search_suggestion = query, footnote = tr('Enter salta · ⌫ en vacío cierra') }
+end
+
 local function palette_menu(items, query)
   return {
     type = PALETTE, title = tr('Escribe un comando, canal, vídeo reciente o algo del diálogo'), items = items,
@@ -928,6 +978,10 @@ views.palette = function()
   run_palette('')
 end
 
+views.minuto = function()   -- `goto` es palabra reservada en Lua
+  uosc.open(goto_menu(''))
+end
+
 -- ---------------------------------------------------------------------------------------------
 -- actions
 
@@ -974,6 +1028,16 @@ mp.register_script_message(EVENT, function(json)
   if back then ev.type = 'back' end
   if ev.type == 'activate' then
     local v = type(ev.value) == 'table' and ev.value or {}
+    if v.goto_secs then
+      local destino = v.goto_rel ~= 0 and ((mp.get_property_number('time-pos') or 0) + v.goto_rel * v.goto_secs)
+        or v.goto_secs
+      mp.commandv('seek', math.max(0, destino), 'absolute+exact')
+      state.view = ''
+      state.stack = {}
+      publish()
+      uosc.close(GOTO)
+      return
+    end
     if v.child then
       -- another script's menu, one level below this one: it gets our crumbs and comes back here on "Atrás"
       local crumbs = { nav.HOME }
@@ -1036,7 +1100,8 @@ mp.register_script_message(EVENT, function(json)
       open_view({ name = v.view, args = v })
     end
   elseif ev.type == 'search' then
-    if state.view == 'palette' then run_palette(ev.query or '') end
+    if state.view == 'palette' then run_palette(ev.query or '')
+    elseif state.view == 'minuto' then uosc.update(goto_menu(ev.query or '')) end
   elseif ev.type == 'back' then
     table.remove(state.stack)
     -- uosc only closes the menu whose type matches: the palette is PALETTE, so closing MENU did nothing at all
@@ -1133,6 +1198,15 @@ end
 
 mp.add_key_binding(nil, 'root', open_root)
 mp.add_key_binding(nil, 'palette', open_palette)
+
+-- H58 · ir a un minuto escribiéndolo (icono de la barra y tecla `g`, que mpv trae como «ignore»)
+local function open_goto()
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
+  if (mp.get_property_number('duration') or 0) <= 0 then osd(tr('Esto no tiene duración')) return end
+  state.stack = {}
+  open_view({ name = 'minuto' })
+end
+mp.add_key_binding(nil, 'goto', open_goto)
 mp.add_key_binding(nil, 'recents', function() open_under_root('recents') end)
 mp.add_key_binding(nil, 'help', function() open_under_root('help') end)
 -- the ● button and «Grabar» belong to mu-record (H18); kept for old bindings
@@ -1151,6 +1225,9 @@ apply_click_pause()
 
 local function set_button()
   uosc.set_button('mu-menu', { icon = 'apps', tooltip = 'Menú (alt+m)', command = { 'script-binding', SCRIPT .. '/root' } })
+  uosc.set_button('mu-goto', { icon = 'timer', tooltip = tr('Ir a un minuto escribiéndolo (g)'),
+                               hide = (mp.get_property_number('duration') or 0) <= 0,
+                               command = { 'script-binding', SCRIPT .. '/goto' } })
 end
 mp.register_script_message('uosc-version', set_button)
 mp.observe_property('user-data/mu/core', 'native', function(_, core)

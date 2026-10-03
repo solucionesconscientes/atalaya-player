@@ -88,6 +88,7 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 | `ctrl+x` | Tramos: marcar «desde aquí» y, al pulsar otra vez, «hasta aquí» |
 | `ctrl+l` | Lista de tramos: guardarlos sueltos o unidos, en vídeo o solo audio |
 | `n` | Anotar el minuto en el que estás (la nota sale en la línea de tiempo) |
+| `g` | Ir a un minuto escribiéndolo: `2:15`, `1:02:15`, `135` segundos, o `+30` / `−30` |
 | `z` / `x` | Retraso de subtítulos −/+ 100 ms · `ctrl+-` / `ctrl++` retraso de audio |
 | `I` | Estadísticas · `` ` `` consola |
 | `Q` | Salir guardando la posición (`quit-watch-later`) |

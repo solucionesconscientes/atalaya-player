@@ -14,7 +14,8 @@ from mpvd.hashing import file_hash
 from mpvd.jobs import Job, Priority
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd.semantic import embed as embed_mod
-from mpvd.semantic.index import (Sentence, chapters as topic_chapters, ffmetadata, search as vector_search,
+from mpvd.semantic.index import (Sentence, chapters as topic_chapters, ffmetadata,
+                                 highlights as pick_highlights, search as vector_search,
                                  sentences_from_segments, vectors_from_bytes, vectors_to_bytes)
 
 if TYPE_CHECKING:
@@ -178,6 +179,15 @@ class SemanticService:
         hits = await asyncio.to_thread(vector_search, qv, vectors, sentences, k, query)
         return {"status": "done", "path": str(path), "hits": hits, "sentences": len(sentences)}
 
+    async def highlights(self, path: Path, target: float, min_segment: float) -> dict[str, Any]:
+        loaded = await self.load_index(path)
+        if loaded is None:
+            raise RpcError(NOT_FOUND, "no hay índice de ese archivo")
+        sentences, vectors = loaded
+        dur = sentences[-1].end if sentences else 0.0
+        res = await asyncio.to_thread(pick_highlights, vectors, sentences, target, dur, min_segment)
+        return {**res, "asked": round(target, 1), "duration": round(dur, 1)}
+
     async def chapters(self, path: Path, min_seconds: float, percentile: float, window: float,
                        force: bool = False) -> dict[str, Any]:
         key = await self._key(path)
@@ -289,6 +299,22 @@ def register(server: MpvdServer, service: SemanticService) -> None:
         res["hits"] = await _fallback_text_search(p, q, k)
         res["mode"] = "text"
         return res
+
+    @d.method("semantic.highlights")
+    async def highlights(ctx: RpcContext, path: str, minutes: float = 15.0, min_segment: float = 25.0,
+                         index: bool = True) -> dict[str, Any]:
+        """H58 · los tramos que mejor representan el archivo, para verlo entero en `minutes` minutos.
+
+        Devuelve `{segments: [{start, end}], total, sentences}`. Se corta por frases enteras, así que un tramo
+        nunca empieza ni acaba a mitad de palabra."""
+        p = _local(path)
+        if not service.available():
+            raise RpcError(UNAVAILABLE, "no disponible: " + _why(service))
+        if float(minutes) <= 0:
+            raise RpcError(INVALID_PARAMS, "¿de cuántos minutos?")
+        if index and await service.load_index(p) is None:
+            await service.build_index(p)
+        return await service.highlights(p, float(minutes) * 60.0, float(min_segment))
 
     @d.method("semantic.chapters")
     async def chapters(ctx: RpcContext, path: str, min_seconds: float = 180.0, percentile: float = 85.0,

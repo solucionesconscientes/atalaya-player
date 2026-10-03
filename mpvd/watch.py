@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 FINISHED_TAIL = 30.0      # seconds before the end that count as "finished"
 FINISHED_RATIO = 0.95
 MIN_RESUME = 20.0         # do not bother resuming below this position
+NEW_PLAY_GRACE = 5.0   # s: un «nueva reproducción» repetido antes de esto es un reintento, no otra vez
 MAX_ENTRIES = 500
 
 SCHEMA = """
@@ -76,6 +77,8 @@ class WatchStore:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(SCHEMA)
         self._lock = threading.Lock()
+        self._last_play: dict[str, float] = {}      # última «nueva reproducción» por clave (H58)
+        self._last_play_id: dict[str, str] = {}     # y su identificador, para que un reintento no cuente
 
     def close(self) -> None:
         with self._lock:
@@ -107,13 +110,29 @@ class WatchStore:
         return out
 
     def update(self, key: str, path: str, title: str = "", duration: float = 0.0, position: float = 0.0,
-               kind: str | None = None, finished: bool | None = None, new_play: bool = False) -> dict[str, Any]:
+               kind: str | None = None, finished: bool | None = None, new_play: bool = False,
+               play_id: str = "") -> dict[str, Any]:
         now = time.time()
+        # Una reproducción se cuenta UNA vez. Dos cosas lo rompían: (1) el reproductor reintenta las llamadas que
+        # no contesta a tiempo, y sumar no es idempotente; (2) la fila la puede crear un guardado de posición, y el
+        # INSERT ya pone plays=1, así que el «he empezado esto» que llegaba detrás sumaba otra —según cuál ganara
+        # la carrera, el mismo vídeo salía con 2 o con 3—. Por eso el identificador de la reproducción viaja en
+        # TODAS las llamadas y aquí se cuenta una sola vez por identificador.
         duration = max(0.0, float(duration or 0))
         position = max(0.0, float(position or 0))
         done = bool(finished) if finished is not None else is_finished(position, duration)
         search = normalize(f"{title} {os.path.basename(path)}")
         with self._lock:
+            if play_id:
+                visto = self._last_play_id.get(key) == play_id
+                self._last_play_id[key] = play_id
+                if visto:
+                    new_play = False
+            elif new_play:
+                if now - self._last_play.get(key, 0.0) < NEW_PLAY_GRACE:
+                    new_play = False      # sin identificador (cliente viejo, MCP): el apaño por tiempo
+                else:
+                    self._last_play[key] = now
             old = self._conn.execute("SELECT * FROM watch WHERE key=?", (key,)).fetchone()
             if old is None:
                 self._conn.execute(
@@ -221,12 +240,13 @@ def register(server: MpvdServer, service: WatchService) -> None:
     @d.method("watch.update")
     async def update(ctx: RpcContext, path: str, position: float = 0.0, duration: float = 0.0, title: str = "",
                      key: str | None = None, kind: str | None = None, finished: bool | None = None,
-                     new_play: bool = False) -> dict[str, Any]:
+                     new_play: bool = False, play_id: str = "") -> dict[str, Any]:
         """Record playback position (call on start, periodically, on pause/seek and at the end)."""
         if not path:
             raise RpcError(INVALID_PARAMS, "path required")
         k = key or await service.key_for(path)
-        return await asyncio.to_thread(service.store.update, k, path, title, duration, position, kind, finished, new_play)
+        return await asyncio.to_thread(service.store.update, k, path, title, duration, position, kind, finished,
+                                       new_play, str(play_id or ""))
 
     @d.method("watch.recents")
     async def recents(ctx: RpcContext, limit: int = 20, kind: str | None = None,

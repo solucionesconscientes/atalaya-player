@@ -196,3 +196,80 @@ def ffmetadata(chaps: list[dict[str, Any]]) -> str:
         lines += ["[CHAPTER]", "TIMEBASE=1/1000", f"START={int(c['start'] * 1000)}", f"END={int(c['end'] * 1000)}",
                   "title=" + str(c.get("title", "")).replace("\n", " ")]
     return "\n".join(lines) + "\n"
+
+
+def highlights(vectors: Any, sentences: list[Sentence], target: float, duration: float | None = None,
+               min_segment: float = 25.0, join_gap: float = 12.0, pad: float = 0.4, smooth: int = 5) -> dict[str, Any]:
+    """H58 · «ponme esta charla de una hora en quince minutos»: los tramos que mejor la representan.
+
+    No es el resumen escrito (eso es `recap`): es **qué trozos del vídeo hay que ver**, para montarlos seguidos y
+    verlos del tirón. El método es el clásico extractivo y no necesita ningún modelo de lenguaje, solo los vectores
+    que ya hay: se calcula el centro de todo lo dicho y se puntúa cada frase por lo cerca que está de él, o sea por
+    cuánto representa al conjunto.
+
+    Lo que hace que el resultado se pueda VER, que es donde está la diferencia con sumar frases sueltas:
+
+    * la puntuación se **suaviza entre frases vecinas** (`smooth`), de modo que lo que gana son PASAJES y no frases
+      sueltas repartidas por toda la charla; sin esto salían setenta y cinco trocitos de catorce segundos, que es
+      un tartamudeo y no un montaje;
+    * se corta por **frases enteras**, nunca a mitad de palabra (la transcripción ya trae los límites);
+    * los trozos pegados o casi (`join_gap`) se funden, y ninguno baja de `min_segment`;
+    * y se ajusta **cuántas frases se cogen** hasta que lo que sale dura de verdad lo que se ha pedido: unir y
+      estirar infla el total, así que coger «frases que sumen quince minutos» da diecisiete y pico.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    out: dict[str, Any] = {"segments": [], "total": 0.0, "sentences": len(sentences)}
+    if len(sentences) < 4 or vectors.shape[0] != len(sentences) or target <= 0:
+        return out
+    fin = float(duration) if duration else sentences[-1].end
+
+    centro = vectors.mean(axis=0)
+    norma = float(np.linalg.norm(centro))
+    if norma == 0:
+        return out
+    puntos = vectors @ (centro / norma)              # los vectores vienen ya normalizados
+    largos = np.array([max(0.5, s.end - s.start) for s in sentences])
+    # una frase de dos palabras puede parecerse mucho al centro sin aportar nada: pesa también su duración
+    puntos = puntos * np.minimum(1.0, largos / 4.0) ** 0.25
+    if smooth > 1 and len(puntos) >= smooth:
+        puntos = np.convolve(puntos, np.ones(smooth) / smooth, mode="same")
+    orden = list(np.argsort(-puntos))
+
+    def construir(k: int) -> list[list[float]]:
+        elegidas = sorted(int(i) for i in orden[:k])
+        tramos: list[list[float]] = []
+        for idx in elegidas:
+            s = sentences[idx]
+            a, b = max(0.0, s.start - pad), min(fin, s.end + pad)
+            if tramos and a - tramos[-1][1] <= join_gap:
+                tramos[-1][1] = max(tramos[-1][1], b)
+            else:
+                tramos.append([a, b])
+        for t in tramos:
+            falta = min_segment - (t[1] - t[0])
+            if falta > 0:
+                t[0] = max(0.0, t[0] - falta / 2)
+                t[1] = min(fin, t[1] + falta / 2)
+        fundidos: list[list[float]] = []
+        for t in tramos:
+            if fundidos and t[0] - fundidos[-1][1] <= join_gap:
+                fundidos[-1][1] = max(fundidos[-1][1], t[1])
+            else:
+                fundidos.append(t)
+        return fundidos
+
+    # cuántas frases hay que coger para que el montaje dure lo pedido: búsqueda binaria, porque fundir y estirar
+    # hace que la relación no sea la suma de las frases
+    bajo, alto, mejor = 1, len(sentences), construir(1)
+    while bajo <= alto:
+        medio = (bajo + alto) // 2
+        cand = construir(medio)
+        total = sum(b - a for a, b in cand)
+        if total <= target:
+            mejor, bajo = cand, medio + 1
+        else:
+            alto = medio - 1
+    out["segments"] = [{"start": round(a, 2), "end": round(b, 2)} for a, b in mejor]
+    out["total"] = round(sum(b - a for a, b in mejor), 2)
+    return out

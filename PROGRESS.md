@@ -1,6 +1,32 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## Resumen para Ser (2026-10-03, iteración 8) · H58
+De tu tercera prueba y del repaso de `docs/IDEAS.md` salieron cuatro cosas, y están.
+
+- **Se ve lo que pasa por detrás.** Tu «guardar los tramos no hace nada» era **falso** —los archivos se creaban—
+  pero no había ninguna señal: iban a una carpeta que nadie había visto y, al unir, se recodificaba en silencio.
+  Desde fuera eso es idéntico a estar roto. Ahora, mientras hay trabajo, en la barra aparece un icono con **el
+  número de tareas**, el nombre de la que corre y su porcentaje; al pulsarlo se abre Tareas. Sin trabajo, no está.
+- **Se avisa antes de pulsar, no después.** Queda escrito como regla en `docs/INTERFAZ.md`: una opción que no puede
+  funcionar sale apagada, diciendo por qué y señalando lo que sí sirve. Aplicado en tramos (un vídeo de internet o
+  la TV no se pueden cortar), en los mandos del invitado y en «ir a un minuto».
+- **Ir a un minuto escribiéndolo** (`g`, o el icono de la barra): admite `2:15`, `1:02:15`, segundos sueltos y
+  relativos (`+30`, `−30`), que es lo que se escribe de verdad.
+- **La charla de una hora en quince minutos.** Elige los pasajes que mejor la representan, cortados por frases
+  enteras, y los reproduce seguidos **sin generar ningún archivo** (línea de tiempo virtual de mpv), al instante.
+  Guardarlo en un archivo sigue estando, pero es otro paso porque eso sí cuesta. Pedidos 15 min → 14,9 reales.
+- De paso, un fallo real que llevaba tiempo: **«Continuar viendo» contaba dos veces** la misma reproducción. No era
+  de esta tanda; los reintentos no eran idempotentes y la fila la podía crear un guardado de posición.
+
+- Probar a mano:
+  ```bash
+  bin/mpv-uos pelicula.mkv      # g → 00:02:15 · menú › Resumen e índice › Verlo acortado
+  bin/mpv-uos conferencia.mp4   # tramos (barra) → guardar: el icono de Tareas aparece mientras trabaja
+  ```
+- `tools/check.sh`: 859 pasan, 16 con red. Falló `test_books` por la carrera de siempre (el estado publica la vista
+  antes que sus filas); pasa aislado y se ha arreglado el test para que espere las filas y no el nombre de la vista.
+
 ## Resumen para Ser (2026-10-02, iteración 7) · H42-H46
 De tu segunda prueba salieron cinco hitos. **Están los cinco**, menos una pieza del de la sala que digo al final.
 

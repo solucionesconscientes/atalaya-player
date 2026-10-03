@@ -38,6 +38,18 @@ Tres preguntas para que un botón se quede:
    tecla sin ocupar sitio.
 3. **¿Aplica ahora mismo?** Si no, `hide`.
 
+## Dos reglas que salieron de las pruebas de Ser
+
+**1. Lo que pasa por detrás tiene que verse.** «Guardar los tramos no hace nada» era falso —los archivos se
+creaban— pero iban a una carpeta que nadie había visto y, al unir, se recodificaba en silencio. Desde fuera eso es
+indistinguible de estar roto. Mientras haya trabajo en marcha hay un **icono con el número de tareas** en la barra
+(y por dónde va la primera al pasar por encima); al pulsarlo, la lista. Sin trabajo, el icono no está.
+
+**2. Una opción que no puede funcionar ahora no se ofrece como si pudiera.** Se queda —esconderla haría pensar que
+no existe— pero apagada, **diciendo por qué** y señalando lo que sí sirve. Aplicado en: tramos con la TV puesta
+(«es la TV o un vídeo de internet, no un archivo tuyo» → *usa Grabar*), los mandos del invitado sin control, «ir a
+un minuto» sin duración y convertir un vídeo de internet. El resto del menú está por repasar con este criterio.
+
 ## La barra que queda
 
 Agrupada por significado y ordenada por frecuencia, que es lo que no estaba: hoy «grabar» está pegado al menú y el
@@ -48,7 +60,9 @@ botón de «solo audio» vive entre los de pistas.
 | Mover | reproducir/pausa · anterior · siguiente | los dos últimos, con lista |
 | Lo que estás viendo | subtítulos · pistas de audio · saltar intro | audio o vídeo; «saltar» solo dentro de un tramo |
 | Ritmo | velocidad | audio o vídeo |
-| **Lo que haces con ello** | **bucle · tramos · nota** · grabar | audio o vídeo con duración |
+| Ritmo | velocidad · **ir a un minuto** | audio o vídeo con duración |
+| **Lo que haces con ello** | **bucle · tramos · lista de tramos · nota** · grabar | audio o vídeo con duración |
+| **Lo que está pasando** | **tareas en marcha** | solo mientras hay trabajo |
 | Salir | menú · pantalla completa | siempre |
 
 **Lo que entra**, y por qué pasa las tres preguntas:

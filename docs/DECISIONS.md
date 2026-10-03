@@ -1043,3 +1043,24 @@
   URL o una ruta, de modo que la música hereda sin tocar nada el despertador, la franja, el apagado al terminar, la
   lista de programaciones y su menú. La alternativa —un segundo programador para medios locales— habría duplicado
   lo más delicado del programa (el que decide apagar el equipo) para no ganar nada.
+
+- ADR-095 · Que se vea lo que pasa, avisar antes de pulsar, ir a un minuto, y el vídeo acortado (H58).
+  Las tres primeras salen de la prueba de Ser; la cuarta es la idea de `docs/IDEAS.md` 2.1, que eligió hacer.
+  **(1) Un indicador de trabajo en la barra.** La queja «guardar los tramos no hace nada» era **falsa** —los
+  archivos se creaban— pero no había **ninguna señal**: iban a una carpeta que nadie había visto y, al unir, se
+  recodificaba en silencio. Desde fuera eso es idéntico a estar roto. `mu-convert` ya recibía los eventos de
+  tareas, así que el indicador no cuesta ni una consulta: icono con el número mientras hay trabajo, con el nombre
+  y el porcentaje de la que corre, y `hide` cuando no hay nada. Es el uso que la API de uosc pedía desde H52.
+  **(2) Una opción que no puede funcionar no se ofrece como si pudiera.** Queda escrito en `docs/INTERFAZ.md`:
+  apagada, diciendo por qué y señalando lo que sí sirve, **antes** de pulsar y no después.
+  **(3) Ir a un minuto escribiéndolo.** Admite `2:15`, `1:02:15`, segundos sueltos y relativos (`+30`, `−30`),
+  porque es lo que se escribe de verdad. La tecla es `g`, que mpv trae como `ignore`: no se le roba ninguna.
+  **(4) El vídeo acortado, y aquí está la decisión que lo hace posible.** Montar los trozos elegidos **no genera
+  ningún archivo**: se usa la línea de tiempo virtual de mpv (`edl://`), que los reproduce seguidos sin recodificar
+  y se abre al instante. Guardar un archivo sigue estando, pero es otra cosa y cuesta, así que es un paso aparte.
+  Dos detalles que solo aparecen al probarlo: una ruta con una **coma** rompe el montaje («EDL parsing failed»,
+  comprobado) y hay que escaparla con `%<bytes>%<ruta>`, cosa nada rara en nombres de película; y la elección de
+  tramos **tuvo que rehacerse** — puntuar frases sueltas daba setenta y cinco trocitos de catorce segundos, que es
+  un tartamudeo y no un montaje, así que la puntuación se suaviza entre frases vecinas para que ganen **pasajes**,
+  y se ajusta por búsqueda binaria cuántas frases se cogen, porque fundir y estirar infla el total (quince minutos
+  pedidos daban diecisiete). Con eso: 15 min pedidos → 14,9 reales, en tramos de 25 s a 2 min.

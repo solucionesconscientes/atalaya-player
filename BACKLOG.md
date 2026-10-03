@@ -534,11 +534,16 @@ empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de la
 - [x] J4 Fila *Qué hacer en esa franja* en el menú de programaciones, recordada.
 - [ ] J5 Listas guardadas con nombre, que es lo que falta para que programar música sea cómodo (docs/IDEAS.md 1.4).
 
-## H58 · Repaso de funcionalidades e interfaz — docs/IDEAS.md · [ ]
-- [ ] K1 Que se vea lo que pasa por detrás: indicador en la barra mientras hay trabajo, que lleve a Tareas.
-- [ ] K2 Una opción que no puede funcionar ahora no se ofrece como si pudiera (repasar el resto del menú).
+## H58 · Repaso de funcionalidades e interfaz — ADR-095 · docs/IDEAS.md
+- [x] K1 **Indicador de trabajo en la barra**: icono con el número de tareas mientras hay algo en marcha, con el
+      nombre y el porcentaje de la que corre; al pulsarlo, Tareas. Sin trabajo no está.
+- [x] K2 **Avisar antes, no después**, escrito como regla en docs/INTERFAZ.md y aplicado en tramos, mandos del
+      invitado e «ir a un minuto». Queda repasar el resto del menú con ese criterio.
 - [ ] K3 Volumen parejo (ReplayGain) y temporizador para dormirse en todo, no solo en audiolibros.
-- [ ] K4 «La charla de una hora en quince minutos»: transcripción + significado + corte, que ya están los tres.
+- [x] K4 **«La charla de una hora en quince minutos»**: `semantic.highlights` elige los tramos que mejor la
+      representan (cortados por frases enteras) y el reproductor los monta con `edl://`, sin recodificar nada y al
+      instante. Guardar el archivo es un paso aparte, porque eso sí cuesta.
+- [x] K5 **Ir a un minuto escribiéndolo** (icono y `g`): `2:15`, `1:02:15`, segundos sueltos y `+30` / `−30`.
 
 ## H53 · El «modo sencillo» no encoge la barra (encontrado el 2026-10-02) — [ ]
 - [ ] F1 `mu-modes` escribe `uosc-controls` al entrar en modo sencillo, pero **uosc solo lee esa opción al
