@@ -1485,3 +1485,55 @@
   el ratón —así que thumbfast no arrancaba— y la carpeta de datos estaba vacía —así que no había intro que analizar
   ni biblioteca que indexar—, que son justo los dos mecanismos encontrados. La confirmación tiene que venir de
   volver a poner esa película.
+- ADR-115 · La película de Ser, medida con los dos reproductores: lo que cuesta Atalaya es la interfaz, y a
+  pantalla completa no cuesta nada (H71).
+  Cierra el punto (4) de ADR-114, que quedó abierto a propósito: «la confirmación tiene que venir de volver a
+  poner esa película». Ser la puso: `Silencio` (Scorsese, 2016), MKV de 2,7 GB, **HEVC Main 10**, 1920x804,
+  yuv420p10le, 23,976 fps, 2,4 Mbps, 161 min, dos pistas AC3 y tres de subtítulos. Minuto 20, ventanas de 25 s,
+  con `--ao=null` y con ventana de verdad, porque el gasto que se buscaba está en pintar.
+  **Lo primero fue aprender a medir**, porque las primeras tandas se contradecían entre ellas. Cinco errores, los
+  cinco corregidos en `tools/comparar.py`, que queda en el repo para poder repetir esto cuando haga falta:
+  1. el intérprete del `.venv` se llama **`python`** en `/proc`, no `python3`: con la lista que había, **mpvd no se
+     contaba en ninguna cuenta**. El mismo error estaba en `tools/diagnostico.py`, que ya llevaba commit.
+  2. alternando A, B, A, B el segundo de cada pareja mide siempre con la CPU más caliente. El orden pasa a ser
+     **A, B, B, A**, con las mismas aperturas para cada uno.
+  3. **el compositor trabaja por el reproductor** y tampoco se contaba: `kwin_wayland` gasta ~5 puntos de un
+     núcleo con cualquiera de los dos. Llegó al 52 %, con `polkitd` al 30 % y `dbus` al 16 %, mientras mis propias
+     pruebas abrían y cerraban ventanas sin parar: eso, y una **carga media de 5 en una máquina de 4 núcleos**, es
+     lo que Ser tenía por detrás cuando vio los tirones.
+  4. **`/proc/<pid>/task`**: mpv nombra sus hilos (`av`, `vo`, `demux`, y uno `lua/<script>` por script), así que
+     el gasto se parte por hilo en vez de ir quitando piezas a ciegas. Esto es lo que señaló al responsable.
+  5. y el que lo explicaba todo: **el tamaño de la ventana lo elige el escritorio**, y cambia entre aperturas (se
+     vieron 1366x573 y 1920x804 en la misma tanda). El OSD se rasteriza a tamaño de ventana y el vídeo se escala a
+     ella, así que la misma configuración medía 30 % o 40 % según el tamaño que le hubiera tocado. Ahora la
+     herramienta fija `--autofit` y `--geometry` iguales para los dos, y avisa a gritos si no coinciden.
+  **Lo medido, con los dos reproductores y la misma película** (más de 40 aperturas):
+  * **Ni un fotograma perdido en ninguna**, con ninguno de los dos. La película no es pesada: 2,4 Mbps y **0,28
+    núcleos**. Los dos la decodifican **por software**, porque este equipo no tiene HEVC 10 bits por hardware.
+  * **A pantalla completa, que es como se ve una película, gastan lo mismo**: mpv 33,5 % y Atalaya 34,3 % de un
+    núcleo contando TODA la pila, o sea **+0,8 puntos, por debajo del ruido de la máquina (±2,7)**. Por hilo:
+    descodificar 21,6 contra 21,4 (idéntico), pintar 4,8 contra 5,1, y la interfaz **`lua/uosc` 1,2 contra el
+    `lua/osc` 0,6 que gasta la de mpv**. Seis décimas de más por tener nuestra interfaz.
+  * **En ventana, con la ventana fijada igual para los dos** (1280x720, cuatro medidas cada uno con el ruido en
+    ±0,6): mpv **35,0 %** y Atalaya **36,2 %**, o sea **+1,1 puntos**, y por hilo se ve de dónde sale: descodificar
+    21,5 contra 21,3, pintar 4,9 contra 5,4, el hilo principal 1,2 contra 1,4, y la interfaz **`lua/uosc` 1,2
+    frente al `lua/osc` 0,6 de mpv**. Todo el exceso es la interfaz; **los 23 scripts propios cuestan 0,0 y mpvd
+    cuesta 0,0** (con uosc solo, con los 23 cargados y con Atalaya entera sale el mismo número): durante la
+    reproducción el demonio solo observa cuatro propiedades que no cambian —`frame-drop-count`, `pause`, `path`,
+    `media-title`— y H70 no le deja arrancar nada especulativo.
+  * **Y la medida que casi me hace escribir una tontería**: antes de fijar la ventana, Atalaya salía +5 puntos en
+    ventana, repetido y clavado. No era uosc: era que mpv a secas y Atalaya tienen distinto identificador de
+    aplicación (`wayland-app-id=mpv-uos`), así que el escritorio les daba ventanas de distinto tamaño, y el OSD se
+    rasteriza al tamaño de la ventana. Comparar dos ventanas distintas no compara nada. Queda escrito aquí porque
+    es el error que más veces estuvo a punto de colarse.
+  **Decisión**: no se toca uosc ni su configuración. El exceso que se puede atribuir a este proyecto es **1,1
+  puntos de un núcleo** —el 0,3 % de esta máquina de cuatro— y es el precio de tener interfaz; la de mpv cuesta
+  0,6 y la nuestra 1,2. Y lo que de verdad importaba: **ni un fotograma perdido**. Si algún día molesta, la
+  palanca medida es apagar los elementos de uosc por su API pública (`disable-elements`) mientras nadie toque
+  nada, no parchearlo.
+  **Lo que sí se quitó de lo nuestro**, por la regla de Ser («que pase de cualquier cosa que no sea
+  indispensable»): `mu-menu` y `mu-record` observaban `time-pos`, o sea que mpv les despertaba **24 veces por
+  segundo** para apuntar un número que `mu-menu` usa cada 15 s al guardar la posición y `mu-record` solo al cerrar
+  un archivo mientras graba un trozo. Ahora `mu-menu` lo refresca una vez por segundo mientras hay algo abierto y
+  `mu-record` lo apunta en el tick que ya dibuja el contador de grabación. En los scripts propios no queda ningún
+  observador por fotograma.

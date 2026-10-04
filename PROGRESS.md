@@ -1,9 +1,28 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
-## Resumen para Ser (2026-10-04, iteración 9) · H61-H66 y H49 idiomas (torrents, fuera)
+## Resumen para Ser (2026-10-04, iteración 9) · H61-H66, H49 idiomas y H71 (torrents, fuera)
 De tus tres preguntas (minimizar no avisaba, cómo se ven los torrents, el mando de la tele en una Raspberry) y del
 «hazlo todo de golpe, menos la web» salió esta tanda. Lo de la web (H50) sigue sin empezar, como pediste.
+
+### Tu película, medida con los dos reproductores (H71, ADR-115)
+Me dijiste «hasta que mpv-uos no sea igual o más ligero que mpv normal… pruébalo con los 2». Hecho, con *Silencio*
+y más de 40 aperturas alternando uno y otro. **Ni un fotograma perdido con ninguno de los dos.** A pantalla
+completa gastan lo mismo (33,5 % de un núcleo mpv, 34,3 % Atalaya: la diferencia cabe dentro de lo que varía la
+máquina sola). En ventana, con la ventana fijada igual para los dos, Atalaya gasta **+1,1 puntos de un núcleo**, y
+mirando hilo por hilo se ve que son enteros de la interfaz: descodificar sale **idéntico** (21,5 contra 21,3),
+`lua/uosc` cuesta 1,2 donde la interfaz de mpv cuesta 0,6, y **los 23 scripts nuestros y el demonio cuestan 0,0**
+mientras se reproduce. Tu película, además, es ligera: 2,4 Mbps, 0,28 núcleos; la decodifican por software los dos
+porque este portátil no tiene HEVC 10 bits por hardware.
+
+Lo que viste aquella noche sí tiene explicación, y no era el reproductor: **mis propias pruebas**, que abrían y
+cerraban ventanas sin parar. Medido en ese estado, `kwin_wayland` (el escritorio) al 52 %, `polkitd` al 30 % y
+**carga 5 en una máquina de 4 núcleos**. Con eso por delante da tirones cualquier cosa.
+
+Para no volver a discutirlo a ojo queda `tools/comparar.py <archivo>` (`--completa`, `--raton`), que abre el mismo
+archivo con los dos, alterna el orden para no favorecer a ninguno y cuenta todo lo que trabaja por el reproductor,
+incluido el escritorio. De paso se quitaron dos observadores que despertaban a `mu-menu` y `mu-record` 24 veces
+por segundo para un dato que se usa cada 15 s.
 
 ### El fallo de los menús, arreglado (H63/N3, ADR-112)
 El que te conté que fallaba una vez de cada tres, y la causa no era la que yo creía. Cada módulo tiene un
@@ -358,6 +377,16 @@ El 2026-10-04 se cerró todo lo que quedaba aprobado menos la web: **H61** (mand
 (incluido N3, el fallo intermitente de los menús), **H64**, **H65**, **H66** y **H49 entero** (G1-G8: 1.661
 cadenas por idioma). **Los torrents (H59) se quitaron** por decisión de Ser, al no funcionarle y no ser críticos
 (ADR-111). `tools/check.sh` quedó en 907 pasando con cero fallos, y los de red en 16 pasando.
+
+Y se cerró **H71**, que era la pregunta que bloqueaba todo lo demás: «compruébalo con mpv y mpv-uos; hasta que
+mpv-uos no sea igual o más ligero que mpv normal…». Con **su** película (HEVC 10 bits, 2,4 Mbps), más de 40
+aperturas alternando los dos: **ni un fotograma perdido con ninguno**, a pantalla completa gastan lo mismo
+(+0,8 puntos, dentro del ruido) y en ventana —fijada igual para los dos— Atalaya gasta **+1,1 puntos de un
+núcleo**, que son enteros de la interfaz: descodificar sale idéntico (21,5 contra 21,3), `lua/uosc` cuesta 1,2
+frente al `lua/osc` 0,6 de mpv, y **los 23 scripts propios y el demonio cuestan 0,0** mientras se reproduce.
+La herramienta para repetirlo es `tools/comparar.py` (ADR-115). Para medirlo hubo que corregir cinco errores de
+medición, el peor de ellos que **el escritorio da a cada apertura el tamaño de ventana que quiere** y el OSD se
+dibuja a tamaño de ventana: eso, y no uosc, era el «+5 puntos» que parecía haber en ventana.
 
 Lo que queda, por orden:
 

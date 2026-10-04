@@ -104,9 +104,18 @@ local function trackable(path)
   return true
 end
 
+-- Por dónde va la película. Se refresca una vez por segundo mientras hay algo abierto, no en cada fotograma:
+-- observar `time-pos` despertaba este script 24 veces por segundo para apuntar un número que solo se usa al
+-- guardar la posición (cada 15 s) y al cerrar, cuando `time-pos` ya es nil y hay que tener el último valor.
+local function recordar_posicion()
+  local v = mp.get_property_number('time-pos')
+  if v then state.position = v end
+  return state.position
+end
+
 local function save_position(final, reason)
   if not state.tracked or state.path == '' then return end
-  local pos = state.position
+  local pos = recordar_posicion()
   -- el identificador de ESTA reproducción viaja también al guardar la posición: así mpvd sabe que la fila que
   -- crea un guardado y el «he empezado a ver esto» que llega detrás son la misma reproducción, y no cuenta dos
   local params = { path = state.path, title = state.title, duration = state.duration, position = pos,
@@ -117,15 +126,13 @@ local function save_position(final, reason)
   rpc.call('watch.update', params, function(err) if err then fail(err, 'watch.update') end end, 10)
 end
 
-local save_timer = nil
+local save_timer, pos_timer = nil, nil
 local function start_timer()
   if save_timer then save_timer:kill() end
+  if pos_timer then pos_timer:kill() end
   save_timer = mp.add_periodic_timer(opts.save_interval, function() save_position(false) end)
+  pos_timer = mp.add_periodic_timer(1, recordar_posicion)
 end
-
-mp.observe_property('time-pos', 'number', function(_, v)
-  if v then state.position = v end
-end)
 mp.observe_property('duration', 'number', function(_, v)
   if v then state.duration = v end
 end)
@@ -204,6 +211,7 @@ end)
 
 mp.register_event('end-file', function(ev)
   if save_timer then save_timer:kill(); save_timer = nil end
+  if pos_timer then pos_timer:kill(); pos_timer = nil end
   if state.tracked then save_position(true, ev.reason) end
   state.tracked = false
   state.path = ''

@@ -670,3 +670,18 @@ El nombre de la app sigue siendo provisional: cambiarlo es editar `name` en `bra
 - **Los subtítulos IA van lentos**: elige un modelo más pequeño en `alt+i` o activa el perfil ligero (`alt+v`); ver docs/BENCHMARKS.md.
 - **Un canal no carga**: puede estar caído o geobloqueado; la entrada *Comprobar canales en segundo plano* de los menús de TV los marca en segundo plano.
 - **YouTube falla**: `.venv/bin/python -m mpvd call ytdl.update.check` y luego `ytdl.update.apply` actualizan yt-dlp; necesita `node ≥ 22` o `deno`.
+- **«Con Atalaya va a tirones y con mpv no»**: compruébalo con números en vez de a ojo, con la misma película:
+  ```
+  tools/comparar.py "/ruta/a/la/peli.mkv"                  # en ventana, 2 vueltas de 25 s
+  tools/comparar.py "/ruta/a/la/peli.mkv" --completa       # como se ve una película
+  tools/comparar.py "/ruta/a/la/peli.mkv" --raton          # con el ratón por la barra (miniaturas)
+  ```
+  Abre el archivo con `mpv --no-config` y con Atalaya, alternando A,B,B,A para que el orden no favorezca a
+  ninguno, y mide fotogramas perdidos y CPU de todo lo que trabaja por el reproductor: él, el demonio mpvd, lo que
+  cuelgue de ellos y el compositor del escritorio (que gasta lo suyo). Dice el gasto **por hilo**, así que se ve
+  si lo que cuesta es descodificar, pintar o la interfaz, y avisa si los dos no están descodificando igual.
+  Medido el 2026-10-04 con una película HEVC 10 bits de 2,4 Mbps: cero fotogramas perdidos con los dos y +1,1
+  puntos de un núcleo para Atalaya, todo de la interfaz (docs/DECISIONS.md, ADR-115).
+- **Mirar qué está pasando mientras ves algo**: `tools/diagnostico.sh` (o `tools/diagnostico.py`) recoge cada dos
+  segundos los fotogramas perdidos, el códec, si hay aceleración por hardware y qué procesos están gastando CPU,
+  y deja un informe en `tmp/diag/`. Ctrl+C cuando quieras: lo recogido se guarda.

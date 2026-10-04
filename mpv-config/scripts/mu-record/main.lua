@@ -154,6 +154,7 @@ end
 local overlay = mp.create_osd_overlay('ass-events')
 local tick = nil
 local set_button -- forward
+local recordar_posicion -- forward
 
 local function elapsed()
   local rec = state.rec
@@ -176,12 +177,23 @@ local function draw()
   overlay:update()
   set_button()
   publish()
+  recordar_posicion()
 end
 
 local function start_tick()
   if tick then tick:kill() end
   tick = mp.add_periodic_timer(1, draw)
   draw()
+end
+
+-- Dónde iba la película la última vez que se miró. Hace falta al cerrar un archivo mientras se graba un trozo:
+-- `end-file` llega cuando `time-pos` ya es nil. Antes esto se apuntaba observando `time-pos`, o sea 24 veces por
+-- segundo durante TODA la reproducción, grabando o no; el `tick` que ya dibuja el contador lo hace una vez por
+-- segundo y solo mientras se graba, que es cuando el dato se usa.
+recordar_posicion = function()
+  if not state.rec then return end
+  local v = mp.get_property_number('time-pos')
+  if v then state.rec.last_pos = v end
 end
 
 local function stop_tick()
@@ -358,10 +370,6 @@ mp.register_script_message('mu-event', function(payload)
     osd(tr('❌ Grabar: %s'):format(job.message ~= '' and job.message or job.status), 5)
   end
   publish()
-end)
-
-mp.observe_property('time-pos', 'number', function(_, v)
-  if v and state.rec then state.rec.last_pos = v end
 end)
 
 mp.register_event('end-file', function()

@@ -35,8 +35,10 @@ from mpvd.mpvipc import MpvIpcClient  # noqa: E402
 PROPS = ("path", "media-title", "pause", "video-codec", "video-params/w", "video-params/h", "video-params/pixelformat",
          "hwdec-current", "current-vo", "frame-drop-count", "vo-delayed-frame-count", "estimated-vf-fps",
          "container-fps", "time-pos", "demuxer-cache-duration", "video-bitrate")
-INTERESANTES = ("mpv", "python3", "ffmpeg", "ffprobe", "whisper-cli", "fpcalc", "llama-cli", "llama-server", "deno",
-                "yt-dlp", "cloudflared")
+# `python` a secas es el nombre del intérprete del .venv: es como se ve mpvd en /proc, y sin él el demonio
+# —justo el proceso que más interesa vigilar— no salía en ningún informe.
+INTERESANTES = ("mpv", "python", "python3", "ffmpeg", "ffprobe", "whisper-cli", "fpcalc", "llama-cli", "llama-server",
+                "deno", "yt-dlp", "cloudflared")
 
 
 def runtime_dir() -> Path:
@@ -64,6 +66,8 @@ def procesos() -> dict[int, tuple[str, float, float]]:
             nombre = (d / "comm").read_text().strip()
             if nombre not in INTERESANTES:
                 continue
+            if nombre.startswith("python"):
+                nombre = "mpvd" if b"mpvd" in (d / "cmdline").read_bytes() else nombre
             cpu = (int(campos[11]) + int(campos[12])) / tck
             nice = float(campos[16])
             cmd = (d / "cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")[:120]

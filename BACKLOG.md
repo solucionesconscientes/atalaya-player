@@ -265,11 +265,46 @@ mismo momento** y fue bien. Medido todo en su portátil (i5-6200U, 4 núcleos, s
       sesiones; `pause` y `path` ya se observaban, así que no cuesta ni una llamada a mpv.
       Antes solo había un guardián que reaccionaba DESPUÉS de perder fotogramas (2/s durante 10 s): el tirón se
       veía y volvía cada diez segundos. Sigue ahí como segunda red.
-- [~] R5 **Lo que NO he conseguido reproducir**: el caso exacto de Ser. En mis medidas Atalaya sale igual o mejor
+- [x] R5 **El caso exacto de Ser, reproducido y medido con su película** el 2026-10-04 (H71, ADR-115): ni un
+      fotograma perdido con ninguno de los dos reproductores, y a pantalla completa gastan lo mismo. Lo que
+      quedaba por reproducir era esto, y la respuesta está abajo. *(texto original, por lo que enseña:)*
+      **Lo que NO conseguí reproducir entonces**: el caso exacto de Ser. En mis medidas Atalaya sale igual o mejor
       que mpv a secas (con carga: 0 fotogramas perdidos frente a 50 de mpv; sin nada: 87 frente a 74 con un
       fichero que se pasa de lo que da la máquina). Mis pruebas no tocaban el ratón (no arrancaba thumbfast) y su
       carpeta de datos estaba vacía (no había intro que analizar ni biblioteca que indexar), que son justo los dos
       mecanismos que he encontrado. La prueba de verdad es la suya: volver a poner **esa** película.
+
+## H71 · La película de Ser, medida con los dos reproductores — ADR-115 · [x]
+Ser puso **su** película (`Silencio`, Scorsese 2016: MKV 2,7 GB, HEVC **Main 10**, 1920x804, 2,4 Mbps, 161 min) y
+pidió lo único que zanja la discusión: «compruébalo con mpv y mpv-uos; hasta que mpv-uos no sea igual o más ligero
+que mpv normal… no te confundas, pruébalo con los 2». Más de 40 aperturas, alternando los dos.
+- [x] S1 **`tools/comparar.py`**, que es lo que faltaba para poder contestar con datos: abre el mismo archivo con
+      `mpv --no-config` y con `bin/mpv-uos`, mide fotogramas perdidos y CPU de **toda la pila** (reproductor,
+      mpvd, lo que cuelgue de ellos **y el compositor**), parte el gasto **por hilo** (`/proc/<pid>/task`: mpv
+      nombra los suyos), y dice si la diferencia cabe dentro del ruido de la máquina. Con `--completa`, `--raton`
+      (pasea el ratón por la barra, que es lo que despierta thumbfast) y `--ventana`.
+- [x] S2 **Cinco errores de medición, corregidos**, porque las primeras tandas se contradecían: (a) el intérprete
+      del `.venv` se llama `python` en `/proc`, así que **mpvd no se contaba** —el mismo fallo estaba en
+      `tools/diagnostico.py`—; (b) alternar A,B,A,B favorece al primero (ahora A,B,B,A); (c) faltaba el
+      **compositor**, que gasta ~5 puntos de un núcleo con cualquiera de los dos; (d) sin el desglose por hilo se
+      estaba adivinando; y (e) **el escritorio da a cada apertura el tamaño de ventana que quiere** (se vieron
+      1366x573 y 1920x804 en la misma tanda) y el OSD se rasteriza a tamaño de ventana: la misma configuración
+      medía 30 % o 40 %. Ahora la ventana se fija igual para los dos y la herramienta avisa si no coinciden.
+- [x] S3 **El resultado**: **ni un fotograma perdido en ninguna apertura, con ninguno de los dos**. A pantalla
+      completa mpv 33,5 % de un núcleo y Atalaya 34,3 % (+0,8, por debajo del ruido ±2,7). En ventana, fijada
+      igual para los dos, mpv **35,0 %** y Atalaya **36,2 %** (cuatro medidas cada uno, ruido ±0,6): **+1,1
+      puntos**, el 0,3 % de esta máquina de cuatro núcleos. Por hilo: descodificar 21,5 contra 21,3 (idéntico, los
+      dos por software porque este equipo no tiene HEVC 10 bits por hardware), pintar 4,9 contra 5,4 y la interfaz
+      `lua/uosc` 1,2 frente al `lua/osc` 0,6 de la de mpv: **todo el exceso es tener interfaz**. **Los 23 scripts
+      propios cuestan 0,0 y mpvd cuesta 0,0** mientras se reproduce.
+- [x] S4 **Lo que sí se quitó**: `mu-menu` y `mu-record` observaban `time-pos`, o sea 24 despertares por segundo
+      cada uno para apuntar un número que se usa cada 15 s (al guardar la posición) y al cerrar un archivo
+      mientras se graba un trozo. Ahora se refresca una vez por segundo. En los scripts propios no queda ningún
+      observador por fotograma.
+- [x] S5 **Y lo que Ser tenía por detrás cuando vio los tirones**, que es la explicación que faltaba: mis propias
+      pruebas, abriendo y cerrando ventanas sin parar. Medido en ese estado: `kwin_wayland` al 52 %, `polkitd` al
+      30 %, `dbus` al 16 % y **carga media 5 en una máquina de 4 núcleos**. Con eso por delante, cualquier
+      reproductor da tirones; el suyo iba bien porque lo abrió cuando la tanda estaba entre dos pruebas.
 
 ## H66 · Lo que Ser encontró al probarlo: torrents y programar — ADR-110 · [x]
 Tres cosas de su prueba del 2026-10-04, dos de ellas fallos míos.
