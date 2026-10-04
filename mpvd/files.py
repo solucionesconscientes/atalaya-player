@@ -20,6 +20,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import time
+import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -189,6 +191,38 @@ def _count(p: Path, hidden: bool) -> int:
     return n
 
 
+def playlist(paths: list[str], data_dir: Path, name: str = "") -> dict[str, Any]:
+    """Varios archivos convertidos en UNA cosa que se puede poner: un .m3u8 en la carpeta de datos.
+
+    Hace falta para programar varias canciones o varios vídeos: una franja pone una cosa, no veinte, y un .m3u8 es
+    el formato que ya sabe cargar el programador (`loadlist` + repetir mientras dure la franja, J5). Se escribe con
+    rutas absolutas, así que también lo abre cualquier otro reproductor."""
+    rows = [os.path.expanduser(str(x or "").strip()) for x in (paths or [])]
+    rows = [r for r in rows if r]
+    if not rows:
+        raise RpcError(INVALID_PARAMS, t("hace falta al menos un archivo"))
+    if len(rows) > MAX_ENTRIES:
+        raise RpcError(INVALID_PARAMS, t("como mucho %s archivos") % (MAX_ENTRIES,))
+    faltan = [r for r in rows if not Path(r).exists()]
+    if faltan:
+        raise RpcError(INVALID_PARAMS, t("no existe: %s") % (faltan[0],))
+    carpeta = data_dir / "programadas"
+    carpeta.mkdir(parents=True, exist_ok=True)
+    limpio = re.sub(r"[^\w .·-]+", "", str(name or "").strip(), flags=re.UNICODE)[:60].strip()
+    base = limpio or time.strftime("%Y-%m-%d %H.%M")
+    destino = carpeta / f"{base}.m3u8"
+    n = 2
+    while destino.exists():
+        destino = carpeta / f"{base} ({n}).m3u8"
+        n += 1
+    cuerpo = ["#EXTM3U", f"#PLAYLIST:{base}"]
+    for r in rows:
+        cuerpo.append(f"#EXTINF:-1,{Path(r).stem}")
+        cuerpo.append(r)
+    destino.write_text("\n".join(cuerpo) + "\n", encoding="utf-8")
+    return {"file": str(destino), "name": base, "count": len(rows)}
+
+
 def register(server: MpvdServer) -> None:
     d = server.dispatcher
     server.services["files"] = True
@@ -203,6 +237,11 @@ def register(server: MpvdServer) -> None:
             with contextlib.suppress(Exception):
                 folders = [r["path"] for r in await asyncio.to_thread(lib.store.folders)]
         return {"places": await asyncio.to_thread(places, folders)}
+
+    @d.method("files.playlist")
+    async def playlist_(ctx: RpcContext, paths: list[str], name: str = "") -> dict[str, Any]:
+        """Varios archivos en un .m3u8, para poder programarlos como una sola cosa."""
+        return await asyncio.to_thread(playlist, paths, server.settings.data_dir, name)
 
     @d.method("files.browse")
     async def browse_(ctx: RpcContext, path: str, hidden: bool = False,

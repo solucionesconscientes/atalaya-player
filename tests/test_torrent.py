@@ -9,6 +9,8 @@ los del vídeo**, incluso pidiendo un trozo del final cuando aún no está desca
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import json
 import shutil
 import socket
 import time
@@ -133,4 +135,56 @@ def test_la_puerta_reconoce_un_magnet_y_dice_si_esta_apagado(ytdl_mpv, daemon_en
     v = ytdl_state(h, lambda s: "Ver mientras se descarga" in [i["title"] for i in s.get("items") or []])
     fila = next(i for i in v["items"] if i["title"] == "Ver mientras se descarga")
     assert fila["value"] == {"torrent": MAGNET}
+    assert h.script_errors() == [], h.script_errors()
+
+
+def test_un_torrent_arrastrado_a_la_ventana_se_abre(ytdl_mpv, semilla):  # noqa: F811
+    """Lo que de verdad hace la gente: soltar el .torrent en la ventana. mpv no sabe abrirlo y falla en el acto, así
+    que el script recoge ese fallo y pide a mpvd la dirección local. Antes esto no hacía nada (solo funcionaba
+    pegándolo en ctrl+o), que es justo lo que Ser encontró."""
+    h, d = ytdl_mpv[0], ytdl_mpv[1]
+    torrent, _port, _origen = semilla
+    h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
+
+    def ruta() -> str:
+        """`path` no está disponible cuando mpv se ha quedado sin nada puesto, que es justo el caso de abajo."""
+        with contextlib.suppress(Exception):
+            return str(h.get("path") or "")
+        return ""
+
+    # apagados: no se abre nada, y no se queda intentándolo
+    h.command("loadfile", str(torrent), "replace")
+    time.sleep(3)
+    assert not ruta().startswith("http://127.0.0.1"), "no debería abrirse apagado"
+
+    d.call("torrent.settings.set", {"enabled": True})
+    h.command("loadfile", str(torrent), "replace")
+    url = h.wait_property("path", lambda v: isinstance(v, str) and v.startswith("http://127.0.0.1"), timeout=90)
+    assert "/t/" in url, url
+    assert h.script_errors() == [], h.script_errors()
+
+
+def test_preferencias_torrents_enciende_y_apaga(ytdl_mpv):  # noqa: F811
+    """La fila que la puerta promete («se encienden en Preferencias › Torrents») tiene que existir y funcionar: la
+    primera versión de H59 dejó los ajustes solo en el fichero, así que la pista apuntaba a un sitio que no había."""
+    from tests.test_mu_ytdl import send_event
+
+    h, d = ytdl_mpv[0], ytdl_mpv[1]
+    h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
+    assert d.call("torrent.settings.get")["enabled"] is False
+
+    h.command("script-binding", "mu_ytdl/torrents-menu")
+    v = h.wait_property("user-data/mu/ytdl", lambda s: bool(s) and s.get("view") == "torrents" and any(
+        i["title"] == "Abrir torrents" for i in s.get("items") or []), timeout=30)
+    fila = next(i for i in v["items"] if i["title"] == "Abrir torrents")
+    assert fila["hint"] == "no" and fila["value"] == {"torset": "enabled"}
+    assert any(i["title"] == "Seguir compartiendo al acabar" for i in v["items"])
+
+    send_event(h, {"type": "activate", "index": 1, "value": {"torset": "enabled"}})
+    fin = time.monotonic() + 20
+    while time.monotonic() < fin and not d.call("torrent.settings.get")["enabled"]:
+        time.sleep(0.3)
+    assert d.call("torrent.settings.get")["enabled"] is True, "la fila no encendió los torrents"
+    v = h.wait_property("user-data/mu/ytdl", lambda s: bool(s) and any(
+        i["title"] == "Abrir torrents" and i.get("hint") == "sí" for i in s.get("items") or []), timeout=20)
     assert h.script_errors() == [], h.script_errors()

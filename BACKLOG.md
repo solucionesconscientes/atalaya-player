@@ -261,6 +261,24 @@ Windows 32/64 y macOS arm64/x86_64, y su API se comprobó completa con el Python
       `torrent.json` con los torrents ENCENDIDOS. Ahora `MPV_UOS_CONFIG_DIR` apunta a la carpeta del test, como ya
       hacían el resto de rutas.
 
+## H66 · Lo que Ser encontró al probarlo: torrents y programar — ADR-110 · [x]
+Tres cosas de su prueba del 2026-10-04, dos de ellas fallos míos.
+- [x] P1 **Preferencias › Torrents**: H59 dejó los interruptores solo en `torrent.json`, así que la pista de la
+      puerta («se encienden en Preferencias › Torrents») apuntaba a un sitio que **no existía** y la única forma de
+      encenderlos era editar un fichero a mano. Ahora la fila está, con encender, seguir compartiendo al acabar,
+      modo anónimo, el proxy y el aviso legal.
+- [x] P2 **Un magnet o un `.torrent` arrastrado a la ventana** se abre. mpv no sabe abrirlos y falla en el acto;
+      se recoge ese fallo y se abre por mpvd, igual que desde `ctrl+o`. Vale también para la línea de órdenes.
+- [x] P3 **Un `.torrent` de la web** (lo que se arrastra desde el navegador): mpvd lo baja —son unos KB, con tope
+      de 8 MB y comprobando que es bencode— y lo añade.
+- [x] P4 **Una franja programada abre su propia ventana y la maximiza**, en vez de quedarse con la que estuvieras
+      usando; y la cierra al acabar, para no ir dejando ventanas vacías. `MPVD_SCHEDULE_WINDOW=reuse` vuelve a lo
+      de antes (es lo que usan los tests, que no pueden abrir ventanas).
+- [x] P5 **Programar un archivo o una carpeta del equipo**, no solo un canal, una lista de Música o lo que
+      estuviera puesto: se explora con los mismos `files.*` que la biblioteca (H64), Enter programa ese archivo,
+      Tab lo añade a la selección y los marcados se programan juntos como un `.m3u8` (`files.playlist`), que el
+      programador ya sabe repetir mientras dure la franja.
+
 ## H65 · Un menú cerrado no se reabre solo — ADR-104 · [x]
 Encontrado por la batería completa el 2026-10-03, y era un fallo de verdad y no del test: el test esperaba 30 s a
 que el menú de TV se cerrase y seguía abierto.
@@ -312,6 +330,20 @@ los once fallos de H55.
       `wait_property`** —un `next()` sin defecto— y tumbaban la espera entera en vez de volver a mirar.
 - [ ] N2 **Y medir**: tres pasadas seguidas sin un solo fallo antes de declararlo. Mientras eso no ocurra, lo
       honesto al cerrar una tanda es decir el número y qué falló, no «check en verde».
+      Al 2026-10-04: una pasada limpia (907) y la siguiente con **un** fallo, `test_mu_convert`.
+- [ ] N3 **La causa del que queda, ya diagnosticada** (2026-10-04, con el log de una pasada que falla):
+      `test_mu_convert::test_folder_from_downloads_menu_and_tasks_entry` falla ~1 vez de cada 3, y no es lentitud.
+      La vista raíz de mu-convert pinta **dos veces** (las filas al entrar y otra vez cuando contesta
+      `convert.hw`). Si la segunda llega **antes** de que uosc publique `user-data/uosc/menu/type`, `open_type()`
+      dice «no hay menú» y se manda un segundo `open-menu`; uosc **cierra el primero** y nos manda su `close`, que
+      el script interpreta como «lo ha cerrado la persona» y se queda sin vista (`view: ''`). Es H65 por el otro
+      lado. **Dos arreglos probados y descartados**: (a) que `Nav:frame` ponga su propio nivel cuando la pila está
+      vacía —correcto pero no era la causa: 2 de 5 seguían fallando—; (b) que `uosc.open()` no vuelva a abrir lo
+      que ya pidió y actualice en diferido —**peor**: 6 de 6, porque el `update-menu` de uosc se descarta si el
+      menú no está abierto todavía (`Menu:is_open(type)`), así que el contenido nuevo se perdía—. Lo que queda por
+      probar: que el `close` que llega como consecuencia de nuestra propia reapertura no toque el estado (saber
+      distinguirlo en `mu.uosc` y comprobarlo en los trece scripts que pintan dos veces), o pintar siempre con un
+      solo `open-menu` esperando la confirmación de uosc antes de la segunda pasada.
 
 ## H62 · Ver y saber lo que pasa por detrás — ADR-102 · [x]
 De la prueba de Ser: «debe haber alguna forma de monitorear los procesos en segundo plano, cualquiera… se debe

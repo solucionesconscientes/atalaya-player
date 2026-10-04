@@ -5,6 +5,19 @@ ESTADO_GLOBAL: EN_CURSO
 De tus tres preguntas (minimizar no avisaba, cómo se ven los torrents, el mando de la tele en una Raspberry) y del
 «hazlo todo de golpe, menos la web» salió esta tanda. Lo de la web (H50) sigue sin empezar, como pediste.
 
+### H66 · Lo que encontraste al probarlo (2026-10-04)
+- **Preferencias › Torrents ya existe.** H59 dejó los interruptores solo en un fichero y la pista decía que
+  estaban en Preferencias: un ajuste sin fila, para quien usa el programa, es un ajuste que no se puede cambiar.
+  Ahora está la fila, con encender, seguir compartiendo al acabar, modo anónimo, el proxy y el aviso legal.
+- **Arrastrar un `.torrent` a la ventana funciona** (y un magnet, y la línea de órdenes, y un enlace `.torrent` de
+  una web, que mpvd baja). mpv no sabe abrirlos y falla al instante: se recoge ese fallo y se abre por mpvd, el
+  mismo camino que ya usaba el reintento de yt-dlp.
+- **Una franja programada abre su propia ventana y la maximiza**, y la cierra al acabar: si a las 21:00 estás
+  viendo una película, «música de 21:00 a 23:00» ya no te la quita.
+- **Se pueden programar archivos y carpetas del equipo**, no solo canales, listas de Música o lo que estuviera
+  puesto: se exploran las carpetas con las flechas, Enter programa ese archivo, `Tab` lo añade a la selección y
+  los marcados van juntos. Para el mando del televisor, «toda esta carpeta» es una fila, no una acción de `Tab`.
+
 ### H59 · Ver un torrent mientras se descarga
 Pegas un *magnet* o un `.torrent` y, si los torrents están encendidos (**Preferencias**, apagados de fábrica), la
 puerta única de `ctrl+o` ofrece **«Ver mientras se descarga»**. No espera a que acabe: mpv pide rangos a un
@@ -339,8 +352,9 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
 
 ## SIGUIENTE PASO
 El 2026-10-04 se hizo de una tanda lo que quedaba aprobado menos la web: **H59** (torrents), **H61** (mando del
-televisor), **H62**, **H63**, **H64**, **H65** y **H49/G1-G7** (los tres idiomas). El código no tiene pendientes
-abiertos y `tools/check.sh` queda en verde.
+televisor), **H62**, **H63**, **H64**, **H65** y **H49/G1-G7** (los tres idiomas); y después, de su primera prueba,
+**H66** (Preferencias › Torrents, arrastrar un torrent, la franja en su propia ventana y programar archivos del
+equipo). El código no tiene pendientes abiertos y `tools/check.sh` queda en verde.
 
 Lo que queda, por orden:
 

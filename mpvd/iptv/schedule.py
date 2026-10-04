@@ -53,6 +53,8 @@ LABELS = {"scheduled": "programada", "recording": "grabando", "playing": "sonand
 MAX_DURATION = 12 * 3600.0
 MAX_WAKE = 30.0  # the scheduler re-checks the clock at least this often (suspend, clock changes)
 RETRY_DELAY = 5.0
+# H66 · la franja abre su propia ventana y la maximiza: no le quita la suya a quien esté viendo algo
+WINDOW_ARGS = ("--window-maximized=yes", "--force-window=yes", "--idle=yes")
 PLAYER_WAIT = 60.0           # s esperando a que el reproductor recién abierto se registre (H57)
 MAX_PARTS = 30
 RW_TIMEOUT_US = 15_000_000
@@ -520,27 +522,36 @@ class ScheduleService:
 
     # -- H57 · reproducir en una franja ------------------------------------------------------------------
 
-    async def _player(self) -> Any:
-        """Un reproductor donde poner esto: el que esté abierto o, si no hay ninguno, uno nuevo.
+    async def _player(self, nuevo: bool = True) -> tuple[Any, bool]:
+        """El reproductor donde poner esto, y si lo hemos abierto nosotros.
 
-        Abrirlo importa: lo que da sentido a «a las 7:00 que suene la radio» es que el equipo esté suspendido, se
-        despierte con el despertador del propio programa (H40) y encuentre que no hay ninguna ventana abierta."""
-        sessions = [x for x in self.server.sessions.all() if x.connected]
-        if sessions:
-            return sessions[0]
+        Lo pidió Ser y es lo correcto: una franja programada **abre su propia ventana y la maximiza**, en vez de
+        quedarse con la que estuvieras usando. Si a las 21:00 estás viendo una película, «música de 21:00 a 23:00»
+        no te la quita; y cuando el equipo se despierta solo para la franja (H40), lo que aparece se ve de lejos.
+        La ventana que abrimos se cierra al acabar la franja, para no ir dejando ventanas vacías por ahí.
+
+        ``nuevo=False`` reutiliza la que haya: es lo que piden los tests, que no pueden abrir ventanas, y la
+        salida para quien prefiera lo de antes (``MPVD_SCHEDULE_WINDOW=reuse``)."""
+        antes = {x.id for x in self.server.sessions.all() if x.connected}
+        if not nuevo and antes:
+            return next(x for x in self.server.sessions.all() if x.connected), False
         launcher = Path(self.server.root) / "bin" / ("mpv-uos.ps1" if sys.platform == "win32" else "mpv-uos")
         if not launcher.is_file():
+            abiertos = [x for x in self.server.sessions.all() if x.connected]
+            if abiertos:
+                return abiertos[0], False
             raise RpcError(UNAVAILABLE, t("no hay ningún reproductor abierto y no se encuentra bin/mpv-uos"))
-        cmd = ["pwsh", "-NoProfile", "-File", str(launcher)] if sys.platform == "win32" else [str(launcher)]
-        log.info("schedule: no hay reproductor abierto, se abre uno (%s)", launcher)
+        base = ["pwsh", "-NoProfile", "-File", str(launcher)] if sys.platform == "win32" else [str(launcher)]
+        cmd = [*base, *WINDOW_ARGS]
+        log.info("schedule: se abre una ventana para la franja (%s)", " ".join(cmd))
         await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.DEVNULL,
                                              stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
         fin = time.monotonic() + PLAYER_WAIT
         while time.monotonic() < fin:
             await asyncio.sleep(0.5)
-            abiertos = [x for x in self.server.sessions.all() if x.connected]
-            if abiertos:
-                return abiertos[0]
+            nuevas = [x for x in self.server.sessions.all() if x.connected and x.id not in antes]
+            if nuevas:
+                return nuevas[0], True
         raise RpcError(UNAVAILABLE, t("el reproductor no ha llegado a abrirse"))
 
     async def _play(self, rec: Recording) -> None:
@@ -549,7 +560,8 @@ class ScheduleService:
         rec.started_at = rec.started_at or time.time()
         self.save()
         self._push(rec)
-        s = await self._player()
+        # MPVD_SCHEDULE_WINDOW=reuse pone la franja en la ventana que ya esté abierta, como hasta H66
+        s, propia = await self._player(nuevo=os.environ.get("MPVD_SCHEDULE_WINDOW", "new") != "reuse")
         url = str(rec.channel.get("url") or "")
         if not url:
             raise RpcError(INVALID_PARAMS, t("no hay nada que reproducir"))
@@ -579,6 +591,10 @@ class ScheduleService:
                 await s.client.set_property("loop-playlist", loop_before if loop_before is not None else "no",
                                             timeout=10)
             await s.client.command("stop", timeout=10)
+        if propia:
+            # la ventana la abrimos para esto: se cierra al acabar, que si no se van acumulando vacías
+            with contextlib.suppress(Exception):
+                await s.client.command("quit", timeout=10)
         if rec.mode == "play":
             self._finish(rec, "done", "")
 

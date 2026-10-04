@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import logging
 import time
 from collections.abc import AsyncIterator
@@ -23,6 +24,7 @@ from typing import Any
 
 log = logging.getLogger("mpvd.torrent")
 
+MAX_TORRENT_BYTES = 8 * 1024 * 1024   # un .torrent de más de 8 MB no es un .torrent
 PIECE_DEADLINE_MS = 1500      # «esta pieza, para ya»: lo que se le pide a las del trozo que mpv está leyendo
 READAHEAD_PIECES = 8          # y a las siguientes, con menos prisa, para que no haya un tirón en cada chunk
 CHUNK = 256 * 1024            # lo que se le entrega a mpv de una vez (lo mismo que sirve una sala, H44/C1)
@@ -53,8 +55,35 @@ def is_torrent_file(text: str) -> bool:
     return t.lower().endswith(".torrent") and Path(t).is_file()
 
 
+def is_torrent_url(text: str) -> bool:
+    """Un .torrent que está en la web: es lo que se arrastra desde el navegador, no un fichero del disco."""
+    t = text.strip().lower()
+    return t.startswith(("http://", "https://")) and t.split("?")[0].split("#")[0].endswith(".torrent")
+
+
 def looks_like_torrent(text: str) -> bool:
-    return is_magnet(text) or is_torrent_file(text)
+    return is_magnet(text) or is_torrent_file(text) or is_torrent_url(text)
+
+
+def fetch_torrent(url: str, cache_dir: Path, timeout: float = 30.0) -> Path:
+    """Baja un .torrent de la web a la caché y devuelve su ruta. Es un fichero de unos pocos KB."""
+    import urllib.request   # noqa: PLC0415 - solo hace falta aquí
+
+    destino = cache_dir / (hashlib.sha1(url.encode("utf-8", "replace")).hexdigest()[:16] + ".torrent")
+    if destino.is_file() and destino.stat().st_size > 0:
+        return destino
+    req = urllib.request.Request(url, headers={"User-Agent": "mpvd"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:   # noqa: S310 - la URL la pega quien usa el programa
+        datos = r.read(MAX_TORRENT_BYTES + 1)
+    if len(datos) > MAX_TORRENT_BYTES:
+        raise ValueError("ese .torrent es demasiado grande")
+    if not datos.startswith(b"d"):          # bencode siempre empieza por un diccionario
+        raise ValueError("eso no es un .torrent")
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    tmp = destino.with_suffix(".tmp")
+    tmp.write_bytes(datos)
+    tmp.replace(destino)
+    return destino
 
 
 def pick_file(ti: Any) -> int:

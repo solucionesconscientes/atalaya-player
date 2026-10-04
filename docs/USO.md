@@ -220,13 +220,22 @@ esa franja**:
 | **Ponerlo** | A esa hora se enciende y suena, y para a la hora de fin |
 | **Las dos cosas** | Se ve y además queda grabado |
 
-«Ponerlo» **abre el reproductor si no hay ninguno**, que es lo que hace falta para que funcione de verdad: con el
-despertador activado (*Despertar el equipo 5 min antes*), el equipo puede estar suspendido, levantarse solo y
-ponerte las noticias. Y al terminar la franja se aplica lo de siempre: nada, suspender o apagar.
+«Ponerlo» **abre su propia ventana y la maximiza**, en vez de quedarse con la que estés usando: si a las 21:00
+estás viendo una película, «música de 21:00 a 23:00» no te la quita. Y la cierra al acabar la franja. Con el
+despertador activado (*Despertar el equipo 5 min antes*) el equipo puede estar suspendido, levantarse solo y
+ponerte las noticias, maximizadas y a la vista. Al terminar se aplica lo de siempre: nada, suspender o apagar.
+(Si prefieres que use la ventana que ya haya: `MPVD_SCHEDULE_WINDOW=reuse`.)
 
-No es solo para canales: se puede programar **una canción, una carpeta, una lista o una dirección**. Hereda todo
-—despertador, franja y apagado—, así que vale igual para «la radio a las 7:00» que para «esta lista mientras
-cenamos, y al acabar suspende».
+**Qué se puede programar**, además de un canal de TV o de radio:
+
+| | |
+|---|---|
+| **Una lista guardada…** | las de *Música › Listas*; se repite hasta que acabe la franja |
+| **Lo que está puesto ahora** | lo que suene en ese momento: un archivo, un vídeo de internet, un directo |
+| **Un archivo o una carpeta del equipo…** | se exploran las carpetas con las flechas: Enter programa ese archivo, `Tab` lo añade a la selección y *Programar los N seleccionados* los pone seguidos; una carpeta entera va en orden |
+
+Hereda todo —despertador, franja y apagado—, así que vale igual para «la radio a las 7:00» que para «estas cinco
+canciones mientras cenamos, y al acabar suspende».
 
 ## 2c. Ir a un minuto escribiéndolo
 Icono del reloj en la barra, o `g`. Escribes y Enter. Admite lo que uno escribiría de verdad: `2:15`, `00:02:15`,
@@ -615,8 +624,9 @@ por defecto.
 
 ## 12. Biblioteca: películas, series y subtítulos de internet
 `ctrl+b` (o *Abrir › Biblioteca*, o la pantalla de inicio) abre la **Biblioteca**.
-- **Torrents** (apagado de fábrica): pega un **magnet** en la puerta única (`ctrl+o`) y aparece *Ver mientras se
-  descarga*. mpv no sabe nada de torrents: recibe una dirección local y pide trozos como a cualquier servidor, así
+- **Torrents** (apagado de fábrica; se encienden en *Preferencias › Torrents*): **arrastra un `.torrent` a la
+  ventana** o pega un **magnet** en la puerta única (`ctrl+o`) y aparece *Ver mientras se descarga*. Vale también
+  un enlace `.torrent` de una página web y la línea de órdenes. mpv no sabe nada de torrents: recibe una dirección local y pide trozos como a cualquier servidor, así
   que funcionan los subtítulos, el resumen y «ver juntos» igual que siempre, y **saltar hacia delante no obliga a
   esperar** a que la descarga llegue allí (a las piezas del trozo que estás viendo se les da prioridad, en vez de
   bajar en orden a lo bruto). Al terminar **se deja de sembrar**, salvo que lo cambies. Medido en este portátil:

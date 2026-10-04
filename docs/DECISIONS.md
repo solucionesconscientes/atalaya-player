@@ -1345,3 +1345,33 @@
   y marca cualquier función que **ate** el nombre `t` y además llame a `t(...)` —mirando el ámbito de verdad, sin
   entrar en las funciones anidadas ni en las comprensiones, que tienen el suyo—. Un `for x in …` no cuesta nada;
   un error que se convierte en otro error, mucho.
+
+- ADR-110 · Lo que falla en la prueba de Ser manda sobre lo que yo creía terminado (H66).
+  Tres cosas de su prueba del 2026-10-04, y las tres enseñan algo distinto.
+  **(1) Un ajuste sin fila no existe.** H59 construyó los interruptores de los torrents (`torrent.json`, con sus
+  métodos `torrent.settings.*`) y la pista de la puerta decía «se encienden en Preferencias › Torrents»… pero esa
+  fila nunca se añadió. Para quien usa el programa, eso no es «un ajuste avanzado»: es que **no se puede
+  encender**, y la pista además miente. La decisión es la de siempre (H58/K2) y aquí se incumplió: si el programa
+  nombra un sitio, ese sitio tiene que existir. El test que lo cierra abre la fila y la pulsa.
+  **(2) Lo que la gente hace es arrastrar, no pegar.** La puerta única reconocía magnets desde el primer día, pero
+  solo escribiéndolos o pegándolos; soltar un `.torrent` en la ventana no hacía nada, porque un fichero soltado va
+  derecho a `loadfile` y mpv no sabe abrirlo. **Se intercepta el fallo, no la carga**: el `on_load` apunta la ruta
+  si parece un torrent y, cuando el `end-file` dice «error», se pide a mpvd la dirección local y se reproduce. Era
+  la única forma limpia, porque abrir un torrent es asíncrono (hay que esperar los metadatos) y un hook de mpv es
+  síncrono: no se puede «rehacer» la carga desde dentro del hook. Es exactamente el mismo camino que ya usaba el
+  reintento de yt-dlp, así que no hay maquinaria nueva. De paso entra el `.torrent` de la web, que es lo que se
+  arrastra desde el navegador: mpvd lo baja (tope de 8 MB y comprobando que empieza por bencode) y lo añade.
+  **(3) Una franja no le quita la ventana a nadie.** Hasta ahora, «pon música a las 21:00» se cargaba en la
+  ventana que estuvieras usando, que es exactamente lo contrario de lo que se espera de una alarma. Ahora abre la
+  suya con `--window-maximized=yes --force-window=yes` —para que, cuando el equipo se despierta solo (H40), lo que
+  aparezca se vea de lejos— y **la cierra al acabar la franja**, porque una ventana que abrimos nosotros y se queda
+  vacía es basura que se acumula. La reutilización sigue disponible (`MPVD_SCHEDULE_WINDOW=reuse`) y es lo que usan
+  los tests, que no pueden abrir ventanas; que la nueva se abre de verdad y con el argumento puesto lo comprueba un
+  test con un envoltorio de mpv que apunta su propia línea de órdenes.
+  **(4) Varios archivos son UNA cosa: un `.m3u8`.** Programar admite una sola cosa, así que marcar cinco canciones
+  necesitaba un envase. Se escribe un `.m3u8` en la carpeta de datos (`files.playlist`) y a partir de ahí es el
+  camino que J5 ya dejó hecho: `loadlist` y repetir mientras dure la franja. No se usan las listas de Música para
+  esto: una selección de paso no debería aparecer para siempre en la biblioteca musical de nadie.
+  **(5) Y el reparto Enter/Tab**, que en el salón importa: Enter programa ese archivo (el caso normal) y Tab lo
+  añade a la selección. El mando del televisor no tiene Tab, y por eso la carpeta entera es una **fila** y no una
+  acción de Tab (la misma regla de ADR-103).

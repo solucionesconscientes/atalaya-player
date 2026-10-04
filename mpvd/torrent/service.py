@@ -166,11 +166,19 @@ class TorrentService:
         client = await self._ensure()
         link = str(link or "").strip()
         if not core.looks_like_torrent(link):
-            raise RpcError(INVALID_PARAMS, t("no es un magnet ni un .torrent de este equipo"))
+            raise RpcError(INVALID_PARAMS, t("no es un magnet ni un .torrent"))
         tid = hashlib.sha1(link.encode("utf-8", "replace")).hexdigest()[:12]
         item = self.items.get(tid)
         if item is None:
-            handle = await asyncio.to_thread(client.add, link, self._trackers)
+            # un .torrent de la web (lo que se arrastra desde el navegador) se baja primero: son unos KB
+            añadir = link
+            if core.is_torrent_url(link):
+                cache = self.server.settings.cache_dir / "torrents"
+                try:
+                    añadir = str(await asyncio.to_thread(core.fetch_torrent, link, cache))
+                except Exception as exc:    # noqa: BLE001 - cualquier fallo de red o de formato se cuenta igual
+                    raise RpcError(UNAVAILABLE, t("no se pudo bajar ese .torrent: %s") % (exc,)) from exc
+            handle = await asyncio.to_thread(client.add, añadir, self._trackers)
             item = Item(id=tid, link=link, handle=handle, token=secrets.token_urlsafe(12))
             self.items[tid] = item
         ti = await self._metadata(item)

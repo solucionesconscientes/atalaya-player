@@ -55,6 +55,7 @@ local state = {
   entry_id = nil,     -- playlist entry of the URL we loaded (its end-file error triggers the next alternative)
   fallbacks = 0,      -- alternatives tried for the current channel
   epg_hints = 0,      -- channels with a known «ahora» (cache below)
+  sched_marks = {},      -- H66: archivos marcados para programarlos juntos
   sched_defaults = nil,  -- H40/F1: {wake, after, power} que aplica mpvd a las grabaciones nuevas
   guide = nil,        -- guide shown: {id, programmes, epg_id}
   schedule_event = nil, -- last scheduled-recording event from mpvd {id, status, text}
@@ -1077,6 +1078,7 @@ end
 views.sched_new = function()
   local title = tr('Programar grabación')
   if not require_mpvd(title) then return end
+  state.sched_marks = {}        -- H66 · cada vez que se empieza, la selección de archivos está vacía
   show_loading(title)
   local view = state.view
   local items, seen, pending = {}, {}, 2
@@ -1092,6 +1094,8 @@ views.sched_new = function()
   -- J5 · no todo lo que se programa es un canal: una lista guardada o lo que está puesto ahora mismo también
   table.insert(items, { title = tr('Una lista guardada…'), hint = tr('música'), icon = 'queue_music',
                         value = { view = 'sched_lists' } })
+  table.insert(items, { title = tr('Un archivo o una carpeta del equipo…'), hint = tr('vídeo o sonido'),
+                        icon = 'folder_open', value = { view = 'sched_places' } })
   local ahora = mp.get_property('path') or ''
   if ahora ~= '' and not (state.current and state.current.url == ahora) then
     table.insert(items, { title = tr('Lo que está puesto ahora'), hint = mp.get_property('media-title') or ahora,
@@ -1145,6 +1149,92 @@ views.sched_lists = function()
     end
     show(title, items, { footnote = tr('La lista se repite hasta que acabe la franja · ⌫ atrás') })
   end)
+end
+
+-- H66 · programar lo que haya en el equipo: un archivo, varios o una carpeta entera. Hasta ahora solo se podía
+-- programar un canal, una lista de Música o lo que estuviera puesto en ese momento, así que para poner una
+-- película a una hora había que acordarse de dejarla abierta. Se explora con los mismos `files.*` que la
+-- biblioteca (H64), así que un pincho USB aparece solo.
+local SCHED_PLACE_ICON = { user = 'folder_special', library = 'video_library', drive = 'usb', home = 'home' }
+local SCHED_KIND_ICON = { dir = 'folder', video = 'movie', audio = 'music_note', playlist = 'queue_music' }
+local SCHED_ACTIONS = { { name = 'mark', icon = 'playlist_add', label = tr('Añadir a la selección') } }
+local browse_seq = 0
+
+local function size_hint(n)
+  n = tonumber(n) or 0
+  if n >= 1024 * 1024 * 1024 then return string.format('%.1f GB', n / 1073741824) end
+  if n >= 1024 * 1024 then return string.format('%.0f MB', n / 1048576) end
+  return string.format('%.0f kB', math.max(1, n / 1024))
+end
+
+local function count_hint(n)
+  n = tonumber(n) or 0
+  if n < 0 then return tr('no se puede leer') end
+  if n == 0 then return tr('vacía') end
+  return n .. ' ' .. (n == 1 and tr('elemento') or tr('elementos'))
+end
+
+local function marked(path)
+  for i, p in ipairs(state.sched_marks) do if p == path then return i end end
+  return nil
+end
+
+local function toggle_mark(path)
+  local i = marked(path)
+  if i then table.remove(state.sched_marks, i) else table.insert(state.sched_marks, path) end
+end
+
+views.sched_places = function()
+  local title = tr('Programar algo del equipo')
+  if not require_mpvd(title) then return end
+  show_loading(title)
+  local view = state.view
+  rpc.call('files.places', nil, function(err, res)
+    if state.view ~= view then return end
+    if err then show(title, uosc.message_items(fail(err, 'files.places'), 'error')) return end
+    local items = {}
+    for _, pl in ipairs((res or {}).places or {}) do
+      items[#items + 1] = { title = pl.title, hint = pl.path, icon = SCHED_PLACE_ICON[pl.kind] or 'folder',
+                            value = { view = 'sched_browse', path = pl.path } }
+    end
+    if #items == 0 then items = uosc.message_items(tr('No encuentro ninguna carpeta por donde empezar'), 'info') end
+    show(title, items, { footnote = tr('Enter entra en la carpeta · ⌫ atrás') })
+  end, 15)
+end
+
+views.sched_browse = function(args)
+  local path = args.path or ''
+  if not require_mpvd(tr('Programar algo del equipo')) then return end
+  browse_seq = browse_seq + 1
+  local mine, view = browse_seq, state.view
+  show_loading(path)
+  rpc.call('files.browse', { path = path }, function(err, res)
+    if mine ~= browse_seq or state.view ~= view then return end
+    if err then show(path, uosc.message_items(fail(err, 'files.browse'), 'error')) return end
+    local items = {}
+    if #state.sched_marks > 0 then
+      items[#items + 1] = { title = tr('Programar los %s seleccionados'):format(#state.sched_marks),
+                            icon = 'playlist_play', bold = true, value = { sched_marked = true } }
+    end
+    if (res.parent or '') ~= '' then
+      items[#items + 1] = { title = tr('Subir'), icon = 'arrow_upward', value = { view = 'sched_browse', path = res.parent } }
+    end
+    items[#items + 1] = { title = tr('Programar toda esta carpeta'), icon = 'playlist_play', separator = true,
+                          hint = tr('en orden'), value = { view = 'sched_time', media = res.path, name = res.name } }
+    for _, e in ipairs(res.entries or {}) do
+      if e.dir then
+        items[#items + 1] = { title = e.name, icon = 'folder', hint = count_hint(e.items),
+                              value = { view = 'sched_browse', path = e.path } }
+      else
+        items[#items + 1] = { title = (marked(e.path) and '✓ ' or '') .. e.name,
+                              icon = SCHED_KIND_ICON[e.kind] or 'insert_drive_file', hint = size_hint(e.size),
+                              active = marked(e.path) ~= nil, actions = SCHED_ACTIONS,
+                              value = { sched_file = e.path, name = e.name } }
+      end
+    end
+    show(res.name ~= '' and res.name or res.path, items,
+         { footnote = tr('Enter programa ese archivo · Tab lo añade a la selección · ⌫ atrás') })
+  end, 20)
 end
 
 local function sched_time_title(args)
@@ -1370,6 +1460,22 @@ mp.register_script_message(EVENT, function(json)
       schedule_add(schedule_params(p.channel, p.start, p.stop, p.title,
                                    { title = p.title, start = p.start, stop = p.stop }),
                    function() if uosc.open_type() == MENU then reopen_current() end end)
+    elseif v.sched_file then
+      -- Enter programa ese archivo; Tab lo añade a la selección, para programar varios de una vez
+      if ev.action == 'mark' then
+        toggle_mark(v.sched_file)
+        reopen_current()
+      else
+        open_view({ name = 'sched_time', args = { media = v.sched_file, name = v.name } })
+      end
+    elseif v.sched_marked then
+      local paths, carpeta = state.sched_marks, state.stack[#state.stack]
+      local nombre = (carpeta and carpeta.args and carpeta.args.path or ''):match('([^/\\]+)$') or ''
+      rpc.call('files.playlist', { paths = paths, name = nombre }, function(err, res)
+        if err then osd(tr('No se pudo programar: %s'):format(fail(err, 'files.playlist'))) return end
+        state.sched_marks = {}
+        open_view({ name = 'sched_time', args = { media = res.file, name = res.name } })
+      end, 20)
     elseif v.sched_add then
       local p = v.sched_add
       schedule_add(schedule_params(p.channel, p.start, p.stop, p.title, nil, p.media), function()
