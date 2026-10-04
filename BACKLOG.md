@@ -306,27 +306,15 @@ los once fallos de H55.
 - [ ] N2 **Y medir**: tres pasadas seguidas sin un solo fallo antes de declararlo. Mientras eso no ocurra, lo
       honesto al cerrar una tanda es decir el número y qué falló, no «check en verde».
       Al 2026-10-04: una pasada limpia (907) y la siguiente con **un** fallo, `test_mu_convert`.
-- [ ] N3 **La causa del que queda, ya diagnosticada** (2026-10-04, con el log de una pasada que falla):
-      `test_mu_convert::test_folder_from_downloads_menu_and_tasks_entry` falla ~1 vez de cada 3, y no es lentitud.
-      La vista raíz de mu-convert pinta **dos veces** (las filas al entrar y otra vez cuando contesta
-      `convert.hw`). Si la segunda llega **antes** de que uosc publique `user-data/uosc/menu/type`, `open_type()`
-      dice «no hay menú» y se manda un segundo `open-menu`; uosc **cierra el primero** y nos manda su `close`, que
-      el script interpreta como «lo ha cerrado la persona» y se queda sin vista (`view: ''`). Es H65 por el otro
-      lado. **Dos arreglos probados y descartados**: (a) que `Nav:frame` ponga su propio nivel cuando la pila está
-      vacía —correcto pero no era la causa: 2 de 5 seguían fallando—; (b) que `uosc.open()` no vuelva a abrir lo
-      que ya pidió y actualice en diferido —**peor**: 6 de 6, porque el `update-menu` de uosc se descarta si el
-      menú no está abierto todavía (`Menu:is_open(type)`), así que el contenido nuevo se perdía—. Lo que queda por
-      probar: que el `close` que llega como consecuencia de nuestra propia reapertura no toque el estado (saber
-      distinguirlo en `mu.uosc` y comprobarlo en los trece scripts que pintan dos veces), o pintar siempre con un
-      solo `open-menu` esperando la confirmación de uosc antes de la segunda pasada.
-      **TERCER intento, también descartado** (2026-10-04): subir a `mu.uosc` el permiso de H65 (`allow_open()` en
-      `open_view` y un `show()` que solo abre con permiso) y aplicarlo a los catorce módulos. En TV funciona desde
-      H65, pero fuera de TV **hay caminos que abren menú sin pasar por `open_view` ni por `force_open`**, así que
-      esos menús dejaban de aparecer: la pasada completa subió de 1 fallo a 4 (`test_mu_notes`,
-      `test_flujos_e2e`, `test_share_http` y el de siempre). Revertido. Antes de volver a intentarlo hay que
-      **inventariar todos los caminos que abren menú** en cada módulo, no solo `open_view`; el permiso es la idea
-      correcta, el inventario es el trabajo que falta.
-
+- [x] N3 **Arreglado** (2026-10-04, ADR-112), y la causa no era la que parecía. No es lentitud ni el segundo
+      `open-menu`: es el **vigilante de 0,2 s** de cada módulo, que se arma cuando aparece el menú de OTRO módulo
+      (el del padre) y dispara justo en el hueco entre «he pedido mi menú» y «uosc lo confirma» —1 ms normalmente,
+      27 ms medidos con el equipo ocupado—. El módulo se quedaba sin vista con su menú en pantalla: ⌫ saltaba de
+      nivel, lo que cargaba no aparecía, los paneles se paraban. Ahora `mu.uosc` apunta qué menú se ha pedido y
+      cuándo (`asking()`) y el vigilante de los catorce módulos pregunta antes de olvidar nada; no cambia cómo se
+      abren los menús. El test que fallaba 1 de cada 3 pasa **8 de 8**. Encima había un fallo del propio test
+      (`item(...)["hint"]` dentro de un `wait_property`, que lo tumba en vez de volver a mirar), también
+      arreglado. Los tres intentos anteriores, y por qué fallaron, quedan en ADR-112.
 ## H62 · Ver y saber lo que pasa por detrás — ADR-102 · [x]
 De la prueba de Ser: «debe haber alguna forma de monitorear los procesos en segundo plano, cualquiera… se debe
 poder ver el proceso en algún sitio, y debe avisar al terminar».

@@ -5,6 +5,19 @@ ESTADO_GLOBAL: EN_CURSO
 De tus tres preguntas (minimizar no avisaba, cómo se ven los torrents, el mando de la tele en una Raspberry) y del
 «hazlo todo de golpe, menos la web» salió esta tanda. Lo de la web (H50) sigue sin empezar, como pediste.
 
+### El fallo de los menús, arreglado (H63/N3, ADR-112)
+El que te conté que fallaba una vez de cada tres, y la causa no era la que yo creía. Cada módulo tiene un
+vigilante: «si 0,2 s después de que el menú abierto deje de ser el mío sigue sin haber uno mío, olvido dónde
+estaba» —existe porque cerrar con Esc no se anuncia de otra manera—. Lo que no estaba bien pensado es **cuándo se
+arma**: se arma cuando aparece el menú de otro módulo, así que si entras en un submenú justo ~0,2 s después, el
+reloj te cae encima mientras uosc está abriendo el tuyo. Entre pedir el menú y que uosc lo confirme hay 1 ms
+normalmente, pero con el equipo ocupado se midieron **27 ms**, y el vigilante caía justo ahí: el menú salía bien
+en pantalla y el módulo se había olvidado de dónde estaba.
+
+Ahora el vigilante **pregunta antes de olvidar**: «¿he pedido yo un menú y aún no me lo han confirmado?». Dos
+líneas en el módulo compartido y una en cada uno de los catorce; no cambia nada de cómo se abren los menús. El
+test que fallaba 1 de cada 3 pasa **8 de 8**.
+
 ### H66 · Lo que encontraste al probarlo (2026-10-04)
 - **Los torrents están fuera**, por tu decisión del 2026-10-04 (ADR-111). Se construyeron, no te funcionaron y se
   han quitado del todo —servicio, dependencia, puerta, ajustes, avisos, cadenas y test—: no eran críticos y eran

@@ -1153,6 +1153,8 @@ mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
     reset_timer = nil
     local open = uosc.open_type()
     if open == MENU or open == PALETTE then return end
+    -- H63/N3 · si acabamos de pedir nuestro menú y uosc aún no lo ha confirmado, no hay nada que olvidar
+    if uosc.asking(MENU) then return end
     reset_state()
   end)
 end)

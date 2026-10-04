@@ -538,6 +538,8 @@ mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
   reset_timer = mp.add_timeout(0.2, function()
     reset_timer = nil
     if uosc.open_type() == MENU then return end
+    -- H63/N3 · si acabamos de pedir nuestro menú y uosc aún no lo ha confirmado, no hay nada que olvidar
+    if uosc.asking(MENU) then return end
     if #state.stack > 0 or state.view ~= '' then
       state.stack = {}
       state.view = ''

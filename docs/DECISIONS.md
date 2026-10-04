@@ -1398,3 +1398,32 @@
   fichero local por HTTP con Range (H44/C1) y explorar las carpetas del equipo (H64).
   **Y una lección que se queda**, de P1 de H66: un ajuste que el programa **nombra** y no existe no es «un ajuste
   avanzado», es un ajuste que no se puede cambiar. Si una pista dice «se enciende en X», X tiene que existir.
+
+- ADR-112 · El vigilante de los menús pregunta antes de olvidar (H63/N3). **Amplía ADR-104** (H65), que arregló
+  una cara de esto en TV y dejó el resto a oscuras.
+  **La causa, con los milisegundos del log de una pasada que falla.** Cada módulo tiene un vigilante: «si 0,2 s
+  después de que el menú abierto deje de ser el mío sigue sin haber uno mío, doy por cerrada la navegación y la
+  olvido». Existe porque cerrar con Esc no se anuncia de otra manera. El problema es **cuándo se arma**: se arma
+  cuando aparece el menú de **otro** módulo —el del padre, por ejemplo—, así que el reloj de mu-convert empezó a
+  correr en 3,010 s (cuando se abrió «Descargas y conversión»), mu-convert entró en su vista en 3,19 s, el
+  vigilante disparó en 3,210 s y en ese instante uosc **todavía no había publicado** el menú nuevo: lo publicó en
+  3,223 s. Entre pedir y confirmar hay normalmente 1 ms; con el equipo ocupado se midieron **27 ms**, y el
+  vigilante cayó justo dentro. Resultado: el menú sale bien en pantalla y el módulo se ha olvidado de dónde
+  estaba. Se ve en que ⌫ salta de nivel en vez de subir uno, en que lo que estaba cargando no llega a aparecer
+  (las respuestas comprueban «¿sigo en esta vista?» y ya no lo están) y en que los paneles que se refrescan solos
+  se quedan quietos. Pulsar una fila sigue funcionando, y por eso en uso normal se nota poco.
+  **El arreglo**: `mu.uosc` apunta qué menú se ha pedido y cuándo (`M.open`), lo da por confirmado en cuanto uosc
+  publica ese tipo, y expone `asking(tipo)`. El vigilante de los catorce módulos pregunta antes de olvidar nada.
+  Dos líneas en el módulo y una en cada vigilante; **no cambia cómo se abren los menús**, que es lo que hundió el
+  intento anterior. Medido: el test que fallaba 1 de cada 3 pasa **8 de 8**.
+  **TRES intentos anteriores, descartados, para que nadie los repita**: (a) rellenar en `Nav:frame` el nivel que
+  falta cuando la pila está vacía —correcto en sí, pero no era la causa—; (b) que `uosc.open()` no reabriera lo ya
+  pedido y actualizara en diferido —peor, 6 de 6: uosc descarta `update-menu` si el menú no está abierto todavía—;
+  (c) subir el permiso `opening` de H65 a `mu.uosc` y exigirlo para abrir —en TV funciona, pero fuera de TV hay
+  caminos que abren menú sin pasar por `open_view`, así que esos menús dejaban de aparecer y la pasada subió de 1
+  fallo a 4—. Los tres atacaban el segundo `open-menu`, que es un **síntoma** (hace que uosc cierre y reabra, un
+  parpadeo) y no quien borraba la navegación.
+  **Y un fallo del propio test, encima del de verdad**: `item(v, "Bitrate del audio")["hint"]` dentro de un
+  `wait_property` revienta cuando la primera lectura llega sin filas, y eso tumba la espera entera en vez de
+  volver a mirar. El mismo fichero lo tenía escrito como advertencia tres líneas más arriba y esa línea se olvidó.
+  Arreglado con `(item(...) or {}).get(...)`, que es lo que hacen las demás.

@@ -13,7 +13,16 @@ function M.send(message, ...)
   mp.commandv('script-message-to', 'uosc', message, ...)
 end
 
+-- H63/N3 · entre «le pido a uosc que abra mi menú» y «uosc publica que está abierto» hay un hueco: normalmente 1 ms,
+-- pero con el equipo ocupado se han medido 27 ms. Cada módulo tiene un vigilante que, 0,2 s después de que el menú
+-- abierto deje de ser el suyo, da por cerrada su navegación y la olvida — y ese vigilante se arma cuando aparece el
+-- menú del módulo PADRE, así que puede dispararse justo dentro de ese hueco: el menú sale bien en pantalla y el
+-- módulo ya se ha olvidado de dónde estaba (⌫ salta de nivel, lo que cargaba no aparece, los paneles se paran).
+-- Así que se apunta qué menú se ha pedido y cuándo, y el vigilante pregunta antes de olvidar nada.
+local asked = { type = nil, at = -1 }
+
 function M.open(menu, submenu_id)
+  if menu.type then asked.type, asked.at = menu.type, mp.get_time() end
   if submenu_id then
     M.send('open-menu', utils.format_json(menu), submenu_id)
   else
@@ -21,11 +30,22 @@ function M.open(menu, submenu_id)
   end
 end
 
+-- ¿Hemos pedido ese menú y uosc todavía no lo ha confirmado? El segundo límite es un seguro: si uosc no contesta
+-- (no está cargado, se ha ido), el vigilante vuelve a hacer su trabajo un segundo después.
+function M.asking(menu_type, window)
+  return asked.type == menu_type and asked.at >= 0 and (mp.get_time() - asked.at) < (window or 1.0)
+end
+
+mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
+  if t ~= nil and t == asked.type then asked.at = -1 end     -- confirmado: ya no esperamos
+end)
+
 function M.update(menu)
   M.send('update-menu', utils.format_json(menu))
 end
 
 function M.close(menu_type)
+  if menu_type == nil or menu_type == asked.type then asked.at = -1 end   -- lo cerramos nosotros: ya no esperamos
   if menu_type then M.send('close-menu', menu_type) else M.send('close-menu') end
 end
 

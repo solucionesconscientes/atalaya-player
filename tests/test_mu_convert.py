@@ -95,7 +95,7 @@ def test_convert_open_file_with_range_and_tasks_panel(conv_mpv, clip, tmp_path):
                         "Solo audio · WAV"] or "GIF animado" in t
     assert any(x.startswith("Sin recodificar") for x in t)
     assert {"Convertir una carpeta entera…", "Tareas", "Carpeta de salida", "Usar la tarjeta gráfica"} <= set(t)
-    st = conv(h, lambda v: item(v, "Usar la tarjeta gráfica")["hint"] == "no disponible")   # MPV_UOS_VAAPI=0
+    st = conv(h, lambda v: (item(v, "Usar la tarjeta gráfica") or {}).get("hint") == "no disponible")  # VAAPI=0
     assert st["default_dir"].endswith(f"{APP_FOLDER}/Convertidos")
     set_output(h, out_dir)
 
@@ -180,7 +180,7 @@ def test_folder_from_downloads_menu_and_tasks_entry(conv_mpv, clip, tmp_path):
     assert st["folder"] is True and titles(st)[0] == "Convertir toda la carpeta" and "Solo un tramo" not in titles(st)
     assert "Resolución máxima" not in titles(st)
     ev(h, {"type": "activate", "index": 3, "value": {"opt": "audio_bitrate"}})
-    conv(h, lambda v: item(v, "Bitrate del audio")["hint"] == "128 kbps")
+    conv(h, lambda v: (item(v, "Bitrate del audio") or {}).get("hint") == "128 kbps")
     ev(h, {"type": "activate", "index": 1, "value": {"start": True}})
     st = conv(h, lambda v: len(v.get("last_started") or []) == 2)
     ids = set(st["last_started"])
