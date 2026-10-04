@@ -162,9 +162,14 @@ def test_los_catalogos_estan_completos_y_al_dia():
     spec.loader.exec_module(ex)
 
     # H49/G4 · TODOS los scripts del reproductor usan ya `mu.i18n`: que ninguno se quede atrás también se comprueba
+    # H72 · y los PLANOS también (mu-core.lua, mu-prefs.lua): no estaban en esta lista, así que lo que dijeran en
+    # pantalla no se traducía y nadie se enteraba. Lo descubrió el aviso de «tu mpv es más viejo», que vive en
+    # mu-core.lua: estaba envuelto en tr() y traducido, y el test decía que esas dos cadenas «ya no están en el
+    # código» porque no las buscaba ahí.
     todos = sorted((ROOT / "mpv-config" / "scripts").glob("mu-*/main.lua"))
-    sin_i18n = [p.parent.name for p in todos if "require('mu.i18n')" not in p.read_text(encoding="utf-8")
-                and ex.process(p)[1]]
+    todos += sorted((ROOT / "mpv-config" / "scripts").glob("mu-*.lua"))
+    sin_i18n = [(p.parent.name if p.name == "main.lua" else p.stem) for p in todos
+                if "require('mu.i18n')" not in p.read_text(encoding="utf-8") and ex.process(p)[1]]
     assert not sin_i18n, f"scripts con texto visible y sin mu.i18n: {sin_i18n}"
     encontradas: set[str] = set()
     for f in todos:

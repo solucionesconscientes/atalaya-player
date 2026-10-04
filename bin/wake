@@ -21,16 +21,19 @@ RTCWAKE="$(command -v rtcwake || echo /usr/sbin/rtcwake)"
 
 case "${1:-}" in
   set)
-    when="${2:-}"
-    case "$when" in
+    # exactamente dos argumentos y el segundo solo dígitos: nada más pasa de aquí
+    [ "$#" -eq 2 ] || { echo "uso: wake set <segundos desde 1970>" >&2; exit 2; }
+    case "$2" in
       ''|*[!0-9]*) echo "uso: wake set <segundos desde 1970>" >&2; exit 2 ;;
     esac
-    exec "$RTCWAKE" -m no -t "$when"
+    exec "$RTCWAKE" -m no -t "$2"
     ;;
   clear)
+    [ "$#" -eq 1 ] || { echo "uso: wake clear" >&2; exit 2; }
     exec "$RTCWAKE" -m disable
     ;;
   check)
+    [ "$#" -eq 1 ] || { echo "uso: wake check" >&2; exit 2; }
     exec "$RTCWAKE" --version
     ;;
   *)

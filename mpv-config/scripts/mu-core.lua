@@ -26,6 +26,8 @@ local opts = {
   load_errors = true,        -- explain on screen why a file/URL/channel could not be opened
   rpc_timeout = 15,          -- seconds before a pending call fails with a timeout error
   ensure_timeout = 20,       -- seconds the ensure subprocess may take (daemon start + attach)
+  mpv_old = '',              -- H72: la versión del mpv del sistema cuando es más vieja que la probada (0.41);
+                             -- lo pone bin/mpv-uos, que es quien ejecuta mpv y puede preguntarle la versión
   lang = '',                 -- H49: 'es' | 'en' | 'fr'; empty = work it out from the environment. bin/mpv-uos
                              -- sets it before any script loads, so nothing is ever drawn in the wrong language.
 }
@@ -33,7 +35,20 @@ options.read_options(opts, 'mu-core')
 -- The language is decided once, here, and published: every other mu-* script reads it from user-data instead of
 -- working it out again (and the tests can see which one is in use). See docs/IDIOMAS.md.
 local i18n = require('mu.i18n')
+local tr = i18n.t
 i18n.set(opts.lang)
+
+-- H72 · un mpv más viejo que el probado no impide usar el programa, pero hay dos cosas que dependen de 0.41 y
+-- conviene decirlas una vez, en vez de que parezcan fallos nuestros: los capítulos automáticos (el índice del
+-- vídeo) necesitan poder ESCRIBIR `chapter-list`, y copiar un enlace usa `clipboard/text` y si no cae al camino
+-- lento. Se dice al arrancar y una sola vez: no es un error, es información.
+if opts.mpv_old ~= '' then
+  mp.add_timeout(2, function()
+    local aviso = tr('⚠ Tu mpv es %s y esto está probado con 0.41 o posterior'):format(opts.mpv_old)
+    mp.osd_message(aviso .. '\n'
+      .. tr('El índice del vídeo no se podrá aplicar y copiar enlaces irá por el camino lento'), 10)
+  end)
+end
 
 -- ---------------------------------------------------------------------------------------------
 -- environment

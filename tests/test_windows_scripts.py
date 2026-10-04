@@ -538,3 +538,49 @@ def test_real_windows_downloads_verify(tmp_path):
     for exe in (vend / "bin" / "yt-dlp.exe", vend / "whisper" / "bin" / "whisper-cli.exe", vend / "bin" / "deno.exe"):
         assert exe.read_bytes()[:2] == b"MZ", exe
     assert (vend / "whisper" / "bin" / "whisper.dll").is_file() and (vend / "whisper" / "bin" / "ggml.dll").is_file()
+
+
+# -- H72 · el .zip portable -------------------------------------------------------------------------------------
+
+def _zip_windows():
+    import json as _json
+    import tomllib
+    version = tomllib.load(open(ROOT / "pyproject.toml", "rb"))["project"]["version"]
+    carpeta = _json.loads((ROOT / "brand.json").read_text(encoding="utf-8")).get("folder", "mpv-uos")
+    return ROOT / "dist" / f"{carpeta}-{version}-windows-x86_64.zip"
+
+
+@pytest.fixture(scope="module")
+def zip_windows():
+    import os as _os
+    import subprocess as _sp
+    destino = _zip_windows()
+    if not destino.is_file():
+        if _os.environ.get("MU_BUILD_ZIP") != "1":
+            pytest.skip(f"sin dist/{destino.name} (tools/build_zip_windows.sh o MU_BUILD_ZIP=1)")
+        _sp.run([str(ROOT / "tools/build_zip_windows.sh")], check=True, cwd=ROOT, stdout=_sp.DEVNULL)
+    return destino
+
+
+def test_el_zip_portable_lleva_lo_necesario_y_nada_de_linux(zip_windows):
+    """Lo que tiene que poder hacer quien lo descomprime: doble clic y que abra. Es decir: los dos lanzadores, el
+    intérprete DONDE lo busca el .ps1 (.venv\\Scripts\\python.exe), yt-dlp.exe, los catálogos de idiomas y el
+    papel que explica que mpv se instala aparte. Y nada de Linux ni de macOS, que son 11 MB de nada."""
+    import zipfile
+    with zipfile.ZipFile(zip_windows) as z:
+        nombres = set(z.namelist())
+        texto = z.read("Atalaya/LEE-ME.txt").decode("utf-8")
+    for ruta in ("Atalaya/bin/mpv-uos.cmd", "Atalaya/bin/mpv-uos.ps1", "Atalaya/tools/install.ps1",
+                 "Atalaya/.venv/Scripts/python.exe", "Atalaya/vendor/bin/yt-dlp.exe",
+                 "Atalaya/mpv-config/scripts/uosc/bin/ziggy-windows.exe", "Atalaya/locales/en.json",
+                 "Atalaya/locales/fr.json", "Atalaya/mpvd/server.py", "Atalaya/LEE-ME.txt"):
+        assert ruta in nombres, f"falta {ruta}"
+    # el intérprete tiene que encontrar su biblioteca al lado, o no arranca
+    assert any(n.startswith("Atalaya/.venv/Scripts/Lib/os.py") for n in nombres)
+    sobra = [n for n in nombres if "ziggy-linux" in n or "ziggy-darwin" in n or n.endswith("bin/wake")
+             or "__pycache__" in n or "/tests/" in n]
+    assert not sobra, sobra[:5]
+    # y el papel dice lo que hay que decir: que mpv se instala aparte y que esto no se ha probado en Windows
+    assert "winget install mpv" in texto
+    assert "NO lleva mpv" in texto and "NO se ha podido probar" in texto
+    assert "\r\n" in texto, "en Windows los saltos de línea son CRLF o el Bloc de notas lo enseña todo junto"

@@ -7,9 +7,11 @@ Desarrollado y probado en Linux (Ubuntu, Wayland/KDE, mpv 0.41). Lo siguiente NO
 |---|---|---|---|
 | Lanzador `bin/mpv-uos` + config portable | ✅ probado | debería ir (Bash; `readlink -f` ≥ 12.3) | `bin/mpv-uos.ps1` (+ `.cmd`): probado con pwsh 7 en Linux (`-DryRun`), sin Windows real |
 | Instalación de usuario `tools/install.sh` | ✅ probado (XDG, `.desktop`) | ❌ usar `bin/mpv-uos` o un alias | `tools/install.ps1` (menú Inicio, `mpv-uos://` en HKCU): descargas y verificación probadas con pwsh 7 en Linux; sin Windows real |
-| AppImage (`tools/build_appimage.sh`) | ✅ x86_64 probado sin ventana (mpv del sistema) | — | — |
+| AppImage (`tools/build_appimage.sh --arch x86_64\|aarch64`) | ✅ x86_64 probado sin ventana (mpv del sistema); aarch64 **cruzado desde x86-64** y revisado por dentro (runtime e intérprete ARM, catálogos), sin ejecutar | — | — |
 | `.app` de macOS (`tools/build_macos_app.sh`) | construido y validado (plist, lanzador) en Linux | ❌ sin abrir en un Mac (mpv de Homebrew) | — |
-| ARM64 (Raspberry Pi 5) | ❌ sin probar: checkout + `uv sync` deberían ir; AppImage aún solo x86_64 | — | — |
+| `.deb` (`tools/build_deb.sh --arch amd64\|arm64`) | ✅ amd64 probado: se extrae, arranca y mpvd se conecta con el intérprete del paquete; lintian sin más avisos que los inherentes a llevarlo dentro. arm64 cruzado y revisado por dentro | — | — |
+| `.zip` portable (`tools/build_zip_windows.sh`) | — | — | construido en Linux y revisado por dentro (lanzadores, intérprete de Windows en su sitio, yt-dlp.exe); **sin abrir en un Windows** |
+| ARM64 (Raspberry Pi 5) | ⚠ paquetes hechos (`.deb` arm64 y AppImage aarch64, los dos cruzados y revisados por dentro), **sin ejecutar en una máquina ARM**: aquí no hay ninguna ni emulación | — | — |
 | uosc, thumbfast, scripts `mu-*` (Lua) | ✅ | debería ir (Lua puro; rutas con `utils.join_path`) | debería ir (mu-core ya distingue `.venv\Scripts\python.exe`) |
 | mpvd: JSON-RPC y IPC con mpv | ✅ socket Unix | socket Unix (no probado) | named pipes (`mpvd/transport.py`, lazo Proactor) probados con un lazo simulado; sin Windows real |
 | mpvd: arranque desacoplado | ✅ `start_new_session` | igual (no probado) | `DETACHED_PROCESS` + bloqueo con `msvcrt.locking` (no probado) |
@@ -31,15 +33,48 @@ Desarrollado y probado en Linux (Ubuntu, Wayland/KDE, mpv 0.41). Lo siguiente NO
 | Enviar a la tele (DLNA) | ✅ con renderizador falso en tests; sin tele real probada; puerto 8792 en `ufw` | debería ir | debería ir; cortafuegos de Windows |
 | Chromecast | ❌ falta (necesita `pychromecast` y un receptor para probar) | ❌ | ❌ |
 
-## Instalar en macOS (no probado)
+## Instalar en macOS (no probado) — por Homebrew, a propósito
+No hay `.dmg` ni `.pkg`, y es una decisión, no un olvido (ADR-117): un paquete de macOS **sin firmar** lo bloquea
+Gatekeeper, y firmarlo exige una cuenta de desarrollador de Apple de pago, que Ser dijo expresamente que no va a
+tener. Dar un `.dmg` que al abrirse dice «no se puede comprobar que no contenga malware» es peor que no darlo.
+Además, el `.app` que ya se construye **no sería autocontenido**: usa el mpv de Homebrew. Así que en macOS el
+camino es Homebrew y el repositorio:
 ```bash
 brew install mpv ffmpeg uv chromaprint     # mpv ≥ 0.41
-git clone <repo> Atalaya Player && cd Atalaya Player && uv sync && tools/vendor.sh
+git clone <repo> Atalaya && cd Atalaya && uv sync && tools/vendor.sh
 bin/mpv-uos video.mkv                        # o: alias mpv-uos="$PWD/bin/mpv-uos" en ~/.zshrc
 ```
-Una app `.app` que abra archivos desde Finder queda pendiente (necesita un bundle con `Info.plist` que llame a `bin/mpv-uos`).
+`tools/build_macos_app.sh` sigue ahí y hace un `.app` que abre archivos desde Finder, para quien ya tenga el
+repositorio y quiera el icono en el Dock; sin firma, la primera vez hay que abrirlo con botón derecho → *Abrir*.
+Si algún día hay una cuenta de Apple, lo que falta es firmar y notarizar ese mismo `.app` y meterlo en un `.dmg`.
+
+## Instalar en Linux: los cuatro paquetes
+```bash
+tools/build_deb.sh --arch amd64      # dist/atalaya-player_<versión>_amd64.deb   (27 MB)
+tools/build_deb.sh --arch arm64      # dist/atalaya-player_<versión>_arm64.deb   (21 MB, cruzado)
+tools/build_appimage.sh              # dist/Atalaya-x86_64.AppImage              (38 MB)
+tools/build_appimage.sh --arch aarch64   # dist/Atalaya-aarch64.AppImage         (34 MB, cruzado)
+```
+Los dos llevan dentro la aplicación y un CPython 3.12 reubicable (el mismo tarball de python-build-standalone
+para las cuatro variantes, fijado con su SHA-256 en `vendor.lock`), y **ninguno lleva mpv**: se usa el del
+sistema, porque meterlo dentro rompe la aceleración por hardware (ADR-067, confirmado midiendo en ADR-115).
+`Depends: mpv` **sin versión mínima**: en Debian 13 o Raspberry Pi OS el del sistema puede ser más viejo que el
+probado, y la decisión es instalarse y avisar al arrancar de lo que no va, no negarse a instalar.
+
+Lo que el `.deb` puede hacer y el AppImage no: **instalar la regla de `sudoers` del despertador**, así que con el
+`.deb` las grabaciones programadas pueden encender el equipo sin que nadie toque nada. La regla autoriza un solo
+programa, `/usr/lib/mpv-uos/bin/wake`, que solo sabe poner o borrar la alarma del reloj.
+
+Cruzar a ARM se hace desde x86-64 y **el resultado no se puede ejecutar aquí** (no hay máquina ARM ni emulación):
+lo comprobado es lo que llevan dentro. La primera vez que alguien los abra en una Raspberry, eso es lo que falta.
 
 ## Instalar en Windows (no probado en un Windows real)
+Lo más cómodo es el **`.zip` portable** (`tools/build_zip_windows.sh`): se descomprime donde sea, lleva su propio
+Python y yt-dlp, y se abre con `bin\mpv-uos.cmd`. Un `.exe` o un `.msi` sin firmar se come el aviso de SmartScreen,
+que asusta más que descomprimir una carpeta (decidido con Ser el 2026-10-04). Dentro va `tools\install.ps1` para
+quien quiera accesos directos y los enlaces `mpv-uos://`. mpv se instala aparte (`winget install mpv`).
+
+### Desde un clon del repositorio
 Sin permisos de administrador; el checkout se queda donde esté y todo apunta a él (nada en `%APPDATA%\mpv`).
 ```powershell
 # antes: mpv ≥ 0.41 (build oficial de mpv.io/installation), ffmpeg/ffprobe, uv y git en el PATH

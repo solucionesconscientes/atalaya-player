@@ -75,3 +75,23 @@ LLAMA_VERSION=b11319
 LLAMA_BASE_URL=https://github.com/ggml-org/llama.cpp/releases/download/b11319
 LLAMA_ASSET_x86_64_linux=llama-b11319-bin-ubuntu-x64.tar.gz
 LLAMA_SHA256_x86_64_linux=f0c51e621f287c40f80d511793971aae5750e1afe6642f0a3de5995f6a352d55
+# CPython reubicable que va DENTRO de los paquetes (tools/build_deb.sh y tools/build_appimage.sh), uno por
+# arquitectura y los dos del mismo sitio: el python-build-standalone que gestiona uv (`uv python list
+# --output-format json` da la URL exacta). Se baja el tarball en vez de copiar el que uv tenga instalado por dos
+# razones: es la MISMA versión para amd64 y arm64 —así los dos paquetes llevan el mismo intérprete, no uno de cada
+# procedencia— y la variante «install_only_stripped» ya viene sin símbolos de depuración (30 MB menos y ningún
+# aviso de paquete sin despojar).
+PBS_VERSION=3.12.14+20260901
+PBS_AMD64_URL=https://releases.astral.sh/github/python-build-standalone/releases/download/20260901/cpython-3.12.14%2B20260901-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz
+PBS_AMD64_SHA256=72748da13197c1fb161e3afeef20a6a385ff24f2165e6e2758e47008e7faba4c
+PBS_ARM64_URL=https://releases.astral.sh/github/python-build-standalone/releases/download/20260901/cpython-3.12.14%2B20260901-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz
+PBS_ARM64_SHA256=577b4bec0793ad1ff0cbff9adbd0df078eddde38a4c41bf5d83ad381a85ee39d
+# El «runtime» de AppImage para aarch64: lo que se le pone delante al squashfs para que el .AppImage sea
+# ejecutable. appimagetool de x86-64 puede construir el de aarch64 si se le da este fichero (--runtime-file), que
+# es la única forma de hacer los dos paquetes sin una máquina ARM. La etiqueta «continuous» se mueve, así que lo
+# que manda es el SHA-256: si upstream lo cambia, la construcción falla en voz alta en vez de colar otro binario.
+APPIMAGE_RUNTIME_AARCH64_URL=https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-aarch64
+APPIMAGE_RUNTIME_AARCH64_SHA256=b4ff0030242d0c3bb12ce40541828303cf167493f4793456f0436edd6255c39d
+# CPython reubicable para Windows (tools/build_zip_windows.sh). Mismo origen y misma versión que los de Linux.
+PBS_WINDOWS_URL=https://releases.astral.sh/github/python-build-standalone/releases/download/20260901/cpython-3.12.14%2B20260901-x86_64-pc-windows-msvc-install_only_stripped.tar.gz
+PBS_WINDOWS_SHA256=7c45c9622400d578709a9b2cddbe8124cc21d382409d9f13406d706d28e31b14

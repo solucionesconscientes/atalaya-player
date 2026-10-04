@@ -307,7 +307,10 @@ def test_launcher_snippet_hands_download_links_to_mpvd(project_root, tmp_path):
     subprocess.run([str(launcher), "--", "/x.mkv"], check=True, env=env)
     calls = log.read_text().splitlines()
     assert calls[0] == f"python [-m] [mpvd] [link] [--root] [{root.resolve()}] [{link}]"
-    assert calls[1].startswith("mpv ") and "[/x.mkv]" in calls[1] and "link" not in calls[1]
+    # H72 · el lanzador le pregunta antes la versión a mpv (para avisar si es más vieja que la probada), así que
+    # lo que importa es la ÚLTIMA llamada: la que abre el reproductor de verdad
+    assert calls[-1].startswith("mpv ") and "[/x.mkv]" in calls[-1] and "link" not in calls[-1]
+    assert all("[--version]" in c or "[/x.mkv]" in c or "mpvd" in c for c in calls), calls
 
 
 # Text proposed for bin/mpv-uos (shared file), right before the «Mis notas» block. Kept here so the test above checks

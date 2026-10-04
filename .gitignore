@@ -14,3 +14,13 @@ tests/fixtures/media/
 .mcp.json
 .claude/worktrees/
 dist/
+
+# Vídeo o audio suelto en la raíz del proyecto: nunca es parte del proyecto, es material de pruebas de quien lo
+# usa. Esta línea existe porque un `git add -A` se puso a meter una película de 2,7 GB en el repositorio
+# (2026-10-04): se cortó a tiempo, pero la red va aquí para que no dependa de cortarlo a tiempo.
+/*.mkv
+/*.mp4
+/*.webm
+/*.mka
+/*.mp3
+/*.flac

@@ -149,5 +149,22 @@ if [ -z "$mu_lang" ]; then
 fi
 case "$mu_lang" in es|en|fr) ;; *) mu_lang=en ;; esac
 extra+=("--script-opts-append=mu-core-lang=$mu_lang" "--script-opts-append=uosc-languages=$mu_lang,slang,en")
+
+# H72 · El mpv es el del sistema (ADR-067), y en Debian 13 o Raspberry Pi OS puede ser más viejo que el probado.
+# Instalarse y avisar es mejor que negarse a instalar, así que aquí se mira la versión y se le dice a mu-core, que
+# lo cuenta en pantalla una sola vez. `mpv --version` dice «mpv v0.41.0 …» en la primera línea.
+# OJO con la tubería: `mpv --version | head -1` le cierra la salida a mpv, que muere con SIGPIPE, y con
+# `pipefail` eso aborta ESTE script antes de arrancar nada. Pasó, y se vio porque el reproductor no abría. `awk`
+# lee toda la salida y solo mira la primera línea, así que no hay tubería que cerrar.
+MPV_MIN_MAJOR=0; MPV_MIN_MINOR=41
+mu_mpv_ver="$("$MPV_BIN" --version 2>/dev/null | awk 'NR == 1 && $2 ~ /^v[0-9]+\.[0-9]+/ {
+    sub(/^v/, "", $2); split($2, parte, "."); print parte[1] "." parte[2] }' || true)"
+if [ -n "$mu_mpv_ver" ]; then
+  mu_mayor="${mu_mpv_ver%%.*}"; mu_menor="${mu_mpv_ver#*.}"
+  if [ "$mu_mayor" -lt "$MPV_MIN_MAJOR" ] 2>/dev/null ||
+     { [ "$mu_mayor" -eq "$MPV_MIN_MAJOR" ] && [ "$mu_menor" -lt "$MPV_MIN_MINOR" ]; } 2>/dev/null; then
+    extra+=("--script-opts-append=mu-core-mpv_old=$mu_mpv_ver")
+  fi
+fi
 exec "$MPV_BIN" --config-dir="$CONFIG_DIR" --input-ipc-server="$SOCKET" --watch-later-dir="$DATA_DIR/watch_later" \
   "${extra[@]}" "$@"

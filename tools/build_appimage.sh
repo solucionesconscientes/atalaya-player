@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Build dist/<marca>-x86_64.AppImage (H28, ADR-067): the project files tracked by git, a relocatable CPython 3.12
+# Build dist/<marca>-<arch>.AppImage (H28, ADR-067): the project files tracked by git, a relocatable CPython 3.12
 # (the python-build-standalone build uv manages) with the light extras, and the vendored yt-dlp. mpv itself is NOT
 # inside: the AppImage uses the system mpv (>= 0.41), like bin/mpv-uos does; AppRun explains how to install it if
 # it is missing. Whisper, the translation and embedding models stay out (hundreds of MB; downloaded on demand).
 #
-# Usage: tools/build_appimage.sh [--extras desktop,impersonate] [--out DIR]
+# Usage: tools/build_appimage.sh [--arch x86_64|aarch64] [--extras desktop,impersonate] [--out DIR]
+# Con --arch aarch64 se CRUZA desde x86-64 (intérprete y ruedas de aarch64 + el runtime de AppImage
+# para esa arquitectura): el paquete se construye y se inspecciona, pero no se puede ejecutar aquí.
 # Needs: git, uv, curl, sha256sum (and network the first time: appimagetool and its runtime).
 set -euo pipefail
 
@@ -13,18 +15,24 @@ ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 source "$ROOT/vendor.lock"
 EXTRAS="desktop"
 OUT="$ROOT/dist"
+ARCH="$(uname -m)"
 while [ $# -gt 0 ]; do
   case "$1" in
     --extras) EXTRAS="$2"; shift 2 ;;
+    --arch) ARCH="$2"; shift 2 ;;
     --out) OUT="$2"; shift 2 ;;
-    -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
     *) echo "opción desconocida: $1" >&2; exit 2 ;;
   esac
 done
-ARCH="$(uname -m)"
-[ "$ARCH" = "x86_64" ] || { echo "de momento solo x86_64 (ver docs/PLATAFORMAS.md)" >&2; exit 2; }
+HOST_ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64) PY_TRIPLE="x86_64-unknown-linux-gnu" ;;
+  aarch64) PY_TRIPLE="aarch64-unknown-linux-gnu" ;;
+  *) echo "arquitectura no contemplada: $ARCH (x86_64 o aarch64)" >&2; exit 2 ;;
+esac
 
-WORK="$ROOT/tmp/appimage"
+WORK="$ROOT/tmp/appimage-$ARCH"
 APPDIR="$WORK/app.AppDir"
 APP="$APPDIR/usr/share/mpv-uos"
 TOOL="$ROOT/vendor/bin/appimagetool-$APPIMAGETOOL_VERSION-x86_64.AppImage"
@@ -60,13 +68,41 @@ if [ -f "$ROOT/vendor/bin/yt-dlp" ]; then
 fi
 
 # 3. a relocatable Python with the light extras; `.venv/bin/python` is where mu-core and bin/mpv-uos look for it
-PYSRC="$(uv python find --managed-python 3.12 2>/dev/null || uv python find 3.12)"
-PYHOME="$(dirname "$(dirname "$(readlink -f "$PYSRC")")")"
-[ -f "$PYHOME/lib/libpython3.12.so.1.0" ] || [ -d "$PYHOME/lib/python3.12" ] || { echo "Python 3.12 de uv no encontrado" >&2; exit 1; }
-cp -a "$PYHOME" "$APPDIR/usr/python"
+if [ "$ARCH" = "$HOST_ARCH" ]; then
+  PYSRC="$(uv python find --managed-python 3.12 2>/dev/null || uv python find 3.12)"
+  PYHOME="$(dirname "$(dirname "$(readlink -f "$PYSRC")")")"
+  [ -f "$PYHOME/lib/libpython3.12.so.1.0" ] || [ -d "$PYHOME/lib/python3.12" ] || { echo "Python 3.12 de uv no encontrado" >&2; exit 1; }
+  cp -a "$PYHOME" "$APPDIR/usr/python"
+else
+  # cruzar: el MISMO python-build-standalone que usa uv aquí, fijado en vendor.lock con su SHA-256
+  [ -n "${PBS_ARM64_URL:-}" ] || { echo "falta PBS_ARM64_URL en vendor.lock" >&2; exit 1; }
+  tarball="$ROOT/vendor/cpython-arm64.tar.gz"
+  if [ ! -f "$tarball" ]; then
+    mkdir -p "$ROOT/vendor"
+    curl -fsSL -o "$tarball.part" "$PBS_ARM64_URL"
+    echo "$PBS_ARM64_SHA256  $tarball.part" | sha256sum -c --quiet
+    mv "$tarball.part" "$tarball"
+  fi
+  rm -rf "$WORK/py" && mkdir -p "$WORK/py"
+  tar -xzf "$tarball" -C "$WORK/py"
+  cp -a "$WORK/py/python" "$APPDIR/usr/python"
+fi
 rm -rf "$APPDIR/usr/python/lib/python3.12/test" "$APPDIR/usr/python/lib/python3.12/idlelib" \
        "$APPDIR/usr/python/lib/python3.12/tkinter" "$APPDIR/usr/python/lib/python3.12/turtledemo"
 find "$APPDIR/usr/python" -name '__pycache__' -type d -prune -exec rm -rf {} +
+# Limpieza del intérprete: lo que no se usa, fuera. Tcl/Tk (que arrastra un RPATH a /tools/deps/lib de la máquina
+# donde se compiló), pip, idle y 2to3; y los .py de la biblioteca estándar no son programas aunque lleven shebang,
+# así que se les quita el bit de ejecución —si no, cualquier revisor de paquetes los cuenta como scripts sueltos
+# que necesitarían depender de python3, que es justo lo que este paquete evita llevándose el suyo—.
+rm -rf "$APPDIR/usr/python"/lib/libtcl*.so "$APPDIR/usr/python"/lib/libtk*.so "$APPDIR/usr/python"/lib/itcl* "$APPDIR/usr/python"/lib/tdbc*
+rm -rf "$APPDIR/usr/python"/lib/tcl8* "$APPDIR/usr/python"/lib/tk8* "$APPDIR/usr/python"/lib/thread* "$APPDIR/usr/python"/lib/tcl* "$APPDIR/usr/python"/lib/sqlite3*
+rm -f "$APPDIR/usr/python"/lib/python3.12/lib-dynload/_tkinter*.so "$APPDIR/usr/python"/bin/pydoc3* "$APPDIR/usr/python"/bin/python3.12-config
+rm -rf "$APPDIR/usr/python"/lib/python3.12/config-3.12-*
+rm -f "$APPDIR/usr/python"/bin/pip "$APPDIR/usr/python"/bin/pip3 "$APPDIR/usr/python"/bin/pip3.12 "$APPDIR/usr/python"/bin/idle3 "$APPDIR/usr/python"/bin/idle3.12 \
+      "$APPDIR/usr/python"/bin/2to3 "$APPDIR/usr/python"/bin/2to3-3.12
+find "$APPDIR/usr/python"/lib -name '*.py' -type f -exec chmod 0644 {} +
+find "$APPDIR/usr/python"/lib -name '*.so*' -type f -exec chmod 0644 {} +
+
 PY="$APPDIR/usr/python/bin/python3.12"
 pkgs=()
 IFS=',' read -r -a wanted <<<"$EXTRAS"
@@ -82,7 +118,12 @@ PYEOF
   )
 done
 if [ "${#pkgs[@]}" -gt 0 ]; then
-  uv pip install --quiet --python "$PY" --break-system-packages "${pkgs[@]}"
+  if [ "$ARCH" = "$HOST_ARCH" ]; then
+    uv pip install --quiet --python "$PY" --break-system-packages "${pkgs[@]}"
+  else
+    uv pip install --quiet --python-platform "$PY_TRIPLE" --python-version 3.12 --only-binary :all: \
+      --target "$APPDIR/usr/python/lib/python3.12/site-packages" "${pkgs[@]}"
+  fi
 fi
 mkdir -p "$APP/.venv/bin"
 ln -s ../../../../python/bin/python3.12 "$APP/.venv/bin/python"
@@ -131,8 +172,21 @@ ln -s "$APP_ID.png" "$APPDIR/.DirIcon"
 
 # 5. pack (appimagetool is itself an AppImage: extract-and-run avoids needing FUSE on the build machine)
 mkdir -p "$OUT"
-OUTFILE="$OUT/$FILE_NAME-x86_64.AppImage"
+OUTFILE="$OUT/$FILE_NAME-$ARCH.AppImage"
 rm -f "$OUTFILE"
-APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 "$TOOL" --no-appstream "$APPDIR" "$OUTFILE" >"$WORK/appimagetool.log" 2>&1 || {
-  tail -20 "$WORK/appimagetool.log" >&2; exit 1; }
+RUNTIME_ARG=()
+if [ "$ARCH" != "$HOST_ARCH" ]; then
+  # appimagetool de x86-64 sirve para construir el de aarch64 si se le da su runtime: es la única forma de hacer
+  # los dos paquetes sin una máquina ARM. Lo que sale NO se puede ejecutar aquí (docs/PLATAFORMAS.md).
+  RUNTIME="$ROOT/vendor/bin/runtime-aarch64"
+  if [ ! -f "$RUNTIME" ]; then
+    mkdir -p "$ROOT/vendor/bin"
+    curl -fsSL -o "$RUNTIME.part" "$APPIMAGE_RUNTIME_AARCH64_URL"
+    echo "$APPIMAGE_RUNTIME_AARCH64_SHA256  $RUNTIME.part" | sha256sum -c --quiet
+    mv "$RUNTIME.part" "$RUNTIME"
+  fi
+  RUNTIME_ARG=(--runtime-file "$RUNTIME")
+fi
+APPIMAGE_EXTRACT_AND_RUN=1 ARCH="$ARCH" "$TOOL" --no-appstream "${RUNTIME_ARG[@]}" "$APPDIR" "$OUTFILE" \
+  >"$WORK/appimagetool.log" 2>&1 || { tail -20 "$WORK/appimagetool.log" >&2; exit 1; }
 echo "$OUTFILE ($(du -h "$OUTFILE" | cut -f1))"

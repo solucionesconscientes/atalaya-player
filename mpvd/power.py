@@ -54,6 +54,26 @@ SUDOERS_HINT_MACOS = (
 )
 
 
+def wake_helper() -> str:
+    """El `bin/wake` que acompaña al programa, si está y es ejecutable (H72).
+
+    Existe porque `sudo` ya no acepta comodines en los argumentos, así que una regla que permita «rtcwake -m no -t
+    <un número>» y nada más no se puede escribir: o se permite `rtcwake` entero —y con él `rtcwake -m off`, que
+    apaga la máquina— o la validación la hace un programa nuestro. El paquete .deb instala ese programa como root
+    y su regla de sudoers apunta ahí; en una copia del repositorio el fichero es de quien lo usa, así que ahí no
+    se instala ninguna regla y se sigue usando `sudo -n rtcwake`, como antes."""
+    env = os.environ.get("MPV_UOS_WAKE_HELPER")
+    if env:
+        return env if os.access(env, os.X_OK) else ""
+    root = os.environ.get("MPV_UOS_ROOT")
+    candidatos = [os.path.join(root, "bin", "wake")] if root else []
+    candidatos.append("/usr/lib/mpv-uos/bin/wake")
+    for ruta in candidatos:
+        if os.access(ruta, os.X_OK):
+            return ruta
+    return ""
+
+
 def _fake() -> str:
     """Programa que sustituye a todas las órdenes de energía (tests): recibe la orden entera como argumentos."""
     return os.environ.get("MPVD_POWER_FAKE", "")
@@ -142,7 +162,11 @@ class PowerService:
                          "reason": "" if ok else "«pmset schedule wake» necesita sudo sin contraseña"})
             return caps
         rtcwake = shutil.which("rtcwake") or shutil.which("/usr/sbin/rtcwake")
-        ok = rtcwake is not None and (os.geteuid() == 0 or _sudo_ok([rtcwake, "--version"]))
+        helper = wake_helper()
+        if helper and rtcwake is not None:
+            ok = os.geteuid() == 0 or _sudo_ok([helper, "check"])
+        else:
+            ok = rtcwake is not None and (os.geteuid() == 0 or _sudo_ok([rtcwake, "--version"]))
         caps.update({
             "can_suspend": _logind_can("CanSuspend"), "can_shutdown": _logind_can("CanPowerOff"),
             "can_wake": ok, "wake_tool": "rtcwake" if rtcwake else "",
@@ -178,8 +202,11 @@ class PowerService:
         if sys.platform == "win32":
             # /xml es la única forma de pedir WakeToRun; se escribe un XML temporal junto a los datos
             return ["schtasks", "/create", "/tn", TASK_NAME, "/xml", str(self._windows_task_xml(local)), "/f"]
-        rtcwake = shutil.which("rtcwake") or "/usr/sbin/rtcwake"
         prefix = [] if os.geteuid() == 0 else ["sudo", "-n"]
+        helper = wake_helper()
+        if helper:
+            return [*prefix, helper, "set", str(int(when))]
+        rtcwake = shutil.which("rtcwake") or "/usr/sbin/rtcwake"
         return [*prefix, rtcwake, "-m", "no", "-t", str(int(when))]
 
     def _windows_task_xml(self, local: dt.datetime) -> Any:
@@ -205,9 +232,13 @@ class PowerService:
         elif sys.platform == "win32":
             args = ["schtasks", "/delete", "/tn", TASK_NAME, "/f"]
         else:
-            rtcwake = shutil.which("rtcwake") or "/usr/sbin/rtcwake"
             prefix = [] if os.geteuid() == 0 else ["sudo", "-n"]
-            args = [*prefix, rtcwake, "-m", "disable"]
+            helper = wake_helper()
+            if helper:
+                args = [*prefix, helper, "clear"]
+            else:
+                rtcwake = shutil.which("rtcwake") or "/usr/sbin/rtcwake"
+                args = [*prefix, rtcwake, "-m", "disable"]
         code, out = await _run(args)
         self.wake_at = None
         return {"cancelled": code == 0, "output": out[:200]}

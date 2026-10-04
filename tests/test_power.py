@@ -78,8 +78,14 @@ def test_el_despertador_se_pone_cinco_minutos_antes_y_con_la_orden_de_esta_plata
     hechas = ordenes(fake)
     assert len(hechas) == 2, hechas
     if sys.platform == "linux":
-        assert "rtcwake" in hechas[0] and "-m no" in hechas[0] and str(int(at)) in hechas[0]
-        assert "disable" in hechas[1]
+        # H72 · con `bin/wake` al lado —va en el repositorio y en los paquetes— la orden es la del ayudante, que
+        # es justo lo que autoriza la regla de sudoers del .deb; sin él, el `rtcwake` de siempre. Las dos valen.
+        if "wake" in hechas[0] and "set" in hechas[0]:
+            assert str(int(at)) in hechas[0], hechas
+            assert "clear" in hechas[1], hechas
+        else:
+            assert "rtcwake" in hechas[0] and "-m no" in hechas[0] and str(int(at)) in hechas[0]
+            assert "disable" in hechas[1]
 
 
 def test_los_tres_seguros_y_el_aviso_cancelable(entorno, monkeypatch):

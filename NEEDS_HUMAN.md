@@ -1,5 +1,31 @@
 # NEEDS_HUMAN — cosas que necesita Ser (con el comando exacto)
 
+## 2026-10-04 · Los paquetes están hechos: lo que falta es abrirlos en otra máquina (H72)
+Los cuatro de Linux, el de Windows y el camino de macOS están construidos y revisados por dentro. Lo que **yo no
+puedo hacer** es ejecutarlos donde toca, porque aquí solo hay un x86-64 con Linux. Por orden de importancia:
+
+1. **Instalar el `.deb` aquí mismo y abrirlo** (es el camino que va a usar más gente):
+   ```bash
+   sudo apt install ./dist/atalaya-player_0.1.0_amd64.deb
+   atalaya                                   # o desde el menú de aplicaciones
+   sudo -n /usr/lib/mpv-uos/bin/wake check   # tiene que contestar la versión de rtcwake, sin pedir contraseña
+   ```
+   Si lo último funciona, **el despertador de las grabaciones programadas ya está resuelto** y la tarea de la
+   línea de `sudoers` a mano se puede olvidar: la pone el paquete. Para quitarlo todo:
+   `sudo apt remove --purge atalaya-player`.
+2. **Una Raspberry (o cualquier ARM) con el `.deb` de arm64 o el AppImage de aarch64.** Están cruzados desde aquí
+   y revisados por dentro (intérprete ARM de verdad, catálogos, runtime ARM), pero **nadie los ha ejecutado**:
+   ```bash
+   sudo apt install ./atalaya-player_0.1.0_arm64.deb     # o: chmod +x Atalaya-aarch64.AppImage && ./Atalaya-aarch64.AppImage
+   ```
+   Lo que más me interesa saber: si arranca, si mpvd se conecta, y qué dice al abrir una película (si el mpv de
+   esa distribución es más viejo que 0.41, debería avisarte de lo que no va).
+3. **Un Windows con el `.zip`**: descomprimir, `winget install mpv`, doble clic en `bin\mpv-uos.cmd`. De esto no
+   hay NADA probado en un Windows real: solo que el contenido y los lanzadores son correctos.
+4. **El correo del mantenedor del `.deb`.** Ahora pone `Atalaya Player <atalaya@solucionesconscientes.es>`, que me
+   he inventado a partir de tu dominio porque no quería poner tu correo personal en un paquete que se distribuye.
+   Dime cuál quieres y lo cambio (o `DEB_MAINTAINER="Nombre <correo>" tools/build_deb.sh`).
+
 ## 2026-10-03 · El mando del televisor en la Raspberry: ya está hecho, falta probarlo (H61)
 **No hay que instalar nada**: el puente lee el aparato del kernel (`/dev/cec0`), no `cec-client`. En la Pi, con el
 reproductor abierto, el mando de la tele debería manejarlo sin pedir permiso. Si no hace nada, en este orden:
