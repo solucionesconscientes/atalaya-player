@@ -3,6 +3,12 @@
 Priorities (lower runs first): URGENT (subtitles about to be displayed), INTERACTIVE (user actions),
 PRECOMPUTE (next playlist item...), INDEX (library indexing). Jobs marked ``heavy`` wait while the
 performance guardian is throttling; light jobs always proceed.
+
+H70 · Y la regla que manda sobre todas: **mientras se está reproduciendo algo, no arranca nada especulativo**.
+URGENT (un subtítulo que va a salir ya) e INTERACTIVE (lo que ha pulsado la persona) siguen; PRECOMPUTE e INDEX
+—analizar la intro, pre-subtitular el siguiente episodio, indexar la biblioteca, la guía de TV— esperan a que se
+pause o se pare. Antes solo había un guardián que reaccionaba DESPUÉS de perder fotogramas: el tirón se veía, y
+volvía cada diez segundos. Un reproductor no debe hacer nada que no le hayan pedido mientras ves una película.
 """
 
 from __future__ import annotations
@@ -196,6 +202,7 @@ class JobQueue:
         guardian: PerformanceGuardian | None = None,
         history: int = 200,
         on_change: Callable[[Job], None] | None = None,
+        playing: Callable[[], bool] | None = None,
     ):
         self.workers = max(1, workers)
         self.guardian = guardian or PerformanceGuardian()
@@ -208,6 +215,7 @@ class JobQueue:
         self._workers: list[asyncio.Task[None]] = []
         self._running = False
         self._on_change = on_change
+        self._playing = playing or (lambda: False)
         self._throttle_timer: asyncio.TimerHandle | None = None
 
     # -- lifecycle -------------------------------------------------------------
@@ -317,8 +325,13 @@ class JobQueue:
                 self._throttle_timer.cancel()
             self._throttle_timer = loop.call_later(self.guardian.throttle_remaining + 0.05, self._wakeup.set)
 
+    def wake(self) -> None:
+        """Vuelve a mirar la cola: algo ha cambiado fuera (se ha pausado, se ha parado, ha acabado la espera)."""
+        self._wakeup.set()
+
     def _pop_runnable(self) -> Job | None:
         throttled = self.guardian.throttled
+        viendo = self._playing()      # H70: con algo en marcha, lo especulativo no empieza
         skipped: list[tuple[int, int, Job]] = []
         picked: Job | None = None
         while self._heap:
@@ -327,6 +340,9 @@ class JobQueue:
             if job.status != Status.QUEUED:
                 continue  # cancelled while queued
             if job.heavy and throttled:
+                skipped.append(item)
+                continue
+            if viendo and job.priority >= Priority.PRECOMPUTE:
                 skipped.append(item)
                 continue
             picked = job

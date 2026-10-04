@@ -271,6 +271,13 @@ def test_todo_lo_que_llama_a_t_lo_importa():
             malos.append(str(f.relative_to(ROOT)))
     assert not malos, f"llaman a t() sin importarlo: {malos}"
 
+    # H69 · lo mismo con `prio.*` (bajar la prioridad del trabajo de fondo): el mismo fallo, el mismo guardián
+    usa = _re.compile(r"(?<![A-Za-z0-9_.])prio\.")
+    malos = [str(f.relative_to(ROOT)) for f in sorted((ROOT / "mpvd").rglob("*.py"))
+             if f.name != "priority.py" and usa.search(f.read_text(encoding="utf-8"))
+             and "from mpvd import priority as prio" not in f.read_text(encoding="utf-8")]
+    assert not malos, f"usan prio.* sin importarlo: {malos}"
+
 
 def test_ninguna_funcion_de_mpvd_tapa_la_funcion_t():
     """El mismo fallo que en el JavaScript, y en Python es peor: una sola asignación `t = …` (o un `for t in …`)

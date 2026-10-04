@@ -8,6 +8,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from mpvd import priority as prio
+
 SAMPLE_RATE = 16000
 
 
@@ -36,8 +38,10 @@ async def extract_wav(src: str, start: float, duration: float, out: Path, audio_
                       timeout: float = 120.0) -> Path:
     """Write the window to ``out`` (WAV 16 kHz mono); raises AudioError on failure or empty output."""
     out.parent.mkdir(parents=True, exist_ok=True)
+    # H69 · sacar el audio es trabajo de fondo y lee el archivo entero: no compite con la reproducción
     proc = await asyncio.create_subprocess_exec(*extract_args(src, start, duration, str(out), audio_track),
-                                                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+                                                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+                                                **prio.background())
     try:
         _, err = await asyncio.wait_for(proc.communicate(), timeout)
     except asyncio.TimeoutError:

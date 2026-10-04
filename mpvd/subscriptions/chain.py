@@ -33,6 +33,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mpvd import priority as prio
 from mpvd.jobs import Priority, Status
 
 if TYPE_CHECKING:
@@ -318,15 +319,12 @@ def apply_args(src: Path, dst: Path, measured: dict[str, float], stream: dict[st
     return [*args, str(dst)]
 
 
-def _lower_priority() -> None:  # pragma: no cover - runs in the child
-    with contextlib.suppress(OSError):
-        os.nice(NICE)
 
 
 async def _run(cmd: list[str]) -> tuple[int, str]:
     kwargs: dict[str, Any] = {}
     if sys.platform != "win32":
-        kwargs["preexec_fn"] = _lower_priority
+        kwargs["preexec_fn"] = prio.lower
     proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.DEVNULL,
                                                 stderr=asyncio.subprocess.PIPE, **kwargs)
     try:

@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mpvd import priority as prio
 from mpvd.asr.audio import AudioError, ffmpeg_path
 from mpvd import notify
 from mpvd.convert import hw as hw_mod
@@ -148,9 +149,6 @@ def task_row(d: dict[str, Any], kind: str) -> dict[str, Any]:
     }
 
 
-def _lower_priority() -> None:  # pragma: no cover - runs in the child
-    with contextlib.suppress(OSError):
-        os.nice(NICE)
 
 
 class ConvertService:
@@ -474,7 +472,7 @@ class ConvertService:
         t0 = time.monotonic()
         kwargs: dict[str, Any] = {}
         if sys.platform != "win32":
-            kwargs["preexec_fn"] = _lower_priority
+            kwargs["preexec_fn"] = prio.lower
         for cmd, weight in zip(plan.commands, plan.weights, strict=True):
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE,
                                                         stderr=asyncio.subprocess.PIPE, **kwargs)

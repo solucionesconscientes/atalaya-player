@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from mpvd import priority as prio
 from mpvd.library.parse import norm
 
 AUDIO_EXTS = frozenset((".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".m4b", ".aac", ".wav", ".wv", ".ape",
@@ -38,15 +39,12 @@ def is_audio(name: str) -> bool:
     return not name.startswith(".") and os.path.splitext(name)[1].lower() in AUDIO_EXTS
 
 
-def _lower_priority() -> None:  # pragma: no cover - runs in the child
-    with contextlib.suppress(OSError):
-        os.nice(NICE)
 
 
 def run_low(cmd: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
     kwargs: dict[str, Any] = {}
     if sys.platform != "win32":
-        kwargs["preexec_fn"] = _lower_priority
+        kwargs["preexec_fn"] = prio.lower
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False,  # noqa: S603
                           encoding="utf-8", errors="replace", **kwargs)
 

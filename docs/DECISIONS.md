@@ -1452,3 +1452,36 @@
   canales (traducirlos es un trabajo de datos, no de interfaz), las descripciones de `mcp.py` las lee un modelo y
   no una persona, y los prompts de `llm.py` ya están escritos por idioma. El extractor los salta por nombre de
   fichero, para que el test no los reclame.
+
+- ADR-114 · Reproducir manda: mientras se ve algo, nada que no se haya pedido (H69/H70).
+  Lo levantó Ser con la prueba que importa: una película HEVC 10 bits daba tirones con Atalaya y, **en el mismo
+  momento**, iba bien con el mpv de apt. Medido en su portátil (i5-6200U, 4 núcleos), y lo primero que apareció no
+  fue un fallo sino un **suelo**: este equipo no decodifica HEVC 10 bits por hardware (VA-API solo ofrece
+  `VAProfileHEVCMain`), así que esa película la decodifica la CPU en cualquier reproductor: 29 % de un núcleo con
+  un 1080p10 fácil, **3,3 núcleos** con uno de 39 Mbps. Lo que queda de margen es lo que no hay que gastar.
+  **(1) Un reproductor no tiene por qué tener a nadie detrás.** La regla del proyecto ya decía «lo pesado nunca
+  compite con la reproducción» y estaba aplicada a las conversiones, la retransmisión de salas, las suscripciones
+  y las etiquetas de música… y **no a los tres procesos más caros**: `whisper-cli`, `llama-cli` y el `fpcalc` +
+  `ffmpeg` que busca la intro **al abrir el archivo, sin que nadie lo pida**. Eso es exactamente «con Atalaya da
+  tirones y con mpv no», porque mpv no tiene a nadie haciendo trabajo. Ahora hay un solo sitio
+  (`mpvd/priority.py`) que baja CPU **y disco**: `nice 15` para lo que puede durar media hora, `nice 10` para el
+  resto y la prioridad de E/S en clase `idle`, que es la que importa cuando el trabajo de fondo lee un archivo de
+  varios GB mientras el reproductor lee otro. Medido: 47 → 28 fotogramas perdidos con tres codificadores de fondo.
+  **(2) Y la regla de Ser, que es mejor que bajar prioridades**: mientras hay algo reproduciéndose, **no arranca
+  nada especulativo**. Lo barato es que la clasificación ya existía: `URGENT` es un subtítulo que va a salir ya,
+  `INTERACTIVE` es lo que ha pulsado la persona, y `PRECOMPUTE`/`INDEX` es todo lo que el programa se inventa
+  (analizar la intro, pre-subtitular el siguiente episodio, indexar la biblioteca, la guía, las suscripciones).
+  Así que la regla son tres líneas en la cola —no se saca de la cola nada con prioridad ≥ PRECOMPUTE mientras
+  `sessions.playing()`— y una en las sesiones, que despiertan la cola al pausar o parar. `pause` y `path` ya se
+  observaban, así que no cuesta ni una llamada a mpv. El guardián reactivo (si se pierden 2 fotogramas por segundo,
+  diez segundos sin trabajo pesado) se queda como segunda red, pero ya no es la primera: reaccionaba **después** de
+  que el tirón se viera, y volvía a intentarlo cada diez segundos.
+  **(3) thumbfast**, que es lo más parecido a un segundo reproductor: arranca **otro mpv** para las miniaturas al
+  pasar el ratón por la barra (38,8 % de un núcleo decodificando la misma película) y estaba con
+  `quit_after_inactivity=0`, es decir, **no se cerraba nunca** una vez abierto. Ahora se cierra a los 10 s de no
+  usarlo; volver a abrirlo cuesta un par de décimas.
+  **(4) Lo que NO se ha reproducido, y conviene decirlo**: el caso exacto de Ser. En las medidas controladas
+  Atalaya sale igual o mejor que mpv a secas (con carga, 0 fotogramas perdidos frente a 50). Mis pruebas no tocaban
+  el ratón —así que thumbfast no arrancaba— y la carpeta de datos estaba vacía —así que no había intro que analizar
+  ni biblioteca que indexar—, que son justo los dos mecanismos encontrados. La confirmación tiene que venir de
+  volver a poner esa película.

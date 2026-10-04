@@ -24,6 +24,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+from mpvd import priority as prio
 from mpvd.convert.presets import HwPlan
 
 log = logging.getLogger("mpvd.share.hls")
@@ -435,9 +436,6 @@ def plain_direct(url: str) -> bool:
 # -- a running relay --------------------------------------------------------------------------------------------
 
 
-def _lower_priority() -> None:  # pragma: no cover - runs in the child
-    with contextlib.suppress(OSError):
-        os.nice(NICE)
 
 
 class HlsStream:
@@ -472,7 +470,7 @@ class HlsStream:
             self.status = "running"
             kwargs: dict[str, Any] = {}
             if os.name == "posix":
-                kwargs["preexec_fn"] = _lower_priority
+                kwargs["preexec_fn"] = prio.lower
             try:
                 self.proc = await asyncio.create_subprocess_exec(
                     *plan.cmd, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,

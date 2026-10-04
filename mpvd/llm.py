@@ -27,6 +27,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from mpvd import priority as prio
+
 log = logging.getLogger("mpvd.llm")
 
 GGUF_MAGIC = b"GGUF"
@@ -297,9 +299,11 @@ class LlmEngine:
             key = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
             env[key] = libs + (os.pathsep + env[key] if env.get(key) else "")
         async with self.lock:
+            # H69 · nunca compite con la reproducción
             proc = await asyncio.create_subprocess_exec(*self.argv(model, system, prompt, tokens),
                                                         stdout=asyncio.subprocess.PIPE,
-                                                        stderr=asyncio.subprocess.PIPE, env=env)
+                                                        stderr=asyncio.subprocess.PIPE, env=env,
+                                                        **prio.background(nice=prio.NICE_HEAVY))
             try:
                 out, err = await asyncio.wait_for(proc.communicate(), timeout)
             except asyncio.TimeoutError:

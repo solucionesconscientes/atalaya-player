@@ -165,3 +165,39 @@ def test_guardian_rate_and_status():
 def test_priority_parse_rejects_garbage():
     with pytest.raises(KeyError):
         Priority.parse("whatever")
+
+
+def test_mientras_se_ve_algo_no_arranca_nada_especulativo():
+    """H70 · la regla que pidió Ser: un reproductor no hace nada que no le hayan pedido mientras ves una película.
+
+    URGENT (un subtítulo que va a salir ya) e INTERACTIVE (lo que has pulsado) siguen; PRECOMPUTE e INDEX
+    —analizar la intro al abrir, pre-subtitular el siguiente episodio, indexar la biblioteca— esperan a que se
+    pause o se pare. Antes solo había un guardián que reaccionaba DESPUÉS de perder fotogramas: el tirón se veía."""
+    async def go():
+        viendo = {"si": True}
+        q = JobQueue(workers=1, playing=lambda: viendo["si"])
+        await q.start()
+        hechos: list[str] = []
+
+        async def body(job):
+            hechos.append(job.name)
+
+        intro = q.submit("intro.analyze", body, priority=Priority.PRECOMPUTE, heavy=True)
+        indice = q.submit("library.index", body, priority=Priority.INDEX, heavy=True)
+        pedido = q.submit("recap.ask", body, priority=Priority.INTERACTIVE)
+        urgente = q.submit("asr.prepare", body, priority=Priority.URGENT)
+
+        await pedido.wait(5)
+        await urgente.wait(5)
+        await asyncio.sleep(0.1)
+        assert sorted(hechos) == ["asr.prepare", "recap.ask"], hechos
+        assert intro.status is Status.QUEUED and indice.status is Status.QUEUED
+
+        viendo["si"] = False       # se pausa o se para: lo que esperaba arranca solo
+        q.wake()
+        await intro.wait(5)
+        await indice.wait(5)
+        assert sorted(hechos) == ["asr.prepare", "intro.analyze", "library.index", "recap.ask"], hechos
+        await q.stop()
+
+    run(go())

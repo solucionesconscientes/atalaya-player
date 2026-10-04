@@ -240,6 +240,37 @@ funcione y se pueda lanzar.
       coste medido era 12,1 ms de CPU por MB y 110 MB de RSS (un 6 % de un núcleo a 5 MB/s).
 - [~] La propuesta de 2026-09-30 (integrarse con qBittorrent por su interfaz web) sigue aparcada.
 
+## H69 y H70 · Reproducir manda: nada compite con el vídeo — ADR-114 · [x]
+Ser puso una película (HEVC 10 bits, MKV) con Atalaya y daba tirones; cerró, la puso con el mpv de apt **en el
+mismo momento** y fue bien. Medido todo en su portátil (i5-6200U, 4 núcleos, sin GPU dedicada).
+- [x] R1 **El suelo del hardware, que no se arregla**: este equipo **no decodifica HEVC 10 bits por hardware**
+      (VA-API solo ofrece `VAProfileHEVCMain`; Main10 llegó con Kaby Lake). Lo decodifica la CPU en cualquier
+      reproductor. Medido: 29 % de un núcleo con un 1080p10 fácil y **3,3 núcleos** con uno de 39 Mbps.
+- [x] R2 **thumbfast arrancaba un SEGUNDO mpv** para las miniaturas al pasar por la barra —38,8 % de un núcleo
+      decodificando la misma película— y con `quit_after_inactivity=0` **no se cerraba nunca**: se quedaba
+      comiendo CPU el resto de la película. Ahora se cierra a los 10 s y vuelve solo cuando hace falta.
+- [x] R3 **Lo más caro corría a prioridad normal**: `whisper-cli` (subtítulos IA), `llama-cli` (resumen) y el
+      `fpcalc`/`ffmpeg` que busca la intro **al abrir el archivo, sin que nadie lo pida**. La regla del proyecto
+      («lo pesado nunca compite con la reproducción») estaba aplicada a las conversiones, las salas, las
+      suscripciones y las etiquetas de música, y no a esos tres. Ahora todo pasa por `mpvd/priority.py`:
+      `nice 15` para voz y resumen, `nice 10` para lo demás y **prioridad de disco en clase idle**, que es lo que
+      importa cuando el trabajo de fondo lee un archivo de varios GB mientras el reproductor lee otro. Medido con
+      el fichero de 39 Mbps y tres codificadores de fondo: **47 → 28 fotogramas perdidos**.
+- [x] R4 **Y la regla que lo zanja, de Ser**: «cuando pones peli o música, que Atalaya se quede como mpv pelado y
+      pase de todo lo que no sea indispensable; que eso se active cuando alguien le dé». Mientras hay algo
+      reproduciéndose **no arranca nada especulativo**: `URGENT` (un subtítulo que va a salir ya) e `INTERACTIVE`
+      (lo que has pulsado) siguen; `PRECOMPUTE` e `INDEX` —analizar la intro, pre-subtitular el siguiente
+      episodio, indexar la biblioteca, la guía de TV, las suscripciones— **esperan a que pauses o pares**, y
+      entonces arrancan solos. La clasificación ya existía, así que son tres líneas en la cola y una en las
+      sesiones; `pause` y `path` ya se observaban, así que no cuesta ni una llamada a mpv.
+      Antes solo había un guardián que reaccionaba DESPUÉS de perder fotogramas (2/s durante 10 s): el tirón se
+      veía y volvía cada diez segundos. Sigue ahí como segunda red.
+- [~] R5 **Lo que NO he conseguido reproducir**: el caso exacto de Ser. En mis medidas Atalaya sale igual o mejor
+      que mpv a secas (con carga: 0 fotogramas perdidos frente a 50 de mpv; sin nada: 87 frente a 74 con un
+      fichero que se pasa de lo que da la máquina). Mis pruebas no tocaban el ratón (no arrancaba thumbfast) y su
+      carpeta de datos estaba vacía (no había intro que analizar ni biblioteca que indexar), que son justo los dos
+      mecanismos que he encontrado. La prueba de verdad es la suya: volver a poner **esa** película.
+
 ## H66 · Lo que Ser encontró al probarlo: torrents y programar — ADR-110 · [x]
 Tres cosas de su prueba del 2026-10-04, dos de ellas fallos míos.
 - [~] P1-P3 eran de torrents (la fila de Preferencias que faltaba, arrastrar un magnet o un `.torrent`, y bajar un

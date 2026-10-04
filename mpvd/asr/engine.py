@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from mpvd import priority as prio
 from mpvd.asr.models import VAD_MODEL, ModelError, ModelStore, find_binary
 from mpvd.asr.srt import Segment, clean_text
 from mpvd.asr.timing import (align_to_stretches, build_cues, parse_vad_segments, remap_words, speech_regions,
@@ -192,8 +193,10 @@ class WhisperEngine:
             audio_seconds = wav_duration(wav)
         async with self._lock:
             t0 = time.monotonic()
+            # H69 · nunca compite con la reproducción: nice 15 y disco en clase «idle»
             proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.DEVNULL,
-                                                        stderr=asyncio.subprocess.PIPE, env=library_env(self.cli))
+                                                        stderr=asyncio.subprocess.PIPE, env=library_env(self.cli),
+                                                        **prio.background(nice=prio.NICE_HEAVY))
             try:
                 _, err = await asyncio.wait_for(proc.communicate(), timeout)
             except (asyncio.TimeoutError, asyncio.CancelledError):

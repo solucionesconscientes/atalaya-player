@@ -111,6 +111,13 @@ class SessionManager:
     def all(self) -> list[Session]:
         return list(self._sessions.values())
 
+    def playing(self) -> bool:
+        """¿Hay algo reproduciéndose ahora mismo? (H70) Con algo puesto y sin pausa, el trabajo especulativo espera.
+
+        `pause` y `path` ya se observan por sesión, así que esto no cuesta ninguna llamada a mpv."""
+        return any(s.connected and s.props.get("path") and not s.props.get("pause", True)
+                   for s in self._sessions.values())
+
     def __len__(self) -> int:
         return len(self._sessions)
 
@@ -197,6 +204,9 @@ class SessionManager:
                     session.props[ev.get("name", "")] = ev.get("data")
                     if ev.get("name") == "frame-drop-count":
                         self.server.guardian.observe(session.id, ev.get("data"), bool(session.props.get("pause")))
+                    elif ev.get("name") in ("pause", "path"):
+                        # H70 · al pausar o parar, lo que estaba esperando puede ponerse en marcha
+                        self.server.jobs.wake()
                 elif kind == "client-message":
                     args = ev.get("args") or []
                     if args and args[0] == RPC_MESSAGE and len(args) >= 2:

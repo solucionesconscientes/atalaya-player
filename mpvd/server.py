@@ -42,7 +42,10 @@ class MpvdServer:
         self.root = project_root()
         self.dispatcher = Dispatcher()
         self.guardian = PerformanceGuardian()
-        self.jobs = JobQueue(workers=self.settings.workers, guardian=self.guardian, on_change=self._job_changed)
+        # H70 · `playing` se consulta en cada decisión de la cola, así que se pasa como función: las sesiones se
+        # crean justo debajo y el trabajo especulativo espera a que no haya nada reproduciéndose.
+        self.jobs = JobQueue(workers=self.settings.workers, guardian=self.guardian, on_change=self._job_changed,
+                             playing=lambda: self.sessions.playing())
         self.cache = ArtifactCache(self.settings.cache_dir / "artifacts")
         self.sessions = SessionManager(self)
         self.started_at = time.time()

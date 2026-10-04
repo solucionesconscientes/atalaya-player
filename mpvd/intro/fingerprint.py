@@ -16,6 +16,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
+from mpvd import priority as prio
 from mpvd.asr.audio import extract_wav
 
 MASK_HIGH = 0xFFFFF000       # exact-match key: top 20 bits (the low bits flip with encoding noise)
@@ -80,8 +81,10 @@ async def fingerprint_window(src: str, start: float, length: float, tmp_dir: Pat
     wav = tmp_dir / f"fp-{uuid.uuid4().hex}.wav"  # unique: two jobs may fingerprint the same window at once
     try:
         await extract_wav(src, start, length, wav, audio_track)
+        # H69 · buscar la intro es trabajo de fondo: no compite con la reproducción
         proc = await asyncio.create_subprocess_exec(fpcalc_path(), "-raw", "-json", "-length", str(int(length) + 1),
-                                                    str(wav), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                                                    str(wav), stdout=asyncio.subprocess.PIPE,
+                                                    stderr=asyncio.subprocess.PIPE, **prio.background())
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout)
         except asyncio.TimeoutError:
