@@ -319,6 +319,13 @@ los once fallos de H55.
       probar: que el `close` que llega como consecuencia de nuestra propia reapertura no toque el estado (saber
       distinguirlo en `mu.uosc` y comprobarlo en los trece scripts que pintan dos veces), o pintar siempre con un
       solo `open-menu` esperando la confirmación de uosc antes de la segunda pasada.
+      **TERCER intento, también descartado** (2026-10-04): subir a `mu.uosc` el permiso de H65 (`allow_open()` en
+      `open_view` y un `show()` que solo abre con permiso) y aplicarlo a los catorce módulos. En TV funciona desde
+      H65, pero fuera de TV **hay caminos que abren menú sin pasar por `open_view` ni por `force_open`**, así que
+      esos menús dejaban de aparecer: la pasada completa subió de 1 fallo a 4 (`test_mu_notes`,
+      `test_flujos_e2e`, `test_share_http` y el de siempre). Revertido. Antes de volver a intentarlo hay que
+      **inventariar todos los caminos que abren menú** en cada módulo, no solo `open_view`; el permiso es la idea
+      correcta, el inventario es el trabajo que falta.
 
 ## H62 · Ver y saber lo que pasa por detrás — ADR-102 · [x]
 De la prueba de Ser: «debe haber alguna forma de monitorear los procesos en segundo plano, cualquiera… se debe
