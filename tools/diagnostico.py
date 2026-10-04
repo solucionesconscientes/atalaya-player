@@ -73,7 +73,7 @@ def procesos() -> dict[int, tuple[str, float, float]]:
     return out
 
 
-async def recoger(minutos: float, intervalo: float = 2.0) -> dict:
+async def recoger(datos: dict, minutos: float, intervalo: float = 2.0) -> dict:
     sock = socket_del_reproductor()
     espera = time.monotonic() + 60
     while sock is None and time.monotonic() < espera:
@@ -83,10 +83,13 @@ async def recoger(minutos: float, intervalo: float = 2.0) -> dict:
     if sock is None:
         raise SystemExit("no encuentro ningún reproductor abierto: abre Atalaya y pon la película")
 
-    muestras: list[dict] = []
+    muestras: list[dict] = datos["muestras"]      # el dict es de quien llama: Ctrl+C no se lleva lo recogido
+    nombres: dict = datos["nombres"]
+    nice: dict = datos["nice"]
+    datos["socket"] = str(sock)
     cpu0 = {pid: v[1] for pid, v in procesos().items()}
-    nombres = {pid: v[0] for pid, v in procesos().items()}
-    nice = {pid: v[2] for pid, v in procesos().items()}
+    nombres.update({pid: v[0] for pid, v in procesos().items()})
+    nice.update({pid: v[2] for pid, v in procesos().items()})
     fin = time.monotonic() + minutos * 60 if minutos else float("inf")
     print(f"recogiendo datos de {sock.name} · Ctrl+C para terminar")
     async with MpvIpcClient(str(sock)) as c:
@@ -107,7 +110,7 @@ async def recoger(minutos: float, intervalo: float = 2.0) -> dict:
             print(f"  {fila.get('time-pos', 0) or 0:7.0f}s de la película · perdidos: "
                   f"{fila.get('frame-drop-count', 0)} · carga {fila.get('carga', 0):.1f}   ", end="\r", flush=True)
             await asyncio.sleep(intervalo)
-    return {"socket": str(sock), "muestras": muestras, "nombres": nombres, "nice": nice}
+    return datos
 
 
 def resumen(datos: dict) -> str:
@@ -159,9 +162,9 @@ def main() -> int:
     a = ap.parse_args()
     datos: dict = {"muestras": [], "nombres": {}, "nice": {}}
     try:
-        datos = asyncio.run(recoger(a.minutos))
+        asyncio.run(recoger(datos, a.minutos))
     except KeyboardInterrupt:
-        pass
+        print()      # lo recogido ya está en `datos`: Ctrl+C no lo pierde
     except SystemExit as e:
         print(e)
         return 1
