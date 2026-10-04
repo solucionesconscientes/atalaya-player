@@ -1,0 +1,40 @@
+#!/bin/sh
+# El despertador del equipo, en un solo sitio (H40/F4, H72/ADR-117).
+#
+# Esto existe porque `sudo` ya NO acepta comodines en los argumentos de una orden («wildcards are not allowed in
+# command arguments»), así que no hay forma de escribir una regla de sudoers que permita «rtcwake -m no -t <un
+# número>» y nada más. La alternativa era permitir `rtcwake` con cualquier argumento —y entonces también
+# `rtcwake -m off`, que apaga la máquina—. Aquí la validación la hace este programa, y la regla de sudoers no
+# necesita comodines: apunta a este fichero y punto.
+#
+#   bin/wake set <epoch>   pone la alarma del reloj de la máquina para esa hora (en segundos desde 1970)
+#   bin/wake clear         la borra
+#   bin/wake check         dice si se puede (código 0) sin tocar nada
+#
+# Solo acepta esas tres cosas, y `set` solo acepta dígitos: no hay manera de colarle otra orden. Lo instala el
+# paquete .deb como root y su regla de sudoers apunta aquí; en una copia del repositorio o en el AppImage el
+# fichero es de quien lo usa, así que ahí NO se pone ninguna regla (sería darse permiso a sí mismo).
+set -eu
+
+RTCWAKE="$(command -v rtcwake || echo /usr/sbin/rtcwake)"
+[ -x "$RTCWAKE" ] || { echo "falta rtcwake (paquete util-linux-extra en Debian y Ubuntu)" >&2; exit 2; }
+
+case "${1:-}" in
+  set)
+    when="${2:-}"
+    case "$when" in
+      ''|*[!0-9]*) echo "uso: wake set <segundos desde 1970>" >&2; exit 2 ;;
+    esac
+    exec "$RTCWAKE" -m no -t "$when"
+    ;;
+  clear)
+    exec "$RTCWAKE" -m disable
+    ;;
+  check)
+    exec "$RTCWAKE" --version
+    ;;
+  *)
+    echo "uso: wake set <epoch> | wake clear | wake check" >&2
+    exit 2
+    ;;
+esac

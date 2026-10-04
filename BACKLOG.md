@@ -274,6 +274,70 @@ mismo momento** y fue bien. Medido todo en su portátil (i5-6200U, 4 núcleos, s
       carpeta de datos estaba vacía (no había intro que analizar ni biblioteca que indexar), que son justo los dos
       mecanismos que he encontrado. La prueba de verdad es la suya: volver a poner **esa** película.
 
+## H67 · Programar en días de la semana, indefinido — ADR-116 · [x]
+Ser: «quiero que si se dice de l-v, cada día, etc, siga así de forma indefinida, hasta que el usuario indicara lo
+contrario», y «¿se pueden grabar varios canales al mismo tiempo?».
+- [x] T1 **La regla, no un calendario**: cada franja lleva `repeat` (daily | weekdays | weekly), `days`
+      (0 = lunes … 6 = domingo) y `series`, y **de cada serie hay una sola pendiente**: la siguiente se crea
+      cuando esta termina, en `_finish`, pase lo que pase (bien, fallo, perdida o cancelada). Escribir todas las
+      ocurrencias futuras obligaría a elegir un horizonte —y entonces la repetición se acaba—, llenaría la lista y
+      complicaría el despertador, que se pone para la primera pendiente.
+- [x] T2 **Indefinido = sobrevivir a tres cosas**: al equipo apagado (`recover()` deja puesta la siguiente, así
+      que una semana de vacaciones no mata la serie), a cerrar mpvd (la regla se guarda en `iptv-schedule.json`) y
+      a saltarse un día. Un test la hace rodar 60 veces comprobando que nunca hay dos pendientes ni cero.
+- [x] T3 **Tres salidas con su nombre**, porque «cancelar» no dice cuál de las tres cosas pasa: «Saltarse solo
+      esta vez» (la serie sigue), «Dejar de repetir» (se queda la franja puesta y ninguna más) y «Quitar la serie
+      entera». Por RPC: `cancel`, `iptv.schedule.repeat` y `remove`.
+- [x] T4 **Se escribe delante de la hora**, en los tres idiomas: «cada día 7:00 30», «de lunes a viernes 21:30
+      90», «l-v 21:30 90», «laborables 21:30 90», «martes y jueves 20:00 22:00», «martes a jueves 20:00 21:00»,
+      «los sábados 10:00 1h», «fines de semana 10:00 2h». Se lee ANTES de partir el texto en palabras, porque el
+      analizador se come los conectores y «de lunes a viernes» llegaría como «lunes viernes», que es otra cosa.
+      La primera de la serie es la primera que toque: «l-v 21:30» escrito un sábado empieza el lunes.
+- [x] T5 **La hora es la del reloj**: la cuenta va por calendario, así que «cada día a las 21:30» sigue siendo a
+      las 21:30 el día que cambia la hora (sumando 86.400 s habría pasado a las 20:30), y una franja que cruza la
+      medianoche sigue cruzándola.
+- [x] T6 **Varios canales a la vez sí; dos reproducciones, aviso**: probado de punta a punta con dos canales y
+      ffmpeg de verdad (los dos archivos con vídeo, audio y duración), porque cada grabación es su propio ffmpeg
+      copiando. Programar una reproducción que pisa a otra avisa («a esa hora ya suena «X»») y **no lo impide**.
+- [x] T7 Probado también por la interfaz: se escribe en la paleta, la fila dice «se repite hasta que lo quites»,
+      la lista enseña la etiqueta («de lunes a viernes · mañana 21:30–23:00 · programada») y las tres salidas.
+      37 tests nuevos entre `tests/test_schedule_repeat.py`, `test_iptv_schedule.py` y `test_mu_iptv_epg.py`.
+
+## H72 · Los cuatro paquetes de Linux, el de Windows y macOS por Homebrew — ADR-117 · [x]
+Decidido con Ser el 2026-10-04: «yo haría deb y appimage, ambos tb para arm», «mejor windows zip que exe o msi»,
+«no voy a pagar ninguna cuenta de mac».
+- [x] U1 **`.deb` amd64 y arm64** (`tools/build_deb.sh --arch`): la aplicación, un CPython 3.12 reubicable del
+      mismo tarball fijado para las cuatro variantes, `Depends: mpv` **sin versión mínima** —en Debian 13 y
+      Raspberry Pi OS el del sistema puede ser más viejo: mejor instalarse y avisar que negarse a instalar—,
+      página de manual, icono, entrada de escritorio y los dos nombres de orden (`atalaya` y `mpv-uos`).
+      27 MB amd64, 21 MB arm64.
+- [x] U2 **La regla de `sudoers` del despertador**, lo único que el `.deb` puede hacer y el AppImage no. Y sudo ya
+      **no acepta comodines en los argumentos**, así que no se puede escribir «rtcwake -m no -t <un número>» y
+      nada más: la validación la hace `bin/wake` (catorce líneas, tres órdenes, rechaza un argumento de más) y la
+      regla autoriza ese fichero, que en el paquete es de root. El postinst la valida con `visudo -c` y la BORRA
+      si no fuera válida: mejor sin despertador que dejar a alguien sin sudo.
+- [x] U3 **AppImage x86-64 y aarch64** (`tools/build_appimage.sh --arch`): cruzar a ARM se puede sin máquina ARM
+      —intérprete y ruedas de aarch64, y el appimagetool de x86-64 construye el otro con `--runtime-file`—. 38 y
+      34 MB. Lo cruzado está revisado por dentro y **no se puede ejecutar aquí**.
+- [x] U4 **`.zip` portable de Windows** (`tools/build_zip_windows.sh`): 35 MB con su propio Python donde lo busca
+      el lanzador (`.venv\Scripts\python.exe`), `yt-dlp.exe` fijado, solo el ayudante de uosc de Windows, el
+      `install.ps1` que ya existía y un LEE-ME en CRLF que dice que mpv se instala aparte y que esto no se ha
+      probado en un Windows de verdad. Un `.exe` o `.msi` sin firmar se come el aviso de SmartScreen.
+- [x] U5 **macOS por Homebrew**, y escrito por qué: sin cuenta de Apple no hay firma, un `.dmg` sin firmar lo
+      bloquea Gatekeeper hablando de malware, y el `.app` que ya se construye usa el mpv de Homebrew, así que no
+      sería autocontenido. Queda dicho qué falta si algún día hay cuenta: firmar y notarizar ese mismo `.app`.
+- [x] U6 **El aviso de mpv viejo**: el lanzador lee la versión y mu-core lo dice una vez, nombrando las dos cosas
+      que dependen de 0.41 (el índice del vídeo necesita escribir `chapter-list`; copiar enlaces usa
+      `clipboard/text`). Y ahí apareció **el fallo más grave de la tanda**: `mpv --version | head -1` le cierra la
+      salida a mpv, que muere con SIGPIPE, y con `pipefail` eso abortaba el lanzador **antes de abrir el
+      reproductor**. Lo cazó el test que extrae el `.deb` y comprueba que arranca; ahora se lee con `awk` y hay
+      diez tests que lo ejecutan con un mpv de pega que escribe 2.000 líneas.
+- [x] U7 **Probado lo que se puede probar sin otra máquina**: el `.deb` de amd64 se extrae, arranca y mpvd se
+      conecta con el intérprete del paquete; `lintian` pasa de 2.780 avisos a 15, todos inherentes a llevar el
+      intérprete dentro y con lista blanca en el test; el AppImage sigue arrancando sin ventana; del zip y de lo
+      cruzado se comprueba el contenido. 21 tests nuevos (`tests/test_deb.py`,
+      `tests/test_lanzador_mpv_viejo.py`, el del zip en `tests/test_windows_scripts.py`).
+
 ## H71 · La película de Ser, medida con los dos reproductores — ADR-115 · [x]
 Ser puso **su** película (`Silencio`, Scorsese 2016: MKV 2,7 GB, HEVC **Main 10**, 1920x804, 2,4 Mbps, 161 min) y
 pidió lo único que zanja la discusión: «compruébalo con mpv y mpv-uos; hasta que mpv-uos no sea igual o más ligero

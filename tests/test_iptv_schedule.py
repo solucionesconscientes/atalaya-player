@@ -328,3 +328,72 @@ def test_record_cancel_persist_and_missed(tmp_path, live):
         assert all(Path(p).stat().st_size > 0 for p in final["files"])
     finally:
         lst.shutdown()
+
+
+def test_dos_canales_a_la_vez_y_una_serie_que_deja_puesta_la_siguiente(tmp_path, live):
+    """H67 · las dos preguntas de Ser, de punta a punta y con ffmpeg de verdad.
+
+    (1) «¿Se pueden grabar varios canales al mismo tiempo?» Sí: cada grabación es su propio ffmpeg copiando el
+    flujo (`-c copy`, sin recodificar), así que dos a la vez cuestan dos veces casi nada. Aquí se graban dos
+    canales en la misma franja y se comprueba que los DOS archivos existen, tienen vídeo y audio y duran.
+    (2) «Que si se dice de l-v, cada día, siga así de forma indefinida»: al terminar una franja repetida, la
+    siguiente queda puesta sola, el mismo día de la semana que toque y a la misma hora del reloj."""
+    m3u = (f'#EXTM3U\n#EXTINF:-1 tvg-id="Live.TV" group-title="Pruebas",Directo Uno\n'
+           f"#EXTVLCOPT:http-referrer=https://web.example/\n{live.url}\n"
+           f'#EXTINF:-1 tvg-id="Live2.TV" group-title="Pruebas",Directo Dos\n'
+           f"#EXTVLCOPT:http-referrer=https://web.example/\n{live.url}?dos\n").encode()
+    lst = serve_list(m3u)
+    list_url = f"http://127.0.0.1:{lst.server_port}/tv.m3u8"
+    rec_dir = tmp_path / "Grabaciones"
+
+    async def go():
+        server = make_server(tmp_path, list_url)
+        await server.start()
+        try:
+            async with MpvdClient(str(server.settings.socket_path)) as c:
+                chans = (await c.call("iptv.channels", {"source": "tdt_tv", "compact": True}))["items"]
+                assert len(chans) >= 2, chans
+                now = time.time()
+                a = await c.call("iptv.schedule.add", {"channel": chans[0]["id"], "start": now + 2,
+                                                       "stop": now + 7, "dir": str(rec_dir)})
+                b = await c.call("iptv.schedule.add", {"channel": chans[1]["id"], "start": now + 2,
+                                                       "stop": now + 7, "dir": str(rec_dir)})
+                assert "warning" not in a and "warning" not in b, "grabar dos canales a la vez no estorba"
+                # los dos graban a la vez de verdad, no uno detrás de otro
+                await wait_status(c, a["id"], ("recording",), 15)
+                juntos = {i["id"]: i for i in (await c.call("iptv.schedule.list"))["items"]}
+                assert juntos[b["id"]]["status"] in ("recording", "scheduled")
+                fin_a = await wait_status(c, a["id"], ("done", "failed"), 40)
+                fin_b = await wait_status(c, b["id"], ("done", "failed"), 40)
+
+                # y una franja repetida deja puesta la siguiente al acabar
+                serie = await c.call("iptv.schedule.add", {"channel": chans[0]["id"], "start": time.time() + 2,
+                                                           "stop": time.time() + 5, "dir": str(rec_dir),
+                                                           "repeat": "daily"})
+                assert serie["repeat"] == "daily" and serie["repeat_label"] == "cada día"
+                await wait_status(c, serie["id"], ("done", "failed"), 40)
+                lista = (await c.call("iptv.schedule.list"))["items"]
+                return fin_a, fin_b, serie, lista
+        finally:
+            await server.stop()
+
+    try:
+        fin_a, fin_b, serie, lista = asyncio.run(go())
+    finally:
+        lst.shutdown()
+
+    assert fin_a["status"] == "done" and fin_b["status"] == "done", (fin_a, fin_b)
+    for fin in (fin_a, fin_b):
+        datos = probe(Path(fin["file"]))
+        tipos = sorted(s["codec_type"] for s in datos["streams"])
+        assert tipos == ["audio", "video"], datos
+        assert float(datos["format"]["duration"]) > 1.0, datos
+    assert Path(fin_a["file"]) != Path(fin_b["file"]), "cada canal, su archivo"
+
+    siguiente = [i for i in lista if i["status"] == "scheduled" and i["repeat"] == "daily"]
+    assert len(siguiente) == 1, siguiente
+    assert siguiente[0]["id"] != serie["id"] and siguiente[0]["series"] == serie["series"]
+    primera = dt.datetime.fromtimestamp(serie["start"])
+    proxima = dt.datetime.fromtimestamp(siguiente[0]["start"])
+    assert (proxima.hour, proxima.minute) == (primera.hour, primera.minute), (primera, proxima)
+    assert (proxima.date() - primera.date()).days == 1

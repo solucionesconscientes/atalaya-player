@@ -79,6 +79,11 @@ class Recording:
     # H57 · qué se hace en esa franja: grabar (lo de siempre), reproducir —que el equipo se encienda y ponga el
     # canal, la emisora o la lista— o las dos cosas a la vez.
     mode: str = "record"    # record | play | both
+    # H67 · la repetición vive EN la franja, y de cada serie solo hay una pendiente: la siguiente se crea cuando
+    # esta termina (o se pierde, o se cancela), así que la serie sigue de forma indefinida hasta que se quite.
+    repeat: str = ""        # "" (una vez) | daily | weekdays | weekly
+    days: list[int] = field(default_factory=list)   # para weekly: 0 = lunes … 6 = domingo
+    series: str = ""        # id de la primera franja de la serie (las demás lo heredan)
     programme: dict[str, Any] | None = None
     created_at: float = field(default_factory=time.time)
     started_at: float | None = None
@@ -99,6 +104,7 @@ class Recording:
         d["begin"], d["end"] = self.begin, self.end
         d["status_label"] = LABELS.get(self.status, self.status)
         d["file"] = self.files[-1] if self.files else ""
+        d["repeat_label"] = repeat_label(self.repeat, self.days)
         return d
 
     @classmethod
@@ -192,6 +198,130 @@ _AHORA = ("ahora", "ya", "now", "maintenant")
 _PASADO = {"pasado": ("mañana", "manana"), "après": ("demain",), "apres": ("demain",)}
 
 
+# H67 · la repetición: «cada día», «de lunes a viernes», días sueltos. Se mira ANTES de partir el texto en
+# palabras, porque el separador se come los conectores y «de lunes a viernes» quedaría igual que «lunes viernes»,
+# que es otra cosa (lunes Y viernes). 0 = lunes … 6 = domingo, como datetime.weekday().
+_WEEKDAYS = {"lunes": 0, "martes": 1, "miércoles": 2, "miercoles": 2, "jueves": 3, "viernes": 4, "sábado": 5,
+             "sabado": 5, "domingo": 6,
+             "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6,
+             "mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6,
+             "lundi": 0, "mardi": 1, "mercredi": 2, "jeudi": 3, "vendredi": 4, "samedi": 5, "dimanche": 6}
+_RE_CADA_DIA = re.compile(r"^(?:cada\s+d[ií]a|todos\s+los\s+d[ií]as|a\s+diario|diario|daily|every\s+day|"
+                          r"chaque\s+jour|tous\s+les\s+jours)\b")
+_RE_LABORABLES = re.compile(r"^(?:de\s+)?(?:lunes\s+a\s+viernes|l\s*[-–]\s*v|d[ií]as\s+laborables|laborables|"
+                            r"en\s+semana|weekdays?|mon(?:day)?\s*[-–]\s*fri(?:day)?|"
+                            r"du\s+lundi\s+au\s+vendredi|en\s+semaine|jours\s+ouvr[ée]s?)\b")
+_RE_FIN_DE_SEMANA = re.compile(r"^(?:los\s+)?(?:fines?\s+de\s+semana|s\s*[-–]\s*d|weekends?|"
+                               r"sat(?:urday)?\s*[-–]\s*sun(?:day)?|week-?ends?|le\s+week-?end)\b")
+# palabras que acompañan a los días y no dicen nada por sí mismas
+_RELLENO = ("cada", "todos", "todas", "los", "las", "el", "la", "every", "all", "on", "the",
+            "chaque", "tous", "toutes", "les", "le", "la")
+_UNE = (",", "y", "e", "and", "et", "a", "al", "to", "au", "-", "–")
+_RANGO = ("a", "al", "to", "au", "-", "–")
+REPEATS = ("", "daily", "weekdays", "weekly")
+
+
+def _weekday(token: str) -> int | None:
+    palabra = token.strip(".,")
+    if palabra in _WEEKDAYS:
+        return _WEEKDAYS[palabra]
+    if palabra.endswith("s") and palabra[:-1] in _WEEKDAYS:      # sábados, domingos, mardis
+        return _WEEKDAYS[palabra[:-1]]
+    return None
+
+
+def repeat_days(repeat: str, days: list[int] | None = None) -> list[int]:
+    """Los días de la semana que toca, ya resueltos: lo que se guarda es la regla, no una lista de fechas."""
+    if repeat == "daily":
+        return [0, 1, 2, 3, 4, 5, 6]
+    if repeat == "weekdays":
+        return [0, 1, 2, 3, 4]
+    if repeat == "weekly":
+        return sorted({int(d) % 7 for d in (days or [])})
+    return []
+
+
+def _repeat_prefix(text: str) -> tuple[str, list[int], str]:
+    """Separa la repetición de lo demás: («weekdays», [0..4], «21:30 90») para «de lunes a viernes 21:30 90»."""
+    s = text.strip()
+    for rx, repeat, days in ((_RE_CADA_DIA, "daily", []), (_RE_LABORABLES, "weekdays", [0, 1, 2, 3, 4]),
+                             (_RE_FIN_DE_SEMANA, "weekly", [5, 6])):
+        m = rx.match(s)
+        if m:
+            return repeat, days, s[m.end():].strip()
+    palabras = re.sub(r"\s*([,–-])\s*", r" \1 ", s).split()
+    i = 0
+    while i < len(palabras) and palabras[i].lower() in _RELLENO:
+        i += 1
+    dias: list[int] = []
+    rango = False
+    while i < len(palabras):
+        d = _weekday(palabras[i].lower())
+        if d is None:
+            break
+        if rango and dias:
+            desde = dias[-1]
+            dias += [(desde + k) % 7 for k in range(1, (d - desde) % 7 + 1)]
+        else:
+            dias.append(d)
+        rango = False
+        i += 1
+        if i < len(palabras) and palabras[i].lower() in _UNE:
+            rango = palabras[i].lower() in _RANGO
+            i += 1
+            while i < len(palabras) and palabras[i].lower() in _RELLENO:
+                i += 1
+    if not dias:
+        return "", [], s
+    return "weekly", sorted(set(dias)), " ".join(palabras[i:])
+
+
+def day_name(day: int) -> str:
+    """En plural, que es como se dice una repetición: «los jueves». En castellano cinco son invariables."""
+    return (t("lunes"), t("martes"), t("miércoles"), t("jueves"), t("viernes"), t("sábados"),
+            t("domingos"))[int(day) % 7]
+
+
+def repeat_label(repeat: str, days: list[int] | None = None) -> str:
+    """Cómo se le dice a una persona: «cada día», «de lunes a viernes», «los lunes, martes y jueves»."""
+    if repeat == "daily":
+        return t("cada día")
+    if repeat == "weekdays":
+        return t("de lunes a viernes")
+    dias = repeat_days(repeat, days)
+    if not dias:
+        return ""
+    if dias == [5, 6]:
+        return t("fines de semana")
+    nombres = [day_name(d) for d in dias]
+    if len(nombres) == 1:
+        return t("los %s") % (nombres[0],)
+    return t("los %s y %s") % (", ".join(nombres[:-1]), nombres[-1])
+
+
+def next_occurrence(start: float, stop: float, repeat: str, days: list[int] | None = None,
+                    after: float | None = None) -> tuple[float, float]:
+    """La siguiente franja de la regla que empiece después de `after`, con la MISMA hora de reloj.
+
+    La cuenta se hace sobre el calendario (fechas sin zona) y no sumando segundos: así «cada día a las 21:30»
+    sigue siendo a las 21:30 el día que cambia la hora, que es lo que espera cualquiera."""
+    dias = repeat_days(repeat, days)
+    if not dias:
+        return start, stop
+    after = time.time() if after is None else after
+    a, b = dt.datetime.fromtimestamp(start), dt.datetime.fromtimestamp(stop)
+    cruza = (b.date() - a.date()).days
+    dur = stop - start
+    for _ in range(8 * 7):
+        if a.weekday() in dias and a.timestamp() > after:
+            fin = a.replace(hour=b.hour, minute=b.minute, second=0, microsecond=0) + dt.timedelta(days=cruza)
+            # la hora de fin se reconstruye al minuto, así que una franja de segundos (los tests) se quedaría
+            # con el fin antes del inicio: en ese caso manda la duración
+            return a.timestamp(), max(fin.timestamp(), a.timestamp() + dur)
+        a += dt.timedelta(days=1)
+    return start, stop
+
+
 def _clock(token: str) -> tuple[int, int] | None:
     m = _TIME_TOKEN.match(token)
     if not m or (":" not in token and "." not in token and "h" not in token):
@@ -236,9 +366,12 @@ def parse_when(text: str, now: float | None = None, default_minutes: int = 60) -
     now = time.time() if now is None else now
     now_dt = dt.datetime.fromtimestamp(now)
     raw = (text or "").strip().lower()
+    repeat, days, raw = _repeat_prefix(raw)      # H67 · «de lunes a viernes 21:30 90» → la regla y la hora
     tokens = [t for t in re.split(r"\s+|(?<=\d)-(?=\d)|\s*-\s*", raw)
               if t and t not in ("a", "à", "de", "du", "-", "hasta", "to", "until", "till", "jusqu’à", "jusqu'à")]
     if not tokens:
+        if repeat:
+            return {"error": t("Falta la hora: %s 21:30 90") % (repeat_label(repeat, days),)}
         return {"error": t("Escribe la hora de inicio y la duración o la hora de fin: 21:30 22:15 · 21:30 90")}
     day = None
     if tokens[0] in _PASADO and len(tokens) > 1 and tokens[1] in _PASADO[tokens[0]]:
@@ -281,12 +414,22 @@ def parse_when(text: str, now: float | None = None, default_minutes: int = 60) -
         start_dt += dt.timedelta(days=1)
         stop_dt += dt.timedelta(days=1)
     start, stop = start_dt.timestamp(), stop_dt.timestamp()
+    if repeat:
+        # la primera de la serie es la primera que toque: «de lunes a viernes 21:30» escrito un sábado empieza
+        # el lunes, no hoy. Se cuenta desde el día de hoy a esa hora, no desde el que saliera arriba.
+        desde = now_dt.replace(hour=start_dt.hour, minute=start_dt.minute, second=0, microsecond=0)
+        start, stop = next_occurrence(desde.timestamp(), desde.timestamp() + (stop - start), repeat, days,
+                                      after=now)
     if stop <= now:
         return {"error": t("Esa hora ya ha pasado")}
     if stop - start > MAX_DURATION:
         return {"error": t("Como mucho 12 horas seguidas")}
-    return {"start": start, "stop": stop, "label": describe(max(start, now) if start < now else start, stop, now),
-            "now": start <= now}
+    etiqueta = describe(max(start, now) if start < now else start, stop, now)
+    if repeat:
+        etiqueta = f"{repeat_label(repeat, days)} {dt.datetime.fromtimestamp(start):%H:%M}" \
+                   f"–{dt.datetime.fromtimestamp(stop):%H:%M}"
+    return {"start": start, "stop": stop, "label": etiqueta, "now": start <= now,
+            "repeat": repeat, "days": days}
 
 
 # -- desktop notification ----------------------------------------------------------------------------------------
@@ -408,6 +551,11 @@ class ScheduleService:
                 changed = True
         if changed:
             self.save()
+        # H67 · una serie no se pierde porque el equipo estuviera apagado: cada una que se perdió deja puesta la
+        # siguiente. Se hace después de guardar y sobre una copia, porque `_spawn_next` añade a `self.items`.
+        for rec in list(self.items.values()):
+            if rec.repeat and rec.status in FINAL:
+                self._spawn_next(rec)
 
     async def start(self) -> None:
         self.recover()
@@ -679,6 +827,7 @@ class ScheduleService:
         rec.ended_at = time.time()
         self.save()
         self._push(rec)
+        self._spawn_next(rec)       # H67 · la serie sigue: se materializa la siguiente
         if status in ("done", "failed"):
             name = rec.channel.get("name") or ""
             what = rec.title if rec.title and rec.title != name else name
@@ -703,9 +852,18 @@ class ScheduleService:
     def add(self, ch: Channel, start: float, stop: float, title: str | None = None, margin_before: float = 0.0,
             margin_after: float = 0.0, programme: dict[str, Any] | None = None, folder: str | None = None,
             now: float | None = None, wake: bool | None = None, after: str | None = None,
-            mode: str = "record") -> Recording:
+            mode: str = "record", repeat: str = "", days: list[int] | None = None) -> Recording:
         now = time.time() if now is None else now
         start, stop = float(start), float(stop)
+        repeat = (repeat or "").strip()
+        if repeat not in REPEATS:
+            raise RpcError(INVALID_PARAMS, "repeat: daily, weekdays o weekly")
+        dias = repeat_days(repeat, days)
+        if repeat == "weekly" and not dias:
+            raise RpcError(INVALID_PARAMS, "weekly: days 0 (Monday) to 6 (Sunday)")
+        if repeat:
+            # la primera de la serie es la primera que toque, aunque lo que llegue sea de otro día
+            start, stop = next_occurrence(start, stop, repeat, dias, after=now)
         margin_before = max(0.0, min(float(margin_before or 0), 3600.0))
         margin_after = max(0.0, min(float(margin_after or 0), 3600.0))
         if stop <= start:
@@ -720,7 +878,7 @@ class ScheduleService:
             raise RpcError(INVALID_PARAMS, t("este canal está protegido (DRM) y no se puede grabar"))
         for other in self.items.values():  # the same programme twice
             if other.status in ACTIVE and other.channel.get("id") == ch.id and abs(other.start - start) < 1 \
-                    and abs(other.stop - stop) < 1:
+                    and abs(other.stop - stop) < 1 and other.repeat == repeat and other.days == dias:
                 return other
         defaults = self.load_defaults()
         wake = defaults["wake"] if wake is None else bool(wake)
@@ -730,12 +888,68 @@ class ScheduleService:
         rec = Recording(id=uuid.uuid4().hex[:10], channel=channel_snapshot(ch), title=(title or ch.name).strip(),
                         start=start, stop=stop, margin_before=margin_before, margin_after=margin_after,
                         dir=folder or "", origin="epg" if programme else "manual", programme=programme,
-                        wake=bool(wake), after=after, mode=mode)
+                        wake=bool(wake), after=after, mode=mode, repeat=repeat,
+                        days=dias if repeat == "weekly" else [])
+        rec.series = rec.id
         self.items[rec.id] = rec
         self.save()
         self._poke()
         self.sync_wake()
         return rec
+
+    # -- repetición (H67) ---------------------------------------------------------------------
+
+    def overlapping(self, rec: Recording) -> list[Recording]:
+        """Otras franjas que REPRODUCEN a la vez que esta. Grabar varios canales al mismo tiempo no estorba (cada
+        grabación es su propio ffmpeg copiando), pero dos reproducciones sí: solo hay unos altavoces."""
+        if rec.mode == "record":
+            return []
+        return [o for o in self.items.values()
+                if o.id != rec.id and o.status in ACTIVE and o.mode in ("play", "both")
+                and o.begin < rec.end and rec.begin < o.end]
+
+    def set_repeat(self, rid: str, repeat: str | None = None, days: list[int] | None = None) -> Recording:
+        """Cambia o quita la repetición de una franja pendiente. Quitarla la deja como una franja de una sola vez;
+        la que ya estuviera materializada no se mueve, porque su hora ya está dicha."""
+        rec = self.get(rid)
+        if rec.status not in ACTIVE:
+            raise RpcError(INVALID_PARAMS, t("esa franja ya ha terminado"))
+        if repeat is not None:
+            if repeat not in REPEATS:
+                raise RpcError(INVALID_PARAMS, "repeat: daily, weekdays o weekly")
+            rec.repeat = repeat
+        dias = repeat_days(rec.repeat, days if days is not None else rec.days)
+        if rec.repeat == "weekly" and not dias:
+            raise RpcError(INVALID_PARAMS, "weekly: days 0 (Monday) to 6 (Sunday)")
+        rec.days = dias if rec.repeat == "weekly" else []
+        if rec.repeat and not rec.series:
+            rec.series = rec.id
+        self.save()
+        self._push(rec)
+        return rec
+
+    def _spawn_next(self, rec: Recording) -> Recording | None:
+        """La siguiente de la serie. Se llama cuando una termina, se pierde o se cancela: así la repetición sigue
+        de forma indefinida —hasta que alguien la quite— y en la lista solo hay una pendiente por serie."""
+        if not rec.repeat or self._closing:
+            return None
+        serie = rec.series or rec.id
+        if any(o.series == serie and o.status in ACTIVE for o in self.items.values()):
+            return None                       # ya hay una esperando: no se duplica
+        start, stop = next_occurrence(rec.start, rec.stop, rec.repeat, rec.days, after=time.time())
+        if stop <= time.time():
+            return None
+        nueva = Recording(id=uuid.uuid4().hex[:10], channel=dict(rec.channel), title=rec.title, start=start,
+                          stop=stop, margin_before=rec.margin_before, margin_after=rec.margin_after,
+                          dir=rec.dir, origin=rec.origin, programme=None, wake=rec.wake, after=rec.after,
+                          mode=rec.mode, repeat=rec.repeat, days=list(rec.days), series=serie)
+        self.items[nueva.id] = nueva
+        self.save()
+        self._poke()
+        self.sync_wake()
+        self._push(nueva)
+        log.info("schedule: serie %s · siguiente %s %s", serie, nueva.id, describe(start, stop))
+        return nueva
 
     def sync_wake(self) -> None:
         """H40/F1: el despertador se pone para la PRIMERA grabación pendiente que lo pida. Si el equipo no puede
@@ -770,6 +984,8 @@ class ScheduleService:
         return rec
 
     async def cancel(self, rid: str) -> Recording:
+        """Cancela ESTA franja. Si es de una serie, la serie sigue: `_finish` deja puesta la siguiente. Para
+        acabar con la serie entera está `remove` (o quitarle la repetición con `set_repeat`)."""
         rec = self.get(rid)
         if rec.status == "scheduled":
             task = self._tasks.get(rid)
@@ -786,10 +1002,25 @@ class ScheduleService:
         return rec
 
     async def remove(self, rid: str) -> bool:
+        """Quita la franja de la lista (los archivos se quedan). Si es de una serie, SE ACABA LA SERIE: esto es
+        «ya no quiero esto más», al contrario que `cancel`, que es «hoy no»."""
         rec = self.get(rid)
+        serie = rec.series or rec.id
+        repetia = bool(rec.repeat)
+        if repetia:
+            rec.repeat = ""         # antes de cancelar, para que `_finish` no materialice la siguiente
+            rec.days = []
         if rec.status in ACTIVE:
             await self.cancel(rid)
         self.items.pop(rid, None)
+        if repetia:
+            for other in list(self.items.values()):
+                if other.series == serie:
+                    if other.status in ACTIVE:
+                        other.repeat, other.days = "", []
+                        self._finish(other, "cancelled", "se quitó la repetición")
+                    else:
+                        other.repeat, other.days = "", []
         self.save()
         return True
 
@@ -829,8 +1060,8 @@ def register(server: MpvdServer, service: ScheduleService) -> None:
     async def add(ctx: RpcContext, channel: str | None = None, start: float = 0.0, stop: float = 0.0,
                   title: str | None = None, margin_before: float = 0.0, margin_after: float = 0.0,
                   programme: dict[str, Any] | None = None, dir: str | None = None, wake: bool | None = None,
-                  after: str | None = None, mode: str = "record",
-                  media: str | None = None) -> dict[str, Any]:  # noqa: A002
+                  after: str | None = None, mode: str = "record", media: str | None = None,
+                  repeat: str = "", days: list[int] | None = None) -> dict[str, Any]:  # noqa: A002
         """Schedule a recording of a channel (epoch seconds; optional margins in seconds and folder).
 
         Sin ``wake``/``after``, se usan los de `iptv.schedule.defaults`.
@@ -848,8 +1079,14 @@ def register(server: MpvdServer, service: ScheduleService) -> None:
         else:
             raise RpcError(INVALID_PARAMS, t("hace falta un canal o algo que reproducir"))
         rec = service.add(ch, start, stop, title, margin_before, margin_after, programme, dir, wake=wake,
-                          after=after, mode=mode)
-        return rec.public() | {"label": describe(rec.start, rec.stop)}
+                          after=after, mode=mode, repeat=repeat, days=days)
+        out = rec.public() | {"label": describe(rec.start, rec.stop)}
+        # H67 · avisar, no impedir: grabar varios canales a la vez va bien, pero dos reproducciones a la vez no
+        otras = service.overlapping(rec)
+        if otras:
+            out["warning"] = t("a esa hora ya suena «%s»") % (otras[0].title or
+                                                              otras[0].channel.get("name") or "",)
+        return out
 
     @d.method("iptv.schedule.defaults")
     async def defaults(ctx: RpcContext, wake: bool | None = None, after: str | None = None) -> dict[str, Any]:
@@ -874,7 +1111,18 @@ def register(server: MpvdServer, service: ScheduleService) -> None:
         """Forget a recording from the list (the files stay on disk); a running one is stopped first."""
         return {"removed": await service.remove(id)}
 
+    @d.method("iptv.schedule.repeat")
+    async def repeat_(ctx: RpcContext, id: str, repeat: str | None = None,  # noqa: A002
+                      days: list[int] | None = None) -> dict[str, Any]:
+        """Cambia o quita la repetición de una franja pendiente (``repeat``: "" | daily | weekdays | weekly;
+        ``days`` para weekly, 0 = lunes … 6 = domingo). Con ``repeat`` vacío se queda en una sola vez."""
+        return service.set_repeat(id, repeat, days).public()
+
     @d.method("iptv.schedule.parse")
     async def parse(ctx: RpcContext, text: str, now: float | None = None) -> dict[str, Any]:
-        """Preview of a manual time entry («21:30 22:15», «21:30 90», «mañana 9:00 1h», «ahora 30»)."""
+        """Preview of a manual time entry («21:30 22:15», «21:30 90», «mañana 9:00 1h», «ahora 30»).
+
+        H67 · delante puede ir la repetición, en los tres idiomas: «cada día 7:00 30», «de lunes a viernes 21:30
+        90», «l-v 21:30 90», «martes y jueves 20:00 22:00», «los sábados 10:00 1h», «fines de semana 10:00 2h».
+        Devuelve ``repeat`` y ``days`` para pasárselos a ``iptv.schedule.add``."""
         return parse_when(text, now)

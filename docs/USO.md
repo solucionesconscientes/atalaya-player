@@ -237,6 +237,36 @@ ponerte las noticias, maximizadas y a la vista. Al terminar se aplica lo de siem
 Hereda todo —despertador, franja y apagado—, así que vale igual para «la radio a las 7:00» que para «estas cinco
 canciones mientras cenamos, y al acabar suspende».
 
+### Que se repita: días de la semana, hasta que lo quites
+Delante de la hora puedes escribir cuándo se repite, y entonces **sigue de forma indefinida hasta que tú lo
+quites**: no hay un número de semanas ni una fecha de caducidad.
+
+| Lo que escribes | Qué hace |
+|---|---|
+| `cada día 7:00 30` | todos los días, media hora |
+| `de lunes a viernes 21:30 90` · `l-v 21:30 90` · `laborables 21:30 90` | los cinco días laborables |
+| `fines de semana 10:00 2h` | sábados y domingos |
+| `los sábados 10:00 1h` · `domingos 18:00 2h` | un día suelto |
+| `martes y jueves 20:00 22:00` | los días que digas |
+| `martes a jueves 20:00 21:00` | un tramo de días |
+
+La primera es la primera que toque: `l-v 21:30` escrito un sábado empieza el lunes. **La hora es la del reloj**, así
+que el día que cambia la hora sigue siendo a las 21:30. Y si el equipo estaba apagado a esa hora, esa se marca como
+perdida pero la siguiente queda puesta: una semana de vacaciones no se lleva la repetición por delante.
+
+En la lista, una franja que se repite lo dice en su línea y tiene tres salidas, que son tres cosas distintas:
+
+| | |
+|---|---|
+| **Saltarse solo esta vez** | hoy no, y la semana que viene sí |
+| **Dejar de repetir** | se queda la que ya está puesta y no se crea ninguna más |
+| **Quitar la serie entera** | ya no quiero esto más |
+
+**¿Se pueden grabar varios canales a la vez?** Sí, tantos como aguante la conexión: cada grabación copia el flujo
+tal cual (sin recodificar), así que dos a la vez cuestan dos veces casi nada. Lo que no cabe es que suenen dos
+cosas a la vez, así que si programas una **reproducción** encima de otra te avisa — te avisa, no te lo impide: a
+lo mejor es justo lo que quieres.
+
 ## 2c. Ir a un minuto escribiéndolo
 Icono del reloj en la barra, o `g`. Escribes y Enter. Admite lo que uno escribiría de verdad: `2:15`, `00:02:15`,
 `1:02:15`, `135` (segundos sueltos) y también relativos: `+30` adelanta medio minuto y `-30` lo retrocede. Si el

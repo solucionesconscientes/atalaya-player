@@ -310,3 +310,49 @@ def test_programar_visible_y_la_radio_tambien_se_programa(tv):
     assert nav["title"].startswith(f"{APP} › Grabar"), nav
     wait_view(h, "sched_new")
     assert not h.script_errors(), h.script_errors()
+
+
+def test_la_repeticion_se_escribe_en_la_paleta_y_se_ve_en_la_lista(tv):
+    """H67 · de punta a punta por la interfaz: se escribe «de lunes a viernes 21:30 90» en la paleta, la fila dice
+    que se repite, y en la lista la franja lleva su etiqueta y las tres salidas (saltarse hoy, dejar de repetir,
+    quitar la serie). Lo que pidió Ser es justo esto: decirlo una vez y que siga hasta que él lo quite."""
+    h, d, rec_dir, _, _fake = tv
+    chans = {c["name"]: c["id"] for c in d.call("iptv.channels", {"source": "tdt_tv", "compact": True})["items"]}
+
+    h.command("script-binding", "mu_iptv/tv-schedule")
+    wait_view(h, "schedule")
+    send_event(h, {"type": "activate", "index": 2, "value": {"view": "sched_new"}})
+    wait_view(h, "sched_new")
+    send_event(h, {"type": "activate", "index": 2, "action": "schedule",
+                   "value": {"play": chans["Canal Dos"], "name": "Canal Dos"}})
+    wait_view(h, "sched_time:" + chans["Canal Dos"])
+    h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-iptv", timeout=10)
+
+    send_event(h, {"type": "search", "query": "de lunes a viernes 21:30 90"})
+    menu = wait_menu(h, lambda v: "inicio y fin" in str(v.get("title") or "")
+                     and "21:30–23:00" in str(v["items"][0].get("title") or ""))
+    fila = menu["items"][0]
+    assert "de lunes a viernes 21:30–23:00" in fila["title"], fila
+    assert fila["hint"] == "se repite hasta que lo quites", fila
+    send_event(h, {"type": "activate", "index": 1, "value": fila["value"]})
+    wait_view(h, "schedule")
+
+    d.wait(lambda: any(r["channel"]["name"] == "Canal Dos" and r["repeat"] == "weekdays" for r in schedule(d)),
+           timeout=15)
+    rec = next(r for r in schedule(d) if r["channel"]["name"] == "Canal Dos")
+    assert rec["repeat_label"] == "de lunes a viernes" and rec["series"] == rec["id"]
+    arranca = time.localtime(rec["start"])
+    assert (arranca.tm_hour, arranca.tm_min) == (21, 30) and arranca.tm_wday <= 4, arranca
+
+    sched = wait_menu(h, lambda v: v.get("title") == "Grabaciones programadas"
+                      and any("Canal Dos" in (i.get("title") or "") for i in v["items"]))
+    row = next(r for r in sched["items"] if "Canal Dos" in (r.get("title") or ""))
+    assert row["hint"].startswith("de lunes a viernes · "), row
+    salidas = [i["title"] for i in row["items"]]
+    assert salidas == ["Saltarse solo esta vez", "Dejar de repetir", "Quitar la serie entera"], salidas
+
+    # «Dejar de repetir»: la franja se queda, la repetición no
+    send_event(h, {"type": "activate", "index": 1, "value": {"sched_norepeat": rec["id"]}})
+    d.wait(lambda: next(r for r in schedule(d) if r["id"] == rec["id"])["repeat"] == "", timeout=15)
+    assert next(r for r in schedule(d) if r["id"] == rec["id"])["status"] == "scheduled"
+    assert not h.script_errors(), h.script_errors()

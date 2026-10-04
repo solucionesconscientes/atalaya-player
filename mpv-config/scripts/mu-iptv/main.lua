@@ -879,8 +879,10 @@ end
 -- J5 · `media` es una lista guardada, una canción, una carpeta o una dirección de este equipo; el programador la
 -- envuelve como canal de pega y hereda franja, despertador y apagado (ADR-094). Con `media` el modo es «ponerlo»:
 -- grabar algo que ya está en el disco no tiene sentido, y mpvd lo fuerza igual por su lado.
-local function schedule_params(channel_id, start, stop, title, programme, media)
+local function schedule_params(channel_id, start, stop, title, programme, media, repite, dias)
   local p = { start = start, stop = stop, title = title, mode = P:get('sched_mode') or 'record' }
+  -- `repeat` es palabra reservada en Lua, así que la clave va entre corchetes (H67)
+  if repite and repite ~= '' then p['repeat'], p.days = repite, dias or {} end
   if media and media ~= '' then
     p.media, p.mode = media, (p.mode == 'record' and 'play' or p.mode)
   else
@@ -897,6 +899,8 @@ end
 local function schedule_add(params, after)
   rpc.call('iptv.schedule.add', params, function(err, rec)
     if err then osd(tr('No se pudo programar: %s'):format(fail(err, 'iptv.schedule.add'))) return end
+    -- H67 · dos reproducciones a la vez no caben (unos altavoces); grabar varios canales a la vez sí. Se avisa.
+    if rec.warning and rec.warning ~= '' then osd('⚠ ' .. rec.warning, 6) end
     local verbo = (rec.mode == 'play' and '▶ Programado') or (rec.mode == 'both' and '⏺▶ Programado')
       or '⏺ Grabación programada'
     osd(verbo .. ': ' .. (rec.title or '') .. ' · ' .. (rec.label or ''))
@@ -1029,7 +1033,17 @@ views.schedule = function(args)
         table.insert(sub, { title = cut(r.message, 120), icon = 'info', selectable = false, muted = true })
       end
       if r.status == 'scheduled' then
-        table.insert(sub, { title = tr('Cancelar grabación'), icon = 'block', value = { sched_cancel = r.id } })
+        -- H67 · en una serie hay que poder decir «hoy no» sin acabar con la repetición, y también «ya no más»
+        if (r.repeat_label or '') ~= '' then
+          table.insert(sub, { title = tr('Saltarse solo esta vez'), hint = r.repeat_label,
+                              icon = 'skip_next', value = { sched_cancel = r.id } })
+          table.insert(sub, { title = tr('Dejar de repetir'), hint = tr('se queda solo esta franja'),
+                              icon = 'event_busy', value = { sched_norepeat = r.id } })
+          table.insert(sub, { title = tr('Quitar la serie entera'), icon = 'delete_forever',
+                              value = { sched_remove = r.id } })
+        else
+          table.insert(sub, { title = tr('Cancelar grabación'), icon = 'block', value = { sched_cancel = r.id } })
+        end
       elseif r.status == 'recording' then
         table.insert(sub, { title = tr('Detener grabación'), icon = 'stop_circle', value = { sched_cancel = r.id } })
       else
@@ -1042,7 +1056,10 @@ views.schedule = function(args)
       local ch = r.channel and r.channel.name or ''
       local what = (r.title and r.title ~= ch) and (ch .. ' · ' .. r.title) or ch
       table.insert(items, {
-        title = what, hint = (r.label or '') .. ' · ' .. (r.status_label or r.status), icon = STATUS_ICONS[r.status],
+        title = what,
+        hint = ((r.repeat_label or '') ~= '' and (r.repeat_label .. ' · ') or '')
+               .. (r.label or '') .. ' · ' .. (r.status_label or r.status),
+        icon = STATUS_ICONS[r.status],
         items = sub, id = 'sched:' .. tostring(r.id),
         separator = (i == #list) or nil, muted = (r.status == 'cancelled' or r.status == 'missed') or nil,
         bold = r.status == 'recording' or nil,
@@ -1237,9 +1254,15 @@ views.sched_browse = function(args)
   end, 20)
 end
 
+-- H67 · la ayuda de la paleta de horas, que ahora enseña también la repetición
+local function AYUDA_HORA()
+  return tr('Hora de inicio y de fin (o minutos). Delante: «cada día», «de lunes a viernes», «los martes»')
+end
+
 local function sched_time_title(args)
-  return sched_verb(args) .. ' «' .. (args.name or '')
-    .. '»: inicio y fin o minutos (21:30 22:15 · 21:30 90 · ahora 30)'
+  -- H67 · el título es donde se mira, así que ahí se dice también que la repetición va delante
+  return sched_verb(args) .. ' «' .. (args.name or '') .. '»: '
+    .. tr('inicio y fin o minutos (21:30 22:15 · 21:30 90), con «cada día» o «l-v» delante')
 end
 
 local function sched_time_menu(args, items, query)
@@ -1252,7 +1275,7 @@ local function sched_time_menu(args, items, query)
 end
 
 views.sched_time = function(args)
-  local items = uosc.message_items(tr('Escribe la hora de inicio y la de fin (o los minutos)'), 'schedule')
+  local items = uosc.message_items(AYUDA_HORA(), 'schedule')
   publish_menu(sched_time_title(args), items)
   uosc.open(sched_time_menu(args, items))
 end
@@ -1262,7 +1285,7 @@ local function sched_time_prompt(args, query)
   sched_seq = sched_seq + 1
   local seq = sched_seq
   if (query or '') == '' then
-    uosc.update(sched_time_menu(args, uosc.message_items(tr('Escribe la hora de inicio y la de fin (o los minutos)'),
+    uosc.update(sched_time_menu(args, uosc.message_items(AYUDA_HORA(),
                                                          'schedule'), query))
     return
   end
@@ -1276,8 +1299,10 @@ local function sched_time_prompt(args, query)
     else
       items = { { title = sched_verb(args) .. ' «' .. (args.name or '') .. '» ' .. res.label,
                   icon = (args.media and args.media ~= '') and 'play_circle' or 'fiber_manual_record',
+                  hint = (res['repeat'] or '') ~= '' and tr('se repite hasta que lo quites') or nil,
                   value = { sched_add = { channel = args.id, media = args.media, start = res.start,
-                                          stop = res.stop, title = args.name } } } }
+                                          stop = res.stop, title = args.name, repite = res['repeat'],
+                                          dias = res.days } } } }
     end
     publish_menu(sched_time_title(args), items)
     uosc.update(sched_time_menu(args, items, query))
@@ -1478,11 +1503,19 @@ mp.register_script_message(EVENT, function(json)
       end, 20)
     elseif v.sched_add then
       local p = v.sched_add
-      schedule_add(schedule_params(p.channel, p.start, p.stop, p.title, nil, p.media), function()
+      schedule_add(schedule_params(p.channel, p.start, p.stop, p.title, nil, p.media, p.repite, p.dias),
+                   function()
         state.stack = { { name = 'root' } }
         state.force_open = true  -- the palette is replaced by the list
         open_view({ name = 'schedule' })
       end)
+    elseif v.sched_norepeat then
+      -- H67 · se queda la franja que ya está puesta y no se crea ninguna más
+      rpc.call('iptv.schedule.repeat', { id = v.sched_norepeat, ['repeat'] = '' }, function(err)
+        if err then osd(tr('Grabaciones: %s'):format(fail(err, 'iptv.schedule.repeat'))) return end
+        osd(tr('Ya no se repite'))
+        if uosc.open_type() == MENU then reopen_current() end
+      end, 20)
     elseif v.sched_mode then
       P:set('sched_mode', v.sched_mode)
       table.remove(state.stack)

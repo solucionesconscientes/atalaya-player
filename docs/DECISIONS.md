@@ -1537,3 +1537,96 @@
   un archivo mientras graba un trozo. Ahora `mu-menu` lo refresca una vez por segundo mientras hay algo abierto y
   `mu-record` lo apunta en el tick que ya dibuja el contador de grabación. En los scripts propios no queda ningún
   observador por fotograma.
+- ADR-116 · Programar en días de la semana: se guarda la REGLA y solo hay una franja pendiente por serie (H67).
+  Ser lo pidió así: «quiero que si se dice de l-v, cada día, etc, siga así de forma indefinida, hasta que el
+  usuario indicara lo contrario». Lo que había materializaba «las próximas dos semanas» como franjas normales, que
+  es justo lo que él no quería: se acaban.
+  **(1) La regla vive en la franja, y de cada serie hay UNA pendiente.** La alternativa —escribir en la lista todas
+  las ocurrencias futuras— obliga a elegir un horizonte (y entonces la repetición se acaba), llena la lista de
+  filas que nadie ha pedido, multiplica los avisos de solape y complica el despertador, que se pone para la
+  primera pendiente. Aquí cada franja lleva `repeat` (`daily`/`weekdays`/`weekly`), `days` (0 = lunes … 6 =
+  domingo) y `series` (el id de la primera), y **la siguiente se crea cuando esta termina**: en `_finish`, así que
+  da igual si acabó bien, falló, se perdió o se canceló.
+  **(2) Indefinido de verdad quiere decir sobrevivir a tres cosas**, y cada una tiene su sitio: que el equipo
+  estuviera apagado (`recover()` marca la perdida y deja puesta la siguiente, así que una semana de vacaciones no
+  mata la serie), que se cierre mpvd (la regla está en `iptv-schedule.json`, se relee) y que alguien se salte un
+  día (ver abajo). Un test la hace rodar sesenta veces seguidas comprobando que nunca hay dos pendientes ni cero.
+  **(3) «Hoy no» y «ya no más» no son lo mismo**, y antes solo había una tecla: `cancel` cancela ESTA franja y la
+  serie sigue (la siguiente queda puesta), `remove` acaba con la serie entera, y `iptv.schedule.repeat` quita la
+  repetición dejando la franja que ya estaba puesta. En la lista son tres filas con ese nombre exacto —«Saltarse
+  solo esta vez», «Dejar de repetir», «Quitar la serie entera»—, porque una sola «Cancelar» no dice cuál de las
+  tres cosas va a pasar.
+  **(4) La repetición se lee ANTES de partir el texto en palabras.** El analizador de horas se come los conectores
+  (`de`, `a`, `hasta`), así que «de lunes a viernes» le llegaría como «lunes viernes», que es otra cosa: lunes Y
+  viernes. Un prefijo propio reconoce «cada día», «de lunes a viernes», «l-v», «laborables», «fines de semana»,
+  «los sábados», «martes y jueves» y «martes a jueves», en los tres idiomas (ADR-108: quien escribe la hora está
+  en el idioma del reproductor), y lo que queda se analiza como siempre. La primera franja de la serie es la
+  primera que toque: «de lunes a viernes 21:30» escrito un sábado empieza el lunes.
+  **(5) La hora es la del reloj, no un número de segundos.** La siguiente se calcula sobre el calendario con
+  fechas sin zona, así que «cada día a las 21:30» sigue siendo a las 21:30 el día que cambia la hora; sumando
+  86.400 segundos habría pasado a las 20:30. También se conserva la hora de fin (una franja que cruza la
+  medianoche sigue cruzándola), con un suelo: si la reconstrucción al minuto dejara el fin antes del inicio
+  —franjas de segundos, que solo salen en los tests—, manda la duración.
+  **(6) Grabar varios canales a la vez SÍ; sonar dos cosas a la vez, no.** Cada grabación es su propio ffmpeg
+  copiando el flujo (`-c copy`), así que dos a la vez cuestan dos veces casi nada: probado de punta a punta con
+  dos canales y ffmpeg de verdad, los dos archivos con vídeo, audio y duración. Pero altavoces hay unos, así que
+  programar una REPRODUCCIÓN que pisa a otra **avisa y no impide**: avisar es información, impedir sería decidir
+  por quien lo programa, que a lo mejor quiere justo eso (cambiar de una a otra).
+- ADR-117 · Los paquetes: `.deb` y AppImage para las dos arquitecturas, `.zip` en Windows, Homebrew en macOS (H72).
+  Decidido con Ser el 2026-10-04: «yo haría deb y appimage, ambos tb para arm», «mejor windows zip que exe o msi»
+  y «no voy a pagar ninguna cuenta de mac». Esto es cómo se ha hecho y qué se ha podido comprobar de cada uno.
+  **(1) Lo que NO va dentro: mpv.** Lo decidió ADR-067 y lo confirmó midiendo ADR-115. Un mpv propio dentro del
+  paquete se lleva por delante la aceleración por hardware, que depende de los drivers de la máquina —en este
+  portátil, de VA-API—, y eso se paga en cada película. Así que `Depends: mpv` **sin versión mínima**: en Debian 13
+  y en Raspberry Pi OS el del sistema puede ser más viejo que el probado, y es mejor instalarse y avisar al
+  arrancar de lo que no va a funcionar que negarse a instalar. El aviso lo da el lanzador, que es quien ejecuta
+  mpv y puede preguntarle la versión, y lo enseña mu-core una sola vez, nombrando las dos cosas concretas que
+  dependen de 0.41: el índice del vídeo (hay que poder ESCRIBIR `chapter-list`) y copiar enlaces (`clipboard/text`,
+  que si no cae al camino lento).
+  **(2) Lo que SÍ va dentro: el intérprete.** Un CPython 3.12 reubicable (python-build-standalone, el mismo que
+  gestiona uv), el mismo tarball fijado con su SHA-256 para las cuatro variantes. Así el paquete no depende de la
+  versión de Python de la distribución, que es justo el problema que tienen Debian 13 y Raspberry Pi OS. El precio
+  está medido y se asume: 27 MB el `.deb` de amd64, 21 el de arm64, 38 y 34 los AppImage.
+  **(3) Cruzar a ARM sin una máquina ARM**, que era la parte dudosa y sí se puede: el intérprete se baja ya
+  compilado para aarch64 (mismo origen, SHA-256 fijado), las dependencias se instalan con `uv pip install
+  --python-platform aarch64-unknown-linux-gnu --only-binary :all:`, y para el AppImage el appimagetool de x86-64
+  construye el de aarch64 si se le da su `runtime` con `--runtime-file`. Lo que sale está revisado por dentro
+  (intérprete ARM de verdad, runtime ARM, catálogos de idiomas presentes) y **no se puede ejecutar aquí**: eso
+  queda dicho en docs/PLATAFORMAS.md y en NEEDS_HUMAN.md, no escondido.
+  **(4) La regla de `sudoers` del despertador, que es lo único que el `.deb` puede hacer y el AppImage no.** Y
+  aquí apareció lo que no estaba previsto: **sudo ya no acepta comodines en los argumentos** («wildcards are not
+  allowed in command arguments»), así que no hay forma de escribir una regla que permita «rtcwake -m no -t <un
+  número>» y nada más. Las opciones eran permitir `rtcwake` entero —y con él `rtcwake -m off`, que apaga la
+  máquina— o poner la validación en un programa nuestro. Se hizo lo segundo: `bin/wake`, catorce líneas, que solo
+  sabe poner la alarma (y solo si lo que recibe son dígitos), borrarla y decir si se puede, y que rechaza hasta un
+  argumento de más. La regla autoriza ese fichero y nada más; en el paquete es de root, así que nadie puede
+  cambiar lo que se ejecuta con permisos. En un clon del repositorio el fichero es de quien lo usa, así que ahí NO
+  se instala ninguna regla: sería darse permisos a uno mismo. El postinst valida la regla con `visudo -c` y, si no
+  fuera válida, **la borra**: es mejor quedarse sin despertador que dejar a alguien sin poder usar sudo.
+  **(5) Lo que enseñó revisar el paquete con `lintian`**, que es el equivalente a pasar el lint al código: de 2.780
+  avisos a 15. Los 2.758 primeros eran una tontería con consecuencias —los ficheros del repositorio llevan los
+  permisos del umask de quien construye (0664/0775) y un paquete se instala con 0644/0755—, y los demás eran
+  basura de verdad que viajaba dentro: Tcl/Tk completo (con un RPATH a la máquina donde se compiló el intérprete),
+  pip, los tests de las dependencias y, lo más vergonzoso, un `__pycache__` que metía **mi propia comprobación**
+  del intérprete al ejecutarlo sin `-B`. Los 15 que quedan son inherentes a llevar el intérprete dentro (trae
+  zlib, bzip2, expat y ncurses enlazados) y están en una lista blanca dentro del test: si aparece otro, el test lo
+  dice. Y una lección con nombre propio: **despojar de símbolos el binario del intérprete lo deja sin arrancar**
+  («undefined symbol: , version»), mientras que despojar sus bibliotecas va bien; lo cazó la comprobación que
+  ejecuta el intérprete recién empaquetado, que por eso está ahí.
+  **(6) El fallo más grave de todo esto no era del paquete, era del lanzador.** Leer la versión con
+  `mpv --version | head -1` le cierra la salida a mpv, que muere con SIGPIPE, y como `bin/mpv-uos` corre con
+  `set -o pipefail` eso **abortaba el lanzador antes de abrir el reproductor**, sin decir nada. No lo vio ningún
+  lint: lo vio el test que extrae el `.deb` y comprueba que arranca y que mpvd se conecta. Se lee con `awk`, que no
+  cierra ninguna tubería, y hay diez tests nuevos que ejecutan el lanzador con un mpv de pega que escribe 2.000
+  líneas y con salidas raras, para que esto no vuelva.
+  **(7) Windows: `.zip` portable.** Un `.exe` o un `.msi` sin firmar se come el aviso de SmartScreen, que asusta
+  más que descomprimir una carpeta; y la firma cuesta dinero y caduca. El zip lleva la aplicación, un CPython para
+  Windows puesto exactamente donde lo busca `bin\mpv-uos.ps1` (`.venv\Scripts\python.exe`), `yt-dlp.exe` fijado y
+  comprobado, el ayudante de uosc de Windows **y solo ese** (los de Linux y macOS son 11 MB que ahí no se usan),
+  el `install.ps1` que ya existía para quien quiera accesos directos y los enlaces `mpv-uos://`, y un LEE-ME con
+  saltos de línea CRLF que dice tres cosas: cómo abrirlo, que mpv se instala aparte (`winget install mpv`) y que
+  esto **no se ha podido probar en un Windows de verdad**.
+  **(8) macOS: por Homebrew, y dicho claramente.** Sin cuenta de Apple no hay firma, y un `.dmg` sin firmar lo
+  bloquea Gatekeeper con un mensaje que habla de malware: dar eso es peor que no darlo. Además el `.app` que ya se
+  construye no sería autocontenido (usa el mpv de Homebrew). Si algún día hay cuenta, lo que falta es firmar y
+  notarizar ese mismo `.app`.
