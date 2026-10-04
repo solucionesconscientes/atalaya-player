@@ -1,30 +1,20 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
-## Resumen para Ser (2026-10-04, iteración 9) · H59 torrents, H61-H65 y H49 idiomas
+## Resumen para Ser (2026-10-04, iteración 9) · H61-H66 y H49 idiomas (torrents, fuera)
 De tus tres preguntas (minimizar no avisaba, cómo se ven los torrents, el mando de la tele en una Raspberry) y del
 «hazlo todo de golpe, menos la web» salió esta tanda. Lo de la web (H50) sigue sin empezar, como pediste.
 
 ### H66 · Lo que encontraste al probarlo (2026-10-04)
-- **Preferencias › Torrents ya existe.** H59 dejó los interruptores solo en un fichero y la pista decía que
-  estaban en Preferencias: un ajuste sin fila, para quien usa el programa, es un ajuste que no se puede cambiar.
-  Ahora está la fila, con encender, seguir compartiendo al acabar, modo anónimo, el proxy y el aviso legal.
-- **Arrastrar un `.torrent` a la ventana funciona** (y un magnet, y la línea de órdenes, y un enlace `.torrent` de
-  una web, que mpvd baja). mpv no sabe abrirlos y falla al instante: se recoge ese fallo y se abre por mpvd, el
-  mismo camino que ya usaba el reintento de yt-dlp.
+- **Los torrents están fuera**, por tu decisión del 2026-10-04 (ADR-111). Se construyeron, no te funcionaron y se
+  han quitado del todo —servicio, dependencia, puerta, ajustes, avisos, cadenas y test—: no eran críticos y eran
+  lo único que dependía de que un torrent tuviera pares y de que la red dejara pasar DHT, así que fallaban de
+  maneras que no se distinguen de un fallo nuestro. Queda escrito lo medido, por si algún día se retoma.
 - **Una franja programada abre su propia ventana y la maximiza**, y la cierra al acabar: si a las 21:00 estás
   viendo una película, «música de 21:00 a 23:00» ya no te la quita.
 - **Se pueden programar archivos y carpetas del equipo**, no solo canales, listas de Música o lo que estuviera
   puesto: se exploran las carpetas con las flechas, Enter programa ese archivo, `Tab` lo añade a la selección y
   los marcados van juntos. Para el mando del televisor, «toda esta carpeta» es una fila, no una acción de `Tab`.
-
-### H59 · Ver un torrent mientras se descarga
-Pegas un *magnet* o un `.torrent` y, si los torrents están encendidos (**Preferencias**, apagados de fábrica), la
-puerta única de `ctrl+o` ofrece **«Ver mientras se descarga»**. No espera a que acabe: mpv pide rangos a un
-servidor local y a las piezas de **ese** rango se les pone fecha límite, así que un salto adelante se sirve igual
-(el test lee el final del fichero sin haberlo descargado). Medido: 12,1 ms de CPU por MB y 110 MB de RSS, un 6 % de
-un núcleo bajando a 5 MB/s. Con proxy SOCKS5 si lo configuras; a un torrent **privado** no se le añade ningún
-tracker extra, que es motivo de expulsión.
 
 ### H61 · El mando del televisor (HDMI-CEC)
 Pensando en la Raspberry enchufada a la tele: si el aparato lo permite, las flechas, OK, play/pausa y los números
@@ -351,22 +341,29 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-El 2026-10-04 se hizo de una tanda lo que quedaba aprobado menos la web: **H59** (torrents), **H61** (mando del
-televisor), **H62**, **H63**, **H64**, **H65** y **H49/G1-G7** (los tres idiomas); y después, de su primera prueba,
-**H66** (Preferencias › Torrents, arrastrar un torrent, la franja en su propia ventana y programar archivos del
-equipo). El código no tiene pendientes abiertos y `tools/check.sh` queda en verde.
+El 2026-10-04 se hizo de una tanda lo que quedaba aprobado menos la web: **H61** (mando del televisor), **H62**,
+**H63**, **H64**, **H65** y **H49/G1-G7** (los tres idiomas); y después, de su primera prueba, **H66** (la franja
+en su propia ventana maximizada y programar archivos del equipo). **Los torrents (H59) se quitaron** el mismo día
+por decisión de Ser, al no funcionarle y no ser críticos (ADR-111).
 
 Lo que queda, por orden:
 
 1. **Que Ser vuelva a probar**, ahora con todo construido y traducido. Es lo único que puede desbloquear lo demás.
-2. **Arreglar lo que salga.**
-3. **H49/G8**: las **491 cadenas** de mpvd que el extractor de G5 no veía porque no son `RpcError` (valores de
+2. **Arreglar lo que salga** — y si algo no es crítico y no funciona, **quitarlo**: es lo que se hizo con los
+   torrents el 2026-10-04 y es el criterio para lanzar.
+3. **H63/N3 · el fallo intermitente de los menús**: cuando una vista pinta dos veces y la segunda llega antes de
+   que uosc publique su tipo, uosc cierra el primer menú y el script toma ese cierre por uno de la persona y se
+   queda sin vista (⌫ salta de nivel, lo que cargaba no aparece, un panel deja de refrescarse). La causa está
+   diagnosticada con el log y hay dos arreglos ya descartados. La vía recomendada es **simplificar**: que esas
+   vistas no pinten el «Cargando…» y pinten una sola vez cuando mpvd contesta (en local son milisegundos), con lo
+   que la carrera desaparece y además se quita código.
+4. **H49/G8**: las **491 cadenas** de mpvd que el extractor de G5 no veía porque no son `RpcError` (valores de
    diccionario, listas de presets, f-strings sueltas). Están medidas y repartidas por ficheros en el BACKLOG, por
    orden de lo que más se ve: `convert/presets.py` (32), `intro/service.py` (25), `subscriptions/chain.py` (20),
    `share/live.py` (18), `asr/models.py`, `jobs.py`, `ytdl/presets.py`, `power.py` (14 cada uno) y
    `share/service.py` (51). Hace falta además ampliar `tools/i18n_extract_py.py` a esas formas, o el test no las
    vigilará. **Primero** hay que ampliar el extractor; envolver a mano sin él deja el catálogo cojo sin avisar.
-4. **La web (H50)**, diseñada en `docs/SITIO-WEB.md`. Ser la dejó fuera a propósito de esta tanda. Las capturas las
+5. **La web (H50)**, diseñada en `docs/SITIO-WEB.md`. Ser la dejó fuera a propósito de esta tanda. Las capturas las
    puedo hacer yo; faltan dos decisiones suyas: qué se ve de fondo en ellas y si el repo se hace público.
 
 Solo Ser puede: la línea de `sudoers` para `rtcwake` (despertar el equipo para una grabación), la cuenta de

@@ -1253,6 +1253,7 @@
   Un predicado no puede reventar; tiene que contestar que todavía no.
 
 - ADR-106 · Ver un torrent mientras se descarga: lo que lo hace posible es el lector, no el cliente (H59).
+  **NO VIGENTE desde el 2026-10-04: la sustituye ADR-111, que quita los torrents del programa.**
   **Reabre y sustituye** la decisión de H26 (2026-09-30), que descartó los torrents y proponía integrarse con
   qBittorrent por su interfaz web. Ser lo aprobó el 2026-10-03 con una condición que ordena todo lo demás: extra
   **opcional y apagado**, como los servicios de nube.
@@ -1375,3 +1376,25 @@
   **(5) Y el reparto Enter/Tab**, que en el salón importa: Enter programa ese archivo (el caso normal) y Tab lo
   añade a la selección. El mando del televisor no tiene Tab, y por eso la carpeta entera es una **fila** y no una
   acción de Tab (la misma regla de ADR-103).
+
+- ADR-111 · Los torrents salen del programa (Ser, 2026-10-04). **Sustituye a ADR-106**, que queda no vigente.
+  Ser los probó, no le funcionaron y lo zanjó: «todas las funcionalidades torrent fuera; si no son cosas críticas
+  no pasa nada, quiero que el reproductor funcione y lanzarlo».
+  **Por qué es la decisión correcta y no una rendición.** Un torrent depende de tres cosas que el programa no
+  controla: que haya pares, que la red deje pasar DHT y que esté instalado un extra que no viene de fábrica.
+  Cuando falla cualquiera de las tres, lo que se ve es «no funciona» —indistinguible de un fallo nuestro—, y
+  diagnosticarlo exige un torrent vivo y una red que colabore. Para una función **que no es crítica** eso es un
+  coste de soporte desproporcionado, y encima es la parte del programa que más puede manchar lo demás: el día que
+  alguien pruebe el reproductor y lo primero que no le funcione sea el torrent, el juicio no será «el torrent no
+  va», será «esto no va».
+  **Se quita de verdad, no se esconde**: fuera `mpvd/torrent/` entero, su registro en el servidor, el extra
+  `libtorrent`, el reconocimiento de magnets en la puerta única, la fila de Preferencias, el enganche que abría un
+  `.torrent` arrastrado, las 28 cadenas de los catálogos y su test. Esconder una función deja código muerto que
+  hay que mantener, traducir y probar; quitarla deja el programa más pequeño, que es lo que se pidió.
+  **Lo que NO se pierde**: lo medido y lo aprendido se queda escrito (ADR-106 sigue ahí, no vigente, y el BACKLOG
+  conserva el diseño). Si algún día se retoma, lo que importa es que la pieza clave era el **lector** con
+  `set_piece_deadline` sobre la ventana de reproducción —no el cliente— y que mpv no necesita saber nada de
+  torrents si se le sirve por HTTP con Range. Y queda intacto lo que vino de ahí y sí es del programa: servir un
+  fichero local por HTTP con Range (H44/C1) y explorar las carpetas del equipo (H64).
+  **Y una lección que se queda**, de P1 de H66: un ajuste que el programa **nombra** y no existe no es «un ajuste
+  avanzado», es un ajuste que no se puede cambiar. Si una pista dice «se enciende en X», X tiene que existir.

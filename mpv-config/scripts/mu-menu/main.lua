@@ -503,7 +503,6 @@ views.prefs = function()
         { 'script-binding', 'mu_modes/simple-toggle' }, { active = modes.simple, separator = true }),
     { title = tr('Restablecer preferencias…'), hint = tr('se guarda una copia'), icon = 'restart_alt',
       value = { cmd = { 'script-message-to', 'mu_prefs', 'reset-ask' } } },
-    child('Torrents', 'apagados de fábrica', 'cloud_download', 'mu_ytdl', 'torrents-menu'),
     bind('Abrir la carpeta de configuración', 'ctrl+alt+o', 'folder_open', 'uosc/open-config-directory'),
     { title = tr('Idioma'), icon = 'translate', value = { lang_next = true },
       hint = (LANG_NAMES[P:get('lang')] or LANG_NAMES['']) .. ' · ' .. tr('al reiniciar') },

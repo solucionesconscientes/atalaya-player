@@ -37,19 +37,19 @@ step "traducción (ctranslate2 + paquetes Argos)"
 if .venv/bin/python -c "import ctranslate2, sentencepiece" 2>/dev/null; then
   echo "runtime presente; paquetes: $(ls vendor/models/argos 2>/dev/null | tr '\n' ' ')"
 else
-  uv sync --quiet --extra translate --extra semantic --extra impersonate --extra desktop --extra torrent && echo "runtime instalado (extra translate)" || echo "AVISO: sin runtime de traducción los tests se omiten"
+  uv sync --quiet --extra translate --extra semantic --extra impersonate --extra desktop && echo "runtime instalado (extra translate)" || echo "AVISO: sin runtime de traducción los tests se omiten"
 fi
 
 step "búsqueda semántica (onnxruntime + modelo de embeddings)"
 if .venv/bin/python -c "import onnxruntime, numpy, sentencepiece" 2>/dev/null; then
   if [ -f vendor/models/embed/model_quantized.onnx ]; then echo "runtime y modelo presentes (vendor/models/embed)"; else echo "runtime presente; modelo pendiente: semantic.models.download"; fi
 else
-  uv sync --quiet --extra translate --extra semantic --extra impersonate --extra desktop --extra torrent && echo "runtime instalado (extra semantic)" || echo "AVISO: sin onnxruntime los tests del modelo real se omiten"
+  uv sync --quiet --extra translate --extra semantic --extra impersonate --extra desktop && echo "runtime instalado (extra semantic)" || echo "AVISO: sin onnxruntime los tests del modelo real se omiten"
 fi
 
 step "escritorio (jeepney para MPRIS)"
 if .venv/bin/python -c "import jeepney" 2>/dev/null; then echo "jeepney presente"
-else uv sync --quiet --extra translate --extra semantic --extra impersonate --extra desktop --extra torrent && echo "jeepney instalado (extra desktop)" || echo "AVISO: sin jeepney los tests de MPRIS se omiten"; fi
+else uv sync --quiet --extra translate --extra semantic --extra impersonate --extra desktop && echo "jeepney instalado (extra desktop)" || echo "AVISO: sin jeepney los tests de MPRIS se omiten"; fi
 
 step "medios de prueba"
 [ -f tests/fixtures/media/manifest.json ] && echo "presentes" || tools/make_test_media.sh || fail=1

@@ -224,53 +224,28 @@ traducción en directo. Fuera también: imagen (mejoras de imagen, visor de foto
 - NOMBRE PENDIENTE: no renombrar nada. La app sigue llamándose MPV-UOS hasta que Ser decida (candidato descartado de momento:
   «Sintonía»). Deja el nombre centralizado en un solo sitio (constante/Config) para que el cambio posterior sea trivial.
 
-## H26 · Torrents · REABIERTO como H59 (Ser, 2026-10-03)
-- [~] La propuesta de 2026-09-30 (integrarse con qBittorrent por su interfaz web) queda aparcada en favor de
-      libtorrent en el .venv, que es lo que se acordó el 2026-10-03. Ver H59.
-
-## H59 · Ver un torrent mientras se descarga — ADR-106 · [x]
-Diseño acordado en la conversación del 2026-10-03, que **no estaba escrito aquí** (error mío: lo di por escrito al
-recapitular). libtorrent 2.1.1 tiene ruedas oficiales en PyPI (BSD) para cp312 en Linux x86_64/aarch64, musl,
-Windows 32/64 y macOS arm64/x86_64, y su API se comprobó completa con el Python del proyecto (`set_piece_deadline`,
-`have_piece`, `piece_priority`, `file_priority`, `set_sequential_download`, `clear_piece_deadlines`).
-- [x] L1 **Extra opcional y APAGADO por defecto**, como los servicios de nube: un reproductor no tiene por qué
-      traer un cliente de torrents encendido. Se activa en Preferencias y se dice en una línea qué implica.
-- [x] L2 **La ventana de reproducción manda**: `set_piece_deadline` sobre los trozos que hacen falta YA, no
-      `set_sequential_download` a lo bruto, que pelea con el salto hacia delante y desperdicia la bajada.
-- [x] L3 **mpvd sirve el fichero que crece** por HTTP local con Range, igual que ya sirve el fichero original de
-      una sala (H44/C1): así mpv no necesita saber nada de torrents y los saltos funcionan dentro de lo bajado.
-- [x] L4 **Al acabar se deja de sembrar**; seguir sembrando es un interruptor explícito, no el comportamiento.
-- [x] L5 **Trackers**: `trackers_best` (20, de ngosang/trackerslist) en caché semanal con copia incluida en el
-      repo como respaldo, y **nunca** en un torrent privado (`priv()`), que es motivo de expulsión. **Sin
-      blocklist**: la del nivel 2 bloquea rangos enteros por reputación, rompe conexiones legítimas y hay que
-      mantenerla; no paga.
-- [x] L6 **Privacidad por interruptor**, no por defecto: SOCKS5 y `anonymous_mode`, con las credenciales en
-      `~/.config/mpv-uos/` con permisos 600 y fuera del repo. Lo demás se queda como lo trae libtorrent (DHT, LSD,
-      cifrado 1, 200 conexiones), que son valores sensatos y probados.
-- [x] L7 **Sin estrangular la subida**: un cliente que no devuelve nada es un cliente que no baja.
-- [x] L8 **Entrada por la puerta única**: un magnet pegado en `ctrl+o` se reconoce y se ofrece ver o descargar,
-      como cualquier otro enlace. Nada de un sitio nuevo.
-- [x] L9 **Tests sin red**: un sembrador y un cliente locales en el mismo equipo, como se probó el relay.
-- [x] L10 **Medido** en este portátil, con un sembrador local: **12,1 ms de CPU por MB** descargado (191 MB a
-      68 MB/s costaron 2,30 s de CPU) y **110 MB** de RSS. O sea, bajando a 5 MB/s —una conexión doméstica buena—
-      el torrent cuesta un **6 % de un núcleo**, encima del 24 % que ya gasta el reproductor. Crear el .torrent de
-      un fichero de 200 MB: 0,9 s. Y el **aviso legal** sale la primera vez que se abre uno: la herramienta es
-      neutra, lo que se baje es responsabilidad de quien lo baje.
-- [x] L11 (añadido al construirlo) Los tests **no pueden escribir en la configuración de verdad**: el interruptor y
-      las credenciales del proxy viven en `~/.config/mpv-uos/`, y la primera pasada del test dejó ahí un
-      `torrent.json` con los torrents ENCENDIDOS. Ahora `MPV_UOS_CONFIG_DIR` apunta a la carpeta del test, como ya
-      hacían el resto de rutas.
+## H26 y H59 · Torrents · FUERA (Ser, 2026-10-04) — ADR-111
+Ser los probó, no le funcionaron, y decidió quitarlos: «todas las funcionalidades torrent fuera». Es la decisión
+correcta y la razón es buena: **no son críticas** y son lo único del programa que depende de cosas que no
+controlamos (que el torrent tenga pares, que la red deje pasar DHT, un extra que no viene instalado), así que
+fallan de maneras que no se pueden distinguir de un fallo nuestro. El objetivo ahora es que el reproductor
+funcione y se pueda lanzar.
+- [x] Quitado de verdad, no escondido: fuera `mpvd/torrent/` (servicio, lector y cliente), su registro en el
+      servidor, el extra `libtorrent` de `pyproject.toml`, la puerta de `ctrl+o` que reconocía magnets, la fila de
+      Preferencias, los avisos, las 28 cadenas de los catálogos y `tests/test_torrent.py`. Sin código muerto y sin
+      dependencia.
+- [~] Lo que se aprendió queda escrito y medido, por si algún día se retoma (ADR-106, que ADR-111 sustituye): la
+      pieza que convierte «descargar» en «ver» es el lector con `set_piece_deadline` sobre la ventana de
+      reproducción, no el cliente; mpv no necesita saber nada de torrents si se le sirve por HTTP con Range; y el
+      coste medido era 12,1 ms de CPU por MB y 110 MB de RSS (un 6 % de un núcleo a 5 MB/s).
+- [~] La propuesta de 2026-09-30 (integrarse con qBittorrent por su interfaz web) sigue aparcada.
 
 ## H66 · Lo que Ser encontró al probarlo: torrents y programar — ADR-110 · [x]
 Tres cosas de su prueba del 2026-10-04, dos de ellas fallos míos.
-- [x] P1 **Preferencias › Torrents**: H59 dejó los interruptores solo en `torrent.json`, así que la pista de la
-      puerta («se encienden en Preferencias › Torrents») apuntaba a un sitio que **no existía** y la única forma de
-      encenderlos era editar un fichero a mano. Ahora la fila está, con encender, seguir compartiendo al acabar,
-      modo anónimo, el proxy y el aviso legal.
-- [x] P2 **Un magnet o un `.torrent` arrastrado a la ventana** se abre. mpv no sabe abrirlos y falla en el acto;
-      se recoge ese fallo y se abre por mpvd, igual que desde `ctrl+o`. Vale también para la línea de órdenes.
-- [x] P3 **Un `.torrent` de la web** (lo que se arrastra desde el navegador): mpvd lo baja —son unos KB, con tope
-      de 8 MB y comprobando que es bencode— y lo añade.
+- [~] P1-P3 eran de torrents (la fila de Preferencias que faltaba, arrastrar un magnet o un `.torrent`, y bajar un
+      `.torrent` de la web). Se construyeron el 2026-10-04 y se **quitaron el mismo día** al decidir Ser que los
+      torrents salen del programa; queda la lección, que es la que importa: **un ajuste que el programa nombra y no
+      existe no es un ajuste avanzado, es un ajuste que no se puede cambiar** (la regla de H58/K2, incumplida).
 - [x] P4 **Una franja programada abre su propia ventana y la maximiza**, en vez de quedarse con la que estuvieras
       usando; y la cierra al acabar, para no ir dejando ventanas vacías. `MPVD_SCHEDULE_WINDOW=reuse` vuelve a lo
       de antes (es lo que usan los tests, que no pueden abrir ventanas).

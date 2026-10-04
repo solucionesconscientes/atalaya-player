@@ -25,12 +25,6 @@ impersonate = [
     "curl-cffi>=0.10,<0.17; implementation_name == 'cpython'",
 ]
 
-# H59 · ver un torrent mientras se descarga. Ruedas oficiales en PyPI (BSD), cp312 para Linux x86_64/aarch64 y
-# musl, Windows 32/64 y macOS arm64/x86_64. Extra opcional: sin él, el servicio no se anuncia y nada lo ofrece.
-torrent = [
-    "libtorrent>=2.0,<3",
-]
-
 # desktop integration on Linux (MPRIS over the session D-Bus): pure Python, no dependencies
 desktop = [
     "jeepney>=0.8,<1; sys_platform == 'linux'",

@@ -205,7 +205,7 @@ class DaemonEnv:
 
     @property
     def env(self) -> dict[str, str]:
-        # H59 · también la carpeta de configuración: un test que la cambie (los torrents guardan ahí su
+        # H59 · también la carpeta de configuración: un test que la cambie (algún servicio guarda ahí su
         # interruptor y las credenciales del proxy) NO puede tocar la de verdad de quien ejecuta la batería
         return {"MPV_UOS_RUNTIME_DIR": str(self.runtime_dir), "MPV_UOS_CACHE_DIR": str(self.cache_dir),
                 "MPV_UOS_DATA_DIR": str(self.data_dir), "MPV_UOS_CONFIG_DIR": str(self.base / "config"),

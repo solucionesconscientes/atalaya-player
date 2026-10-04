@@ -624,15 +624,6 @@ por defecto.
 
 ## 12. Biblioteca: películas, series y subtítulos de internet
 `ctrl+b` (o *Abrir › Biblioteca*, o la pantalla de inicio) abre la **Biblioteca**.
-- **Torrents** (apagado de fábrica; se encienden en *Preferencias › Torrents*): **arrastra un `.torrent` a la
-  ventana** o pega un **magnet** en la puerta única (`ctrl+o`) y aparece *Ver mientras se descarga*. Vale también
-  un enlace `.torrent` de una página web y la línea de órdenes. mpv no sabe nada de torrents: recibe una dirección local y pide trozos como a cualquier servidor, así
-  que funcionan los subtítulos, el resumen y «ver juntos» igual que siempre, y **saltar hacia delante no obliga a
-  esperar** a que la descarga llegue allí (a las piezas del trozo que estás viendo se les da prioridad, en vez de
-  bajar en orden a lo bruto). Al terminar **se deja de sembrar**, salvo que lo cambies. Medido en este portátil:
-  **12 ms de CPU por MB** y 110 MB de memoria, o sea un 6 % de un núcleo bajando a 5 MB/s. Hace falta el extra:
-  `uv sync --extra torrent`. Y sale un aviso la primera vez: la herramienta es neutra, lo que se baje es
-  responsabilidad de quien lo baje.
 - **Explorar las carpetas del equipo** (*Biblioteca › Explorar las carpetas del equipo*, o la puerta única con la
   caja vacía): se navega con las flechas y Enter, sin teclear nada — pensado para una Raspberry conectada al
   televisor, donde no hay teclado. Se empieza por tus carpetas (Vídeos, Música, Descargas, Imágenes), las de la
