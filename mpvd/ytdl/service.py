@@ -36,6 +36,8 @@ from mpvd.ytdl.binary import (
 from mpvd.ytdl import sites
 from mpvd.ytdl.downloads import BROWSERS, FINAL, DownloadItem, DownloadManager, valid_browser
 from mpvd.ytdl.presets import (
+    preset_rows,
+    sub_lang_rows,
     SUB_LANG_CHOICES,
     resolve_sub_langs,
     AUDIO_BITRATES,
@@ -473,8 +475,8 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
     @d.method("ytdl.presets")
     async def presets(ctx: RpcContext) -> dict[str, Any]:
         """Download presets and the option vocabularies for the menu."""
-        return {"presets": PRESETS, "containers": list(CONTAINERS), "audio_formats": list(AUDIO_FORMATS),
-                "sub_langs": SUB_LANG_CHOICES,
+        return {"presets": preset_rows(), "containers": list(CONTAINERS), "audio_formats": list(AUDIO_FORMATS),
+                "sub_langs": sub_lang_rows(),
                 "audio_bitrates": list(AUDIO_BITRATES), "sponsorblock": list(SPONSORBLOCK_MODES),
                 "settings": service.downloads.settings.to_dict()}
 

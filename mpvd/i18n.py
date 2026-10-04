@@ -19,6 +19,7 @@ import json
 import locale
 import os
 import re
+from contextvars import ContextVar, Token
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -87,10 +88,26 @@ def catalogue(lang: str) -> dict[str, str]:
         if isinstance(data, dict) else {}
 
 
+# H49/G8 · un mensaje que nace DENTRO de una petición HTTP (la sala, el mando, el panel) va para quien abrió esa
+# página, no para quien tiene este equipo: su idioma es el de SU navegador. Cada petición lo deja aquí y `t()` lo
+# usa, así que no hace falta arrastrar el idioma por veinte funciones hasta el `raise`. Es una variable de
+# contexto: cada tarea de asyncio tiene la suya, y una petición es una tarea.
+_visitor: ContextVar[str | None] = ContextVar("mu_visitor_lang", default=None)
+
+
+def visitor_language(header: str | None) -> Token[str | None]:
+    """Fija el idioma de esta petición y devuelve el testigo con el que se deshace."""
+    return _visitor.set(from_accept_language(header) if header is not None else None)
+
+
+def forget_visitor(token: Token[str | None]) -> None:
+    _visitor.reset(token)
+
+
 def t(text: str, lang: str | None = None) -> str:
     """The translation, or the Spanish string when there is none —including when the entry exists but is empty,
     which is how the extractor leaves a string it has just collected (same rule as `mu/i18n.lua`)."""
-    return catalogue(lang or system_language()).get(text) or text
+    return catalogue(lang or _visitor.get() or system_language()).get(text) or text
 
 # -- las páginas servidas (H49/G6) ------------------------------------------------------------------------------
 # La sala, el mando y el panel de descargas los abre OTRA PERSONA en SU navegador, así que su idioma no es el de

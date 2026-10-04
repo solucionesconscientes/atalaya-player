@@ -20,6 +20,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from mpvd.i18n import t
 from mpvd.guardian import PerformanceGuardian
 
 log = logging.getLogger("mpvd.jobs")
@@ -54,29 +55,30 @@ JobFn = Callable[["Job"], Awaitable[Any]]
 # que había. El nombre interno de un trabajo (`asr.subtitles`, `semantic.index`) no se le puede poner delante a
 # nadie, así que aquí está su nombre en castellano. Gana el prefijo más largo, para que `asr.model.` no se lo lleve
 # `asr.`; lo que no esté en la tabla sale con su nombre interno, que es mejor que no salir.
-JOB_LABELS: tuple[tuple[str, str], ...] = (
-    ("asr.model.", "Descargar un modelo de subtítulos"),
-    ("asr.", "Subtítulos con IA"),
-    ("subs.translate.download.", "Descargar un modelo de traducción"),
-    ("subs.translate.", "Traducir los subtítulos"),
-    ("subs.extract.", "Sacar los subtítulos del archivo"),
-    ("semantic.models.download", "Descargar el modelo de búsqueda"),
-    ("semantic.index", "Índice por temas"),
-    ("intro.analyze", "Buscar la intro"),
-    ("intro.prefetch", "Buscar la intro del siguiente"),
-    ("intro.season", "Buscar la intro de la temporada"),
-    ("intro.mark", "Marcar la intro"),
-    ("study.clip", "Recortar un trozo"),
-    ("recap.model.", "Descargar el modelo del resumen"),
-    ("recap.prose.", "Resumen escrito"),
-    ("iptv.epg.refresh", "Guía de TV y radio"),
-    ("iptv.health", "Comprobar los canales"),
-    ("record.audio", "Grabar el audio"),
-    ("av.model.", "Descargar un modelo de sonido"),
-    ("feeds.check:", "Comprobar las suscripciones"),
-    ("music.replaygain", "Medir el volumen de la música"),
-    ("music.scan", "Explorar la música"),
-    ("ytdl.update", "Actualizar yt-dlp"),
+# H49/G8 · con `label` el extractor las recoge para el catálogo, y `job_label()` las traduce al pedirlas
+JOB_LABELS: tuple[dict[str, str], ...] = (
+    {"prefix": "asr.model.", "label": "Descargar un modelo de subtítulos"},
+    {"prefix": "asr.", "label": "Subtítulos con IA"},
+    {"prefix": "subs.translate.download.", "label": "Descargar un modelo de traducción"},
+    {"prefix": "subs.translate.", "label": "Traducir los subtítulos"},
+    {"prefix": "subs.extract.", "label": "Sacar los subtítulos del archivo"},
+    {"prefix": "semantic.models.download", "label": "Descargar el modelo de búsqueda"},
+    {"prefix": "semantic.index", "label": "Índice por temas"},
+    {"prefix": "intro.analyze", "label": "Buscar la intro"},
+    {"prefix": "intro.prefetch", "label": "Buscar la intro del siguiente"},
+    {"prefix": "intro.season", "label": "Buscar la intro de la temporada"},
+    {"prefix": "intro.mark", "label": "Marcar la intro"},
+    {"prefix": "study.clip", "label": "Recortar un trozo"},
+    {"prefix": "recap.model.", "label": "Descargar el modelo del resumen"},
+    {"prefix": "recap.prose.", "label": "Resumen escrito"},
+    {"prefix": "iptv.epg.refresh", "label": "Guía de TV y radio"},
+    {"prefix": "iptv.health", "label": "Comprobar los canales"},
+    {"prefix": "record.audio", "label": "Grabar el audio"},
+    {"prefix": "av.model.", "label": "Descargar un modelo de sonido"},
+    {"prefix": "feeds.check:", "label": "Comprobar las suscripciones"},
+    {"prefix": "music.replaygain", "label": "Medir el volumen de la música"},
+    {"prefix": "music.scan", "label": "Explorar la música"},
+    {"prefix": "ytdl.update", "label": "Actualizar yt-dlp"},
 )
 # Una conversión y una descarga ya tienen su propia fila, con su progreso y sus acciones; sus trabajos en la cola
 # se llaman `convert:<id>` y `download:<id>`, y contarlos otra vez duplicaba la lista (lo cazó test_downloads_panel,
@@ -86,11 +88,12 @@ SHOW_AFTER = 2.0              # s corriendo antes de anunciar un trabajo que no 
 
 
 def job_label(name: str) -> str:
-    best = ""
-    for prefix, label in JOB_LABELS:
+    best, out = "", ""
+    for fila in JOB_LABELS:
+        prefix = fila["prefix"]
         if name.startswith(prefix) and len(prefix) > len(best):
-            best, out = prefix, label
-    return out if best else name
+            best, out = prefix, fila["label"]
+    return t(out) if best else name
 
 
 def _worth_showing(j: dict[str, Any], now: float) -> bool:

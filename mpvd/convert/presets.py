@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import asdict, dataclass, field
+from mpvd.i18n import t
 from pathlib import Path
 from typing import Any
 
@@ -65,13 +66,34 @@ def available_encoders(ffmpeg: str | None = None) -> set[str]:
 
 
 def usable_presets(ffmpeg: str | None = None) -> list[dict[str, Any]]:
-    """Los formatos que ESTA máquina puede hacer de verdad."""
+    """Los formatos que ESTA máquina puede hacer de verdad, con el nombre y la pista en el idioma de quien mira.
+
+    H49/G8 · la tabla de arriba está en castellano porque la cadena castellana ES la clave; traducirla donde se
+    define no valdría (el idioma se decide al servir, no al importar el módulo), así que se traduce aquí, que es
+    por donde salen hacia el menú."""
     have = available_encoders(ffmpeg)
-    return [p for p in PRESETS if NEEDS_ENCODER.get(str(p["id"]), "") in ("", *have)]
+    out = []
+    for p in PRESETS:
+        if NEEDS_ENCODER.get(str(p["id"]), "") not in ("", *have):
+            continue
+        fila = dict(p)
+        for campo in ("label", "hint"):
+            if fila.get(campo):
+                fila[campo] = t(str(fila[campo]))
+        out.append(fila)
+    return out
 
 HEIGHTS = (0, 1080, 720, 480)                 # 0 = original
 QUALITIES = ("high", "normal", "small")
-QUALITY_LABELS = {"high": "alta", "normal": "normal", "small": "pequeña"}
+# Las tablas de nombres se escriben con `label`, que es la forma que el extractor sabe recoger (H49/G8)
+QUALITY_ROWS = ({"id": "high", "label": "alta"}, {"id": "normal", "label": "normal"},
+                {"id": "small", "label": "pequeña"})
+QUALITY_LABELS = {str(r["id"]): str(r["label"]) for r in QUALITY_ROWS}
+
+
+def quality_labels() -> dict[str, str]:
+    """Los nombres de las calidades en el idioma de quien mira (la clave sigue siendo la castellana)."""
+    return {str(r["id"]): t(str(r["label"])) for r in QUALITY_ROWS}
 HW_MODES = ("auto", "cpu", "vaapi")
 SPEEDS = ("normal", "fast")                   # fast = tests (and impatient users): fastest encoder settings
 SMALL_CONTAINERS = ("mp4", "mkv")

@@ -1427,3 +1427,28 @@
   `wait_property` revienta cuando la primera lectura llega sin filas, y eso tumba la espera entera en vez de
   volver a mirar. El mismo fichero lo tenía escrito como advertencia tres líneas más arriba y esa línea se olvidó.
   Arreglado con `(item(...) or {}).get(...)`, que es lo que hacen las demás.
+
+- ADR-113 · Una tabla de datos se traduce donde se sirve, y un mensaje de una petición habla el idioma de quien la
+  hace (H49/G8).
+  **(1) Dónde se traduce una tabla.** Los formatos de «Convertir» y de «Descargar», los modelos de voz, los
+  nombres de las tareas o los motores de traducción son **datos**: listas de diccionarios en un módulo. Envolver
+  ahí la cadena con `t()` sería un error silencioso —se evaluaría **al importar el módulo**, con el idioma de ese
+  instante, y se quedaría fijada para siempre—. Así que la tabla se queda en castellano (que es la clave) y
+  traduce **el punto de uso**: `usable_presets()`, `preset_rows()`, `job_label()`, `to_dict()`. Una línea por
+  tabla, y el idioma correcto en cada petición.
+  Para que el catálogo no se quede cojo, el extractor recoge esas cadenas con `ast` **por el nombre del campo**
+  (`label`, `hint`, `title`, `description`, `note`), sin mirar si «parecen castellano»: «alta» o «normal» no lo
+  parecen y son nombres de calidad que hay que traducir igual. Se dejan fuera `name`, `reason` y `text`, que en la
+  mitad de los sitios llevan un código interno (`missing`, `hello`) y no una frase; las frases que vivían en esos
+  campos se envolvieron a mano. Y dos tablas pasaron de tuplas a diccionarios para que el extractor las vea, que
+  es más barato que enseñarle a leer tuplas.
+  **(2) El idioma de una petición no es el del equipo.** Un `HttpError` de la sala o del mando lo lee el invitado
+  en su navegador (ADR-087), pero `t()` usaba el idioma del sistema del anfitrión. Pasar el idioma como parámetro
+  hasta cada `raise` habría tocado decenas de funciones, muchas de ellas ajenas a HTTP. Se resuelve con una
+  **variable de contexto**: `handle()` fija el idioma del visitante al entrar y lo deshace al salir, y `t()` lo
+  consulta antes del idioma del sistema. Cada petición es una tarea de asyncio y cada tarea tiene su copia, así
+  que no hay fugas entre visitantes —lo comprueba un test que pide el mismo error en tres idiomas seguidos—.
+  **(3) Lo que NO se traduce, y por qué**: los ~240 nombres de país de `iptv/labels.py` son datos de la lista de
+  canales (traducirlos es un trabajo de datos, no de interfaz), las descripciones de `mcp.py` las lee un modelo y
+  no una persona, y los prompts de `llm.py` ya están escritos por idioma. El extractor los salta por nombre de
+  fichero, para que el test no los reclame.

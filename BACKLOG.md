@@ -305,7 +305,11 @@ los once fallos de H55.
       `wait_property`** —un `next()` sin defecto— y tumbaban la espera entera en vez de volver a mirar.
 - [ ] N2 **Y medir**: tres pasadas seguidas sin un solo fallo antes de declararlo. Mientras eso no ocurra, lo
       honesto al cerrar una tanda es decir el número y qué falló, no «check en verde».
-      Al 2026-10-04: una pasada limpia (907) y la siguiente con **un** fallo, `test_mu_convert`.
+      Al 2026-10-04, después de arreglar N3: **una pasada limpia (907/0)** y, tras G8, otra con 908 pasando y
+      **cuatro** fallos que **pasan los cuatro por separado** (`test_mu_feeds` cadena por defecto,
+      `test_mu_iptv_live` resume, `test_mu_modes` gamepad con BrokenPipeError y `test_mu_share` menú): no son
+      regresiones, es la carga. Quedan como los siguientes candidatos a mirar con el log, uno por uno, como se
+      hizo con N3 — que es la única forma que ha funcionado.
 - [x] N3 **Arreglado** (2026-10-04, ADR-112), y la causa no era la que parecía. No es lentitud ni el segundo
       `open-menu`: es el **vigilante de 0,2 s** de cada módulo, que se arma cuando aparece el menú de OTRO módulo
       (el del padre) y dispara justo en el hueco entre «he pedido mi menú» y «uosc lo confirma» —1 ms normalmente,
@@ -521,7 +525,7 @@ un vídeo se pregunta** qué hacer con lo que quede trabajando, salvo las grabac
 ## H49 · Idiomas: castellano, inglés y francés (diseño: docs/IDIOMAS.md)
 Regla de Ser: sistema en castellano o francés → ese idioma; inglés o cualquier otro → inglés. Medido antes de
 empezar: ~1.800 cadenas visibles (1.151 en Lua, ~520 en mpvd, ~56 en el JS de las páginas), o sea ~3.600
-traducidas. Al acabar G7 van **1.533 por idioma** (3.066 traducciones) y quedan medidas las 491 de G8.
+traducidas. Al acabar G8 van **1.661 por idioma** (3.322 traducciones) y no queda ninguna vacía.
 - [x] G1 Maquinaria: `locales/en.json` y `fr.json` (la cadena castellana ES la clave, así que no hay `es.json` y lo
       no traducido cae al castellano), `mu/i18n.lua`, `mpvd/i18n.py`, `tools/i18n_extract.py` y la detección en los
       **dos** lanzadores (bash y PowerShell), que pasan `uosc-languages` (uosc ya está traducido, no se duplica) y
@@ -550,19 +554,27 @@ traducidas. Al acabar G7 van **1.533 por idioma** (3.066 traducciones) y quedan 
       una palabra castellana porque el analizador de horas solo entendía castellano. Ahora entiende los tres
       idiomas (`today`/`tomorrow`, `aujourd’hui`/`demain`/`après-demain`, `to`/`à`/`until`, `now`/`maintenant`) y
       las castellanas siguen valiendo siempre (ADR-108).
-- [ ] G8 Lo que el repaso dejó medido y pendiente: **491 cadenas** castellanas visibles de mpvd que no son
-      `RpcError` y que por eso el extractor de G5 no veía. No son errores: son otra forma (valores de diccionario,
-      listas de presets, f-strings sueltas). Por orden de lo que más se ve: `convert/presets.py` (32, los formatos
-      de «Convertir»), `intro/service.py` (25), `subscriptions/chain.py` (20), `share/live.py` (18, incluido el
-      aviso legal), `asr/models.py` (14, los modelos de voz), `jobs.py` (14, los nombres de las tareas),
-      `ytdl/presets.py` (14), `power.py` (14) y `share/service.py` (51); el resto, repartido en 57 ficheros. Hace
-      falta además **ampliar `tools/i18n_extract_py.py`** a esas formas, o el test no las vigilará.
-      Fuera a propósito: los ~240 nombres de país de `iptv/labels.py` (son datos de la lista de canales, no
-      interfaz) y las descripciones de `mcp.py` (las lee un modelo, no una persona).
-      OJO al envolver: una función que ate el nombre `t` (un `t = …` o un `for t in …`) convierte su propio
-      `t("…")` en un `UnboundLocalError` (ADR-109). Hay un test que lo caza, pero el extractor debería renombrar
-      la variable, no esperar al test.
-
+- [x] G8 **Hecho** (2026-10-04, ADR-113). Lo que quedaba de mpvd no eran 491 cadenas sueltas: eran **tres formas**
+      que el extractor no conocía, y mirándolas una por una el trabajo se volvió pequeño y seguro.
+      (1) `HttpError(código, "…")`, que es lo mismo que `RpcError` para quien lo lee —lo enseña la página—: el
+      extractor lo envuelve solo, igual que antes.
+      (2) `return {"error": "…"}`, que sale en la paleta: también automático.
+      (3) **Las tablas de datos** (los formatos de «Convertir» y de «Descargar», los modelos de voz, los nombres
+      de las tareas, los motores de traducción): ahí la cadena **no se puede envolver donde se define**, porque el
+      idioma se decide al servir y no al importar el módulo. Se recogen con `ast` por el nombre del campo
+      (`label`, `hint`, `title`, `description`, `note` — `name`, `reason` y `text` se quedan fuera porque la mitad
+      de las veces llevan un código interno) y **las traduce el punto de uso**, una sola vez por tabla.
+      Dos tablas pasaron de tuplas a diccionarios con `label`/`note` para que el extractor las vea
+      (`JOB_LABELS`, el catálogo de modelos de voz) y los nombres de calidad, de un mapa plano a filas con `label`.
+      **Y lo que faltaba de verdad**: un mensaje que nace dentro de una petición HTTP lo lee **quien abrió esa
+      página**, no quien tiene el equipo. Ahora cada petición fija el idioma del visitante en una variable de
+      contexto y `t()` lo usa, así que los errores de la sala y del mando salen en el idioma de su navegador sin
+      arrastrar el idioma por veinte funciones hasta el `raise`.
+      **1.661 cadenas por idioma**, ninguna vacía, y dos tests de verdad: los formatos y los modelos en francés
+      por RPC, y un error del mando en castellano, francés e inglés según quién lo pida.
+      Fuera a propósito, como estaba previsto: los ~240 nombres de país de `iptv/labels.py` (datos de la lista de
+      canales), las descripciones de `mcp.py` (las lee un modelo) y los prompts de `llm.py` (ya están por idioma).
+      El extractor los salta por nombre de fichero.
 ## H50 · El sitio web del proyecto (solucionesconscientes.es/atalaya)
 - [ ] F1 La página pública: qué es, las características importantes, capturas, cómo instalarlo. Para alguien que no
       conoce el proyecto y decide en treinta segundos si le interesa.

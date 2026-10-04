@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 from mpvd import __version__
 from mpvd.remote.http import HttpError, Request, Response, sse_event
+from mpvd.i18n import t
 
 if TYPE_CHECKING:
     from mpvd.remote.service import RemoteService
@@ -119,11 +120,11 @@ class DownloadsPanel:
 
     async def add(self, body: Any) -> dict[str, Any]:
         if not isinstance(body, dict):
-            raise HttpError(400, "se esperaba un objeto")
+            raise HttpError(400, t("se esperaba un objeto"))
         text = str(body.get("text") or "")
         urls = [str(u) for u in body.get("urls") or [] if isinstance(u, str)] if isinstance(body.get("urls"), list) else []
         if not text.strip() and not urls:
-            raise HttpError(400, "pega o arrastra algún enlace")
+            raise HttpError(400, t("pega o arrastra algún enlace"))
         preset = str(body.get("preset") or DEFAULT_PRESET)
         known = {p["id"] for p in (await self.presets())["presets"]}
         if preset not in known:
@@ -134,15 +135,15 @@ class DownloadsPanel:
 
     async def action(self, body: Any, row: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(body, dict):
-            raise HttpError(400, "se esperaba un objeto")
+            raise HttpError(400, t("se esperaba un objeto"))
         action = str(body.get("action") or "")
         items = body.get("items")
         if action not in ("cancel", "retry", "remove", "play"):
-            raise HttpError(400, f"acción desconocida: {action}")
+            raise HttpError(400, t("acción desconocida: %s") % (action,))
         if not isinstance(items, list) or not items:
-            raise HttpError(400, "no hay nada seleccionado")
+            raise HttpError(400, t("no hay nada seleccionado"))
         if len(items) > MAX_ITEMS:
-            raise HttpError(400, f"como mucho {MAX_ITEMS} a la vez")
+            raise HttpError(400, t("como mucho %s a la vez") % (MAX_ITEMS,))
         if action == "play":
             return await self._play(items[0], row)
         results = []
@@ -164,14 +165,14 @@ class DownloadsPanel:
 
     async def _play(self, item: Any, row: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(item, dict):
-            raise HttpError(400, "tarea no válida")
+            raise HttpError(400, t("tarea no válida"))
         rows = (await self.remote._rpc("tasks.list", {"include_finished": True})).get("tasks") or []
         task = next((r for r in rows if r["type"] == item.get("type") and r["id"] == item.get("id")), None)
         if task is None or task["status"] != "done" or not task.get("outputs"):
-            raise HttpError(400, "esa tarea no tiene ningún archivo terminado")
+            raise HttpError(400, t("esa tarea no tiene ningún archivo terminado"))
         target = next((o for o in task["outputs"] if not o.endswith((".srt", ".vtt", ".ass"))), task["outputs"][0])
         if not Path(target).exists():
-            raise HttpError(400, "el archivo ya no está: " + target)
+            raise HttpError(400, t("el archivo ya no está: ") + target)
         session = self.remote._session_for(row)
         await self.remote.command(session, "play", {"target": target})
         return {"action": "play", "done": 1, "target": target}

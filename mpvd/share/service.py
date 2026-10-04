@@ -45,7 +45,8 @@ from mpvd.mpvipc import MpvIpcError
 from mpvd.remote import qr
 from mpvd.remote.http import HttpError, HttpServer, Request, Response, sse_event
 from mpvd.remote.service import firewall_hint, lan_ip
-from mpvd.i18n import page_script, t
+from mpvd.i18n import forget_visitor, page_script, t, visitor_language
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
 from mpvd.share import guest as guest_mod
 from mpvd.share import hls
@@ -125,7 +126,7 @@ class RoomRuntime:
     state: dict[str, Any] = field(default_factory=dict)       # last host state sent
     raw: dict[str, Any] = field(default_factory=dict)         # last host properties read
     sent_at: float = 0.0                                        # monotonic time of the last state message
-    media: dict[str, Any] = field(default_factory=lambda: {"kind": "none", "reason": "nada en reproducción"})
+    media: dict[str, Any] = field(default_factory=lambda: {"kind": "none", "reason": t("nada en reproducción")})
     media_key: tuple[Any, ...] | None = None
     media_sent: float = 0.0
     subs_key: tuple[Any, ...] | None = None
@@ -566,7 +567,7 @@ class ShareService:
         rt = self._room()
         g = self._guest(rt, guest_id)
         rt.room.kick(guest_id)
-        self._send_to(rt, g.id, "kicked", {"text": "El anfitrión te ha sacado de la sala"})
+        self._send_to(rt, g.id, "kicked", {"text": t("El anfitrión te ha sacado de la sala")})
         for q, gid in list(rt.queues.items()):
             if gid == g.id:
                 with contextlib.suppress(asyncio.QueueFull):
@@ -640,20 +641,20 @@ class ShareService:
 
     def guest_chat(self, rt: RoomRuntime, guest: Any, raw: Any) -> dict[str, Any]:
         if rt.room.public_mode:
-            raise HttpError(403, "en una sala pública no hay chat")
+            raise HttpError(403, t("en una sala pública no hay chat"))
         try:
             text = clean_chat(raw)
         except ValueError as exc:
             raise HttpError(400, str(exc)) from None
         if not rate_ok(guest.chat_times, CHAT_BURST):
-            raise HttpError(429, "vas muy rápido: espera unos segundos")
+            raise HttpError(429, t("vas muy rápido: espera unos segundos"))
         return self._chat_row(rt, guest.name, guest.id, "chat", text)
 
     def guest_react(self, rt: RoomRuntime, guest: Any, reaction: Any) -> dict[str, Any]:
         if rt.room.public_mode:
-            raise HttpError(403, "en una sala pública no hay reacciones")
+            raise HttpError(403, t("en una sala pública no hay reacciones"))
         if not isinstance(reaction, str) or reaction not in REACTIONS:
-            raise HttpError(400, "reacción desconocida")
+            raise HttpError(400, t("reacción desconocida"))
         if not rate_ok(guest.react_times, REACT_BURST):
             raise HttpError(429, "demasiadas reacciones: espera unos segundos")
         return self._chat_row(rt, guest.name, guest.id, "reaction", reaction=reaction)
@@ -817,7 +818,7 @@ class ShareService:
         rt.media_key = key
         rt.info = None
         if not path:
-            rt.media = {"kind": "none", "reason": "nada en reproducción"}
+            rt.media = {"kind": "none", "reason": t("nada en reproducción")}
             self._send_media(rt)
             return
         rt.media = {"kind": "preparing", "title": raw.get("media-title") or ""}
@@ -976,7 +977,7 @@ class ShareService:
             st = await self._start_stream(rt, inputs, None)
         except Exception as exc:  # noqa: BLE001
             m.pop("relay_pending", None)
-            raise HttpError(503, f"no se pudo retransmitir: {exc}") from exc
+            raise HttpError(503, t("no se pudo retransmitir: %s") % (exc,)) from exc
         if rt.media_key == key:
             m.pop("relay_pending", None)
             m.update({"relay_url": self._stream_url(rt, st), "relay_stream": st.id, "relay_offset": at})
@@ -1108,7 +1109,7 @@ class ShareService:
     def _guest_from(self, rt: RoomRuntime, req: Request) -> Any:
         guest = rt.room.guest_from_cookie(req.cookies.get(COOKIE))
         if guest is None:
-            raise HttpError(401, "no estás en la sala: abre el enlace de invitación")
+            raise HttpError(401, t("no estás en la sala: abre el enlace de invitación"))
         return guest
 
     def _file_link(self, rt: RoomRuntime, guest_id: str) -> str:
@@ -1145,10 +1146,19 @@ class ShareService:
         open the room and dies with it."""
         guest = rt.room.guest_from_cookie(req.cookies.get(COOKIE) or req.query.get("k"))
         if guest is None:
-            raise HttpError(401, "no estás en la sala: abre el enlace de invitación")
+            raise HttpError(401, t("no estás en la sala: abre el enlace de invitación"))
         return guest
 
     async def handle(self, req: Request) -> Response:
+        # H49/G8 · todo lo que se diga dentro de esta petición va en el idioma de QUIEN la hace (su navegador),
+        # no en el de este equipo: los errores de la sala y del mando los lee el invitado, no el anfitrión.
+        token = visitor_language(req.headers.get("accept-language"))
+        try:
+            return await self._handle(req)
+        finally:
+            forget_visitor(token)
+
+    async def _handle(self, req: Request) -> Response:
         path = req.path
         if req.method in ("GET", "HEAD") and path == "/static/i18n.js":
             # H49/G6 · la sala la abre un invitado en SU navegador: las cadenas van en el idioma que pide él.
@@ -1174,15 +1184,15 @@ class ShareService:
             origin = req.headers.get("origin")
             host = req.headers.get("host", "")
             if origin and origin.split("://", 1)[-1] != host:
-                raise HttpError(403, "origen no permitido")
+                raise HttpError(403, t("origen no permitido"))
         rt = self.rt
         if rt is None or rt.room.id != room_id or not rt.room.alive():
-            raise HttpError(410, "la sala está cerrada o ha caducado")
+            raise HttpError(410, t("la sala está cerrada o ha caducado"))
         room = rt.room
         if rest == "api/join" and req.method == "POST":
             body = req.json() or {}
             if not isinstance(body, dict):
-                raise HttpError(400, "cuerpo inválido")
+                raise HttpError(400, t("cuerpo inválido"))
             ip = req.peer.rsplit(":", 1)[0]
             try:
                 guest = room.join(body.get("token"), body.get("name"), ip, self.limiter)
@@ -1203,7 +1213,7 @@ class ShareService:
             base = self.public_url or f"http://{req.headers.get('host', '')}"
             best = self._player_url(rt, who.id, base)
             if best is None:
-                raise HttpError(404, "ahora mismo no hay nada que llevarse a otro reproductor")
+                raise HttpError(404, t("ahora mismo no hay nada que llevarse a otro reproductor"))
             titulo = str(rt.media.get("title") or rt.media.get("name") or "")
             body = f"#EXTM3U\n#EXTINF:-1,{titulo}\n{best['url']}\n"
             return Response(200, {"Content-Type": "audio/x-mpegurl; charset=utf-8", "Cache-Control": "no-store",
@@ -1216,7 +1226,7 @@ class ShareService:
             who = self._guest_or_key(rt, req)
             local = rt.media.get("local")
             if not local or rt.media.get("kind") != "file":
-                raise HttpError(404, "lo que se está viendo no es un archivo de este equipo")
+                raise HttpError(404, t("lo que se está viendo no es un archivo de este equipo"))
             name = str(rt.media.get("name") or "video")
             ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
             return self._file(Path(str(local)), ctype, "private, max-age=3600", req)
@@ -1253,7 +1263,7 @@ class ShareService:
             base = self.public_url or f"http://{req.headers.get('host', '')}"
             best = self._player_url(rt, guest.id, base)
             if best is None:
-                raise HttpError(404, "ahora mismo no hay nada que llevarse a otro reproductor")
+                raise HttpError(404, t("ahora mismo no hay nada que llevarse a otro reproductor"))
             return Response.json({**best, "m3u": f"{base}/s/{room.id}/file.m3u"})
         if rest == "api/me":
             return Response.json({"guest": guest.public(), "room": room.public(), "state": rt.state or None,
@@ -1266,18 +1276,18 @@ class ShareService:
         if rest == "api/cmd" and req.method == "POST":
             body = req.json()
             if not isinstance(body, dict) or not body.get("cmd"):
-                raise HttpError(400, "falta cmd")
+                raise HttpError(400, t("falta cmd"))
             return Response.json(await self._guest_command(rt, guest, str(body["cmd"]), body))
         if rest in ("api/chat", "api/react") and req.method == "POST":
             body = req.json()
             if not isinstance(body, dict):
-                raise HttpError(400, "cuerpo inválido")
+                raise HttpError(400, t("cuerpo inválido"))
             row = self.guest_chat(rt, guest, body.get("text")) if rest == "api/chat" else \
                 self.guest_react(rt, guest, body.get("reaction"))
             return Response.json({"ok": True, "chat": row})
         if rest == "api/request" and req.method == "POST":
             if room.public_mode:
-                raise HttpError(403, "en una sala pública solo se puede ver")
+                raise HttpError(403, t("en una sala pública solo se puede ver"))
             if room.request_control(guest.id):
                 self._host_push(rt, "request", f"{guest.name} pide el control", guest=guest.public())
                 self._guests_changed(rt)
@@ -1329,12 +1339,12 @@ class ShareService:
 
     async def _guest_command(self, rt: RoomRuntime, guest: Any, cmd: str, args: dict[str, Any]) -> dict[str, Any]:
         if rt.room.public_mode:
-            raise HttpError(403, "en una sala pública solo se puede ver")
+            raise HttpError(403, t("en una sala pública solo se puede ver"))
         if not guest.can_control:
-            raise HttpError(403, "solo puedes ver: pide el control al anfitrión")
+            raise HttpError(403, t("solo puedes ver: pide el control al anfitrión"))
         s = self._session(rt)
         if s is None:
-            raise HttpError(503, "el reproductor no está disponible")
+            raise HttpError(503, t("el reproductor no está disponible"))
         c = s.client
         try:
             if cmd in ("pause", "resume", "toggle"):
@@ -1349,7 +1359,7 @@ class ShareService:
                 try:
                     value = float(args.get("seconds", 0))
                 except (TypeError, ValueError):
-                    raise HttpError(400, "seconds debe ser numérico") from None
+                    raise HttpError(400, t("seconds debe ser numérico")) from None
                 rt.guest_action["seek"] = time.monotonic()
                 await c.command("seek", value, "absolute" if cmd == "seek" else "relative", timeout=10)
                 # an absolute seek says where it goes (time-pos may not have moved yet when read right away)

@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from mpvd.i18n import t
+
 log = logging.getLogger("mpvd.remote.http")
 
 MAX_HEAD = 16 * 1024
@@ -54,11 +56,11 @@ class Request:
     def json(self) -> Any:
         ctype = self.headers.get("content-type", "").split(";")[0].strip().lower()
         if ctype != "application/json":
-            raise HttpError(415, "se esperaba application/json")
+            raise HttpError(415, t("se esperaba application/json"))
         try:
             return json.loads(self.body.decode("utf-8") or "null")
         except (UnicodeDecodeError, ValueError) as exc:
-            raise HttpError(400, f"JSON inválido: {exc}") from exc
+            raise HttpError(400, t("JSON inválido: %s") % (exc,)) from exc
 
 
 @dataclass

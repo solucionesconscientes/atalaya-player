@@ -120,24 +120,24 @@ class SubsService:
         if is_web:
             try:
                 web = await self.web_list(path, langs[0] if langs else "es")
-                providers.append({"id": "web", "name": "La web del vídeo", "ok": True, "reason": ""})
-                for t in web.get("tracks", []):
-                    auto = t.get("kind") == "auto"
-                    sources.append({"provider": "web", "provider_name": "La web del vídeo",
+                providers.append({"id": "web", "name": t("La web del vídeo"), "ok": True, "reason": ""})
+                for pista in web.get("tracks", []):
+                    auto = pista.get("kind") == "auto"
+                    sources.append({"provider": "web", "provider_name": t("La web del vídeo"),
                                     "reliability": "auto" if auto else "canal",
-                                    "language": t.get("lang", ""), "label": t.get("label") or t.get("lang", ""),
-                                    "downloads": 0, "pick": {"web": {"url": path, "lang": t.get("lang"),
-                                                                     "kind": t.get("kind", "manual")}}})
+                                    "language": pista.get("lang", ""), "label": pista.get("label") or pista.get("lang", ""),
+                                    "downloads": 0, "pick": {"web": {"url": path, "lang": pista.get("lang"),
+                                                                     "kind": pista.get("kind", "manual")}}})
             except RpcError as exc:
                 providers.append({"id": "web", "name": "La web del vídeo", "ok": False, "reason": exc.message})
         else:
             providers.append({"id": "web", "name": "La web del vídeo", "ok": False,
-                              "reason": "esto no es un vídeo de internet"})
+                              "reason": t("esto no es un vídeo de internet")})
 
         # 2. OpenSubtitles.com (ADR-050): por hash primero y por nombre después, ya ordenado por el propio buscador
         if is_web:
             providers.append({"id": "opensubtitles", "name": "OpenSubtitles", "ok": False,
-                              "reason": "solo busca archivos de tu equipo (necesita el hash)"})
+                              "reason": t("solo busca archivos de tu equipo (necesita el hash)")})
         else:
             try:
                 found = await self.server.library.subs_search(path, ",".join(langs))

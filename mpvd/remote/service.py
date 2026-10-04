@@ -28,7 +28,8 @@ from mpvd.mpvipc import MpvIpcError
 from mpvd.remote import qr
 from mpvd.remote.downloads import DownloadsPanel
 from mpvd.remote.http import HttpError, HttpServer, Request, Response, sse_event
-from mpvd.i18n import page_script, t
+from mpvd.i18n import forget_visitor, page_script, t, visitor_language
+from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
 
 if TYPE_CHECKING:
@@ -103,7 +104,7 @@ def _limit(query: Any, default: int, hi: int) -> int:
     try:
         n = int(raw)
     except (TypeError, ValueError):
-        raise HttpError(400, "limit debe ser un número") from None
+        raise HttpError(400, t("limit debe ser un número")) from None
     return max(1, min(hi, n))
 
 
@@ -264,7 +265,7 @@ class RemoteService:
     def _pair(self, token: str, req: Request) -> tuple[str, dict[str, Any]]:
         info = self.tokens.pop(token, None)
         if info is None or info["expires"] < time.time():
-            raise HttpError(403, "código caducado o ya usado: vuelve a mostrar el QR")
+            raise HttpError(403, t("código caducado o ya usado: vuelve a mostrar el QR"))
         pid = secrets.token_hex(16)
         ua = req.headers.get("user-agent", "")
         name = "móvil"
@@ -313,11 +314,20 @@ class RemoteService:
         try:
             return pick_session(self.server, sid if sid and self.server.sessions.get(sid) else None)
         except RpcError as exc:
-            raise HttpError(503, "no hay ningún reproductor abierto") from exc
+            raise HttpError(503, t("no hay ningún reproductor abierto")) from exc
 
     # -- HTTP ----------------------------------------------------------------------------------------------
 
     async def handle(self, req: Request) -> Response:
+        # H49/G8 · todo lo que se diga dentro de esta petición va en el idioma de QUIEN la hace (su navegador),
+        # no en el de este equipo: los errores de la sala y del mando los lee el invitado, no el anfitrión.
+        token = visitor_language(req.headers.get("accept-language"))
+        try:
+            return await self._handle(req)
+        finally:
+            forget_visitor(token)
+
+    async def _handle(self, req: Request) -> Response:
         path = req.path
         if req.method in ("GET", "HEAD") and path == "/i18n.js":
             # H49/G6 · el mando lo abre otra persona en su móvil: las cadenas, en el idioma de SU navegador
@@ -334,7 +344,7 @@ class RemoteService:
             origin = req.headers.get("origin")
             host = req.headers.get("host", "")
             if origin and origin.split("://", 1)[-1] != host:
-                raise HttpError(403, "origen no permitido")
+                raise HttpError(403, t("origen no permitido"))
         if path == "/api/pair" and req.method == "POST":
             body = req.json() or {}
             token = str(body.get("token") or "").strip()
@@ -343,7 +353,7 @@ class RemoteService:
             return Response.json({"ok": True, "name": row["name"], "version": __version__}, **{"Set-Cookie": cookie})
         row = self._authenticated(req)
         if row is None:
-            raise HttpError(401, "sin emparejar: escanea el QR del reproductor (alt+z)")
+            raise HttpError(401, t("sin emparejar: escanea el QR del reproductor (alt+z)"))
         if path == "/api/unpair" and req.method == "POST":
             self.paired.pop(row["id"], None)
             self._save()
@@ -358,7 +368,7 @@ class RemoteService:
         if path == "/api/cmd" and req.method == "POST":
             body = req.json()
             if not isinstance(body, dict) or not body.get("cmd"):
-                raise HttpError(400, "falta cmd")
+                raise HttpError(400, t("falta cmd"))
             return Response.json(await self.command(self._session_for(row), str(body["cmd"]), body))
         if path == "/api/channels":
             return Response.json(await self._channels(req.query))
@@ -438,7 +448,7 @@ class RemoteService:
             try:
                 return float(args.get(key, default))
             except (TypeError, ValueError) as exc:
-                raise HttpError(400, f"{key} debe ser numérico") from exc
+                raise HttpError(400, t("%s debe ser numérico") % (key,)) from exc
 
         async def setp(name: str, value: Any) -> None:
             try:
@@ -449,7 +459,7 @@ class RemoteService:
         async def addp(name: str, delta: float, lo: float, hi: float, as_int: bool = False) -> None:
             cur = await self._prop(s, name)
             if cur is None:
-                raise HttpError(400, f"{name} no disponible")
+                raise HttpError(400, t("%s no disponible") % (name,))
             value = _clamp(float(cur) + delta, lo, hi)
             await setp(name, int(value) if as_int else value)
 
@@ -462,7 +472,7 @@ class RemoteService:
         elif cmd == "seek":
             mode = str(args.get("mode") or "relative")
             if mode not in ("relative", "absolute", "absolute-percent", "relative-percent"):
-                raise HttpError(400, "mode inválido")
+                raise HttpError(400, t("mode inválido"))
             await run("seek", num("seconds"), mode)
         elif cmd == "volume":
             vmax = await self._prop(s, "volume-max") or 100
@@ -508,14 +518,14 @@ class RemoteService:
             target = str(args.get("target") or "").strip()
             mode = str(args.get("mode") or "replace")
             if not target:
-                raise HttpError(400, "falta target")
+                raise HttpError(400, t("falta target"))
             if mode not in ("replace", "append-play", "append"):
-                raise HttpError(400, "mode inválido")
+                raise HttpError(400, t("mode inválido"))
             await run("loadfile", target, mode, -1)
         elif cmd == "channel":
             cid = str(args.get("id") or "").strip()
             if not cid:
-                raise HttpError(400, "falta id")
+                raise HttpError(400, t("falta id"))
             await self._rpc("iptv.channel", {"id": cid})
             await run("script-message-to", "mu_iptv", "mu-iptv-play", cid)
         elif cmd == "zap":
@@ -523,7 +533,7 @@ class RemoteService:
         elif cmd == "script_binding":
             name = str(args.get("name") or "")
             if not name.startswith("mu_") or "/" not in name:
-                raise HttpError(400, "solo bindings mu_*/…")
+                raise HttpError(400, t("solo bindings mu_*/…"))
             await run("script-binding", name)
         else:
             raise HttpError(400, f"comando desconocido: {cmd}")
@@ -547,10 +557,10 @@ class RemoteService:
     async def _search(self, s: Session, q: str) -> dict[str, Any]:
         q = q.strip()
         if not q:
-            raise HttpError(400, "falta q")
+            raise HttpError(400, t("falta q"))
         path = await self._prop(s, "path")
         if not path:
-            raise HttpError(400, "no hay archivo abierto")
+            raise HttpError(400, t("no hay archivo abierto"))
         out: dict[str, Any] = {"q": q, "path": path, "semantic": [], "text": [], "mode": "text"}
         with contextlib.suppress(HttpError):
             res = await self._rpc("semantic.search", {"q": q, "path": path, "k": 10, "index": True}, session=s)

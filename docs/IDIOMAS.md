@@ -95,7 +95,7 @@ La sala, el mando del móvil y el panel de descargas los abre otra persona, quiz
 6. **Repaso de las traducciones**, el francés con ojo: lo escribo yo y conviene que alguien lo lea.
 
 ## Cómo acabó (H49, iteración 9)
-- **1.533 cadenas** por idioma, inglés y francés completos, sin ninguna vacía (un valor vacío cae al castellano,
+- **1.661 cadenas** por idioma, inglés y francés completos, sin ninguna vacía (un valor vacío cae al castellano,
   así que un hueco no se ve; lo vigila `tests/test_i18n.py`).
 - Tres extractores, uno por lenguaje, y los tres son la fuente del test que compara código y catálogo:
   `tools/i18n_extract.py` (Lua), `tools/i18n_extract_py.py` (los mensajes de mpvd) y `tools/i18n_extract_web.py`
@@ -108,3 +108,7 @@ La sala, el mando del móvil y el panel de descargas los abre otra persona, quiz
   - Los nombres de país de `mpvd/iptv/labels.py` (unos 240): son datos, vienen en castellano de la lista de
     canales y traducirlos es un trabajo de datos, no de interfaz. Anotado en el BACKLOG (H49/G8).
   - Las descripciones de las herramientas MCP (`mpvd/mcp.py`): las lee un modelo, no una persona.
+- Lo que vino en G8 (ADR-113): una **tabla de datos** (formatos, modelos, nombres de tareas) se traduce **donde se
+  sirve**, nunca donde se define —ahí se evaluaría al importar el módulo y se quedaría fijada—, y el extractor la
+  recoge por el nombre del campo (`label`, `hint`, `title`, `description`, `note`). Y un mensaje que nace dentro de
+  una petición HTTP habla el idioma de **quien la hace**: cada petición lo fija en una variable de contexto.

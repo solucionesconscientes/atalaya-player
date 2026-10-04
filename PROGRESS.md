@@ -354,33 +354,34 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-El 2026-10-04 se hizo de una tanda lo que quedaba aprobado menos la web: **H61** (mando del televisor), **H62**,
-**H63**, **H64**, **H65** y **H49/G1-G7** (los tres idiomas); y después, de su primera prueba, **H66** (la franja
-en su propia ventana maximizada y programar archivos del equipo). **Los torrents (H59) se quitaron** el mismo día
-por decisión de Ser, al no funcionarle y no ser críticos (ADR-111).
+El 2026-10-04 se cerró todo lo que quedaba aprobado menos la web: **H61** (mando del televisor), **H62**, **H63**
+(incluido N3, el fallo intermitente de los menús), **H64**, **H65**, **H66** y **H49 entero** (G1-G8: 1.661
+cadenas por idioma). **Los torrents (H59) se quitaron** por decisión de Ser, al no funcionarle y no ser críticos
+(ADR-111). `tools/check.sh` quedó en 907 pasando con cero fallos, y los de red en 16 pasando.
 
 Lo que queda, por orden:
 
-1. **Que Ser vuelva a probar**, ahora con todo construido y traducido. Es lo único que puede desbloquear lo demás.
-2. **Arreglar lo que salga** — y si algo no es crítico y no funciona, **quitarlo**: es lo que se hizo con los
-   torrents el 2026-10-04 y es el criterio para lanzar.
-3. **H63/N3 · el fallo intermitente de los menús**: cuando una vista pinta dos veces y la segunda llega antes de
-   que uosc publique su tipo, uosc cierra el primer menú y el script toma ese cierre por uno de la persona y se
-   queda sin vista (⌫ salta de nivel, lo que cargaba no aparece, un panel deja de refrescarse). La causa está
-   diagnosticada con el log y hay dos arreglos ya descartados. La vía recomendada es **simplificar**: que esas
-   vistas no pinten el «Cargando…» y pinten una sola vez cuando mpvd contesta (en local son milisegundos), con lo
-   que la carrera desaparece y además se quita código.
-4. **H49/G8**: las **491 cadenas** de mpvd que el extractor de G5 no veía porque no son `RpcError` (valores de
-   diccionario, listas de presets, f-strings sueltas). Están medidas y repartidas por ficheros en el BACKLOG, por
-   orden de lo que más se ve: `convert/presets.py` (32), `intro/service.py` (25), `subscriptions/chain.py` (20),
-   `share/live.py` (18), `asr/models.py`, `jobs.py`, `ytdl/presets.py`, `power.py` (14 cada uno) y
-   `share/service.py` (51). Hace falta además ampliar `tools/i18n_extract_py.py` a esas formas, o el test no las
-   vigilará. **Primero** hay que ampliar el extractor; envolver a mano sin él deja el catálogo cojo sin avisar.
-5. **La web (H50)**, diseñada en `docs/SITIO-WEB.md`. Ser la dejó fuera a propósito de esta tanda. Las capturas las
-   puedo hacer yo; faltan dos decisiones suyas: qué se ve de fondo en ellas y si el repo se hace público.
+1. **H67 · los días de la semana** en lo programado: «cada día», «de lunes a viernes», días suelos, de forma
+   **indefinida** hasta que se quite. Regla + ocurrencias materializadas rodando hacia delante, el despertador
+   rearmado en cada una, y aviso cuando se solapan dos reproducciones (grabar en paralelo ya funciona: cada
+   grabación es su propio ffmpeg copiando, sin recodificar).
+2. **Los paquetes**, decididos con Ser el 2026-10-04: **`.deb`** (amd64 y arm64) y **AppImage** (x86-64 y
+   aarch64). El `.deb` sin versión fija de mpv —en Debian 13 y Raspberry Pi OS el del sistema puede ser más
+   viejo— y avisando al arrancar de lo que no va; y es el único que puede instalar la regla de `sudoers` de
+   `rtcwake`, con lo que el despertador funcionaría de fábrica. **Windows**: `.zip` portable con `install.ps1`
+   dentro (un instalador sin firma se come la pantalla azul de SmartScreen). **macOS**: documentado por Homebrew;
+   un `.dmg` sin firmar se bloquea y, peor, el `.app` de hoy usa el mpv de Homebrew, así que no sería
+   autocontenido. **Flatpak descartado por ahora**: habría que compilar mpv dentro y el sandbox no puede con el
+   despertador (`sudo rtcwake`); se retomaría si se quiere llegar a distros con mpv viejo.
+3. **H68 · avisar de que hay versión nueva**: un `latest.json` (versión, qué cambia y el SHA-256 de cada paquete)
+   consultado una vez al día con la caché que ya usa yt-dlp. Avisar, no instalar solo. Falta decidir dónde vive
+   ese fichero (la web o la API de releases si el repo se hace público).
+4. **La web (H50)**, diseñada en `docs/SITIO-WEB.md`. Faltan dos decisiones de Ser: qué se ve de fondo en las
+   capturas y si el repo se hace público —esto último también desbloquea construir y probar los paquetes de
+   Windows y macOS gratis en GitHub Actions—.
 
-Solo Ser puede: la línea de `sudoers` para `rtcwake` (despertar el equipo para una grabación), la cuenta de
-OpenSubtitles y **comprobar el HDMI-CEC con una tele de verdad** (H61/M7). Las órdenes exactas están en
+Solo Ser puede: la línea de `sudoers` para `rtcwake` (o esperar al `.deb`, que la pondría él), **comprobar el
+HDMI-CEC con una tele de verdad** (H61/M7) y, sin prisa, la cuenta de OpenSubtitles. Las órdenes exactas están en
 `NEEDS_HUMAN.md`.
 
 ## Registro por iteración

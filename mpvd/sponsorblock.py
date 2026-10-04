@@ -135,7 +135,7 @@ class SponsorBlockService:
         cats = clean_categories(categories)
         if vid is None:
             return {"video_id": "", "segments": [], "supported": False,
-                    "reason": "SponsorBlock solo tiene tramos de vídeos de YouTube"}
+                    "reason": t("SponsorBlock solo tiene tramos de vídeos de YouTube")}
         query = urllib.parse.urlencode({"categories": json.dumps(cats)})
         full = f"{self.base_url}/{hash_prefix(vid)}?{query}"
         try:
@@ -143,7 +143,7 @@ class SponsorBlockService:
             payload = json.loads(res.path.read_bytes() or b"[]")
         except (FetchError, OSError, ValueError) as exc:
             log.info("sponsorblock: %s", exc)
-            return {"video_id": vid, "segments": [], "supported": True, "reason": "no se pudo preguntar a SponsorBlock"}
+            return {"video_id": vid, "segments": [], "supported": True, "reason": t("no se pudo preguntar a SponsorBlock")}
         segs = parse(payload, vid, cats)
         return {"video_id": vid, "segments": segs, "supported": True, "reason": "",
                 "categories": cats, "prefix": hash_prefix(vid)}

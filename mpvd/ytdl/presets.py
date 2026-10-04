@@ -10,6 +10,8 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from mpvd.i18n import t
+
 CONTAINERS = ("mp4", "mkv", "webm")
 AUDIO_FORMATS = ("mp3", "opus", "m4a", "flac", "wav")
 AUDIO_BITRATES = (96, 128, 160, 192, 256, 320)
@@ -300,6 +302,23 @@ PRESETS: list[dict[str, Any]] = [
     {"id": "audio_wav", "title": "Audio · WAV", "group": "audio",
      "spec": {"kind": "audio_convert", "audio_format": "wav", "audio_bitrate": None}},
 ]
+
+
+def preset_rows() -> list[dict[str, Any]]:
+    """Los presets con el nombre en el idioma de quien mira. H49/G8: la tabla está en castellano porque la cadena
+    castellana ES la clave; se traduce aquí, que es por donde salen hacia el menú y el panel."""
+    out = []
+    for p in PRESETS:
+        fila = dict(p)
+        for campo in ("title", "label", "hint"):
+            if fila.get(campo):
+                fila[campo] = t(str(fila[campo]))
+        out.append(fila)
+    return out
+
+
+def sub_lang_rows() -> list[dict[str, Any]]:
+    return [{**r, "label": t(str(r["label"]))} for r in SUB_LANG_CHOICES]
 
 
 def preset(preset_id: str) -> dict[str, Any]:

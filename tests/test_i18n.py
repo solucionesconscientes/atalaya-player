@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import urllib.error
 import urllib.request
 
 import pytest
@@ -254,6 +255,23 @@ def test_el_i18n_que_se_sirve_lleva_el_catalogo_delante(carpeta, pagina):
     assert vacio.startswith("window.MU_T = {};")
 
 
+def test_todo_lo_que_llama_a_t_lo_importa():
+    """Un módulo que llama a `t(...)` sin importarlo no falla al arrancar: falla **cuando hay que decir algo**, que
+    es el peor momento. Pasó dos veces al ampliar el extractor (`remote/http.py` y `remote/downloads.py`), y lo
+    descubrió la pasada completa con cinco tests caídos; esto lo caza en un segundo."""
+    import re as _re
+
+    llama = _re.compile(r'(?<![A-Za-z0-9_.])t\(\s*["f]')
+    malos = []
+    for f in sorted((ROOT / "mpvd").rglob("*.py")):
+        if f.name == "i18n.py":
+            continue
+        src = f.read_text(encoding="utf-8")
+        if llama.search(src) and "from mpvd.i18n import" not in src:
+            malos.append(str(f.relative_to(ROOT)))
+    assert not malos, f"llaman a t() sin importarlo: {malos}"
+
+
 def test_ninguna_funcion_de_mpvd_tapa_la_funcion_t():
     """El mismo fallo que en el JavaScript, y en Python es peor: una sola asignación `t = …` (o un `for t in …`)
     hace que `t` sea local de **toda** la función, así que el `t("…")` de antes revienta con UnboundLocalError y
@@ -379,3 +397,44 @@ def test_el_mando_llega_al_movil_traducido(remote_env):  # noqa: F811
     assert "function t(s)" in js and "createTreeWalker" in js
 
     assert pedir("/i18n.js", "es-ES,es;q=0.9").startswith("window.MU_T = {};")
+
+
+# -- H49/G8 · los mensajes de mpvd que no son RpcError, y el idioma por petición -------------------------------
+
+def test_los_nombres_de_los_formatos_salen_en_el_idioma_del_reproductor(daemon_env):
+    """Las tablas de datos (los formatos de «Convertir» y de «Descargar», los modelos de voz, los nombres de las
+    tareas) están en castellano en el código porque la cadena castellana ES la clave; se traducen al servirlas, que
+    es lo único que funciona —el idioma se decide al atender la petición, no al importar el módulo—."""
+    daemon_env.extra_env["LANG"] = "fr_FR.UTF-8"
+    daemon_env.cli("ensure")                      # el demonio arranca ya con ese idioma
+    daemon_env.wait(daemon_env.alive, timeout=30)
+    presets = daemon_env.call("convert.presets")
+    etiquetas = [p["label"] for p in presets["presets"]]
+    assert "Plus petit (H.265)" in etiquetas, etiquetas
+    assert presets["quality_labels"]["high"] == "élevée", presets["quality_labels"]
+    titulos = [p["title"] for p in daemon_env.call("ytdl.presets")["presets"]]
+    assert any(x.startswith("Vidéo · jusqu") for x in titulos), titulos
+    modelos = {m["name"]: m["note"] for m in daemon_env.call("asr.models")["models"]}
+    assert modelos["tiny"] == "très rapide, qualité basique", modelos["tiny"]
+
+
+def test_lo_que_se_dice_en_una_peticion_va_en_el_idioma_de_quien_la_hace(remote_env):  # noqa: F811
+    """Un error de la sala o del mando lo lee el INVITADO, no el anfitrión: su idioma es el de su navegador. Se
+    resuelve con una variable de contexto que fija cada petición, así que no hay que arrastrar el idioma por veinte
+    funciones hasta el `raise`."""
+    _h, d = remote_env
+    base = d.call("remote.pair")["url"].split("/#")[0]
+
+    def error(cabecera: str) -> str:
+        req = urllib.request.Request(base + "/api/state", headers={"Accept-Language": cabecera})
+        try:
+            urllib.request.urlopen(req, timeout=20)
+        except urllib.error.HTTPError as exc:
+            return json.loads(exc.read()).get("error", "")
+        raise AssertionError("tenía que dar 401: no está emparejado")
+
+    assert "QR" in error("es-ES,es") and "empareja" in error("es-ES,es").lower()
+    assert error("fr-FR,fr;q=0.9").startswith("non associé"), error("fr-FR,fr;q=0.9")
+    assert error("en-US,en").startswith("not paired"), error("en-US,en")
+    # y el idioma de una petición no se queda pegado para la siguiente
+    assert "empareja" in error("es-ES,es").lower()

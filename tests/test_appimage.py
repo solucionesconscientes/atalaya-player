@@ -4,6 +4,7 @@ is written inside the (read-only) image. Built on demand with MU_BUILD_APPIMAGE=
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -33,6 +34,12 @@ def test_appimage_contents(image, tmp_path):
     assert (app / "AppRun").is_file() and (app / ".DirIcon").exists()
     assert (app / "usr/share/mpv-uos/bin/mpv-uos").is_file()
     assert (app / "usr/share/mpv-uos/mpv-config/scripts/uosc/main.lua").is_file()
+    # H49 · los catálogos TIENEN que viajar: sin ellos todo cae al castellano y nadie se entera, porque ese
+    # respaldo silencioso es justo lo que diseñamos. La primera versión del paquete se los dejó fuera.
+    for lang in ("en", "fr"):
+        cat = app / "usr/share/mpv-uos/locales" / f"{lang}.json"
+        assert cat.is_file(), f"falta locales/{lang}.json en el paquete"
+        assert len(json.loads(cat.read_text(encoding="utf-8"))) > 1000, f"locales/{lang}.json llega cojo"
     py = app / "usr/share/mpv-uos/.venv/bin/python"
     assert py.is_symlink() and py.resolve() == (app / "usr/python/bin/python3.12").resolve()
     # the bundled interpreter runs from its new place and imports mpvd from the app

@@ -551,7 +551,7 @@ class IntroService:
             eps = (await asyncio.to_thread(season_episodes, path))[:MAX_SEASON]
             tpl = await self._template(path, key, mark)
             if tpl is None:
-                return {"applied": [], "reason": "el tramo marcado no tiene audio útil"}
+                return {"applied": [], "reason": t("el tramo marcado no tiene audio útil")}
             applied: list[str] = []
             for n, f in enumerate(eps):
                 if not self.marks.current(key, kind, mark["at"]):

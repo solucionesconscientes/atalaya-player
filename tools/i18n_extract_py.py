@@ -32,7 +32,22 @@ LOCALES = ROOT / "locales"
 # una pista barata y fiable de que el mensaje se escribió para una persona y en castellano
 SPANISH = re.compile(r"[áéíóúñ¿¡Á-Ú]|\b(no|se|hay|falta|hace|solo|sólo|para|con|los|las|del|que|una|este|esta|"
                      r"nada|ningún|ninguna|todavía|aún|ya|desde|hasta|sin|sobre|como|cuando|porque)\b")
-CALL = re.compile(r"""RpcError\(\s*([A-Z_]+)\s*,\s*(f?)("(?:[^"\\]|\\.)*")""")
+CALL = re.compile(r"""(RpcError|HttpError)\(\s*([A-Z_]+|\d+)\s*,\s*(f?)("(?:[^"\\]|\\.)*")""")
+# H49/G8 · `return {"error": "…"}` es lo mismo que un RpcError para quien lo lee: sale en la paleta o en el OSD
+ERROR_DICT = re.compile(r"""\{\s*"error"\s*:\s*(f?)("(?:[^"\\]|\\.)*")""")
+# Y las TABLAS DE DATOS (presets, modelos, nombres de tareas): ahí la cadena no se puede envolver donde se define
+# —el idioma se decide al servir, no al importar el módulo—, así que solo se RECOGEN para el catálogo y se avisa,
+# y quien envuelve es el punto de uso (una sola vez por tabla).
+# El NOMBRE del campo ya dice que es texto para una persona, así que en estas tablas no se mira si «parece
+# castellano»: «alta» o «normal» no lo parecen y son nombres de calidad que hay que traducir igual. Se deja fuera
+# `name`, que en la mitad de los sitios es un identificador y no un nombre.
+# `reason` y `text` se quedan fuera por el mismo motivo que `name`: en la mitad de los sitios llevan un código
+# interno («missing», «hello») y no una frase.
+FIELD_KEYS = ("label", "hint", "title", "description", "note")
+FIELD_MIN = 3
+# Fuera a propósito (docs/IDIOMAS.md): las descripciones de las herramientas MCP las lee un modelo, no una persona;
+# los nombres de país son datos de la lista de canales; y los prompts del LLM ya están escritos por idioma.
+FUERA = ("mpvd/mcp.py", "mpvd/iptv/labels.py", "mpvd/llm.py")
 FIELD = re.compile(r"\{([^{}:!]+)(![rsa])?\}")
 HAS_SPEC = re.compile(r"\{[^{}]*:[^{}]*\}")
 # una cadena pegada a la siguiente (concatenación implícita de Python) no se puede envolver a trozos:
@@ -42,13 +57,13 @@ SIGUE = re.compile(r"\s*f?\"")
 WRAPPED = re.compile(r"""\bt\(\s*("(?:[^"\\]|\\.)*")\s*\)""")
 
 
-def convert(code: str, is_f: str, literal: str) -> tuple[str, str] | None:
+def convert(exc: str, code: str, is_f: str, literal: str) -> tuple[str, str] | None:
     """(new call, catalogue key) or None when it must be left alone."""
     text = json.loads(literal)
     if not SPANISH.search(text):
         return None
     if not is_f:
-        return f'RpcError({code}, t({literal})', text
+        return f'{exc}({code}, t({literal})', text
     if HAS_SPEC.search(text):
         return None
     args: list[str] = []
@@ -60,9 +75,32 @@ def convert(code: str, is_f: str, literal: str) -> tuple[str, str] | None:
 
     key = FIELD.sub(one, text)
     if not args:
-        return f'RpcError({code}, t({json.dumps(key, ensure_ascii=False)})', key
+        return f'{exc}({code}, t({json.dumps(key, ensure_ascii=False)})', key
     coma = "," if len(args) == 1 else ""
-    return (f'RpcError({code}, t({json.dumps(key, ensure_ascii=False)}) % ({", ".join(args)}{coma})', key)
+    return (f'{exc}({code}, t({json.dumps(key, ensure_ascii=False)}) % ({", ".join(args)}{coma})', key)
+
+
+def table_fields(src: str) -> list[str]:
+    """Las cadenas castellanas que son VALORES de los campos visibles de un diccionario literal."""
+    import ast   # noqa: PLC0415 - solo hace falta aquí
+
+    out: list[str] = []
+    try:
+        arbol = ast.parse(src)
+    except SyntaxError:       # pragma: no cover - lo dirá el propio Python al importar
+        return out
+    for nodo in ast.walk(arbol):
+        if not isinstance(nodo, ast.Dict):
+            continue
+        for clave, valor in zip(nodo.keys, nodo.values):
+            if not (isinstance(clave, ast.Constant) and clave.value in FIELD_KEYS):
+                continue
+            if not (isinstance(valor, ast.Constant) and isinstance(valor.value, str)):
+                continue
+            texto = valor.value
+            if len(texto) >= FIELD_MIN and re.search(r"[A-Za-zÁ-úñ]", texto):
+                out.append(texto)
+    return out
 
 
 def process(path: Path) -> tuple[str, list[str], list[str]]:
@@ -71,13 +109,13 @@ def process(path: Path) -> tuple[str, list[str], list[str]]:
     skipped: list[str] = []
     out, last = [], 0
     for m in CALL.finditer(src):
-        code, is_f, literal = m.group(1), m.group(2), m.group(3)
+        exc, code, is_f, literal = m.group(1), m.group(2), m.group(3), m.group(4)
         if SIGUE.match(src, m.end()):
             text = json.loads(literal)
             if SPANISH.search(text):
                 skipped.append(text + "  ← partida en varias líneas, a mano")
             continue
-        res = convert(code, is_f, literal)
+        res = convert(exc, code, is_f, literal)
         if res is None:
             text = json.loads(literal)
             if SPANISH.search(text):
@@ -92,6 +130,9 @@ def process(path: Path) -> tuple[str, list[str], list[str]]:
     # lo que ya estaba envuelto cuenta igual: si no, un segundo pase creería que no hay nada que traducir
     for m in WRAPPED.finditer(src):
         found.append(json.loads(m.group(1)))
+    # H49/G8 · las tablas de datos: se recogen para el catálogo, las envuelve el punto de uso
+    if not str(path).replace("\\", "/").endswith(FUERA):
+        found += table_fields(src)
     return "".join(out), found, skipped
 
 

@@ -41,7 +41,7 @@ from mpvd.convert.presets import (
     PRESETS,
     usable_presets,
     QUALITIES,
-    QUALITY_LABELS,
+    quality_labels,
     ConvertError,
     ConvertSpec,
     Plan,
@@ -596,7 +596,7 @@ def register(server: MpvdServer, service: ConvertService) -> None:
     async def presets(ctx: RpcContext) -> dict[str, Any]:
         """Presets and option vocabularies for the «Convertir» menu, plus the default output folder."""
         return {"presets": usable_presets(), "heights": list(HEIGHTS), "qualities": list(QUALITIES),
-                "quality_labels": QUALITY_LABELS, "audio_bitrates": list(AUDIO_BITRATE_CHOICES),
+                "quality_labels": quality_labels(), "audio_bitrates": list(AUDIO_BITRATE_CHOICES),
                 "gif_widths": list(GIF_WIDTHS), "gif_fps": list(GIF_FPS), "default_dir": str(default_dir())}
 
     @d.method("convert.hw")

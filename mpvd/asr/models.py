@@ -16,28 +16,32 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from mpvd.i18n import t
+
 GGML_MAGIC = b"lmgg"
 MODELS_BASE_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 VAD_BASE_URL = "https://huggingface.co/ggml-org/whisper-vad/resolve/main"
 VAD_MODEL = "silero-v5.1.2"
 
 # name -> (approx size in MiB, multilingual, note in Spanish for menus)
-CATALOG: dict[str, tuple[int, bool, str]] = {
-    "tiny": (75, True, "muy rápido, calidad básica"),
-    "tiny-q5_1": (31, True, "muy rápido, calidad básica (cuantizado)"),
-    "tiny.en": (75, False, "solo inglés, muy rápido"),
-    "base": (142, True, "rápido, calidad aceptable"),
-    "base-q5_1": (57, True, "rápido, calidad aceptable (cuantizado)"),
-    "base.en": (142, False, "solo inglés, rápido"),
-    "small": (466, True, "buena calidad, 4+ núcleos"),
-    "small-q5_1": (181, True, "buena calidad (cuantizado), 4+ núcleos"),
-    "small-q8_0": (252, True, "buena calidad (q8), 4+ núcleos"),
-    "small.en": (466, False, "solo inglés, buena calidad"),
-    "medium": (1500, True, "muy buena calidad, lento en CPU"),
-    "medium-q5_0": (514, True, "muy buena calidad (cuantizado), lento en CPU"),
-    "large-v3-turbo": (1600, True, "calidad máxima con decodificador rápido, GPU recomendada"),
-    "large-v3-turbo-q5_0": (547, True, "calidad máxima (cuantizado), GPU recomendada"),
-    "large-v3": (3100, True, "calidad máxima, GPU necesaria"),
+# name -> tamaño aproximado en MiB, multilingüe y la nota que se ve en el menú. H49/G8 · con `note` el
+# extractor la recoge para el catálogo, y `to_dict()` la traduce al pedirla.
+CATALOG: dict[str, dict[str, Any]] = {
+    "tiny": {"size": 75, "multilingual": True, "note": "muy rápido, calidad básica"},
+    "tiny-q5_1": {"size": 31, "multilingual": True, "note": "muy rápido, calidad básica (cuantizado)"},
+    "tiny.en": {"size": 75, "multilingual": False, "note": "solo inglés, muy rápido"},
+    "base": {"size": 142, "multilingual": True, "note": "rápido, calidad aceptable"},
+    "base-q5_1": {"size": 57, "multilingual": True, "note": "rápido, calidad aceptable (cuantizado)"},
+    "base.en": {"size": 142, "multilingual": False, "note": "solo inglés, rápido"},
+    "small": {"size": 466, "multilingual": True, "note": "buena calidad, 4+ núcleos"},
+    "small-q5_1": {"size": 181, "multilingual": True, "note": "buena calidad (cuantizado), 4+ núcleos"},
+    "small-q8_0": {"size": 252, "multilingual": True, "note": "buena calidad (q8), 4+ núcleos"},
+    "small.en": {"size": 466, "multilingual": False, "note": "solo inglés, buena calidad"},
+    "medium": {"size": 1500, "multilingual": True, "note": "muy buena calidad, lento en CPU"},
+    "medium-q5_0": {"size": 514, "multilingual": True, "note": "muy buena calidad (cuantizado), lento en CPU"},
+    "large-v3-turbo": {"size": 1600, "multilingual": True, "note": "calidad máxima con decodificador rápido, GPU recomendada"},
+    "large-v3-turbo-q5_0": {"size": 547, "multilingual": True, "note": "calidad máxima (cuantizado), GPU recomendada"},
+    "large-v3": {"size": 3100, "multilingual": True, "note": "calidad máxima, GPU necesaria"},
 }
 
 # Ordered from cheapest to best; ``pick`` walks it with the hardware tier. The English-only variants are not ranked.
@@ -105,7 +109,8 @@ class ModelInfo:
 
     def to_dict(self) -> dict[str, Any]:
         return {"name": self.name, "path": str(self.path) if self.path else None, "size_mb": self.size_mb,
-                "multilingual": self.multilingual, "note": self.note, "present": self.present, "vad": self.is_vad}
+                "multilingual": self.multilingual, "note": t(self.note), "present": self.present,
+                "vad": self.is_vad}
 
 
 class ModelStore:
@@ -133,7 +138,8 @@ class ModelStore:
 
     def list(self) -> list[ModelInfo]:
         out = []
-        for name, (size, multi, note) in CATALOG.items():
+        for name, fila in CATALOG.items():
+            size, multi, note = fila["size"], fila["multilingual"], fila["note"]
             p = self.find(name)
             out.append(ModelInfo(name, p, size, multi, note, p is not None))
         vad = self.find(VAD_MODEL)
