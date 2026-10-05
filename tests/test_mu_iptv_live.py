@@ -219,6 +219,13 @@ def test_channels_never_resume_nor_save_watch_later(live, media_dir):
     def playing(pred=lambda v: v >= 0, timeout=20.0):
         return h.wait_property("time-pos", lambda v: isinstance(v, (int, float)) and pred(v), timeout=timeout)
 
+    def saltar_a(segundo):
+        """H63 · que haya `time-pos` NO quiere decir que se pueda saltar: en un HLS el demuxer puede no tener aún
+        el rango y mpv contesta «error running command» al seek. `seekable` es el estado que lo dice, así que se
+        espera por él en vez de confiar en que ya habrá llegado."""
+        h.wait_property("seekable", lambda v: v is True, timeout=20)
+        h.command("seek", segundo, "absolute")
+
     chans = channels(d)
     live_url = d.call("iptv.play", {"id": chans["Directo Uno"]["id"]})["url"]  # HLS over http
     ua = {"user-agent": "Mozilla/5.0 (control)"}
@@ -228,7 +235,7 @@ def test_channels_never_resume_nor_save_watch_later(live, media_dir):
     # stream by loading another one (what zapping does) writes an entry
     h.command("loadfile", live_url, "replace", -1, ua)
     playing()
-    h.command("seek", 12, "absolute")
+    saltar_a(12)
     playing(lambda v: v > 11)
     h.command("loadfile", f"file://{media_dir}/chapters.mkv", "replace")
     h.wait_property("path", lambda v: bool(v) and v.endswith("chapters.mkv"), timeout=20)
@@ -239,12 +246,12 @@ def test_channels_never_resume_nor_save_watch_later(live, media_dir):
     # stale entries, as older versions left them, for the HLS channel and for a local-file channel
     for f in wl.iterdir():
         f.unlink()
-    h.command("seek", 12, "absolute")
+    saltar_a(12)
     playing(lambda v: v > 11)
     h.command("write-watch-later-config")
     h.command("loadfile", ep02, "replace")
     playing()
-    h.command("seek", 12, "absolute")
+    saltar_a(12)
     playing(lambda v: v > 11)
     h.command("write-watch-later-config")
     h.command("stop")

@@ -1819,3 +1819,19 @@
   **Lo que esto dice del método.** Las tres salieron de lo mismo: reproducir el fallo solo, en bucle, y leer el log
   —no razonar sobre el código—. Y la primera recuerda por qué merece la pena: un «test frágil» puede ser un fallo
   del programa esperando a que alguien lo mire.
+  **Dos más de la misma tanda (2026-10-05, tarde).** `test_mu_modes` fallaba por **dos** carreras: esperaba
+  «view == root» y leía unas filas que se publican después —desde N1 se vacían al cambiar de vista, así que leer a
+  medias es leer `[]`—, y esperaba a que **un** script dijera que ya no está en modo sencillo para exigir a los
+  veinte haber devuelto sus botones, cuando cada uno observa el modo por su cuenta y no cambian a la vez. Las dos
+  esperan ahora por el estado completo, y eso convierte el test en la prueba del invariante que importa: **salir del
+  modo sencillo devuelve TODOS los botones**. De 4 de 5 a 20 de 20, y esas veinte alcanzaron siempre el estado
+  completo, así que el invariante del programa se cumple. Y `test_mu_iptv_live` pedía un salto en cuanto había
+  `time-pos`, que **no** quiere decir que se pueda saltar: en un HLS el demuxer puede no tener aún el rango y mpv
+  contesta «error running command». Ahora se espera por `seekable`, que es el estado que lo dice.
+  **Y uno que NO se ha explicado, dicho para que nadie repita el trabajo.**
+  `test_integration_mpvd::test_mu_core_starts_daemon_registers_and_round_trips` falló una vez esperando que un
+  trabajo de la sesión pasara a «cancelado» en 10 s. **No se reproduce aislado: 12 de 12.** Se buscó un hueco en el
+  camino del cancelado y no lo hay: `cancel()` no toca un trabajo que ya no esté en cola o corriendo, el obrero
+  marca el trabajo que de verdad está ejecutando, y `cancel_session` lee una foto consistente porque corre entre
+  dos `await`. La hipótesis que queda —que con la batería entera por delante la transición asíncrona no entra en
+  los 10 s— **no está comprobada**; no se ha tocado nada por no arreglar lo que no se ha demostrado roto.
