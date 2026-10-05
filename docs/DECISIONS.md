@@ -1735,3 +1735,29 @@
   no es el vigilante: es que la navegación puede llegar a un estado que el test no contempla, o que el aviso de
   «Ana se ha unido» lo pisa otro aviso posterior. **No se cierra H63/N2** hasta que haya tres pasadas seguidas
   limpias; lo honesto es decir que está acotado y mejorado, no que está resuelto.
+- ADR-122 · El cierre en vuelo también es un estado, y un aviso que se pisa no es un observable (H63/N2, cerrado).
+  Lo que quedaba de ADR-121 eran **dos** fallos distintos en el mismo test, y los dos eran el mismo error de
+  siempre: leer un instante en vez de un estado. Se encontraron con el log completo de mpv de una pasada que
+  falla, no razonando.
+  **(1) El módulo se cerraba su propio menú recién abierto.** Rastro medido: `2.567 open-menu` · `2.570
+  menu/type="mu-share"` · `2.571` el usuario (el test) pulsa la fila del QR y el módulo manda `close-menu` ·
+  `2.577` se vuelve a pedir el menú y el módulo manda **`update-menu`** porque `menu/type` todavía dice
+  «mu-share» · `2.592` uosc atiende el cierre de 2.571 · `2.693` el menú desaparece. uosc no cierra nunca por su
+  cuenta (`update-menu` solo actualiza si el menú es tuyo, `main.lua:1119` es el manejador de `close-menu`): era
+  nuestro propio cierre, atendido 21 ms más tarde. El módulo se quedaba con su navegación en pie y **sin menú en
+  pantalla**: ⌫ saltaba de nivel y lo que cargaba no aparecía. El arreglo va en `mu.uosc`, así que lo heredan los
+  catorce módulos, y es simétrico a `asking()` de ADR-112: se apunta el **cierre pedido y no confirmado**, y
+  `open_type()` no devuelve un menú que ya está muerto, con el mismo seguro de un segundo por si uosc no está.
+  Medido: de 9 de cada 10 a **20 de 20**. Y queda probado sin depender de la carrera: `tests/test_mu_uosc_cierre.py`
+  comprueba el invariante con LuaJIT y un `mp` de pega —la primera prueba unitaria de Lua del proyecto—, dos de
+  sus cuatro casos fallan con la versión de antes y los otros dos vigilan que el arreglo no se pase de largo.
+  **(2) `last_notice` era un observable que pierde información.** «Ana se ha unido» llega y acto seguido llega
+  «Enlaces copiados» —la sala ya sirve, que es asíncrono y con el equipo cargado se retrasa— y lo borra. Si las
+  dos caen dentro de la misma ventana de muestreo (0,1 s), el primero **no se puede leer nunca**: un predicado
+  que recuerde haberlo visto no basta, porque no sobrevive a ninguna muestra. Así que el dato cambia, no la
+  espera: `mu-share` y `mu-feeds` publican los **ocho últimos avisos** en `notices`, que sí es un estado, y las
+  doce esperas de los tests preguntan por el registro. Nueve de esas doce (en `test_share_http` y
+  `test_share_guest`) tenían la misma fragilidad latente sin haber fallado todavía.
+  **Lo que se aprende, y es la tercera vez.** N1, N3, N2 y estos dos: todos eran esperar un plazo o un valor
+  instantáneo. Ante un fallo intermitente, el primer sitio donde mirar no es la carga ni el demonio —los dos se
+  descartaron con medidas en ADR-121— sino qué instante se está leyendo y cómo convertirlo en un estado.

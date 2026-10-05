@@ -23,7 +23,12 @@ y con cinco capturas hechas con el programa. Lo que no puedo decidir yo:
 Los cuatro de Linux, el de Windows y el camino de macOS están construidos y revisados por dentro. Lo que **yo no
 puedo hacer** es ejecutarlos donde toca, porque aquí solo hay un x86-64 con Linux. Por orden de importancia:
 
-1. **Instalar el `.deb` aquí mismo y abrirlo** (es el camino que va a usar más gente):
+1. **(HECHO el 2026-10-05)** Ser instaló el `.deb` y `sudo -n /usr/lib/mpv-uos/bin/wake check` contestó
+   `rtcwake de util-linux 2.41.3`: **el despertador de las grabaciones programadas está resuelto** y la línea de
+   `sudoers` a mano ya no hace falta, la pone el paquete. El único pero fue el del menú de aplicaciones: la entrada
+   antigua del instalador por usuario tapa la del paquete (`~/.local/share/applications` manda sobre
+   `/usr/share/applications`); se quita con `tools/install.sh --uninstall` y `tools/install.sh` ahora avisa antes.
+   Lo que se hizo, para repetirlo en otra máquina:
    ```bash
    sudo apt install ./dist/atalaya-player_0.1.0_amd64.deb
    atalaya                                   # o desde el menú de aplicaciones
@@ -62,7 +67,7 @@ gamepad por USB o Bluetooth en modo salón.
 ## 2026-10-03 · De las tres que quedan, qué haría yo (y qué no)
 Ser preguntó por las tres cosas que solo puede hacer él. Esto es lo que recomiendo, por orden:
 
-1. **`rtcwake`: sí, y es la única que tapa un agujero real.** Sin esa línea, una grabación o una reproducción
+1. **`rtcwake`: sí, y es la única que tapa un agujero real.** (RESUELTO el 2026-10-05, lo pone el `.deb`.) Sin esa línea, una grabación o una reproducción
    programada a las 3:00 simplemente **no ocurre**: el equipo se suspende y no se despierta. El comando exacto está
    más abajo (sección del 2026-10-01); es una regla limitada a ese binario, no un sudo general.
 2. **Puerto 8790/8791 en `ufw`: NO lo abriría.** Desde H51 la sala sale a internet **por defecto** por el túnel, que
@@ -135,6 +140,9 @@ Ser preguntó por las tres cosas que solo puede hacer él. Esto es lo que recomi
   instalador y `.cache\mpvd.log` del checkout (y la salida de `.venv\Scripts\python -m mpvd status`).
 
 ## 2026-10-01 · El despertador para grabar necesita UNA orden con sudo (H40/F4)
+**RESUELTO el 2026-10-05 por el `.deb`**: instala `/etc/sudoers.d/mpv-uos-rtcwake` limitado a su propio
+ayudante `/usr/lib/mpv-uos/bin/wake`, y Ser comprobó que contesta sin contraseña. Lo de abajo solo hace
+falta si usas el repositorio en vez del paquete.
 Suspender y apagar el equipo ya funcionan sin contraseña (logind contesta `yes` a `CanSuspend` y `CanPowerOff`), pero
 **poner el despertador** necesita `rtcwake`, y `rtcwake` necesita root: comprobado aquí el 2026-10-01, da
 «/dev/rtc0: Permiso denegado» y `sudo -n` pide contraseña. Con esto, una sola vez, el reproductor puede despertar el

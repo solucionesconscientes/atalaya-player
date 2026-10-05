@@ -53,7 +53,7 @@ local P = prefs.ns('mu-share', { internet = true, control = true })
 
 local state = {
   status = nil, view = '', stack = {}, items = {}, force_open = false,
-  qr = nil, url = '', qr_visible = false, last_notice = '', last_request = nil, asking = nil,
+  qr = nil, url = '', qr_visible = false, last_notice = '', notices = {}, last_request = nil, asking = nil,
   last_error = '', copied = '', live = nil, last_chat = nil, chat_visible = 0, input = nil,
 }
 local overlay, hide_timer, ask_timer = nil, nil, nil
@@ -63,6 +63,18 @@ local live_timer = nil
 local live_hint  -- defined with the «Emitir en directo» views
 
 local function osd(text, secs) mp.osd_message(text, secs or opts.osd_seconds) end
+
+-- H63/N2 · A notice is a value that gets overwritten: two of them inside the same sampling window and whoever
+-- reads the state only ever sees the last one -- «Ana se ha unido» lost to the «Enlaces copiados» of the room
+-- turning ready. `notices` keeps the last eight, which is a state and not an instant (ADR-121, ADR-122).
+local function notice(text)
+  state.last_notice = text or ''
+  if type(text) == 'string' and text ~= '' then
+    local log = state.notices
+    log[#log + 1] = text
+    while #log > 8 do table.remove(log, 1) end
+  end
+end
 
 local function compact_guests()
   local out = {}
@@ -94,6 +106,7 @@ local function publish()
     open = st.open or false, url = st.url or '', room = st.room and st.room.id or '', guests = compact_guests(),
     pending = #(st.pending or {}), view = state.view, depth = #state.stack, items = state.items,
     qr_visible = state.qr_visible, qr_size = state.qr and state.qr.size or 0, last_notice = state.last_notice,
+    notices = state.notices,
     last_request = state.last_request or { id = '', name = '' }, asking = state.asking or '',
     media = st.media and st.media.kind or '', last_error = state.last_error, copied = state.copied,
     lan_only = st.lan_only ~= false, port = st.port or 0, mode = st.mode or '', viewers = st.viewers or 0,
@@ -1091,14 +1104,14 @@ mp.register_script_message('mu-event', function(payload)
   if type(ev) ~= 'table' then return end
   if ev.event == 'live' then
     if type(ev.status) == 'table' then state.live = ev.status end
-    if ev.text and ev.text ~= '' then state.last_notice = ev.text; osd(ev.text) end
+    if ev.text and ev.text ~= '' then notice(ev.text); osd(ev.text) end
     publish()
     if state.view == 'live' or state.view == 'root' then reopen_current() end
     return
   end
   if ev.event == 'share-guest' then
     if type(ev.status) == 'table' then state.status = ev.status end
-    if ev.text and ev.text ~= '' then state.last_notice = ev.text; osd(ev.text) end
+    if ev.text and ev.text ~= '' then notice(ev.text); osd(ev.text) end
     publish()
     if state.view == 'root' or state.view == 'join' then reopen_current() end
     return
@@ -1111,7 +1124,7 @@ mp.register_script_message('mu-event', function(payload)
     return
   end
   if ev.kind == 'link' then
-    if ev.text and ev.text ~= '' then state.last_notice = ev.text; osd(ev.text, 5) end
+    if ev.text and ev.text ~= '' then notice(ev.text); osd(ev.text, 5) end
     publish()
     if state.view == 'root' then reopen_current() end
     return
@@ -1122,20 +1135,20 @@ mp.register_script_message('mu-event', function(payload)
     local texto = ev.invite
     if type(texto) ~= 'string' or texto == '' then texto = ev.url or (state.status or {}).url or '' end
     copy_text(texto, 'los enlaces de la sala (navegador y VLC)')
-    state.last_notice = 'Enlaces copiados: pégalos en un mensaje'
+    notice('Enlaces copiados: pégalos en un mensaje')
     publish()
     if state.view == 'root' then reopen_current() end
     return
   end
   if ev.kind == 'notice' and ev.text and ev.text ~= '' then
-    state.last_notice = ev.text
+    notice(ev.text)
     osd(ev.text)
   elseif ev.kind == 'request' and type(ev.guest) == 'table' then
-    state.last_notice = ev.text or ''
+    notice(ev.text or '')
     osd(ev.text or '')
     ask(ev.guest)
   elseif ev.kind == 'closed' then
-    state.last_notice = ev.text or ''
+    notice(ev.text or '')
     hide_qr()
     close_ask()
     chat_clear()

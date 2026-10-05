@@ -21,8 +21,15 @@ end
 -- Así que se apunta qué menú se ha pedido y cuándo, y el vigilante pregunta antes de olvidar nada.
 local asked = { type = nil, at = -1 }
 
+-- H63/N2 · y lo mismo por el otro lado: entre «le pido a uosc que cierre mi menú» y que lo cierre pasan
+-- milisegundos (se han medido 21 con el equipo cargado). Quien pregunte en ese hueco lee en `menu/type` un menú
+-- que ya está muerto, y decide mal: el módulo mandaba `update-menu` en vez de `open-menu` y uosc atendía después
+-- el cierre, dejando al módulo con su navegación en pie y sin menú en pantalla. Medido: 1 de cada 10 pasadas.
+local closing = { type = nil, at = -1 }
+
 function M.open(menu, submenu_id)
   if menu.type then asked.type, asked.at = menu.type, mp.get_time() end
+  closing.at = -1   -- the open goes behind the close: uosc handles them in that order, so it ends up open
   if submenu_id then
     M.send('open-menu', utils.format_json(menu), submenu_id)
   else
@@ -38,6 +45,8 @@ end
 
 mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
   if t ~= nil and t == asked.type then asked.at = -1 end     -- confirmado: ya no esperamos
+  -- el cierre ya ha ocurrido cuando no hay menú o cuando el que hay es otro
+  if t == nil or (closing.type ~= nil and t ~= closing.type) then closing.at = -1 end
 end)
 
 function M.update(menu)
@@ -46,6 +55,7 @@ end
 
 function M.close(menu_type)
   if menu_type == nil or menu_type == asked.type then asked.at = -1 end   -- lo cerramos nosotros: ya no esperamos
+  closing.type, closing.at = menu_type, mp.get_time()
   if menu_type then M.send('close-menu', menu_type) else M.send('close-menu') end
 end
 
@@ -53,8 +63,12 @@ end
 -- sub-property is its JSON encoding (with quotes), which would never compare equal to the plain type.
 function M.open_type()
   local t = mp.get_property_native('user-data/uosc/menu/type')
-  if type(t) == 'string' and t ~= '' then return t end
-  return nil
+  if type(t) ~= 'string' or t == '' then return nil end
+  -- si hemos pedido cerrar ESE menú y uosc aún no lo ha hecho, lo que se lee ya está muerto (el segundo límite es
+  -- el mismo seguro que en `asking`: si uosc no contesta, se vuelve a creer lo que publica)
+  if closing.at >= 0 and (mp.get_time() - closing.at) < 1.0
+     and (closing.type == nil or closing.type == t) then return nil end
+  return t
 end
 
 -- H53 · El «modo sencillo» escribía la opción `controls` de uosc, pero uosc solo la lee al arrancar

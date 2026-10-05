@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import APP, start_mpv
-from tests.test_nav import press, wait_closed, wait_nav
+from tests.test_nav import press, wait_closed, wait_nav, aviso
 
 FIX = Path(__file__).parent / "fixtures"
 FAKE = FIX / "ytdlp" / "fake_ytdlp.py"
@@ -145,7 +145,8 @@ def test_add_rules_pause_settings_and_delete(metered_mpv, feed_server, tmp_path)
     sid = sub["id"]
     assert sub["title"] == "Noticias NPR" and sub["kind"] == "rss" and v["last_action"] == "add:" + sid
     # the first check found the newest episode: announced once, and on a metered connection it only waits
-    v = st(h, lambda v: v["last_notice"] == "Noticias NPR: 1 nuevo")
+    npr = aviso("Noticias NPR: 1 nuevo")
+    v = st(h, npr)
     g = d.call("feeds.get", {"id": sid})
     assert g["pending"] == 1 and g["initial"] == 1 and g["files"] == 0 and g["preset"] == "audio_original"
     assert {"Comprobar ahora", "Reglas", "Pendientes y descargados", "Pausar", "Borrar la suscripción"} <= set(titles(v))

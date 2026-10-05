@@ -56,6 +56,21 @@ def wait_nav(h, menu_type: str, title: str, timeout: float = 20.0) -> dict:
     return h.wait_property("user-data/mu/nav", lambda v: bool(v) and v.get("title") == title, timeout=timeout)
 
 
+def aviso(texto: str):
+    """Un predicado que mira el REGISTRO de avisos (`notices`), no el último.
+
+    H63/N2 · `last_notice` es «el último aviso»: cualquier otro posterior lo borra, y si los dos caen dentro de la
+    misma ventana de muestreo (0,1 s) el primero no se puede leer NUNCA. Pasó con «Ana se ha unido», pisado por el
+    «Enlaces copiados» de la sala ya lista. Los módulos publican ahora los ocho últimos avisos, que sí son un
+    estado; esto espera por ese estado y no por un instante (ADR-122).
+    """
+
+    def mira(v) -> bool:
+        return isinstance(v, dict) and texto in (v.get("notices") or [])
+
+    return mira
+
+
 def press(h, key: str) -> None:
     """keypress once uosc has bound its menu keys: it publishes the menu type a few ms before binding them."""
     cmd = f"script-binding uosc/menu-{key.lower()}"

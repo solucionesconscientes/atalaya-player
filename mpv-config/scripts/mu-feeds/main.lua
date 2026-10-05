@@ -45,7 +45,7 @@ local state = {
   input = nil,         -- palette {mode, query, id}
   add = nil,           -- {url, busy, error, kind, kind_label, title, entries, initial}
   checks = {},         -- id → last_check already seen (new-episode notices)
-  last_error = '', last_notice = '', last_action = '',
+  last_error = '', last_notice = '', notices = {}, last_action = '',
 }
 
 local function osd(text, secs) mp.osd_message(text, secs or 3) end
@@ -92,7 +92,8 @@ local function publish()
     settings = settings(), state = state.list and state.list.state or {}, input = state.input and state.input.mode or '',
     add = { url = a.url or '', title = a.title or '', kind = a.kind or '', initial = a.initial or 0,
             busy = a.busy or false, error = a.error or '' },
-    last_error = state.last_error, last_notice = state.last_notice, last_action = state.last_action,
+    last_error = state.last_error, last_notice = state.last_notice, notices = state.notices,
+    last_action = state.last_action,
   })
 end
 
@@ -238,7 +239,10 @@ local function notice_new(s)
   state.checks[s.id] = now
   -- a check that just ended (not old news pushed again) and found something
   if now <= (prev or 0) or os.time() - now > 120 or (tonumber(s.last_found) or 0) <= 0 then return end
+  -- H63/N2 · the log, not just the last one: a later notice overwrites this one before anybody reads it
   state.last_notice = string.format('%s: %s', s.title or '', plural(s.last_found, 'nuevo', 'nuevos'))
+  state.notices[#state.notices + 1] = state.last_notice
+  while #state.notices > 8 do table.remove(state.notices, 1) end
   if opts.notify then osd(tr('Suscripciones · %s'):format(state.last_notice)) end
 end
 

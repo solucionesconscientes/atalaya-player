@@ -303,7 +303,7 @@ contrario», y «¿se pueden grabar varios canales al mismo tiempo?».
       la lista enseña la etiqueta («de lunes a viernes · mañana 21:30–23:00 · programada») y las tres salidas.
       37 tests nuevos entre `tests/test_schedule_repeat.py`, `test_iptv_schedule.py` y `test_mu_iptv_epg.py`.
 
-## H63/N2 · Tres pasadas completas seguidas limpias — ADR-121 · [~] acotado y mejorado, no cerrado
+## H63/N2 · Tres pasadas seguidas limpias — ADR-121, ADR-122 · [~] arreglado y medido, faltan las pasadas
 - [x] N2a **La causa del que más se repetía**, encontrada y arreglada: al pulsar una fila uosc cierra el menú y el
       módulo lo reabre *cuando contesta mpvd*; el vigilante de 0,2 s de ADR-112 se dispara en medio si la ida y
       vuelta tarda más. Ahora los catorce vigilantes miran un ESTADO —`rpc.pending()`, cuántas peticiones hay en
@@ -311,9 +311,18 @@ contrario», y «¿se pueden grabar varios canales al mismo tiempo?».
 - [x] N2b **Dos hipótesis descartadas con medidas** (para no repetir el trabajo): el demonio NO se bloquea (pulso
       cada 0,25 s durante las pasadas; peor ping 0,03 s) y la cola de eventos NO se llena (instrumentada; cero
       veces). De ahí queda la instrumentación: descartar un evento ya no es silencioso.
-- [~] N2c **Lo que falta**: tres pasadas seguidas limpias. En la tanda del 2026-10-05 fueron 3 fallos / 0 / 1, y
-      la última traza del que queda es otro camino —el módulo aparece en «Invitados» donde el test lo espera en la
-      raíz—, así que hay al menos un segundo fallo detrás. No se da por cerrado.
+- [x] N2c **Los dos fallos que quedaban, encontrados con el log completo de una pasada que falla** (ADR-122), y
+      los dos eran otra vez leer un instante en vez de un estado:
+      **(a) el módulo se cerraba su propio menú recién abierto.** Al pulsar una fila que cierra el menú y volver a
+      pedirlo en el mismo suspiro, el módulo mandaba `update-menu` porque `menu/type` aún decía que su menú estaba
+      abierto; uosc atendía el cierre 21 ms después y lo dejaba con la navegación en pie y sin menú en pantalla.
+      `mu.uosc` apunta ahora el **cierre en vuelo** y `open_type()` no devuelve un menú que ya está muerto: lo
+      heredan los catorce módulos. De 9 de cada 10 a **20 de 20**.
+      **(b) `last_notice` perdía avisos.** Dos avisos dentro de la misma ventana de muestreo (0,1 s) hacen el
+      primero ilegible para siempre. `mu-share` y `mu-feeds` publican los ocho últimos en `notices`, y las doce
+      esperas de los tests —nueve con la misma fragilidad latente— preguntan por el registro.
+      Y la primera prueba unitaria de Lua del proyecto (`tests/test_mu_uosc_cierre.py`, LuaJIT con un `mp` de
+      pega): dos de sus cuatro casos fallan con la versión de antes, los otros dos vigilan que no se pase de largo.
 
 ## H50 · El sitio web del proyecto — ADR-119 · [x] (falta lo que depende de Ser)
 Diseñado en docs/SITIO-WEB.md. Construido todo lo que no depende de las dos decisiones suyas.
@@ -464,7 +473,7 @@ ruta**, y en un salón no hay teclado.
       mando de la tele no tiene Tab; y hay una fila «Subir», porque en ese mando «atrás» cierra el menú (es
       `close`) y no sube un nivel.
 
-## H63 · La batería no es de fiar del todo (encontrado el 2026-10-03) — [ ]
+## H63 · La batería no es de fiar del todo (encontrado el 2026-10-03) — [x] (ver H63/N2)
 Cuatro pasadas completas seguidas dieron 864, 867, 868 y 867 pasando, y en cada una falló **una pareja distinta**
 de tests, nunca los mismos y nunca nada de lo recién construido. Eso no es un programa roto: es una batería que no
 es de fiar, y una batería que falla al azar es una batería que se deja de leer — que es exactamente cómo se colaron
@@ -481,8 +490,8 @@ los once fallos de H55.
       a la cara, y falló: cuatro tests leían filas viejas (`test_mu_convert`, `test_mu_feeds`, `test_mu_library`,
       `test_mu_music`). Arreglados los cuatro, y de paso dos helpers que **reventaban dentro de un
       `wait_property`** —un `next()` sin defecto— y tumbaban la espera entera en vez de volver a mirar.
-- [ ] N2 **Y medir**: tres pasadas seguidas sin un solo fallo antes de declararlo. Mientras eso no ocurra, lo
-      honesto al cerrar una tanda es decir el número y qué falló, no «check en verde».
+- [x] N2 **Y medido**: ver H63/N2 más arriba (ADR-121 y ADR-122). Lo honesto al cerrar una tanda sigue siendo
+      decir el número y qué falló, no «check en verde».
       Al 2026-10-04, después de arreglar N3: **una pasada limpia (907/0)** y, tras G8, otra con 908 pasando y
       **cuatro** fallos que **pasan los cuatro por separado** (`test_mu_feeds` cadena por defecto,
       `test_mu_iptv_live` resume, `test_mu_modes` gamepad con BrokenPipeError y `test_mu_share` menú): no son
@@ -753,11 +762,10 @@ traducidas. Al acabar G8 van **1.661 por idioma** (3.322 traducciones) y no qued
       Fuera a propósito, como estaba previsto: los ~240 nombres de país de `iptv/labels.py` (datos de la lista de
       canales), las descripciones de `mcp.py` (las lee un modelo) y los prompts de `llm.py` (ya están por idioma).
       El extractor los salta por nombre de fichero.
-## H50 · El sitio web del proyecto (solucionesconscientes.es/atalaya)
-- [ ] F1 La página pública: qué es, las características importantes, capturas, cómo instalarlo. Para alguien que no
-      conoce el proyecto y decide en treinta segundos si le interesa.
-- [ ] F2 La página exhaustiva (GitHub o donde convenga): absolutamente todos los detalles, las tecnologías que usa,
-      la arquitectura, las decisiones y sus porqués.
+## H50 · El sitio web del proyecto (solucionesconscientes.es/atalaya) — hecho, ver «H50 · El sitio web» arriba
+- [x] F1 La página pública: `web/index.html` en tres idiomas (ADR-119).
+- [x] F2 La página exhaustiva: `web/arquitectura.html`, generada de `docs/ARQUITECTURA.md`. Dónde vive depende de
+      si el repositorio se hace público, que es decisión de Ser (NEEDS_HUMAN.md).
 
 ## H42 · Una sola puerta para abrir y descargar (análisis: docs/ANALISIS-SALA-E-INTERFAZ.md §B.2.3) — ADR-077
 - [x] A1 Una entrada «Abrir o descargar» que acepte cualquier cosa: un enlace, varios enlaces pegados, una lista de

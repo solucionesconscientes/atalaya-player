@@ -128,7 +128,7 @@ def test_un_segundo_reproductor_entra_en_la_sala_y_sigue_al_anfitrion(share_env,
         res = d.call("share.join", {"url": url, "name": "Salón", "session": sid})
         assert res["joined"] is True and res["guest"]["name"] == "Salón"
         # el anfitrión se entera, como con cualquier otro invitado
-        _share(h, lambda v: v.get("last_notice") == "Salón se ha unido")
+        _share(h, lambda v: "Salón se ha unido" in (v.get("notices") or []))
 
         # H44/C6 · el invitado carga el FICHERO ORIGINAL con su credencial, no el relay del navegador
         path = g.wait_property("path", lambda v: isinstance(v, str) and f"/s/{room}/file" in v, timeout=40)
@@ -158,7 +158,7 @@ def test_un_segundo_reproductor_entra_en_la_sala_y_sigue_al_anfitrion(share_env,
         out = d.call("share.leave")
         assert out["joined"] is False and out["left"] == room
         assert d.call("share.status")["guest_of"] is None
-        _share(h, lambda v: v.get("last_notice") == "Salón se ha ido")
+        _share(h, lambda v: "Salón se ha ido" in (v.get("notices") or []))
         assert g.get("speed") == pytest.approx(1.0, abs=0.001)
     finally:
         g.stop()
@@ -238,7 +238,7 @@ def test_desde_el_menu_se_entra_y_se_sale_de_la_sala(share_env, clip):
         # la caja de texto es una paleta de uosc: el enlace llega como la consulta escrita
         ev(g, {"type": "activate", "index": 1, "value": {"save": url}}, message="mu-share-input-event")
 
-        _share(h, lambda v: (v.get("last_notice") or "").endswith("se ha unido"))
+        _share(h, lambda v: any(t.endswith("se ha unido") for t in (v.get("notices") or [])))
         g.wait_property("path", lambda v: isinstance(v, str) and "/s/" in v and "k=" in v, timeout=40)
 
         g.command("script-binding", "mu_share/share-menu")

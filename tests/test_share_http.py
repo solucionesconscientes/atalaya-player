@@ -176,7 +176,8 @@ def test_room_join_sync_relay_permissions_and_close(share_env, clip):
     assert status == 200 and data["guest"]["perm"] == "view", data
     assert ana.cookie.startswith("mu_share=") and f"Path=/s/{room}" in headers["Set-Cookie"]
     assert "HttpOnly" in headers["Set-Cookie"] and "SameSite=Strict" in headers["Set-Cookie"]
-    _share(h, lambda v: v.get("last_notice") == "Ana se ha unido" and len(v.get("guests") or []) == 1)
+    _share(h, lambda v: "Ana se ha unido" in (v.get("notices") or [])
+           and len(v.get("guests") or []) == 1)
     status, me, _ = ana.req("api/me")
     assert status == 200 and me["guest"]["name"] == "Ana" and me["room"]["id"] == room
 
@@ -259,16 +260,16 @@ def test_room_join_sync_relay_permissions_and_close(share_env, clip):
     mark = ana.mark()
     assert ana.req("api/cmd", {"cmd": "pause"})[0] == 200
     h.wait_property("pause", lambda p: p is True, timeout=10)
-    _share(h, lambda v: v.get("last_notice") == "Ana ha pausado")
+    _share(h, lambda v: "Ana ha pausado" in (v.get("notices") or []))
     ana.wait(lambda e, x: e == "state" and x["paused"] is True, start=mark)
     time.sleep(0.6)
     assert not any(e == "notice" and x["text"] == "El anfitrión ha pausado" for e, x in ana.events[mark:])
     assert ana.req("api/cmd", {"cmd": "seek", "seconds": 5})[0] == 200
     h.wait_property("time-pos", lambda p: isinstance(p, (int, float)) and 4.5 < p < 6, timeout=10)
-    _share(h, lambda v: v.get("last_notice") == "Ana ha saltado a 0:05")
+    _share(h, lambda v: "Ana ha saltado a 0:05" in (v.get("notices") or []))
     assert ana.req("api/cmd", {"cmd": "toggle"})[0] == 200
     h.wait_property("pause", lambda p: p is False, timeout=10)
-    _share(h, lambda v: v.get("last_notice") == "Ana ha reanudado")
+    _share(h, lambda v: "Ana ha reanudado" in (v.get("notices") or []))
     assert ana.req("api/cmd", {"cmd": "quit"})[0] == 400
     assert ana.req("api/cmd", {"cmd": "seek", "seconds": "x"})[0] == 400
     # CSRF guard
@@ -412,7 +413,7 @@ def test_public_room_view_only(share_env, clip):
         d.call("share.chat", {"text": "hola"})
     # the host sees how many are watching, without a notice per viewer
     v = _share(h, lambda v: v.get("mode") == "public" and v.get("viewers") == 2)
-    assert "se ha unido" not in v.get("last_notice", "")
+    assert not any("se ha unido" in t for t in (v.get("notices") or []))
     assert not any(e == "notice" and "Espectador" in x.get("text", "") for e, x in a.events)
     # the page itself: same room page, the public link joins by itself
     assert a.req(f"/s/{room}")[0] == 200

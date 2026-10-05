@@ -10,7 +10,7 @@ import urllib.error
 import pytest
 
 from tests.conftest import APP, start_mpv
-from tests.test_nav import press, wait_nav
+from tests.test_nav import press, wait_nav, aviso
 from tests.test_share_http import MU_OPTS, Guest
 
 
@@ -79,7 +79,8 @@ def test_menu_create_guests_permissions_close(mu_share):
     room, token = rest.split("#k=")
     ana = Guest(base, room)
     assert ana.req("api/join", {"token": token, "name": "Ana"})[0] == 200
-    v = share(h, lambda v: v["last_notice"] == "Ana se ha unido" and len(v["guests"]) == 1)
+    unido = aviso("Ana se ha unido")
+    v = share(h, lambda v: unido(v) and len(v["guests"]) == 1)
     gid = v["guests"][0]["id"]
     ev(h, {"type": "activate", "index": 4, "value": {"view": "guests"}})
     wait_nav(h, "mu-share", f"{APP} › Compartir › Invitados")
@@ -135,7 +136,8 @@ def test_room_expires_by_itself(mu_share):
     assert res["room"]["expires_in"] <= 3
     h.command("script-binding", "mu_share/share-qr")
     share(h, lambda v: v["qr_visible"] and v["open"])
-    v = share(h, lambda v: v["last_notice"] == "La sala ha caducado" and not v["qr_visible"], timeout=20)
+    caducada = aviso("La sala ha caducado")
+    v = share(h, lambda v: caducada(v) and not v["qr_visible"], timeout=20)
     assert v["open"] is False and d.call("share.status")["open"] is False
     assert not h.script_errors(), h.script_errors()
 
@@ -266,7 +268,7 @@ def test_copiar_el_enlace_para_vlc_desde_el_menu(mu_share):
     texto = h.wait_property("clipboard/text", lambda t: isinstance(t, str) and "/file?" in t, timeout=90)
     assert "En el navegador" in texto and "En VLC, mpv" in texto
     assert texto.count("http") == 2 and "#k=" in texto
-    share(h, lambda v: (v.get("last_notice") or "").startswith("Enlaces copiados"))
+    share(h, lambda v: any(t.startswith("Enlaces copiados") for t in (v.get("notices") or [])))
 
     # y la fila suelta sigue estando, para cuando solo quieras ese
     h.command("set_property", "clipboard/text", "sonda")
