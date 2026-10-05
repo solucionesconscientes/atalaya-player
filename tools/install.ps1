@@ -1,4 +1,4 @@
-# User install on Windows (no administrator rights): the PowerShell twin of tools/install.sh.
+﻿# User install on Windows (no administrator rights): the PowerShell twin of tools/install.sh.
 # The checkout stays where it is (everything points to it); nothing is written to the system or to %APPDATA%\mpv.
 #   - checks mpv/ffmpeg/ffprobe/uv on PATH (mpv >= 0.41), runs `uv sync`
 #   - vendors the Windows binaries pinned in vendor.lock, each verified with SHA-256: ziggy-windows.exe (uosc),

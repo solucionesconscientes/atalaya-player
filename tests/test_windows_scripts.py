@@ -33,6 +33,8 @@ ROOT = Path(__file__).resolve().parent.parent
 PS1 = ROOT / "bin" / "mpv-uos.ps1"
 CMD = ROOT / "bin" / "mpv-uos.cmd"
 INSTALL = ROOT / "tools" / "install.ps1"
+EMPEZAR = ROOT / "bin" / "empezar.ps1"
+EMPEZAR_CMD = ROOT / "tools" / "empezar-windows.cmd"
 BASH = ROOT / "bin" / "mpv-uos"
 PWSH_DIR = ROOT / ".cache" / "pwsh"
 PWSH_VERSION = "7.6.6"
@@ -114,7 +116,27 @@ def test_cmd_wrapper_calls_the_ps1():
     assert '"%~dp0mpv-uos.ps1" %*' in line
 
 
-@pytest.mark.parametrize("script", [PS1, INSTALL], ids=lambda p: p.name)
+@pytest.mark.parametrize("script", [PS1, EMPEZAR, INSTALL], ids=lambda p: p.name)
+def test_los_ps1_que_se_reparten_llevan_bom(script: Path):
+    """ADR-123 · Windows PowerShell 5.1 —el que viene con Windows— lee un fichero SIN BOM como ANSI, así que los
+    acentos de los mensajes le llegan destrozados a quien usa el programa. Se vio en el aviso de que falta mpv,
+    que es justo el primero que ve alguien que acaba de descomprimir el zip."""
+    assert script.read_bytes().startswith(b"\xef\xbb\xbf"), f"{script.name} sin BOM: PowerShell 5.1 lo leerá como ANSI"
+
+
+def test_el_arranque_de_windows_es_ascii_y_se_salta_la_directiva():
+    """ADR-123 · Lo que se le da a una persona es un .cmd: un .ps1 no se ejecuta al hacer doble clic (Windows lo abre
+    en el editor) y la directiva de ejecución lo bloquearía por venir sin firma y de internet."""
+    raw = EMPEZAR_CMD.read_bytes()
+    raw.decode("ascii")                       # cmd.exe lee los .cmd en la página de códigos OEM
+    assert b"\r\n" in raw and b"\n" not in raw.replace(b"\r\n", b"")
+    texto = raw.decode("ascii")
+    assert "-NoProfile -ExecutionPolicy Bypass -File" in texto
+    assert '"%~dp0bin\\empezar.ps1" %*' in texto           # %* para que arrastrar una película encima funcione
+    assert "if errorlevel 1 pause" in texto                # si no, el fallo se lo lleva la ventana al cerrarse
+
+
+@pytest.mark.parametrize("script", [PS1, EMPEZAR, INSTALL], ids=lambda p: p.name)
 def test_ps1_avoids_powershell7_only_syntax(script: Path):
     """Windows 10/11 ship Windows PowerShell 5.1: no ??, ?., &&/||, ternaries, $IsWindows, -AsHashtable, -Parallel."""
     code = "\n".join(line for line in script.read_text().splitlines() if not line.lstrip().startswith("#"))
@@ -209,7 +231,7 @@ def test_spawn_lock_uses_msvcrt_on_windows(tmp_path, monkeypatch):
 
 
 @needs_pwsh
-@pytest.mark.parametrize("script", [PS1, INSTALL], ids=lambda p: p.name)
+@pytest.mark.parametrize("script", [PS1, EMPEZAR, INSTALL], ids=lambda p: p.name)
 def test_ps1_parses_without_errors(tmp_path, script: Path):
     code = (f"$t = $null; $e = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile("
             f"{ps_quote(script)}, [ref]$t, [ref]$e); "
@@ -306,6 +328,80 @@ def test_ps1_without_mpv_explains_how_to_install_it(tmp_path):
     out = ps_launcher(tmp_path, "x.mkv", dry=False, check=False, MPV_UOS_MPV="mpv-that-does-not-exist")
     assert out.returncode == 1
     assert "winget install mpv" in out.stderr and "scoop install mpv" in out.stderr
+
+
+# -- PowerShell: «Empezar aquí» (ADR-123) -----------------------------------------------------------------------------
+
+
+def ps_empezar(tmp_path: Path, *args: str, dry: bool = True, check: bool = True, **env: str):
+    """El arranque con un PATH vacío y sin MPV_UOS_MPV: lo que ve un Windows recién hecho, no esta máquina."""
+    vacio = tmp_path / "sin-nada"
+    vacio.mkdir(exist_ok=True)
+    extra = {"PATH": str(vacio)}
+    extra.update(env)
+    return run_ps(tmp_path, ["-File", str(EMPEZAR), *(["-DryRun"] if dry else []), *args],
+                  env=ps_env(tmp_path, **extra), check=check)
+
+
+def mpv_de_pega(destino: Path, eco: bool = False) -> Path:
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text('#!/bin/sh\nfor a in "$@"; do printf "%s\\n" "$a"; done\n' if eco else "#!/bin/sh\nexit 0\n")
+    destino.chmod(0o755)
+    return destino
+
+
+@needs_pwsh
+def test_el_arranque_usa_el_mpv_del_path(tmp_path):
+    d = tmp_path / "bin-mpv"
+    exe = mpv_de_pega(d / "mpv")
+    got = last_json(ps_empezar(tmp_path, "pelicula.mkv", PATH=str(d)).stdout)
+    assert got["mpv"] == str(exe) and got["origen"] == "PATH"
+    assert got["instalado"] is False and got["argumentos"] == ["pelicula.mkv"]
+
+
+@needs_pwsh
+def test_el_arranque_encuentra_el_mpv_que_winget_deja_fuera_del_path(tmp_path):
+    """ADR-123 · Lo que hace que esto funcione de verdad: una consola que acaba de instalar algo con winget NO ve el
+    PATH nuevo, porque el suyo es una copia hecha al arrancar. Mirar solo el PATH sería instalar mpv y fallar igual."""
+    local = tmp_path / "local"
+    exe = mpv_de_pega(local / "Microsoft" / "WinGet" / "Links" / "mpv.exe")
+    got = last_json(ps_empezar(tmp_path, LOCALAPPDATA=str(local)).stdout)
+    assert got["mpv"] == str(exe) and got["origen"] == "instalado"
+
+
+@needs_pwsh
+def test_el_arranque_instala_mpv_con_winget_si_falta(tmp_path):
+    local = tmp_path / "local"
+    destino = local / "Microsoft" / "WinGet" / "Links" / "mpv.exe"
+    winget = tmp_path / "winget-de-pega"
+    # el PATH del arranque está vacío a propósito, así que el winget de pega se busca sus propias órdenes
+    winget.write_text(f'#!/bin/sh\nPATH=/usr/bin:/bin\nmkdir -p "{destino.parent}"\n'
+                      f'printf "#!/bin/sh\\nexit 0\\n" > "{destino}"\nchmod +x "{destino}"\nexit 0\n')
+    winget.chmod(0o755)
+    out = ps_empezar(tmp_path, LOCALAPPDATA=str(local), MU_WINGET=str(winget))
+    got = last_json(out.stdout)
+    assert got["instalado"] is True and got["mpv"] == str(destino)
+    assert "winget" in out.stdout                      # y se lo cuenta a quien está mirando la ventana
+
+
+@needs_pwsh
+def test_el_arranque_sin_mpv_y_sin_winget_dice_que_hacer(tmp_path):
+    out = ps_empezar(tmp_path, check=False)
+    assert out.returncode == 1
+    for esperado in ("winget install mpv", "scoop install mpv", "mpv.io", "0.41"):
+        assert esperado in out.stderr, esperado
+
+
+@needs_pwsh
+def test_el_arranque_lanza_el_reproductor_con_ese_mpv(tmp_path):
+    """La cadena entera de un doble clic: encuentra mpv, se lo pasa al lanzador y el reproductor arranca con él."""
+    d = tmp_path / "bin-mpv"
+    mpv_de_pega(d / "mpv", eco=True)
+    out = ps_empezar(tmp_path, "video.mkv", dry=False, PATH=f"{d}{os.pathsep}/usr/bin{os.pathsep}/bin",
+                     MPV_UOS_DATA_DIR=str(tmp_path / "data"))
+    lineas = out.stdout.splitlines()
+    assert any(l.startswith("--config-dir=") for l in lineas), out.stdout
+    assert "video.mkv" in lineas
 
 
 # -- PowerShell: installer --------------------------------------------------------------------------------------------
@@ -570,7 +666,8 @@ def test_el_zip_portable_lleva_lo_necesario_y_nada_de_linux(zip_windows):
     with zipfile.ZipFile(zip_windows) as z:
         nombres = set(z.namelist())
         texto = z.read("Atalaya/LEE-ME.txt").decode("utf-8")
-    for ruta in ("Atalaya/bin/mpv-uos.cmd", "Atalaya/bin/mpv-uos.ps1", "Atalaya/tools/install.ps1",
+    for ruta in ("Atalaya/EMPEZAR-AQUI.cmd", "Atalaya/bin/empezar.ps1",
+                 "Atalaya/bin/mpv-uos.cmd", "Atalaya/bin/mpv-uos.ps1", "Atalaya/tools/install.ps1",
                  "Atalaya/.venv/Scripts/python.exe", "Atalaya/vendor/bin/yt-dlp.exe",
                  "Atalaya/mpv-config/scripts/uosc/bin/ziggy-windows.exe", "Atalaya/locales/en.json",
                  "Atalaya/locales/fr.json", "Atalaya/mpvd/server.py", "Atalaya/LEE-ME.txt"):
@@ -581,6 +678,6 @@ def test_el_zip_portable_lleva_lo_necesario_y_nada_de_linux(zip_windows):
              or "__pycache__" in n or "/tests/" in n]
     assert not sobra, sobra[:5]
     # y el papel dice lo que hay que decir: que mpv se instala aparte y que esto no se ha probado en Windows
-    assert "winget install mpv" in texto
+    assert "EMPEZAR-AQUI.cmd" in texto and "winget install mpv" in texto
     assert "NO lleva mpv" in texto and "NO se ha podido probar" in texto
     assert "\r\n" in texto, "en Windows los saltos de línea son CRLF o el Bloc de notas lo enseña todo junto"

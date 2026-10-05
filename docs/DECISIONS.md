@@ -1761,3 +1761,29 @@
   **Lo que se aprende, y es la tercera vez.** N1, N3, N2 y estos dos: todos eran esperar un plazo o un valor
   instantáneo. Ante un fallo intermitente, el primer sitio donde mirar no es la carga ni el demonio —los dos se
   descartaron con medidas en ADR-121— sino qué instante se está leyendo y cómo convertirlo en un estado.
+- ADR-123 · En Windows se le da a la persona un `.cmd`, y hace la cadena entera (H72).
+  Ser lo pidió así: «necesito que la persona lo ejecute, y se haga todo de golpe». Había dos preguntas dentro.
+  **(1) `.cmd` y no `.ps1`.** Un `.ps1` **no se ejecuta al hacer doble clic**: Windows lo abre en el editor. Y aunque
+  se lance desde una consola, la directiva de ejecución lo bloquea, porque es un script sin firmar que viene de un
+  zip descargado. El `.cmd` es un envoltorio de dos líneas que llama a PowerShell con `-NoProfile -ExecutionPolicy
+  Bypass`, que vale **solo para ese proceso** y no cambia ningún ajuste del equipo. Lleva además `if errorlevel 1
+  pause`, porque sin eso un fallo se lo lleva la ventana al cerrarse y la persona se queda sin saber qué pasó.
+  **(2) Ni `.exe` ni `.msi`, mientras no haya firma.** Sin firmar, un ejecutable descargado se lleva el cartel azul
+  de SmartScreen con el botón de ejecutar escondido detrás de «Más información»; un `.cmd` sacado de un zip, como
+  mucho, el aviso pequeño con el botón de Ejecutar a la vista. Un `.msi` en `Program Files` pediría además
+  administrador diciendo «Editor desconocido», cuando lo que hay ahora es por usuario y no pide nada. Y no aportaría
+  nada que `tools/install.ps1` no haga ya (menú Inicio, asociaciones, enlaces `mpv-uos://`) salvo salir en «Agregar
+  o quitar programas». Con certificado, el `.msi` sí es mejor y se hace: queda como decisión de Ser, que es quien
+  paga y quien pone su nombre legal en el aviso de Windows.
+  **Lo que hace el arranque, y el detalle que lo hace funcionar.** `bin/empezar.ps1` busca mpv (en el PATH y donde lo
+  dejan winget, scoop, choco y los instaladores), lo instala con winget si falta, y **le pasa al lanzador la ruta
+  exacta del `mpv.exe`** por `MPV_UOS_MPV`. Esto último no es un adorno: **una consola que acaba de instalar algo con
+  winget NO ve el PATH nuevo**, porque el suyo es una copia hecha al arrancar. Mirar solo el PATH habría instalado
+  mpv y fallado igual, que es el peor de los dos resultados; además se relee el PATH del registro antes de rendirse.
+  **Y un fallo que apareció al hacerlo:** los `.ps1` que se reparten no llevaban BOM, y Windows PowerShell 5.1 —el
+  que viene con Windows— lee un fichero sin BOM como ANSI, así que los acentos de los mensajes llegaban destrozados.
+  Estaba justo en el aviso de «no encuentro mpv», el primero que ve alguien que acaba de descomprimir el zip. Los
+  tres llevan BOM y hay un test que lo vigila.
+  **El nombre del fichero va en ASCII** (`EMPEZAR-AQUI.cmd`, sin tilde): el explorador de Windows enseña mal los
+  nombres con acentos de un zip si quien lo comprimió no marcó UTF-8, y el primer fichero que alguien ve no puede
+  salir con un nombre roto.

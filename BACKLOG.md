@@ -360,9 +360,16 @@ Ser, al decidir los paquetes: «¿es posible que la app te avise cuando haya act
 - [x] V6 Ningún identificador en la petición: ni versión del sistema, ni contador. 17 tests
       (`tests/test_updates.py`), uno de ellos por el socket del demonio de verdad.
 
-## H72 · Los cuatro paquetes de Linux, el de Windows y macOS por Homebrew — ADR-117 · [x]
+## H72 · Los cuatro paquetes de Linux, el de Windows y macOS por Homebrew — ADR-117, ADR-123 · [x]
 Decidido con Ser el 2026-10-04: «yo haría deb y appimage, ambos tb para arm», «mejor windows zip que exe o msi»,
 «no voy a pagar ninguna cuenta de mac».
+- [x] U0 **La puerta de entrada en Windows, de un solo doble clic** (2026-10-05, ADR-123). Ser: «necesito que la
+      persona lo ejecute, y se haga todo de golpe». `EMPEZAR-AQUI.cmd`, arriba del todo: busca mpv, lo instala con
+      winget si falta y arranca el reproductor pasándole **la ruta exacta** del `mpv.exe` —porque una consola que
+      acaba de instalar algo con winget no ve el PATH nuevo, y mirar solo el PATH habría instalado mpv y fallado
+      igual—. Es un `.cmd` y no un `.ps1` porque un `.ps1` no se ejecuta al hacer doble clic. De paso, un fallo que
+      estaba ahí sin verse: los `.ps1` que se reparten no llevaban BOM y PowerShell 5.1 destrozaba los acentos del
+      aviso de «no encuentro mpv», el primero que ve quien descomprime el zip. 9 tests nuevos, 6 con PowerShell 7.
 - [x] U1 **`.deb` amd64 y arm64** (`tools/build_deb.sh --arch`): la aplicación, un CPython 3.12 reubicable del
       mismo tarball fijado para las cuatro variantes, `Depends: mpv` **sin versión mínima** —en Debian 13 y
       Raspberry Pi OS el del sistema puede ser más viejo: mejor instalarse y avisar que negarse a instalar—,

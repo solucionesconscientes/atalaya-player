@@ -51,6 +51,10 @@ mkdir -p "$APP/mpv-config/scripts/uosc/bin"
 cp "$ROOT/mpv-config/scripts/uosc/bin/ziggy-windows.exe" "$APP/mpv-config/scripts/uosc/bin/" 2>/dev/null || true
 # el ayudante del despertador es de Linux (rtcwake); en Windows lo hace schtasks desde mpvd
 rm -f "$APP/bin/wake"
+# la puerta de entrada, arriba y con un nombre que no se pueda confundir (ADR-123): un .ps1 no se ejecuta al hacer
+# doble clic y el nombre va en ASCII a propósito, porque un acento en el nombre de un fichero dentro de un zip lo
+# enseña mal el explorador de Windows si quien lo comprimió no marcó UTF-8
+cp "$ROOT/tools/empezar-windows.cmd" "$APP/EMPEZAR-AQUI.cmd"
 
 # 2. el intérprete, en el sitio exacto donde lo busca bin\mpv-uos.ps1: .venv\Scripts\python.exe
 tarball="$ROOT/vendor/cpython-windows.tar.gz"
@@ -101,10 +105,15 @@ $SITE
 
 CÓMO SE USA
   1. Descomprime esta carpeta donde quieras (el Escritorio vale).
-  2. Instala mpv, que es el reproductor que $NAME usa por debajo. Con winget:
-         winget install mpv
-     o bájalo de https://mpv.io/installation/ y deja mpv.exe en el PATH.
-  3. Doble clic en bin\\mpv-uos.cmd. Para abrir un archivo, arrástralo encima.
+  2. Doble clic en EMPEZAR-AQUI.cmd, y ya está. Para abrir una película, arrástrala encima.
+
+     Eso busca mpv —el reproductor que $NAME usa por debajo— y, si no lo tienes, lo instala
+     con winget («winget install mpv») y sigue. Si winget no estuviera, te dirá en una línea
+     qué hacer. No hace falta ser administrador y no se cambia ningún ajuste de tu Windows.
+
+     Windows puede preguntarte «¿Quieres ejecutar este archivo?»: es porque viene de internet
+     y no está firmado. Firmar cuesta dinero y caduca, así que lo que puedes hacer en su lugar
+     es comprobar la suma SHA-256 del zip, que está publicada en $SITE.
 
 SI QUIERES ACCESOS DIRECTOS Y QUE LOS ENLACES mpv-uos:// FUNCIONEN
   Abre PowerShell en esta carpeta y ejecuta:

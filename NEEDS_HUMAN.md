@@ -44,8 +44,12 @@ puedo hacer** es ejecutarlos donde toca, porque aquí solo hay un x86-64 con Lin
    ```
    Lo que más me interesa saber: si arranca, si mpvd se conecta, y qué dice al abrir una película (si el mpv de
    esa distribución es más viejo que 0.41, debería avisarte de lo que no va).
-3. **Un Windows con el `.zip`**: descomprimir, `winget install mpv`, doble clic en `bin\mpv-uos.cmd`. De esto no
-   hay NADA probado en un Windows real: solo que el contenido y los lanzadores son correctos.
+3. **Un Windows con el `.zip`**: descomprimir y **doble clic en `EMPEZAR-AQUI.cmd`**, que está arriba del todo.
+   Ya no hay que instalar mpv a mano: ese arranque lo busca, lo instala con winget si falta y abre el reproductor
+   (ADR-123). De esto no hay NADA probado en un Windows real: solo que el contenido, los lanzadores y el arranque
+   son correctos, y que la cadena funciona con un PowerShell 7 en Linux. Dos cosas que me interesan de tu prueba:
+   si Windows saca algún aviso antes de arrancar (y con qué texto exacto), y lo que conteste `winget search mpv`,
+   para fijar el identificador del paquete en vez de depender del alias del catálogo.
 4. **El correo del mantenedor del `.deb`.** Ahora pone `Atalaya Player <atalaya@solucionesconscientes.es>`, que me
    he inventado a partir de tu dominio porque no quería poner tu correo personal en un paquete que se distribuye.
    Dime cuál quieres y lo cambio (o `DEB_MAINTAINER="Nombre <correo>" tools/build_deb.sh`).

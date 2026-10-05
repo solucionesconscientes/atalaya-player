@@ -1,4 +1,4 @@
-# MPV-UOS launcher for Windows: the PowerShell twin of bin/mpv-uos (same options, same environment for mu-core/mpvd).
+﻿# MPV-UOS launcher for Windows: the PowerShell twin of bin/mpv-uos (same options, same environment for mu-core/mpvd).
 # Launches mpv with the project's portable config dir and a unique IPC named pipe per instance.
 # Usage: bin\mpv-uos.cmd [mpv options] [files/URLs]    (or: powershell -NoProfile -File bin\mpv-uos.ps1 ...)
 # Env:   MPV_UOS_MPV (mpv binary, default "mpv" from PATH), MPV_UOS_DATA_DIR (user data: favourites, notes,

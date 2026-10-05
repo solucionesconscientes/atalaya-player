@@ -10,7 +10,7 @@ Desarrollado y probado en Linux (Ubuntu, Wayland/KDE, mpv 0.41). Lo siguiente NO
 | AppImage (`tools/build_appimage.sh --arch x86_64\|aarch64`) | ✅ x86_64 probado sin ventana (mpv del sistema); aarch64 **cruzado desde x86-64** y revisado por dentro (runtime e intérprete ARM, catálogos), sin ejecutar | — | — |
 | `.app` de macOS (`tools/build_macos_app.sh`) | construido y validado (plist, lanzador) en Linux | ❌ sin abrir en un Mac (mpv de Homebrew) | — |
 | `.deb` (`tools/build_deb.sh --arch amd64\|arm64`) | ✅ amd64 probado: se extrae, arranca y mpvd se conecta con el intérprete del paquete; lintian sin más avisos que los inherentes a llevarlo dentro. arm64 cruzado y revisado por dentro | — | — |
-| `.zip` portable (`tools/build_zip_windows.sh`) | — | — | construido en Linux y revisado por dentro (lanzadores, intérprete de Windows en su sitio, yt-dlp.exe); **sin abrir en un Windows** |
+| `.zip` portable (`tools/build_zip_windows.sh`) | — | — | construido en Linux y revisado por dentro (lanzadores, `EMPEZAR-AQUI.cmd`, intérprete de Windows en su sitio, yt-dlp.exe); **sin abrir en un Windows** |
 | ARM64 (Raspberry Pi 5) | ⚠ paquetes hechos (`.deb` arm64 y AppImage aarch64, los dos cruzados y revisados por dentro), **sin ejecutar en una máquina ARM**: aquí no hay ninguna ni emulación | — | — |
 | uosc, thumbfast, scripts `mu-*` (Lua) | ✅ | debería ir (Lua puro; rutas con `utils.join_path`) | debería ir (mu-core ya distingue `.venv\Scripts\python.exe`) |
 | mpvd: JSON-RPC y IPC con mpv | ✅ socket Unix | socket Unix (no probado) | named pipes (`mpvd/transport.py`, lazo Proactor) probados con un lazo simulado; sin Windows real |
@@ -70,9 +70,13 @@ lo comprobado es lo que llevan dentro. La primera vez que alguien los abra en un
 
 ## Instalar en Windows (no probado en un Windows real)
 Lo más cómodo es el **`.zip` portable** (`tools/build_zip_windows.sh`): se descomprime donde sea, lleva su propio
-Python y yt-dlp, y se abre con `bin\mpv-uos.cmd`. Un `.exe` o un `.msi` sin firmar se come el aviso de SmartScreen,
-que asusta más que descomprimir una carpeta (decidido con Ser el 2026-10-04). Dentro va `tools\install.ps1` para
-quien quiera accesos directos y los enlaces `mpv-uos://`. mpv se instala aparte (`winget install mpv`).
+Python y yt-dlp, y se abre con **`EMPEZAR-AQUI.cmd`**, que está arriba del todo y hace la cadena entera —busca mpv,
+lo instala con winget si falta y arranca el reproductor— en un solo doble clic (ADR-123). Un `.ps1` no vale para
+eso: no se ejecuta al hacer doble clic y la directiva de ejecución lo bloquea. Un `.exe` o un `.msi` sin firmar se
+come el aviso de SmartScreen, que asusta más que descomprimir una carpeta (ADR-117, confirmado con Ser el
+2026-10-05); con certificado el `.msi` sí es mejor, y es decisión suya. Dentro va `tools\install.ps1` para quien
+quiera accesos directos y los enlaces `mpv-uos://`. mpv **no** va dentro: se usa el del sistema para no perder la
+aceleración por hardware, y eso es lo que el arranque instala por ti si no lo tienes.
 
 ### Desde un clon del repositorio
 Sin permisos de administrador; el checkout se queda donde esté y todo apunta a él (nada en `%APPDATA%\mpv`).
