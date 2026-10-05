@@ -86,8 +86,14 @@ def test_modes_apply_and_restore(modes_mpv):
                             timeout=10)
     escondidos = sorted({n for s in barra.values() for n in (s.get("hidden") or [])})
     assert "mu-record" in escondidos and "mu-menu" not in escondidos, escondidos
+    con_barra = sorted(barra)                 # los scripts que han publicado: los mismos tienen que devolverla luego
     h.command("script-binding", "mu_menu/root")
-    st = h.wait_property("user-data/mu/menu", lambda v: bool(v) and v.get("view") == "root", timeout=10)
+    # H63 · la vista se publica antes que sus filas (desde N1 se vacían al cambiar de vista, así que leer la lista a
+    # medias es leer []), y esperar «view == root» era esperar un instante: se espera a que esté la fila que SOLO
+    # existe en modo sencillo, que es el estado «el menú corto está en pantalla».
+    st = h.wait_property("user-data/mu/menu",
+                         lambda v: bool(v) and v.get("view") == "root"
+                         and any(i.get("title") == "Menú completo" for i in v.get("items") or []), timeout=10)
     titles = [i["title"] for i in st["items"]]
     assert [t for t in titles if t != "Continuar viendo"] == ["Abrir o descargar", "TV y radio", "Subtítulos",
                                                           "Preferencias",
@@ -98,9 +104,14 @@ def test_modes_apply_and_restore(modes_mpv):
     st = h.wait_property("user-data/mu/menu", lambda v: bool(v) and any(i["title"] == "Herramientas"
                                                                          for i in v.get("items") or []), timeout=10)
     assert uosc_opt(h, "controls") is None
-    barra = h.wait_property("user-data/mu/bar", lambda v: bool(v) and (v.get("mu_record") or {}).get("simple") is False,
+    # H63 · cada script observa el modo por su cuenta y publica lo suyo, así que NO cambian todos a la vez: esperar a
+    # uno (mu_record) y exigir a los veinte era leer un instante. Se espera por el estado completo, que además es el
+    # invariante que de verdad importa: salir del modo sencillo devuelve TODOS los botones, no la mayoría.
+    barra = h.wait_property("user-data/mu/bar",
+                            lambda v: bool(v) and all(not ((v.get(n) or {}).get("hidden") or []) for n in con_barra),
                             timeout=10)
-    assert all(not (s.get("hidden") or []) for s in barra.values()), barra
+    assert (barra.get("mu_record") or {}).get("simple") is False
+    assert all(not ((barra.get(n) or {}).get("hidden") or []) for n in con_barra), barra
 
 
 def test_modes_remembered(daemon_env, media_dir):
