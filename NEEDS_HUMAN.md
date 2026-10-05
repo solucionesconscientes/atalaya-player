@@ -17,24 +17,31 @@ limpiado yo (dentro del proyecto): `tmp/`, de 6,0 GiB a 470 MiB, que libera **di
 Y un detalle del equipo, no del proyecto: 23 GiB de RAM con **512 MiB de intercambio** es muy poco colchón; cuando
 se llena, no hay a dónde ir.
 
-## 2026-10-05 · La web está hecha: faltan tus dos decisiones (H50)
-```bash
-tools/build_web.py && xdg-open web/index.html     # mírala antes de nada
-```
-Está en tres idiomas, sin scripts ni cookies, con las descargas reales (tamaño y SHA-256 de lo que hay en `dist/`)
-y con cinco capturas hechas con el programa. Lo que no puedo decidir yo:
+## 2026-10-05 · RESUELTO el 2026-10-06 · La web y el repositorio público (H50)
+Las dos decisiones se tomaron en la sesión de esa noche, y lo que había detrás ya está hecho:
 
-1. **¿Se hace público el repositorio?** Sin eso, la página «cómo está hecho» no tiene dónde vivir (ahora se genera
-   como `web/arquitectura.html` y se puede publicar al lado) y la pública no puede enlazar el código. También
-   desbloquearía construir y probar los paquetes de Windows y macOS gratis en GitHub Actions. **No lo hago yo:
-   publicar tu código es tuyo y no tiene vuelta atrás.**
-2. **Dónde se sirve `/atalaya`** y con qué está hecho solucionesconscientes.es, para encajar la página.
-3. **Las capturas**, si las quieres con una película de verdad en vez de con la carta de ajuste de pruebas:
+1. **El repositorio es público**: `github.com/solucionesconscientes/atalaya-player`, MIT. El nombre lleva sufijo
+   porque `solucionesconscientes/atalaya` es del proyecto OSINT Atalaya, que queda aparcado. La rama por defecto
+   es el tronco `nocturno/2026-09-28`; **`main` sigue con el andamiaje**, porque la regla del proyecto es no
+   fusionar a `main`. Si quieres que el tronco sea `main` en el repositorio público, es tuyo y es una orden:
+   ```bash
+   git push origin nocturno/2026-09-28:main
+   gh repo edit solucionesconscientes/atalaya-player --default-branch main
+   ```
+   Esto además desbloquea construir y probar los paquetes de Windows y macOS gratis en GitHub Actions.
+2. **`/atalaya` se sirve en solucionesconscientes.es/atalaya**, que es un sitio en Astro desplegado por Cloudflare
+   Pages desde la raíz del repositorio `websc`. La página está en vivo, con su tarjeta en `/portfolio`.
+3. **Las capturas** salieron sin ti: `tools/capturas.sh` corre entero sobre una pantalla virtual
+   (`xvfb-run -a -s "-screen 0 1400x900x24" tools/capturas.sh`). Si las quieres con una película de verdad en vez
+   de con la carta de ajuste, sigue valiendo:
    ```bash
    tools/capturas.sh "/ruta/a/tu/pelicula.mkv"
    ```
    Ojo: el guion usa a propósito una carpeta de datos **vacía**. La primera tanda salió con tu historial de vídeos
    en el menú, con los títulos, camino de una página pública.
+
+**Lo único que sigue esperando a ti** de todo esto es el **vídeo de cabecera** de la página, de 15-20 segundos:
+elegir un canal → pasar a radio → abrir un vídeo de internet → crear una sala y copiar el enlace. No bloquea nada.
 
 ## 2026-10-04 · Los paquetes están hechos: lo que falta es abrirlos en otra máquina (H72)
 Los cuatro de Linux, el de Windows y el camino de macOS están construidos y revisados por dentro. Lo que **yo no
