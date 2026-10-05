@@ -207,3 +207,9 @@ tools/make_test_media.sh          # regenera tests/fixtures/media (ffmpeg + espe
 ## Créditos de modelos
 - Modelos OPUS-MT (Helsinki-NLP; Tiedemann & Thottingal 2020, Tatoeba Translation Challenge), CC-BY 4.0:
   https://github.com/Helsinki-NLP/Tatoeba-Challenge
+
+## Licencia
+MIT, en [LICENSE](LICENSE). Lo que trae o usa de terceros —mpv, uosc, yt-dlp,
+whisper.cpp, las listas de canales y los datos de SponsorBlock— mantiene su
+propia licencia: están todas en [TERCEROS.md](TERCEROS.md), con cómo se usa
+cada una.

@@ -19,18 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Este programa se apoya en software y datos de terceros con sus propias
-licencias, que no cambian por estar aquí:
-
-- mpv (GPL-2.0-or-later / LGPL-2.1-or-later) y uosc (LGPL-2.1), que se usan
-  como programa y como script, sin modificarlos ni enlazarlos.
-- yt-dlp (Unlicense) y ffmpeg, que se ejecutan como procesos aparte.
-- whisper.cpp (MIT) y los modelos que descarga, con la licencia de cada modelo.
-- Las listas de canales de TDTChannels y iptv-org, y la API de Radio Browser,
-  propiedad de sus proyectos: este programa las descarga, no las redistribuye.
-- Los datos de SponsorBlock, con licencia CC BY-NC-SA 4.0: exigen atribución,
-  que la aplicación da en su menú de Ayuda, y limitan el uso comercial de ESOS
-  DATOS. El programa solo los consulta.
