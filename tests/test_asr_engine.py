@@ -4,6 +4,7 @@ transcription of the Spanish test voice (skipped when whisper.cpp is not vendore
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -81,4 +82,14 @@ def test_real_transcription_spanish(media_dir, tmp_path):
     hits = keywords_hit(text, "es")
     assert len(hits) >= min_keywords(), (text, hits)
     assert res.language == "es" and res.segments[0].start < 1.0 and res.segments[-1].end <= wav_duration(wav) + 0.5
-    assert res.rtf < 3.0 and eng.stats["runs"] == 1
+    # H63 · el umbral que había aquí (rtf < 3,0) era una apuesta sobre lo rápido que va la máquina, metida en la
+    # batería de corrección: con el escritorio abierto whisper se fue a 3,89 y pintó de rojo las TRES pasadas de una
+    # tanda en la que no falló nada más. Un umbral así mide el equipo, no el código, y una batería que se pone roja
+    # porque tienes el navegador abierto es una batería que se deja de leer: así se colaron los once fallos de H55.
+    # Queda un tope de PATOLOGÍA —lo peor medido con la máquina cargada es 3,9, así que 15 solo salta si algo se ha
+    # roto de verdad (el modelo mal cargado, un hilo en vez de cuatro)— y el dato exacto se imprime. El umbral fino
+    # sigue disponible para medirlo a mano con la máquina en reposo: MU_BENCH=1.
+    print(f"rtf={res.rtf:.2f} ({res.elapsed:.1f}s para {wav_duration(wav):.1f}s de audio)")
+    assert res.rtf < 15 and eng.stats["runs"] == 1
+    if os.environ.get("MU_BENCH") == "1":
+        assert res.rtf < 3.0, f"con la máquina en reposo deberían bastar 3x, y van {res.rtf:.2f}"
