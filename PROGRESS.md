@@ -373,45 +373,33 @@ Cada hito tiene sus pasos a mano detallados más abajo, en "Registro por iteraci
   diccionario/Anki (C2–C3), handoff entre dispositivos (E5), MPRIS/KDE Connect (E4), supercut y resumen elástico (I1, I5).
 
 ## SIGUIENTE PASO
-El 2026-10-04 se cerró todo lo que quedaba aprobado menos la web: **H61** (mando del televisor), **H62**, **H63**
-(incluido N3, el fallo intermitente de los menús), **H64**, **H65**, **H66** y **H49 entero** (G1-G8: 1.661
-cadenas por idioma). **Los torrents (H59) se quitaron** por decisión de Ser, al no funcionarle y no ser críticos
-(ADR-111). `tools/check.sh` quedó en 907 pasando con cero fallos, y los de red en 16 pasando.
-
-Y se cerró **H71**, que era la pregunta que bloqueaba todo lo demás: «compruébalo con mpv y mpv-uos; hasta que
-mpv-uos no sea igual o más ligero que mpv normal…». Con **su** película (HEVC 10 bits, 2,4 Mbps), más de 40
-aperturas alternando los dos: **ni un fotograma perdido con ninguno**, a pantalla completa gastan lo mismo
-(+0,8 puntos, dentro del ruido) y en ventana —fijada igual para los dos— Atalaya gasta **+1,1 puntos de un
-núcleo**, que son enteros de la interfaz: descodificar sale idéntico (21,5 contra 21,3), `lua/uosc` cuesta 1,2
-frente al `lua/osc` 0,6 de mpv, y **los 23 scripts propios y el demonio cuestan 0,0** mientras se reproduce.
-La herramienta para repetirlo es `tools/comparar.py` (ADR-115). Para medirlo hubo que corregir cinco errores de
-medición, el peor de ellos que **el escritorio da a cada apertura el tamaño de ventana que quiere** y el OSD se
-dibuja a tamaño de ventana: eso, y no uosc, era el «+5 puntos» que parecía haber en ventana.
+Noche del 2026-10-04 al 05, en modo autónomo: **H71**, **H67**, **H72**, **H68** y **H50** cerrados y
+commiteados. `tools/check.sh` quedó en **1.004 pasando**; los únicos fallos de la última pasada fueron dos de los
+sensibles a la carga (`test_mu_convert`, `test_mu_menu`), que pasan aislados. La máquina pasó buena parte de la
+noche suspendida, así que la pasada de 20 minutos tardó siete horas de reloj.
 
 Lo que queda, por orden:
 
-1. **H67 · los días de la semana** en lo programado: «cada día», «de lunes a viernes», días suelos, de forma
-   **indefinida** hasta que se quite. Regla + ocurrencias materializadas rodando hacia delante, el despertador
-   rearmado en cada una, y aviso cuando se solapan dos reproducciones (grabar en paralelo ya funciona: cada
-   grabación es su propio ffmpeg copiando, sin recodificar).
-2. **Los paquetes**, decididos con Ser el 2026-10-04: **`.deb`** (amd64 y arm64) y **AppImage** (x86-64 y
-   aarch64). El `.deb` sin versión fija de mpv —en Debian 13 y Raspberry Pi OS el del sistema puede ser más
-   viejo— y avisando al arrancar de lo que no va; y es el único que puede instalar la regla de `sudoers` de
-   `rtcwake`, con lo que el despertador funcionaría de fábrica. **Windows**: `.zip` portable con `install.ps1`
-   dentro (un instalador sin firma se come la pantalla azul de SmartScreen). **macOS**: documentado por Homebrew;
-   un `.dmg` sin firmar se bloquea y, peor, el `.app` de hoy usa el mpv de Homebrew, así que no sería
-   autocontenido. **Flatpak descartado por ahora**: habría que compilar mpv dentro y el sandbox no puede con el
-   despertador (`sudo rtcwake`); se retomaría si se quiere llegar a distros con mpv viejo.
-3. **H68 · avisar de que hay versión nueva**: un `latest.json` (versión, qué cambia y el SHA-256 de cada paquete)
-   consultado una vez al día con la caché que ya usa yt-dlp. Avisar, no instalar solo. Falta decidir dónde vive
-   ese fichero (la web o la API de releases si el repo se hace público).
-4. **La web (H50)**, diseñada en `docs/SITIO-WEB.md`. Faltan dos decisiones de Ser: qué se ve de fondo en las
-   capturas y si el repo se hace público —esto último también desbloquea construir y probar los paquetes de
-   Windows y macOS gratis en GitHub Actions—.
+1. **H63/N2 · tres pasadas completas seguidas limpias.** Es lo último que queda de la lista de hitos. Los
+   sospechosos habituales son siempre los mismos y siempre pasan aislados: `test_mu_modes`, `test_mu_convert`,
+   `test_mu_menu`, `test_prefs`, `test_flujos_e2e`, `test_mu_subs`, `test_recap`, `test_mu_share`,
+   `test_mu_feeds`, `test_mu_iptv_live`. Si las tres pasadas siguen fallando por ahí, la decisión que falta no es
+   «arreglar el test» sino **decidir si esos tests deben esperar por un estado en vez de por un plazo**, que es la
+   diferencia entre un test lento y un test frágil.
+2. **Limpiar lo que queda vivo de sesiones viejas** (mirar antes qué son, matar por PID, nunca por patrón): había
+   un `mpv` de hace 30 horas con el config-dir del proyecto y dos `mpvd serve` de pruebas.
 
-Solo Ser puede: la línea de `sudoers` para `rtcwake` (o esperar al `.deb`, que la pondría él), **comprobar el
-HDMI-CEC con una tele de verdad** (H61/M7) y, sin prisa, la cuenta de OpenSubtitles. Las órdenes exactas están en
-`NEEDS_HUMAN.md`.
+### Lo que solo puede hacer Ser (todo con sus órdenes exactas en NEEDS_HUMAN.md)
+1. **Instalar el `.deb` y abrirlo**: `sudo apt install ./dist/atalaya-player_0.1.0_amd64.deb` y luego
+   `sudo -n /usr/lib/mpv-uos/bin/wake check`. Si eso contesta, **el despertador de las grabaciones programadas
+   queda resuelto de fábrica** y la tarea de la línea de sudoers a mano se puede olvidar.
+2. **Probarlo en una Raspberry** (`.deb` de arm64 o AppImage de aarch64) y **en un Windows** (el `.zip`): están
+   construidos y revisados por dentro, pero nadie los ha ejecutado. Es el hueco más grande que queda.
+3. **Decidir si el repositorio se hace público**: sin eso la página «cómo está hecho» no tiene dónde vivir, la
+   pública no puede enlazar el código y no hay GitHub Actions para construir Windows y macOS.
+4. **El correo del mantenedor del `.deb`** (ahora pone uno del dominio del proyecto, inventado por mí para no
+   poner el suyo personal en un paquete que se distribuye) y, si quiere, **rehacer las capturas** con una película
+   de verdad: `tools/capturas.sh "/ruta/a/la/peli.mkv"`.
 
 ## Registro por iteración
 ### Iteración 12 · 2026-10-02/03 · H57 · Programar que SUENE, y el repaso de ideas — hecho
