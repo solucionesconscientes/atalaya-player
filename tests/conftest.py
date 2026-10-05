@@ -271,3 +271,41 @@ def daemon_env() -> Any:
             shutil.rmtree(base, ignore_errors=True)
         if base not in d.runtime_dir.parents:
             shutil.rmtree(d.runtime_dir, ignore_errors=True)
+
+
+# -- los logs de un fallo se quedan (H63) -----------------------------------------------------------------------------
+# Tres fallos de esta tanda solo aparecen DENTRO de una pasada completa y pasan 10/10, 12/12 aislados. Cada aparición
+# costaba 20 minutos y no dejaba nada: las fixtures borran el log de mpv al terminar, así que la única pista era el
+# resumen de pytest, que trunca el estado. Ahora, cuando un test falla, sus logs se copian a tmp/fallos/<test>/ antes
+# de que nadie los borre. Se copia en la fase `call`, con mpv todavía vivo: falta el apagado, que es lo que menos
+# importa cuando el fallo ya ha ocurrido.
+FALLOS_DIR = TMP / "fallos"
+LOGS_POR_FALLO = 24
+
+
+def _logs_recientes(minutos: float = 15.0) -> list[Path]:
+    corte = time.time() - minutos * 60
+    salida = []
+    for patron in ("mpv-*.log", "mpvd.log", "mpvd.stdio.log"):
+        for p in TMP.rglob(patron):
+            if FALLOS_DIR in p.parents:
+                continue
+            try:
+                if p.stat().st_mtime >= corte:
+                    salida.append(p)
+            except OSError:
+                pass
+    salida.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return salida[:LOGS_POR_FALLO]
+
+
+def pytest_runtest_logreport(report: Any) -> None:
+    if report.when != "call" or not report.failed:
+        return
+    destino = FALLOS_DIR / re.sub(r"[^A-Za-z0-9._-]+", "_", report.nodeid)[-120:]
+    try:
+        destino.mkdir(parents=True, exist_ok=True)
+        for origen in _logs_recientes():
+            shutil.copy2(origen, destino / f"{origen.parent.name}-{origen.name}")
+    except OSError:
+        pass          # guardar pistas no puede ser nunca la causa de un fallo
