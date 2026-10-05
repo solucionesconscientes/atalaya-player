@@ -1918,3 +1918,18 @@
   motivo para romperla por mi cuenta: la rama por defecto del repositorio público es el tronco de trabajo
   (`nocturno/2026-09-28`), que lleva todo el código, y `main` sigue donde estaba. Pasar el tronco a `main` es un
   `git push origin nocturno/2026-09-28:main` cuando Ser quiera, y es suyo decidirlo.
+- ADR-129 · La tercera vez que una bandera se lee en el instante equivocado (H63/N2).
+  Tres pasadas sobre el árbol con el repositorio ya publicado: la primera dio **3 fallos y 1.026 pasando**, las dos
+  siguientes **1.029 y 1.029, limpias**. De los tres, dos eran esperas que se agotaron —`test_appimage` (el socket
+  de mpv) y `test_flujos_e2e` (el tipo de menú)—, de las que ya hablan ADR-121 y ADR-124. El tercero no era un
+  plazo: `assert True is False` en `test_mu_av.py:219`.
+  **Qué pasaba.** Al restaurar la ventana, el test espera a que vuelva el vídeo y a que vuelva el título, y entonces
+  lee `minimized_audio` de una sentada. Pero el título lo restaura mpv y la bandera la publica mu-av en su propio
+  tic: son dos avisos distintos del mismo gesto, y esperar al primero no garantiza el segundo. Por eso falla una vez
+  de cada tres y nunca dos seguidas. Es exactamente ADR-121 —esperar por un estado y no por un instante— en el único
+  sitio donde todavía quedaba un `assert` de lectura directa detrás de una espera.
+  **Qué NO era.** No es un fallo del programa: si la bandera no se limpiara, fallaría siempre, y pasa dos de cada
+  tres veces. Y tampoco es carga: el `assert` no tiene plazo que agotar.
+  **Lo que deja la noche, además:** una tanda con 4 fallos que resultaron ser CERO —corrían dos baterías a la vez,
+  los cuatro pasaron aislados—. Una batería compartiendo máquina con otra no mide el código, mide el reparto de CPU,
+  y su rojo no se cree hasta repetirlo solo.

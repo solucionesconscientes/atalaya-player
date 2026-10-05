@@ -216,7 +216,10 @@ def test_audio_only_for_local_files_and_when_minimized(av_mpv, media_dir):
     h.command("set", "window-minimized", "no")
     h.wait_property("current-tracks/video", lambda v: isinstance(v, dict) and v.get("id") == 1, timeout=10)
     h.wait_property("title", lambda v: v == titulo, timeout=10)
-    assert h.get("user-data/mu/av")["minimized_audio"] is False
+    # ADR-121 otra vez: la bandera NO se lee de golpe después de esperar el título. Son dos avisos distintos del
+    # mismo script —el título lo pone mpv al restaurar, la bandera la publica mu-av en su tic— y leer la segunda en
+    # el instante en que llega la primera es una carrera: falló una vez de cada tres pasadas, nunca dos seguidas.
+    h.wait_property("user-data/mu/av", lambda v: bool(v) and v.get("minimized_audio") is False, timeout=10)
 
     # y se puede apagar: entonces minimizar no toca nada
     h.command("script-message-to", "mu_av", "mu-av-event", json.dumps(
