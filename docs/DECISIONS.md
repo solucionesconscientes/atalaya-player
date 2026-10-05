@@ -1856,3 +1856,30 @@
   mío»). El fallo que lo levantó es 1 de cada 3 pasadas completas, así que **no** hay un test que lo reproduzca a
   voluntad: lo honesto es decir que el mecanismo está demostrado y que la frecuencia se verá en las siguientes
   tandas.
+- ADR-126 · Lo que encontró el guardián de logs: dos fallos del programa en la primera tanda (H63/N2).
+  La tanda sobre `a5d1dfd` dio 0, 2 y 2 fallos, y los logs guardados en `tmp/fallos/` convirtieron dos de ellos en
+  causas en diez minutos, que es exactamente para lo que se hizo.
+  **(1) Una respuesta tardía te devolvía a la vista de la que acababas de salir.** El rastro, con marcas de tiempo:
+  `2.754 menu/type="mu-library"` · `2.970` se pulsa ⌫ · `2.975 menu/type="mu-menu"` (bien, el menú principal) ·
+  `3.018` llega la respuesta de una petición que la biblioteca había hecho antes · `3.019 open-menu` ·
+  `3.020 menu/type="mu-library"`. O sea: **pulsas «Atrás», llegas al menú principal y el menú que acabas de dejar
+  te salta encima 40 ms después**. La causa está en una forma repetida en **trece** módulos: `show()` elegía entre
+  `update-menu` y `open-menu` mirando si el menú de pantalla era el suyo, y la rama `else` **abría** —también
+  cuando ya te habías ido—. El criterio bueno no era `force_open` (`mu-av` no lo usa nunca y se apoya solo en esa
+  rama) sino **la pila**: `open_view` mete la vista en `state.stack` antes de pintar, así que una llamada legítima
+  siempre tiene pila y una respuesta tardía después de volver atrás la tiene vacía. Ahora: se actualiza si el menú
+  es nuestro (`mine`, que cuenta el pedido y no confirmado), se abre solo si queda pila, y si no, no se toca uosc.
+  Trece módulos y `mu-share`, que tenía la misma forma con otra firma. De paso arregla el caso hermano: cerrar el
+  menú con Esc y que una respuesta tardía lo reabriera.
+  **(2) mpv no acepta un SRT vacío, y el demonio escribía uno.** `test_mu_subs` falló en dos pasadas, y el log de
+  mpv lo dijo: `[lavf] No format found` y `[e] Can not open external file …/base.es.srt`. En el código estaba
+  escrito con todas las letras: «always (re)write the SRT so mpv can sub-add it right away, **even when empty**».
+  Medido con mpv de verdad: un SRT vacío **lo rechaza** (`sub-add` falla y no hay pista); uno con un solo rótulo en
+  blanco lo acepta. Así que esa intención —que la pista exista desde el principio y se vaya llenando— **nunca
+  funcionó**: la pista no aparecía hasta los primeros segmentos y el error se quedaba en un log que nadie mira.
+  Ahora, sin segmentos se escribe un rótulo en blanco de medio segundo (válido, invisible, se sustituye en cuanto
+  hay texto) y ese camino escribe con el **mismo rename atómico** que el otro, que ya lo hacía: media línea leída
+  es un fichero que mpv tampoco abre.
+  **(3) Y el tercero, que sigue sin explicar:** `test_appimage` se quedó sin socket en 15 s. El AppImage tiene que
+  montarse antes de arrancar y la pasada iba a 32 minutos en vez de 20, así que la sospecha es la carga; **no está
+  comprobado** y no se ha tocado nada.

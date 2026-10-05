@@ -316,7 +316,7 @@ class AsrService:
         assert task.srt_path is not None
         task.srt_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = task.srt_path.with_suffix(".srt.tmp")
-        tmp.write_text(render_srt(task.segments), encoding="utf-8")
+        tmp.write_text(self._srt_text(task), encoding="utf-8")
         tmp.replace(task.srt_path)
         task.updated_at = time.time()
         task.seq += 1
@@ -450,10 +450,26 @@ class AsrService:
                     return name
         return None
 
+    @staticmethod
+    def _srt_text(task: AsrTask) -> str:
+        """El SRT de la tarea, y si todavía no hay segmentos un hueco VÁLIDO en vez de un fichero vacío.
+
+        H63 · mpv no acepta un SRT vacío: medido con mpv de verdad, `sub-add` lo rechaza («No format found» y
+        «Can not open external file» en el log) y no crea ninguna pista. O sea que el «lo escribimos siempre para
+        que mpv lo pueda añadir ya, aunque esté vacío» no funcionaba nunca: la pista no aparecía hasta que llegaban
+        los primeros segmentos, y el error se quedaba en un log que nadie mira. Un rótulo en blanco de medio
+        segundo sí lo acepta, no se ve en pantalla y se sustituye en cuanto hay texto de verdad.
+        """
+        texto = render_srt(task.segments)
+        return texto if texto.strip() else "1\n00:00:00,000 --> 00:00:00,500\n \n\n"
+
     def _write_srt_only(self, task: AsrTask) -> None:
         assert task.srt_path is not None
         task.srt_path.parent.mkdir(parents=True, exist_ok=True)
-        task.srt_path.write_text(render_srt(task.segments), encoding="utf-8")
+        # con el mismo rename atómico que `_write`: media línea leída es un fichero que mpv tampoco abre
+        tmp = task.srt_path.with_suffix(".srt.tmp")
+        tmp.write_text(self._srt_text(task), encoding="utf-8")
+        tmp.replace(task.srt_path)
 
     def _submit(self, task: AsrTask, session_id: str | None) -> None:
         # «prepare» es lo que pide el usuario y espera mirando: modelo bueno (como precompute) pero prioridad de usuario.

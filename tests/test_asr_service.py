@@ -113,3 +113,31 @@ def test_asr_srt_paths_are_safe(daemon_env, media_dir, tmp_path):
     st = d.call("asr.status", {"id": t["id"]})
     assert st["status"] in ("cancelled", "done", "running", "queued")
     json.dumps(d.call("asr.status"))  # serialisable
+
+
+def test_el_srt_que_se_escribe_lo_puede_abrir_mpv_aunque_no_haya_segmentos(tmp_path):
+    """H63 · mpv NO acepta un SRT vacío: `sub-add` lo rechaza («No format found») y no crea pista, así que el
+    «lo escribimos siempre, aunque esté vacío, para que mpv lo pueda añadir ya» no funcionaba nunca y dejaba un
+    «Can not open external file» en un log que nadie mira. Medido con mpv de verdad antes de arreglarlo.
+
+    Esto comprueba lo que de verdad importa: que el fichero que escribe el demonio sea uno que mpv pueda abrir.
+    """
+    from mpvd.asr.service import AsrService
+    from mpvd.asr.srt import Segment
+
+    class TareaDePega:
+        def __init__(self, ruta):
+            self.srt_path = ruta
+            self.segments: list = []
+
+    tarea = TareaDePega(tmp_path / "base.es.srt")
+    svc = object.__new__(AsrService)                              # el servicio sin arrancar: solo se prueba escribir
+    svc._write_srt_only(tarea)                                    # sin segmentos: el hueco válido
+    texto = tarea.srt_path.read_text(encoding="utf-8")
+    assert texto.strip(), "un SRT vacío no lo abre mpv: tiene que llevar al menos un rótulo"
+    assert "-->" in texto and texto.lstrip().startswith("1")      # subrip reconocible
+    assert not list(tmp_path.glob("*.tmp")), "el temporal del rename atómico no se queda ahí"
+
+    tarea.segments = [Segment(start=1.0, end=2.0, text="hola")]
+    svc._write_srt_only(tarea)
+    assert "hola" in tarea.srt_path.read_text(encoding="utf-8")   # y el hueco se sustituye por el texto de verdad

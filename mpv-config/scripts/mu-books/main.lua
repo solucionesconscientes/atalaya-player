@@ -434,9 +434,13 @@ end
 local function show(title, items, extra)
   remember(items)
   publish()
-  if uosc.open_type() == MENU and not state.force_open then
+  -- H63 · una respuesta tardía NO puede devolverte a una vista de la que acabas de salir: medido en el log, al
+  -- pulsar ⌫ en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
+  -- pila vacía ya no estamos en ninguna vista, así que no se abre nada; y para actualizar vale `mine`, que cuenta
+  -- el menú pedido y aún no confirmado (uosc atiende el open y el update en ese orden).
+  if uosc.mine(MENU) and not state.force_open then
     uosc.update(base_menu(title, items, extra))
-  else
+  elseif #state.stack > 0 then
     uosc.open(base_menu(title, items, extra))
   end
   state.force_open = false

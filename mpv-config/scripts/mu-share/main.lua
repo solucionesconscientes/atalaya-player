@@ -326,9 +326,11 @@ end
 local function show(title, items)
   remember(items)
   publish()
-  if uosc.open_type() == MENU and not state.force_open then
+  -- H63 · una respuesta tardía NO puede devolverte a una vista de la que acabas de salir (ver el comentario igual
+  -- en los otros doce módulos): con la pila vacía no se abre nada, y para actualizar vale `mine`
+  if uosc.mine(MENU) and not state.force_open then
     uosc.update(base_menu(title, items))
-  else
+  elseif #state.stack > 0 then
     uosc.open(base_menu(title, items))
   end
   state.force_open = false
