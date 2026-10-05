@@ -130,7 +130,7 @@ Requisitos: Linux (Ubuntu con KDE/Wayland es donde se ha desarrollado), mpv 0.41
 ## Bajo el capó
 
 - **mpv** (el del sistema, ≥ 0.41, sin fork) como motor y **uosc 5.13** como interfaz, usada solo por su API pública.
-- **23 scripts Lua** (`mu-*`) finos dentro de mpv, y un servicio aparte en **Python 3.12** (`mpvd`, asyncio) que hace lo pesado. Hablan por JSON-RPC 2.0 sobre socket Unix (named pipe en Windows).
+- **24 scripts Lua** (`mu-*`) finos dentro de mpv, y un servicio aparte en **Python 3.12** (`mpvd`, asyncio) que hace lo pesado. Hablan por JSON-RPC 2.0 sobre socket Unix (named pipe en Windows).
 - **yt-dlp** para internet, **ffmpeg** para grabar y convertir, **whisper.cpp** para subtítulos.
 - **Listas**: `mpvd` descarga las M3U (TDTChannels, iptv-org, las tuyas) con caché por ETag y 12 h de vida, y funciona sin conexión con la última copia. Las cabeceras `#EXTVLCOPT`/`#KODIPROP` se traducen a opciones de mpv. Radio Browser se consulta por su API.
 - **Salas**: `mpvd` levanta un servidor HTTP local; el estado (posición, pausa, velocidad, archivo) llega a los invitados por SSE y su página ajusta el reproductor. El enlace lleva el token en el fragmento (`#k=…`), que el navegador nunca envía al servidor. No es P2P ni usa WebRTC ni un servidor de señalización: para salir a internet se abre un túnel rápido de Cloudflare (`cloudflared`, sin cuenta), y el anfitrión es quien sirve el vídeo.
