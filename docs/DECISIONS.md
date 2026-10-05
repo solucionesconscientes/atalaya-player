@@ -1883,3 +1883,19 @@
   **(3) Y el tercero, que sigue sin explicar:** `test_appimage` se quedó sin socket en 15 s. El AppImage tiene que
   montarse antes de arrancar y la pasada iba a 32 minutos en vez de 20, así que la sospecha es la carga; **no está
   comprobado** y no se ha tocado nada.
+- ADR-127 · Un umbral de rendimiento no va en la batería de corrección (H63/N2).
+  Las tres pasadas sobre ADR-126 dieron **1.028 pasando y el mismo fallo las tres**:
+  `test_asr_engine`, `assert res.rtf < 3.0`. No era intermitencia ni una regresión: whisper tardó **3,89** veces la
+  duración del audio en vez de menos de 3, con la máquina a carga 4,9 —el propio check más el escritorio— y pasadas
+  de 28-32 minutos en vez de 20. Con la máquina tranquila el mismo test da **1,40**.
+  **Por qué se cambia el test y no el umbral.** Un umbral así **mide el equipo, no el código**: es la misma
+  enfermedad de ADR-121 en versión rendimiento —un plazo es una apuesta sobre lo rápido que va la máquina—. Y hay un
+  precedente en este proyecto que lo zanja: los once fallos de H55 se colaron porque **una batería que falla al azar
+  es una batería que se deja de leer**. Una que se pone roja porque tienes el navegador abierto se deja de leer
+  igual. Subir el número a 6 habría sido la misma apuesta, más grande.
+  **Qué queda.** Un tope de **patología** (`rtf < 15`: lo peor medido con carga es 3,9, así que solo salta si algo se
+  ha roto de verdad —el modelo mal cargado, un hilo en vez de cuatro—), el dato exacto impreso para cuando falle, y
+  el umbral fino disponible a mano con la máquina en reposo (`MU_BENCH=1`). Las comprobaciones de que la
+  transcripción es CORRECTA —las palabras clave, el idioma, los límites de los segmentos, una sola ejecución de
+  whisper— siguen todas en la batería de siempre.
+  **Y el dato que importa de esa tanda, que el rojo tapaba:** en las tres pasadas **no falló nada funcional**. Cero.
