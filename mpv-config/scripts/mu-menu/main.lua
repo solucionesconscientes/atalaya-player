@@ -550,6 +550,14 @@ views.help = function()
   end
   items[#items].separator = true
   table.insert(items, bind('Ver todas las teclas', nil, 'keyboard', 'uosc/keybinds'))
+  -- La licencia de los datos de SponsorBlock (CC BY-NC-SA 4.0) EXIGE atribución donde se usan, así que vive dentro
+  -- del programa y no solo en la web: una atribución que hay que ir a buscar a otro sitio no es una atribución. Al
+  -- lado, lo demás en lo que se apoya, que es información útil y no un trámite: dice de dónde salen los canales.
+  items[#items].separator = true
+  table.insert(items, { title = tr('Se apoya en mpv, uosc y yt-dlp'), icon = 'favorite', selectable = false })
+  table.insert(items, { title = tr('Canales y emisoras: TDTChannels, iptv-org y Radio Browser'), selectable = false })
+  table.insert(items, { title = tr('Saltos de patrocinio: datos de SponsorBlock, CC BY-NC-SA 4.0'),
+                        selectable = false, separator = true })
   -- H41 · la dirección del proyecto, donde está toda la información. Vive en brand.json como el resto de la
   -- identidad, y desde aquí se abre en el navegador o se copia (Tab) para llevársela a otro aparato.
   table.insert(items, { title = brand.name .. ' en internet', hint = brand.site:gsub('^https?://', ''),

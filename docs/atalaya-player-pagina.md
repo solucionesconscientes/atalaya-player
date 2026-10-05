@@ -1,8 +1,8 @@
 ---
-slug: alalaya-player
-title: "Alalaya Player: TV, radio, vídeos y ver juntos, en un reproductor"
+slug: atalaya   # la URL es /atalaya: la fija brand.json y la enseña la app (ADR-084)
+title: "Atalaya Player: TV, radio, vídeos y ver juntos, en un reproductor"
 description: "Reproductor libre sobre mpv: TV y radio en abierto de España y del mundo, vídeos de YouTube sin anuncios y salas para ver lo mismo a la vez con quien quieras."
-nombre: Alalaya Player
+nombre: Atalaya Player
 nombre_interno: MPV-UOS
 keyword_principal: "ver la tele en el ordenador gratis"   # volumen por verificar (no medible desde el repo)
 keywords_secundarias:
@@ -13,25 +13,25 @@ keywords_secundarias:
   - "reproductor mpv con interfaz"
 version: "0.1.0"   # pyproject.toml y nombre de los paquetes de dist/; sin etiquetas git ni release publicada
 fecha_actualizacion: 2026-10-05
-repo: "[VERIFICAR: el repo local no tiene remoto configurado (git remote vacío); no consta que sea público ni su URL]"
-licencia: "MIT según pyproject.toml [VERIFICAR: no hay archivo LICENSE en el repo; ver anexo C]"
-estado_contenido: CONTRASTADO con el código el 2026-10-05; quedan marcas [VERIFICAR] (repo, licencia, nombre, atribución SponsorBlock)
+repo: https://github.com/solucionesconscientes/atalaya-player
+licencia: MIT   # LICENSE añadido el 2026-10-05, con los avisos de terceros
+estado_contenido: PUBLICADO como /atalaya el 2026-10-05; nombre, licencia, repo y atribución resueltos
 ---
 
 <!-- Regla para Claude Code: toda frase marcada [VERIFICAR] se confirma en el código o se elimina. No se publica ninguna función que no exista. -->
 
 <!-- ============ 1. HERO ============ -->
 
-# Alalaya Player
+# Atalaya Player
 ### La tele, la radio, tus vídeos y ver juntos, en un solo reproductor
 
 **Más de 12.000 canales de TV y emisoras de radio de España y de medio mundo (a 2026-10-05), vídeos de YouTube que se saltan los patrocinios y salas para ver lo mismo a la vez con quien quieras.** Sobre mpv, un motor de reproducción muy usado y ligero.
 
-[Hero: vídeo en bucle `alalaya-demo.mp4`: elegir un canal → cambiar a radio → abrir un vídeo de YouTube → crear una sala y copiar el enlace (lo graba Ser; no existe aún)]
+[Hero: vídeo en bucle `atalaya-demo.mp4`: elegir un canal → cambiar a radio → abrir un vídeo de YouTube → crear una sala y copiar el enlace (lo graba Ser; no existe aún)]
 
-**[Descargar]**(#instalar) · [Ver el código]([VERIFICAR repo])
+**[Descargar]**(#instalar) · [Ver el código](https://github.com/solucionesconscientes/atalaya-player)
 
-Linux (probado) · Windows y macOS (hechos, sin probar en un equipo real) · Software libre (MIT [VERIFICAR: falta LICENSE]) · Versión 0.1.0
+Linux (probado) · Windows y macOS (hechos, sin probar en un equipo real) · Software libre (MIT) · Versión 0.1.0
 
 <!-- ============ 2. QUÉ RESUELVE ============ -->
 
@@ -39,7 +39,7 @@ Linux (probado) · Windows y macOS (hechos, sin probar en un equipo real) · Sof
 
 Para ver la tele en el ordenador se suele acabar con una pestaña por cadena. La radio va en otra web, los vídeos en otra, y si quieres ver algo con alguien que está lejos, cada uno le da al play por su cuenta y nunca coinciden.
 
-Alalaya Player lo junta todo en un reproductor: abres un canal, una emisora, un vídeo o un archivo, y y puedes copiar la dirección de cualquier canal para pasársela a quien quieras.
+Atalaya Player lo junta todo en un reproductor: abres un canal, una emisora, un vídeo o un archivo, y y puedes copiar la dirección de cualquier canal para pasársela a quien quieras.
 
 <!-- ============ 3. QUÉ HACE ============ -->
 
@@ -61,7 +61,7 @@ Alalaya Player lo junta todo en un reproductor: abres un canal, una emisora, un 
 
 **Ver juntos.**
 
-- Creas una sala, compartes el enlace y los demás ven lo mismo que tú, sincronizado, **en su navegador** (móvil u ordenador) sin instalar nada, o en su propio reproductor (VLC, mpv o Alalaya Player).
+- Creas una sala, compartes el enlace y los demás ven lo mismo que tú, sincronizado, **en su navegador** (móvil u ordenador) sin instalar nada, o en su propio reproductor (VLC, mpv o Atalaya Player).
 - La sala se abre en tu propio equipo: no hay cuentas ni un servidor de la aplicación. Para entrar desde fuera de casa se abre un túnel gratuito de Cloudflare que dura lo que dura la sala.
 - En las salas privadas los invitados pueden pausar y saltar desde el principio; si prefieres llevar tú los mandos, lo apagas y te piden el control. Hay chat y reacciones.
 - También hay sala pública «solo ver», sin nombres ni chat.
@@ -76,7 +76,7 @@ Alalaya Player lo junta todo en un reproductor: abres un canal, una emisora, un 
 
 ## Así se usa
 
-**El telediario de las nueve.** Abres Alalaya, entras en España · TV, en "Generalistas", y pinchas en La 1. Si quieres mandárselo a alguien, copias la URL del canal con `Tab`.
+**El telediario de las nueve.** Abres Atalaya, entras en España · TV, en "Generalistas", y pinchas en La 1. Si quieres mandárselo a alguien, copias la URL del canal con `Tab`.
 
 **La radio mientras trabajas.** Pasas a "España · Radio", eliges una emisora y minimizas. Se queda sonando.
 
@@ -92,11 +92,11 @@ Alalaya Player lo junta todo en un reproductor: abres un canal, una emisora, un 
 
 ## Instalar {#instalar}
 
-Hoy no hay ninguna descarga publicada ni repositorio de paquetes: los paquetes existen (se construyen en `dist/`), pero no están alojados en ningún sitio [VERIFICAR: dónde se publicarán]. Estas son las vías que funcionan con el código actual:
+Hoy no hay ninguna descarga publicada ni repositorio de paquetes: los paquetes existen (se construyen en `dist/`), pero no están alojados en ningún sitio. Estas son las vías que funcionan con el código actual:
 
 ```bash
 # Linux, desde el repositorio (sin sudo; necesita mpv ≥ 0.41, ffmpeg y uv)
-git clone <URL del repo> && cd <carpeta>      # [VERIFICAR: URL pública]
+git clone https://github.com/solucionesconscientes/atalaya-player.git && cd atalaya-player
 tools/install.sh                              # menú de aplicaciones + lanzador en ~/.local/bin
 ```
 
@@ -106,7 +106,7 @@ tools/install.sh                              # menú de aplicaciones + lanzador
 
 Requisitos: Linux (Ubuntu con KDE/Wayland es donde se ha desarrollado), mpv 0.41 o superior del sistema, ffmpeg. yt-dlp lo descarga e instala el instalador (con su suma de verificación) y se actualiza solo; para YouTube conviene tener `node` ≥ 22 o `deno`. Para salas desde internet, `cloudflared` es opcional y se instala aparte (`MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh`).
 
-> ¿Prefieres que te lo deje instalado en tu ordenador o en la tele del salón, con tus canales favoritos ya puestos? Lo hago en remoto, como servicio. [Escríbeme](https://api.whatsapp.com/send/?phone=34624237848&text=Hola+Dalmau%2C+quiero+que+me+instales+Alalaya+Player.+Mi+equipo%3A&type=phone_number&app_absent=0).
+> ¿Prefieres que te lo deje instalado en tu ordenador o en la tele del salón, con tus canales favoritos ya puestos? Lo hago en remoto, como servicio. [Escríbeme](https://api.whatsapp.com/send/?phone=34624237848&text=Hola+Dalmau%2C+quiero+que+me+instales+Atalaya+Player.+Mi+equipo%3A&type=phone_number&app_absent=0).
 
 <!-- ============ 7. PARA QUIÉN NO ES ============ -->
 
@@ -136,7 +136,7 @@ Requisitos: Linux (Ubuntu con KDE/Wayland es donde se ha desarrollado), mpv 0.41
 - **Salas**: `mpvd` levanta un servidor HTTP local; el estado (posición, pausa, velocidad, archivo) llega a los invitados por SSE y su página ajusta el reproductor. El enlace lleva el token en el fragmento (`#k=…`), que el navegador nunca envía al servidor. No es P2P ni usa WebRTC ni un servidor de señalización: para salir a internet se abre un túnel rápido de Cloudflare (`cloudflared`, sin cuenta), y el anfitrión es quien sirve el vídeo.
 - **Copiar un canal**: se copia la URL del flujo. Existen enlaces `mpv-uos://open?path=<url>` para abrir una página o vídeo en el reproductor, pero no enlaces propios por canal o categoría.
 
-[El código está en GitHub]([VERIFICAR repo: no consta que esté publicado]).
+[El código está en GitHub](https://github.com/solucionesconscientes/atalaya-player).
 
 > Este es el tipo de software que hago por encargo: reproducción, streaming y comunicación en tiempo real entre equipos.
 
@@ -144,7 +144,7 @@ Requisitos: Linux (Ubuntu con KDE/Wayland es donde se ha desarrollado), mpv 0.41
 
 ## ¿Lo necesitas a tu medida?
 
-Alalaya Player lo he hecho yo, y el código está abierto [VERIFICAR: solo si se publica el repo] para que veas cómo trabajo. Si tu caso se parece pero no es exactamente esto, puedo:
+Atalaya Player lo he hecho yo, y el código está abierto para que veas cómo trabajo. Si tu caso se parece pero no es exactamente esto, puedo:
 
 - **Montarte una pantalla para tu negocio** (bar, sala de espera, tienda) con tus canales, tu radio o tus vídeos en bucle, que se maneje sola.
 - **Hacerte un reproductor con tu marca**: los canales de tu televisión local, tu radio o tu academia, con su lista, sus enlaces y su logo.
@@ -154,7 +154,7 @@ Alalaya Player lo he hecho yo, y el código está abierto [VERIFICAR: solo si se
 
 Cuéntame qué tendría que hacer y te digo si se puede, cuánto costaría y si ya existe algo que lo haga.
 
-**[Escríbeme por WhatsApp](https://api.whatsapp.com/send/?phone=34624237848&text=Hola+Dalmau%2C+vengo+de+la+p%C3%A1gina+de+Alalaya+Player.+Necesito%3A&type=phone_number&app_absent=0)** · o por correo · [Ver todos los servicios](/servicios)
+**[Escríbeme por WhatsApp](https://api.whatsapp.com/send/?phone=34624237848&text=Hola+Dalmau%2C+vengo+de+la+p%C3%A1gina+de+Atalaya+Player.+Necesito%3A&type=phone_number&app_absent=0)** · o por correo · [Ver todos los servicios](/servicios)
 
 <!-- ============ 10. FAQ ============ -->
 
@@ -173,7 +173,7 @@ Sí, vídeo o solo audio, en el formato y la calidad que elijas. Úsalo para tu 
 En una sala privada, 12 invitados a la vez. En una pública «solo ver», 20 por defecto, configurable hasta 100. Todo sale de tu equipo y de tu conexión: cuantos más, más subida necesitas. Esos son los límites del código; no hay una prueba con tantas personas.
 
 **¿Los demás necesitan instalar algo para entrar en mi sala?**
-No. Basta un navegador con el enlace. Si quieren ver un archivo tuyo en calidad original, pueden abrirlo en VLC, mpv o Alalaya Player.
+No. Basta un navegador con el enlace. Si quieren ver un archivo tuyo en calidad original, pueden abrirlo en VLC, mpv o Atalaya Player.
 
 **¿Funciona en Windows y en Mac?**
 Está pensado para ellos y hay paquete para Windows (.zip) y guía para macOS (Homebrew), pero solo se ha probado en Linux. Si lo pruebas, cuéntame qué tal.
@@ -185,7 +185,7 @@ Nada. Es software libre. Lo que cobro es instalarlo y configurarlo por ti, adapt
 
 ## Créditos, licencia y transparencia
 
-Alalaya Player se apoya en proyectos libres que hacen la parte difícil:
+Atalaya Player se apoya en proyectos libres que hacen la parte difícil:
 
 - [mpv](https://mpv.io/) y [uosc](https://github.com/tomasklaen/uosc).
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp).
@@ -194,17 +194,17 @@ Alalaya Player se apoya en proyectos libres que hacen la parte difícil:
 
 No tiene relación con ninguno de ellos.
 
-Software libre, MIT [VERIFICAR: falta el archivo LICENSE]. Lo he desarrollado con asistencia de IA.
+Software libre, MIT. Lo he desarrollado con asistencia de IA.
 
 <!-- ============ 12. IN ENGLISH ============ -->
 
 ## In English
 
-**Alalaya Player** is a free media player built on mpv and uosc. It plays TV and radio from Spain (TDTChannels) and many other countries (iptv-org, unfiltered), and you can copy any channel's URL. It also plays YouTube and other sites through yt-dlp, as video or audio only, and skips sponsor segments with SponsorBlock.
+**Atalaya Player** is a free media player built on mpv and uosc. It plays TV and radio from Spain (TDTChannels) and many other countries (iptv-org, unfiltered), and you can copy any channel's URL. It also plays YouTube and other sites through yt-dlp, as video or audio only, and skips sponsor segments with SponsorBlock.
 
 It can save your own or freely licensed media. Its watch-together rooms run on the host's own machine, keep everyone in sync, and guests join from a browser with no install; a free Cloudflare quick tunnel makes them reachable from outside.
 
-Linux tested; Windows and macOS builds exist but are untested; no public download yet [VERIFICAR install line]. Built by Soluciones Conscientes, which develops bespoke software: [get in touch](https://api.whatsapp.com/send/?phone=34624237848&text=Hi+Dalmau%2C+I+come+from+the+Alalaya+Player+page.+I+need%3A&type=phone_number&app_absent=0).
+Linux tested; Windows and macOS builds exist but are untested; no public download yet, so it installs from the repository. Built by Soluciones Conscientes, which develops bespoke software: [get in touch](https://api.whatsapp.com/send/?phone=34624237848&text=Hi+Dalmau%2C+I+come+from+the+Atalaya+Player+page.+I+need%3A&type=phone_number&app_absent=0).
 
 <!-- Pie: Portfolio · También he hecho: [PowerClock](/powerclock) · [Grabapantallas](/grabapantallas) -->
 
@@ -218,8 +218,8 @@ Linux tested; Windows and macOS builds exist but are untested; no public downloa
   "@graph": [
     {
       "@type": "SoftwareApplication",
-      "@id": "https://solucionesconscientes.es/alalaya-player#app",
-      "name": "Alalaya Player",
+      "@id": "https://solucionesconscientes.es/atalaya-player#app",
+      "name": "Atalaya Player",
       "description": "Reproductor libre sobre mpv con TV y radio en abierto, vídeos de internet y salas para ver juntos.",
       "applicationCategory": "MultimediaApplication",
       "operatingSystem": "Linux",
@@ -236,7 +236,7 @@ Linux tested; Windows and macOS builds exist but are untested; no public downloa
       "@type": "BreadcrumbList",
       "itemListElement": [
         {"@type": "ListItem", "position": 1, "name": "Portfolio", "item": "https://solucionesconscientes.es/portfolio"},
-        {"@type": "ListItem", "position": 2, "name": "Alalaya Player", "item": "https://solucionesconscientes.es/alalaya-player"}
+        {"@type": "ListItem", "position": 2, "name": "Atalaya Player", "item": "https://solucionesconscientes.es/atalaya-player"}
       ]
     }
   ]
@@ -252,34 +252,29 @@ necesitan listas descargadas, un canal en marcha y una sala abierta (que abre un
 `web/capturas/{tv,sala,menu,puerta,subtitulos,indice}.png` (hechas el 2026-10-04 con `tools/capturas.sh`, datos vacíos, git las
 ignora). Enseñan el menú de TV y radio y el de Compartir, pero con el nombre «Atalaya Player» y sobre una carta de ajuste.
 
-| Archivo (`/img/alalaya-player/`) | Qué debe verse | Estado | Alt |
+| Archivo (`/img/atalaya-player/`) | Qué debe verse | Estado | Alt |
 |---|---|---|---|
-| `canales.webp` | Lista de canales por categorías con un canal en reproducción | falta | Alalaya Player reproduciendo un canal de TV en abierto con la lista de categorías |
-| `radio.webp` | Emisoras de radio | falta | Lista de emisoras de radio en Alalaya Player |
+| `canales.webp` | Lista de canales por categorías con un canal en reproducción | falta | Atalaya Player reproduciendo un canal de TV en abierto con la lista de categorías |
+| `radio.webp` | Emisoras de radio | falta | Lista de emisoras de radio en Atalaya Player |
 | `enlace.webp` | Acciones de un canal (`Tab`) con «Copiar URL» | falta | Copiar la URL de un canal para compartirla |
 | `descargar.webp` | Diálogo de formato, códec y calidad | falta | Elegir formato y calidad para guardar el audio de un vídeo |
 | `sala.webp` | Menú Compartir (hay `web/capturas/sala.png`) o sala con invitados y petición de control | falta | Sala para ver juntos con la petición de control de un espectador |
-| `og-alalaya-player.png` (1200×630) | Generar: nombre + descriptor + captura de canales | falta | Alalaya Player, TV, radio y ver juntos |
-| `alalaya-demo.mp4` / `.webm` | **Lo graba Ser** (20 s): canal → radio → YouTube → sala | falta | — |
+| `og-atalaya-player.png` (1200×630) | Generar: nombre + descriptor + captura de canales | falta | Atalaya Player, TV, radio y ver juntos |
+| `atalaya-demo.mp4` / `.webm` | **Lo graba Ser** (20 s): canal → radio → YouTube → sala | falta | — |
 
-# ANEXO C — Pendiente de decidir o comprobar
+# ANEXO C — Cómo se resolvió cada duda (2026-10-05)
 
-- **Nombre.** El código, la interfaz, el README, los paquetes y `brand.json` dicen **«Atalaya Player»** (sitio
-  `solucionesconscientes.es/atalaya`); «Alalaya» solo aparece en este borrador. Esta página sigue el nombre pedido, pero hay que
-  decidir cuál es el definitivo y renombrar el resto (o corregir esta página). Y, si se queda «Atalaya», el choque con el proyecto
-  OSINT del mismo nombre es el que ya se preveía; con «Alalaya», las capturas actuales mostrarían otro nombre.
-- **Repo.** `git remote -v` está vacío: no hay URL ni consta que sea público. Hay 221 commits y ninguna etiqueta.
-- **Licencia.** `pyproject.toml` declara MIT, pero no hay archivo `LICENSE` ni cabeceras. Compatibilidad: mpv no va dentro de los
-  paquetes (se invoca como proceso aparte), así que MIT para el código propio no choca con su GPL/LGPL. uosc (LGPL-2.1, confirmado
-  en GitHub) sí va dentro del repo y de los paquetes, sin tocar: hay que incluir su texto de licencia y avisos. thumbfast, yt-dlp,
-  whisper.cpp y cloudflared también se distribuyen o descargan y tienen las suyas. No es asesoría legal: decidir y añadir `LICENSE`
-  y un `THIRD-PARTY` antes de publicar.
-- **SponsorBlock.** Base de datos y API bajo CC BY-NC-SA 4.0 (verificado en su wiki). No hay atribución dentro de la app ni en
-  `docs/` (búsqueda de «CC BY» y «atribución» sin resultados). Falta añadirla, y valorar la cláusula NC si Alalaya se ofrece como
-  servicio de pago (instalación a cambio de dinero).
-- **Instalación.** No hay descarga pública: dónde se alojarán `.deb`, AppImage y `.zip`.
-- **Torrents.** Existieron y se quitaron el 2026-10-04 (ADR-111); no deben aparecer en la página.
-- **Salas.** No hay P2P entre espectadores ni servidor de señalización. Sin prueba de carga con 12 o 100 espectadores.
-- **iptv-org.** El código no filtra nada; carga `index.m3u` entero. Si se quiere «solo emisiones abiertas», hay que construirlo.
-- **Plataformas.** Windows y macOS sin probar (docs/PLATAFORMAS.md); los paquetes ARM nunca se han ejecutado.
-- **Medidas.** Sección «Datos» eliminada: sin medidas nuevas.
+- **Nombre y dirección**: no eran una duda abierta. ADR-084 (2026-10-02) ya había elegido «Atalaya Player», y
+  `brand.json` ya fijaba `https://solucionesconscientes.es/atalaya`, que la aplicación enseña en Ayuda y en
+  Preferencias. El guion se escribió con «Alalaya» sin saberlo; corregido aquí. El repositorio sí lleva sufijo
+  (`atalaya-player`) porque `solucionesconscientes/atalaya` es del proyecto OSINT Atalaya, que queda aparcado.
+- **Licencia**: `LICENSE` (MIT) añadido en la raíz, con los avisos de las licencias de terceros que no cambian por
+  estar aquí (mpv, uosc, yt-dlp, whisper.cpp, las listas de canales y los datos de SponsorBlock).
+- **Atribución de SponsorBlock** (CC BY-NC-SA 4.0): tres filas al final del menú de Ayuda, dentro del programa. Una
+  atribución que hay que ir a buscar a la web no es una atribución.
+- **Filtro de iptv-org**: no hay. La página lo dice tal cual: la lista se carga como la publica iptv-org y puede
+  traer canales caídos o con bloqueo geográfico.
+- **Salas**: no necesitan servidor de señalización ni lo alojamos nosotros. HTTP+SSE desde el equipo del anfitrión y,
+  para salir a internet, un túnel rápido de Cloudflare sin cuenta.
+- **Capturas**: hechas con `tools/capturas.sh`, con el programa de verdad y una carpeta de datos vacía (sin el
+  historial de nadie).

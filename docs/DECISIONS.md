@@ -1899,3 +1899,22 @@
   transcripción es CORRECTA —las palabras clave, el idioma, los límites de los segmentos, una sola ejecución de
   whisper— siguen todas en la batería de siempre.
   **Y el dato que importa de esa tanda, que el rojo tapaba:** en las tres pasadas **no falló nada funcional**. Cero.
+
+- ADR-128 · El código se publica, y por qué el repositorio lleva sufijo y `main` no se toca (H50).
+  **Qué se decide.** El repositorio se hace público y la página del proyecto enseña el código, en vez de un
+  escaparate sin descarga. Con ello: `LICENSE` (MIT) en la raíz —hasta hoy la licencia solo vivía en
+  `pyproject.toml`, que es declararla sin concederla— y la atribución de los datos de SponsorBlock dentro del
+  programa, en el menú de Ayuda, porque su licencia (CC BY-NC-SA 4.0) la exige donde se usan los datos y una
+  atribución que hay que ir a buscar a la web no es una atribución.
+  **El nombre no se decidía aquí.** El guion de la página se escribió llamando al programa «Alalaya Player» y
+  preguntando si el nombre chocaba con el proyecto OSINT Atalaya. Ya estaba resuelto: ADR-084 eligió «Atalaya
+  Player» y `brand.json` fija `https://solucionesconscientes.es/atalaya`, dirección que la propia aplicación
+  enseña en Ayuda y en Preferencias. Publicarla en otra URL habría dejado mintiendo al programa. Esto es el coste
+  de no leer las decisiones vigentes antes de escribir: una página entera con el nombre equivocado.
+  **Por qué el repositorio es `atalaya-player` y no `atalaya`.** `solucionesconscientes/atalaya` es del proyecto
+  OSINT Atalaya, que queda aparcado pero ya ocupa el hueco. La URL pública del programa sí es `/atalaya`, porque esa
+  la decide `brand.json`, no GitHub.
+  **Por qué `main` se queda con el andamiaje.** La regla del proyecto es no fusionar a `main`, y publicar no es
+  motivo para romperla por mi cuenta: la rama por defecto del repositorio público es el tronco de trabajo
+  (`nocturno/2026-09-28`), que lleva todo el código, y `main` sigue donde estaba. Pasar el tronco a `main` es un
+  `git push origin nocturno/2026-09-28:main` cuando Ser quiera, y es suyo decidirlo.
