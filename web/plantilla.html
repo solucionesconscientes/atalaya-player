@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{titulo}}</title>
+<meta name="description" content="{{descripcion}}">
+<link rel="icon" href="{{raiz}}marca/anillo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="{{raiz}}estilo.css">
+<!-- Ni scripts, ni fuentes de fuera, ni cookies, ni analítica: lo mismo que predica el programa. -->
+</head>
+<body>
+<header class="hero">
+  <nav class="idiomas" aria-label="{{etq_idioma}}">{{idiomas}}</nav>
+  <img class="logo" src="{{raiz}}marca/anillo.svg" alt="Atalaya Player" width="96" height="96">
+  <h1>Atalaya&nbsp;Player</h1>
+  <p class="lema">{{lema}}</p>
+  <p class="entradilla">{{entradilla}}</p>
+  <p class="botones">
+    <a class="boton principal" href="#descargar">{{boton_descargar}}</a>
+    <a class="boton" href="#como-funciona">{{boton_ver}}</a>
+  </p>
+  <p class="sobre-que">{{sobre_que}}</p>
+</header>
+
+<main>
+<section id="como-funciona">
+  <h2>{{cosas_titulo}}</h2>
+  {{cosas}}
+</section>
+
+<section class="confianza">
+  <h2>{{confianza_titulo}}</h2>
+  <ul>{{confianza}}</ul>
+</section>
+
+<section class="estado">
+  <h2>{{estado_titulo}}</h2>
+  <p>{{estado_texto}}</p>
+  <table>
+    <tbody>{{estado_tabla}}</tbody>
+  </table>
+  <p class="nota">{{estado_cierre}}</p>
+</section>
+
+<section id="descargar" class="descargas">
+  <h2>{{descargas_titulo}}</h2>
+  {{descargas}}
+  <p class="nota">{{descargas_pie}}</p>
+</section>
+
+<section class="codigo">
+  <h2>{{codigo_titulo}}</h2>
+  <p>{{codigo_texto}}</p>
+  <p><a class="boton" href="{{enlace_codigo}}">{{codigo_enlace}}</a></p>
+</section>
+</main>
+
+<footer>
+  <p>{{pie}}</p>
+</footer>
+</body>
+</html>

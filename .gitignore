@@ -24,3 +24,13 @@ dist/
 /*.mka
 /*.mp3
 /*.flac
+
+# H50 · la web se GENERA de web/contenido.json + web/plantilla.html con tools/build_web.py:
+# lo generado no va en git (y las capturas son archivos grandes que se rehacen cuando hagan falta)
+web/index.html
+web/en/
+web/fr/
+web/arquitectura.html
+web/latest.json
+web/marca/
+web/capturas/

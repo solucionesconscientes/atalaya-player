@@ -1,0 +1,198 @@
+{
+  "_comment": "H50 · el texto de la página pública, en los tres idiomas y en un solo sitio. Lo renderiza tools/build_web.py. Las claves son las mismas en los tres: lo comprueba un test.",
+  "es": {
+    "lang": "es",
+    "titulo": "Atalaya Player — un reproductor que entiende lo que estás viendo",
+    "descripcion": "Subtítulos con IA en tu propio equipo, resúmenes con el minuto exacto, TV y radio, y una sala para ver juntos. Nada sale de tu ordenador.",
+    "lema": "Un reproductor que entiende lo que estás viendo",
+    "entradilla": "Subtítulos con IA en tu propio equipo, resúmenes con el minuto exacto, TV y radio, y una sala para ver juntos. <strong>Nada sale de tu ordenador.</strong>",
+    "boton_descargar": "Descargar",
+    "boton_ver": "Ver cómo funciona",
+    "sobre_que": "Hecho sobre mpv y uosc, los que ya usa quien sabe. Esto no es un reproductor nuevo: es mpv con lo que le falta.",
+    "cosas_titulo": "Cinco cosas que no hace ningún otro reproductor",
+    "cosas": [
+      {
+        "titulo": "Subtítulos para cualquier vídeo, hechos en tu equipo",
+        "texto": "Whisper corriendo aquí, con tiempos por palabra, y te dice cuánto va a tardar <em>antes</em> de empezar, con números medidos en tu máquina. Traducción sin conexión y subtítulos duales: original arriba, traducción abajo.",
+        "captura": "capturas/subtitulos.png",
+        "alt": "El panel de subtítulos con el tiempo estimado antes de empezar"
+      },
+      {
+        "titulo": "«¿Qué me he perdido?» y el índice del vídeo",
+        "texto": "Te levantas a por agua, vuelves, y en un segundo tienes las frases que resumen lo que se dijo, cada una con su minuto: Enter y estás ahí. El índice hace lo mismo con la película entera, por secciones.",
+        "captura": "capturas/indice.png",
+        "alt": "El índice del vídeo, con una línea por sección y su minuto"
+      },
+      {
+        "titulo": "Ver juntos, con un enlace",
+        "texto": "Sin cuentas y sin servidor de nadie: la sala se abre en tu equipo y quien tenga el enlace ve lo mismo que tú, sincronizado, en su navegador. Si lo que compartes es un archivo tuyo, puede abrirlo en su propio reproductor a calidad original.",
+        "captura": "capturas/sala.png",
+        "alt": "La sala para ver juntos, con el enlace y los invitados"
+      },
+      {
+        "titulo": "TV y radio de verdad",
+        "texto": "Miles de canales con su guía de programación, grabación programada que despierta el equipo si está suspendido, y las emisoras caídas se saltan solas al siguiente espejo.",
+        "captura": "capturas/tv.png",
+        "alt": "La guía de un canal de televisión con sus programas"
+      },
+      {
+        "titulo": "Una sola puerta para abrir y descargar",
+        "texto": "Pegas lo que sea —un enlace, veinte, una lista, un canal, una carpeta— y solo te pregunta una cosa: reproducir o descargar.",
+        "captura": "capturas/puerta.png",
+        "alt": "La puerta única: pegar algo y elegir entre reproducir o descargar"
+      }
+    ],
+    "confianza_titulo": "Qué hace con tus datos, en concreto",
+    "confianza": [
+      "<strong>Los subtítulos, la traducción, el resumen y el índice se calculan en tu equipo.</strong> No sube el audio, ni el vídeo, ni el texto: no hay a dónde subirlo, porque no hay ningún servidor nuestro.",
+      "<strong>SponsorBlock</strong> pide los tramos con un prefijo de cuatro caracteres del hash del vídeo —que vale para uno de cada 65.536— y el filtrado se hace aquí: nadie sabe qué estás viendo.",
+      "<strong>Los servicios de nube vienen apagados</strong>, y el aviso de versión nueva es una petición al día sin ningún identificador. No hay cuentas, ni cookies, ni analítica. Esta página tampoco las tiene.",
+      "<strong>Es libre y el código está ahí</strong>, con las decisiones escritas una por una y con sus medidas."
+    ],
+    "estado_titulo": "Qué necesita, y qué no está probado todavía",
+    "estado_texto": "Hace falta <strong>mpv 0.41 o posterior</strong> instalado (y ffmpeg): a propósito no va dentro, porque llevarlo dentro rompe la aceleración por hardware de tu tarjeta. Si el tuyo es más viejo, el programa te dice al arrancar qué es lo que no va a funcionar.",
+    "estado_tabla": [
+      ["Linux x86-64", "Probado: es donde está hecho", "ok"],
+      ["Linux ARM (Raspberry Pi)", "Paquetes hechos, sin ejecutar en una máquina ARM todavía", "medio"],
+      ["Windows", "Paquete portable hecho, sin abrir en un Windows de verdad", "medio"],
+      ["macOS", "Por Homebrew y el repositorio: sin cuenta de Apple no hay firma, y un paquete sin firmar lo bloquea el sistema", "medio"]
+    ],
+    "estado_cierre": "Está dicho aquí y no escondido a propósito: quien se lo encuentre después, se va.",
+    "descargas_titulo": "Descargar",
+    "descargas_pie": "Cada archivo lleva su SHA-256 publicado para que puedas comprobar lo que descargas.",
+    "codigo_titulo": "El código y cómo está hecho",
+    "codigo_texto": "El mapa de la arquitectura, las decisiones con sus medidas y el estado por plataforma están escritos en el repositorio.",
+    "codigo_enlace": "Cómo está hecho",
+    "pie": "Software libre. Hecho sobre mpv y uosc, que son de sus autores."
+  },
+  "en": {
+    "lang": "en",
+    "titulo": "Atalaya Player — a player that understands what you are watching",
+    "descripcion": "AI subtitles on your own machine, recaps with the exact minute, TV and radio, and a room to watch together. Nothing leaves your computer.",
+    "lema": "A player that understands what you are watching",
+    "entradilla": "AI subtitles on your own machine, recaps with the exact minute, TV and radio, and a room to watch together. <strong>Nothing leaves your computer.</strong>",
+    "boton_descargar": "Download",
+    "boton_ver": "See how it works",
+    "sobre_que": "Built on mpv and uosc, the ones people in the know already use. This is not a new player: it is mpv with what it was missing.",
+    "cosas_titulo": "Five things no other player does",
+    "cosas": [
+      {
+        "titulo": "Subtitles for any video, made on your machine",
+        "texto": "Whisper running right here, with word-level timings, and it tells you how long it will take <em>before</em> starting, with numbers measured on your machine. Offline translation and dual subtitles: original on top, translation below.",
+        "captura": "capturas/subtitulos.png",
+        "alt": "The subtitles panel showing the estimated time before starting"
+      },
+      {
+        "titulo": "«What did I miss?» and the video index",
+        "texto": "You go for a glass of water, come back, and a second later you have the lines that sum up what was said, each with its minute: press Enter and you are there. The index does the same for the whole film, by sections.",
+        "captura": "capturas/indice.png",
+        "alt": "The video index, one line per section with its minute"
+      },
+      {
+        "titulo": "Watch together, with a link",
+        "texto": "No accounts and nobody else's server: the room opens on your machine and whoever has the link sees what you see, in sync, in their browser. If what you share is a file of yours, they can open it in their own player at original quality.",
+        "captura": "capturas/sala.png",
+        "alt": "The watch-together room, with its link and guests"
+      },
+      {
+        "titulo": "Real TV and radio",
+        "texto": "Thousands of channels with their programme guide, scheduled recording that wakes the computer up if it is suspended, and dead streams skip to the next mirror on their own.",
+        "captura": "capturas/tv.png",
+        "alt": "The programme guide of a television channel"
+      },
+      {
+        "titulo": "One single door to open and to download",
+        "texto": "You paste anything —a link, twenty, a playlist, a channel, a folder— and it asks you one thing only: play it or download it.",
+        "captura": "capturas/puerta.png",
+        "alt": "The single door: paste something and choose between playing and downloading"
+      }
+    ],
+    "confianza_titulo": "What it does with your data, specifically",
+    "confianza": [
+      "<strong>Subtitles, translation, recaps and the index are computed on your machine.</strong> The audio, the video and the text never go up: there is nowhere to send them, because there is no server of ours.",
+      "<strong>SponsorBlock</strong> asks for segments using a four-character prefix of the video hash —which matches one in 65,536— and the filtering happens here: nobody knows what you are watching.",
+      "<strong>Cloud services ship turned off</strong>, and the new-version notice is one request a day with no identifier at all. No accounts, no cookies, no analytics. This page has none either.",
+      "<strong>It is free software and the code is there</strong>, with every decision written down and measured."
+    ],
+    "estado_titulo": "What it needs, and what is not tested yet",
+    "estado_texto": "You need <strong>mpv 0.41 or later</strong> installed (and ffmpeg): it is deliberately not bundled, because bundling it breaks your graphics card's hardware decoding. If yours is older, the program tells you at startup what will not work.",
+    "estado_tabla": [
+      ["Linux x86-64", "Tested: this is where it is made", "ok"],
+      ["Linux ARM (Raspberry Pi)", "Packages built, not yet run on an ARM machine", "medio"],
+      ["Windows", "Portable package built, never opened on a real Windows", "medio"],
+      ["macOS", "Through Homebrew and the repository: without an Apple account there is no signature, and the system blocks an unsigned package", "medio"]
+    ],
+    "estado_cierre": "It is said here on purpose rather than hidden: whoever finds it out later, leaves.",
+    "descargas_titulo": "Download",
+    "descargas_pie": "Every file has its SHA-256 published so you can check what you download.",
+    "codigo_titulo": "The code and how it is built",
+    "codigo_texto": "The architecture map, the decisions with their measurements and the per-platform status are written in the repository.",
+    "codigo_enlace": "How it is built",
+    "pie": "Free software. Built on mpv and uosc, which belong to their authors."
+  },
+  "fr": {
+    "lang": "fr",
+    "titulo": "Atalaya Player — un lecteur qui comprend ce que tu regardes",
+    "descripcion": "Des sous-titres par IA sur ta propre machine, des résumés avec la minute exacte, la TV et la radio, et une salle pour regarder ensemble. Rien ne quitte ton ordinateur.",
+    "lema": "Un lecteur qui comprend ce que tu regardes",
+    "entradilla": "Des sous-titres par IA sur ta propre machine, des résumés avec la minute exacte, la TV et la radio, et une salle pour regarder ensemble. <strong>Rien ne quitte ton ordinateur.</strong>",
+    "boton_descargar": "Télécharger",
+    "boton_ver": "Voir comment ça marche",
+    "sobre_que": "Construit sur mpv et uosc, ceux qu'utilisent déjà celles et ceux qui s'y connaissent. Ce n'est pas un nouveau lecteur : c'est mpv avec ce qui lui manquait.",
+    "cosas_titulo": "Cinq choses qu'aucun autre lecteur ne fait",
+    "cosas": [
+      {
+        "titulo": "Des sous-titres pour n'importe quelle vidéo, faits sur ta machine",
+        "texto": "Whisper tourne ici même, avec les temps mot à mot, et il te dit combien de temps ça va prendre <em>avant</em> de commencer, avec des chiffres mesurés sur ta machine. Traduction hors connexion et sous-titres doubles : l'original en haut, la traduction en bas.",
+        "captura": "capturas/subtitulos.png",
+        "alt": "Le panneau des sous-titres avec le temps estimé avant de commencer"
+      },
+      {
+        "titulo": "« Qu'est-ce que j'ai manqué ? » et l'index de la vidéo",
+        "texto": "Tu vas chercher un verre d'eau, tu reviens, et une seconde plus tard tu as les phrases qui résument ce qui s'est dit, chacune avec sa minute : Entrée et tu y es. L'index fait pareil pour tout le film, par sections.",
+        "captura": "capturas/indice.png",
+        "alt": "L'index de la vidéo, une ligne par section avec sa minute"
+      },
+      {
+        "titulo": "Regarder ensemble, avec un lien",
+        "texto": "Sans comptes et sans le serveur de personne : la salle s'ouvre sur ta machine et qui a le lien voit la même chose que toi, synchronisée, dans son navigateur. Si ce que tu partages est un fichier à toi, l'autre peut l'ouvrir dans son propre lecteur en qualité d'origine.",
+        "captura": "capturas/sala.png",
+        "alt": "La salle pour regarder ensemble, avec son lien et ses invités"
+      },
+      {
+        "titulo": "La vraie TV et la vraie radio",
+        "texto": "Des milliers de chaînes avec leur guide des programmes, l'enregistrement programmé qui réveille l'ordinateur s'il est en veille, et les flux morts passent tout seuls au miroir suivant.",
+        "captura": "capturas/tv.png",
+        "alt": "Le guide des programmes d'une chaîne de télévision"
+      },
+      {
+        "titulo": "Une seule porte pour ouvrir et pour télécharger",
+        "texto": "Tu collles n'importe quoi —un lien, vingt, une liste, une chaîne, un dossier— et il ne te demande qu'une chose : lire ou télécharger.",
+        "captura": "capturas/puerta.png",
+        "alt": "La porte unique : coller quelque chose et choisir entre lire et télécharger"
+      }
+    ],
+    "confianza_titulo": "Ce qu'il fait de tes données, concrètement",
+    "confianza": [
+      "<strong>Les sous-titres, la traduction, les résumés et l'index sont calculés sur ta machine.</strong> Ni l'audio, ni la vidéo, ni le texte ne partent : il n'y a nulle part où les envoyer, parce qu'il n'y a aucun serveur à nous.",
+      "<strong>SponsorBlock</strong> demande les passages avec un préfixe de quatre caractères du hachage de la vidéo —qui correspond à une sur 65 536— et le filtrage se fait ici : personne ne sait ce que tu regardes.",
+      "<strong>Les services en nuage arrivent éteints</strong>, et l'avis de nouvelle version est une requête par jour sans aucun identifiant. Pas de comptes, pas de cookies, pas de statistiques. Cette page non plus n'en a pas.",
+      "<strong>C'est un logiciel libre et le code est là</strong>, avec chaque décision écrite et mesurée."
+    ],
+    "estado_titulo": "Ce qu'il lui faut, et ce qui n'est pas encore testé",
+    "estado_texto": "Il faut <strong>mpv 0.41 ou plus récent</strong> installé (et ffmpeg) : il n'est pas inclus, exprès, parce que l'inclure casse le décodage matériel de ta carte graphique. Si le tien est plus ancien, le programme te dit au démarrage ce qui ne va pas marcher.",
+    "estado_tabla": [
+      ["Linux x86-64", "Testé : c'est là qu'il est fait", "ok"],
+      ["Linux ARM (Raspberry Pi)", "Paquets construits, pas encore exécutés sur une machine ARM", "medio"],
+      ["Windows", "Paquet portable construit, jamais ouvert sur un vrai Windows", "medio"],
+      ["macOS", "Par Homebrew et le dépôt : sans compte Apple il n'y a pas de signature, et le système bloque un paquet non signé", "medio"]
+    ],
+    "estado_cierre": "C'est dit ici exprès plutôt que caché : qui le découvre après, s'en va.",
+    "descargas_titulo": "Télécharger",
+    "descargas_pie": "Chaque fichier a son SHA-256 publié pour que tu puisses vérifier ce que tu télécharges.",
+    "codigo_titulo": "Le code et comment c'est fait",
+    "codigo_texto": "La carte de l'architecture, les décisions avec leurs mesures et l'état par plateforme sont écrits dans le dépôt.",
+    "codigo_enlace": "Comment c'est fait",
+    "pie": "Logiciel libre. Construit sur mpv et uosc, qui appartiennent à leurs auteurs."
+  }
+}

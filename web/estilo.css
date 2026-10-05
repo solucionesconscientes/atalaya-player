@@ -1,0 +1,204 @@
+/* H50 · la página pública de Atalaya Player. Los colores son los de brand.json: ink #0D1320, slate #24324D,
+   signal #3D7BFF, amber #FFB020, mist #E9EEF6. Sin fuentes de fuera (una petición menos y una cosa menos que
+   contarle a nadie): las de siempre del sistema. */
+
+:root {
+  --ink: #0D1320;
+  --slate: #24324D;
+  --signal: #3D7BFF;
+  --amber: #FFB020;
+  --mist: #E9EEF6;
+  --papel: #FFFFFF;
+  --texto: #15202F;
+  --suave: #5A6A82;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--papel);
+  color: var(--texto);
+  font: 17px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  text-wrap: pretty;
+}
+
+h1, h2, h3 { line-height: 1.2; letter-spacing: -0.01em; }
+
+a { color: var(--signal); }
+
+/* -- la primera pantalla: lo que hace y dos botones, nada más -- */
+
+.hero {
+  background: radial-gradient(1200px 500px at 50% -10%, var(--slate), var(--ink) 70%);
+  color: var(--mist);
+  text-align: center;
+  padding: 2rem 1.25rem 3.5rem;
+}
+
+.hero .logo { margin-top: 1rem; }
+
+.hero h1 { margin: 0.6rem 0 0; font-size: clamp(2.2rem, 7vw, 3.4rem); }
+
+.lema {
+  margin: 0.4rem auto 0;
+  max-width: 34ch;
+  font-size: clamp(1.1rem, 3.2vw, 1.5rem);
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.entradilla { margin: 1.1rem auto 0; max-width: 56ch; color: var(--mist); }
+
+.entradilla strong { color: #fff; }
+
+.botones { margin: 1.8rem 0 0; display: flex; gap: 0.7rem; justify-content: center; flex-wrap: wrap; }
+
+.boton {
+  display: inline-block;
+  padding: 0.7rem 1.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(233, 238, 246, 0.35);
+  color: var(--mist);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.boton:hover { border-color: var(--mist); }
+
+.boton.principal { background: var(--signal); border-color: var(--signal); color: #fff; }
+
+.boton.principal:hover { background: #2f6bee; }
+
+.sobre-que { margin: 2rem auto 0; max-width: 54ch; font-size: 0.95rem; color: #AFBDD2; }
+
+.idiomas { display: flex; gap: 0.75rem; justify-content: flex-end; font-size: 0.9rem; }
+
+.idiomas a { color: #AFBDD2; text-decoration: none; }
+
+.idiomas a[aria-current="true"] { color: #fff; font-weight: 700; }
+
+/* -- el cuerpo -- */
+
+main { max-width: 62rem; margin: 0 auto; padding: 0 1.25rem; }
+
+section { padding: 3.5rem 0 1rem; }
+
+section h2 { font-size: clamp(1.5rem, 4vw, 2.1rem); margin-bottom: 1.5rem; }
+
+.cosa { display: grid; gap: 1.5rem; align-items: center; margin-bottom: 3rem; }
+
+@media (min-width: 52rem) {
+  .cosa { grid-template-columns: 1fr 1fr; }
+  .cosa:nth-child(even) .texto { order: 2; }
+}
+
+.cosa h3 { margin: 0 0 0.5rem; font-size: 1.3rem; }
+
+.cosa p { margin: 0; color: var(--texto); }
+
+.cosa img {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid var(--mist);
+  box-shadow: 0 10px 30px rgba(13, 19, 32, 0.12);
+  background: var(--ink);
+}
+
+.cosa .sin-captura {
+  border: 1px dashed #C3CEDE;
+  border-radius: 12px;
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--suave);
+  font-size: 0.9rem;
+  background: #F7F9FC;
+}
+
+.confianza ul { padding-left: 1.2rem; }
+
+.confianza li { margin-bottom: 0.9rem; max-width: 72ch; }
+
+.estado table { border-collapse: collapse; width: 100%; max-width: 50rem; }
+
+.estado td { padding: 0.65rem 0.6rem; border-bottom: 1px solid var(--mist); vertical-align: top; }
+
+.estado td:first-child { font-weight: 600; white-space: nowrap; }
+
+.estado .ok::before { content: "✓ "; color: #1E8E4E; }
+
+.estado .medio::before { content: "• "; color: var(--amber); }
+
+.nota { color: var(--suave); font-size: 0.92rem; }
+
+.descargas ul { list-style: none; padding: 0; display: grid; gap: 0.6rem; }
+
+@media (min-width: 42rem) { .descargas ul { grid-template-columns: 1fr 1fr; } }
+
+.descargas li {
+  border: 1px solid var(--mist);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  background: #F7F9FC;
+}
+
+.descargas a { font-weight: 600; text-decoration: none; }
+
+.descargas .detalle { display: block; color: var(--suave); font-size: 0.85rem; margin-top: 0.2rem; }
+
+.descargas .suma { display: block; color: var(--suave); font-size: 0.75rem; font-family: ui-monospace, monospace;
+                   word-break: break-all; margin-top: 0.3rem; }
+
+footer {
+  margin-top: 4rem;
+  padding: 2rem 1.25rem;
+  background: var(--ink);
+  color: #8E9DB4;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root { --papel: #0F1623; --texto: #E6ECF5; --mist: #26324A; --suave: #93A2B8; }
+  .cosa .sin-captura, .descargas li { background: #141C2B; border-color: #26324A; }
+  .estado td { border-bottom-color: #26324A; }
+  a { color: #7AA2FF; }
+}
+
+/* -- la página de «cómo está hecho», generada de docs/ARQUITECTURA.md -- */
+
+.documento main { max-width: 48rem; padding: 2.5rem 1.25rem 4rem; }
+
+.documento h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); margin-bottom: 1.5rem; }
+
+.documento h2 { font-size: 1.5rem; margin-top: 2.5rem; }
+
+.documento h3 { font-size: 1.15rem; margin-top: 1.8rem; }
+
+.documento p, .documento li { max-width: 72ch; }
+
+.documento table { border-collapse: collapse; width: 100%; margin: 1.2rem 0; font-size: 0.95rem; }
+
+.documento td { padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--mist); vertical-align: top; }
+
+.documento td:first-child { font-weight: 600; }
+
+.documento pre {
+  background: var(--ink);
+  color: var(--mist);
+  padding: 1rem;
+  border-radius: 10px;
+  overflow-x: auto;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.documento code { background: rgba(61, 123, 255, 0.1); padding: 0.1em 0.35em; border-radius: 4px;
+                  font-size: 0.9em; }
+
+.documento pre code { background: none; padding: 0; }
+
+.volver { font-size: 0.9rem; margin-bottom: 2rem; }

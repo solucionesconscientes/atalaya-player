@@ -1,5 +1,24 @@
 # NEEDS_HUMAN — cosas que necesita Ser (con el comando exacto)
 
+## 2026-10-05 · La web está hecha: faltan tus dos decisiones (H50)
+```bash
+tools/build_web.py && xdg-open web/index.html     # mírala antes de nada
+```
+Está en tres idiomas, sin scripts ni cookies, con las descargas reales (tamaño y SHA-256 de lo que hay en `dist/`)
+y con cinco capturas hechas con el programa. Lo que no puedo decidir yo:
+
+1. **¿Se hace público el repositorio?** Sin eso, la página «cómo está hecho» no tiene dónde vivir (ahora se genera
+   como `web/arquitectura.html` y se puede publicar al lado) y la pública no puede enlazar el código. También
+   desbloquearía construir y probar los paquetes de Windows y macOS gratis en GitHub Actions. **No lo hago yo:
+   publicar tu código es tuyo y no tiene vuelta atrás.**
+2. **Dónde se sirve `/atalaya`** y con qué está hecho solucionesconscientes.es, para encajar la página.
+3. **Las capturas**, si las quieres con una película de verdad en vez de con la carta de ajuste de pruebas:
+   ```bash
+   tools/capturas.sh "/ruta/a/tu/pelicula.mkv"
+   ```
+   Ojo: el guion usa a propósito una carpeta de datos **vacía**. La primera tanda salió con tu historial de vídeos
+   en el menú, con los títulos, camino de una página pública.
+
 ## 2026-10-04 · Los paquetes están hechos: lo que falta es abrirlos en otra máquina (H72)
 Los cuatro de Linux, el de Windows y el camino de macOS están construidos y revisados por dentro. Lo que **yo no
 puedo hacer** es ejecutarlos donde toca, porque aquí solo hay un x86-64 con Linux. Por orden de importancia:
