@@ -1,5 +1,22 @@
 # NEEDS_HUMAN — cosas que necesita Ser (con el comando exacto)
 
+## 2026-10-05 · La máquina se ha quedado sin memoria, y 4,3 GiB son borrables
+```bash
+rm -rf /tmp/claude-1000/-home-pc-Documentos-PROJECTES-MPV-UOS/23df8650-f347-4cfa-8d39-77e419c85e41
+```
+`/tmp` es **tmpfs, o sea RAM**, y ahí quedaron 4,3 GiB de una sesión del 1 de octubre de este mismo proyecto: los
+modelos `qwen2.5-3b-q4km.gguf` (1,8 G), `qwen2.5-1.5b-q4km.gguf` (1,1 G) y el gemma-3-1b, el binario de llama y un
+`remux.webm` de 429 MB. Dos de esos modelos **ya están en `vendor/llm/models`**, que es donde les toca vivir según
+las reglas del proyecto, y el de 3B no está porque se probó y se descartó: son copias de usar y tirar.
+
+No lo borro yo porque está **fuera del proyecto** y ahí solo tengo lectura. Con eso, la máquina recupera ~4,3 GiB.
+Mientras no se libere, **no se puede medir** la batería: con 1,7 GiB disponibles y el intercambio al 100 % un fallo
+de test no dice nada del programa, y los tres de `test_share_browser` levantan un navegador de verdad. Lo que sí he
+limpiado yo (dentro del proyecto): `tmp/`, de 6,0 GiB a 470 MiB, que libera **disco** (estabas al 95 %), no RAM.
+
+Y un detalle del equipo, no del proyecto: 23 GiB de RAM con **512 MiB de intercambio** es muy poco colchón; cuando
+se llena, no hay a dónde ir.
+
 ## 2026-10-05 · La web está hecha: faltan tus dos decisiones (H50)
 ```bash
 tools/build_web.py && xdg-open web/index.html     # mírala antes de nada
