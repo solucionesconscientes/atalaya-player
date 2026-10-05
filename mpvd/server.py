@@ -108,6 +108,9 @@ class MpvdServer:
         control.register(self)
         from mpvd import record  # noqa: PLC0415
         record.register(self)
+        from mpvd import updates  # noqa: PLC0415 - H68: avisar de que hay versión nueva (nunca instalar)
+        self.updates = updates.UpdateService(self)
+        updates.register(self, self.updates)
         self.remote = RemoteService(self)
         register_remote(self, self.remote)
         from mpvd import mpris  # noqa: PLC0415

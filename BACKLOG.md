@@ -303,6 +303,42 @@ contrario», y «¿se pueden grabar varios canales al mismo tiempo?».
       la lista enseña la etiqueta («de lunes a viernes · mañana 21:30–23:00 · programada») y las tres salidas.
       37 tests nuevos entre `tests/test_schedule_repeat.py`, `test_iptv_schedule.py` y `test_mu_iptv_epg.py`.
 
+## H50 · El sitio web del proyecto — ADR-119 · [x] (falta lo que depende de Ser)
+Diseñado en docs/SITIO-WEB.md. Construido todo lo que no depende de las dos decisiones suyas.
+- [x] W1 **La página pública en tres idiomas** desde una sola fuente (`web/contenido.json` + `web/plantilla.html`
+      + `tools/build_web.py`): la frase de arriba, las cinco cosas con su captura, el bloque de confianza, el
+      estado por plataforma y las descargas. Sin scripts, sin fuentes de fuera, sin cookies y sin analítica.
+- [x] W2 **Las descargas salen de `dist/`** con tamaño y SHA-256 de verdad, y de ahí sale también el
+      `latest.json` del aviso de versión (H68): un solo dato para la página y para el programa.
+- [x] W3 **Capturas del programa de verdad** (`tools/capturas.sh`). La primera tanda salió con el historial de
+      Ser en el menú, camino de una página pública: ahora el guion fuerza una carpeta de datos vacía y hay un
+      test que lo vigila.
+- [x] W4 **`docs/ARQUITECTURA.md`**, el único texto nuevo que hacía falta (las dos piezas, cómo se hablan, la
+      caché, qué sale a la red, cómo se prueba, cómo colaborar), y la página se genera de él con un conversor de
+      Markdown de cincuenta líneas sin dependencias.
+- [~] W5 **Lo que espera a Ser**: si el repositorio se hace público (sin eso la página exhaustiva no tiene dónde
+      vivir), dónde se sirve `/atalaya` y si quiere rehacer las capturas con una película de verdad.
+
+## H68 · Avisar de que hay versión nueva (nunca instalar) — ADR-118 · [x]
+Ser, al decidir los paquetes: «¿es posible que la app te avise cuando haya actualizaciones disponibles?».
+- [x] V1 **Avisar, no actualizarse**, y la línea vigilada por un test: `mpvd/updates.py` no puede usar `chmod`,
+      `subprocess`, `tarfile`, `zipfile` ni `shutil.move`, ni tener una función `install`. Reemplazarse a sí mismo
+      mientras está en marcha es lo que deja a alguien sin reproductor, y en Linux eso ya lo saben hacer apt y el
+      gestor de AppImage. Se da el enlace y el SHA-256 de cada paquete para quien quiera comprobar lo que baja.
+- [x] V2 **Dónde vive el fichero** (era la decisión pendiente): en el sitio del proyecto, `<site>/latest.json`,
+      con `site` saliendo de `brand.json`. No se usa la API de GitHub porque eso exige repositorio público y esa
+      decisión es de Ser. Y **lo genera `tools/build_web.py`** de los paquetes que hay en `dist/`, con el tamaño y
+      la suma de verdad: la página y el aviso salen del mismo dato y no pueden contradecirse.
+- [x] V3 **Una petición al día** (la caché HTTP de yt-dlp: condicional, y si falla la red se sirve lo último) y
+      **solo en los paquetes**: en una copia del repositorio está apagado, porque ahí se actualiza con `git pull`.
+      «Apagado» quiere decir ni una petición: lo comprueba un test contando las que llegan.
+- [x] V4 **Se dice una vez**: mpvd recuerda la última versión anunciada y solo contesta `announce: true` la
+      primera vez; una versión aún más nueva vuelve a avisar. Se pregunta 30 s DESPUÉS de conectar, no al abrir.
+- [x] V5 **Lo que no es una versión nueva**: `0.2.0-rc1` no es más nuevo que `0.2.0` (se cuenta solo la parte
+      numérica del principio), y nunca se avisa «hacia atrás».
+- [x] V6 Ningún identificador en la petición: ni versión del sistema, ni contador. 17 tests
+      (`tests/test_updates.py`), uno de ellos por el socket del demonio de verdad.
+
 ## H72 · Los cuatro paquetes de Linux, el de Windows y macOS por Homebrew — ADR-117 · [x]
 Decidido con Ser el 2026-10-04: «yo haría deb y appimage, ambos tb para arm», «mejor windows zip que exe o msi»,
 «no voy a pagar ninguna cuenta de mac».

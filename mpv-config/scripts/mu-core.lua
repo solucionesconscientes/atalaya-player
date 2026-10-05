@@ -140,6 +140,25 @@ local function rpc(method, params, cb, timeout)
   return id
 end
 
+-- H68 · avisar de que hay una versión nueva, una sola vez y sin estorbar. Se pregunta medio minuto DESPUÉS de
+-- conectar, no al abrir: lo primero que tiene que pasar al abrir el programa es que se vea la película. mpvd solo
+-- contesta que sí cuando la versión es más nueva Y no se ha dicho ya, y solo cuando esto viene de un paquete (en
+-- una copia del repositorio se actualiza con `git pull`). Aquí no se descarga ni se instala nada: se dice y punto.
+local version_mirada = false
+local function mirar_version()
+  if version_mirada then return end
+  version_mirada = true
+  rpc('updates.announce', nil, function(err, res)
+    if err or type(res) ~= 'table' or not res.announce then return end
+    local texto = tr('Hay una versión nueva: %s'):format(tostring(res.latest or ''))
+    if type(res.notes) == 'string' and res.notes ~= '' then texto = texto .. '\n' .. res.notes end
+    if type(res.url) == 'string' and res.url ~= '' then
+      texto = texto .. '\n' .. tr('Se descarga de %s'):format(res.url)
+    end
+    mp.osd_message(texto, 12)
+  end, 20)
+end
+
 mp.register_script_message('mu-reply', function(payload)
   local resp = utils.parse_json(payload or '')
   if type(resp) ~= 'table' then return end
@@ -205,6 +224,7 @@ ensure = function()
     end
     if info and info.ok then
       state.mpvd = 'connected'
+  mp.add_timeout(30, mirar_version)      -- H68, una sola vez (lo guarda `version_mirada`)
       state.mpvd_socket = info.socket or ''
       state.session = info.session and info.session.id or state.session
       state.error = ''

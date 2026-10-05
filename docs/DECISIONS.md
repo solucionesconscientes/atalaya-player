@@ -1630,3 +1630,69 @@
   bloquea Gatekeeper con un mensaje que habla de malware: dar eso es peor que no darlo. Además el `.app` que ya se
   construye no sería autocontenido (usa el mpv de Homebrew). Si algún día hay cuenta, lo que falta es firmar y
   notarizar ese mismo `.app`.
+- ADR-118 · Avisar de que hay versión nueva: una petición al día, y nunca instalar nada (H68).
+  Ser lo pidió al decidir los paquetes: «¿es posible que la app te avise cuando haya actualizaciones
+  disponibles?». Sí, y la parte importante de la respuesta es dónde está el límite.
+  **(1) Avisar, no actualizarse.** Un programa que se actualiza solo tiene que descargar, verificar, reemplazarse
+  **mientras está en marcha** y saber volver atrás si la versión nueva no arranca. Las dos últimas son la parte
+  difícil y, hechas mal, dejan a alguien sin reproductor; y en Linux eso ya lo saben hacer `apt` y el gestor de
+  AppImage de cada uno, que además pueden pedir contraseña cuando toca. Así que esto solo dice «hay una nueva»,
+  con el enlace y —si el fichero los trae— el SHA-256 de cada paquete, para quien quiera comprobar lo que
+  descarga. **Lo vigila un test**: `mpvd/updates.py` no puede contener `chmod`, `subprocess`, `tarfile`,
+  `zipfile`, `shutil.move` ni un segundo `os.replace`, y no puede tener una función `install` ni `apply`. Si
+  alguien cruza esa línea, el test lo dice.
+  **(2) Dónde vive el fichero**, que era la decisión pendiente: en **el sitio del proyecto**, `<site>/latest.json`,
+  con `site` saliendo de `brand.json` para que no haya dos sitios donde cambiarlo. No se usa la API de releases de
+  GitHub porque eso exige que el repositorio sea público, y esa decisión es de Ser y está sin tomar; cuando la
+  tome, basta cambiar la URL (o poner `MPV_UOS_UPDATE_URL`). Y **el `latest.json` lo genera `tools/build_web.py`**
+  de los paquetes que hay en `dist/`, con el tamaño y la suma de verdad de cada uno: la página y el aviso salen
+  del mismo dato, así que no pueden contradecirse. Mientras la web no esté publicada, la consulta da 404 y el
+  programa calla: eso no es un fallo, es el estado normal hasta que haya web.
+  **(3) Una petición al día, y solo en los paquetes.** La misma caché HTTP que la comprobación diaria de yt-dlp
+  (petición condicional, y si la red falla se sirve lo último que hubiera). En una copia del repositorio está
+  **apagado**, porque ahí se actualiza con `git pull` y avisar sería ruido; se enciende solo si el programa viene
+  de un paquete (`MPV_UOS_PACKAGED`, que pone el lanzador del `.deb`, o `MPV_UOS_APPIMAGE`). Y «apagado» quiere
+  decir que **no se hace ninguna petición**: lo comprueba un test contando las que llegan a un servidor local.
+  **(4) Se dice una vez, no cada vez que se abre.** Lo que molesta de los avisos de actualización no es el aviso,
+  es el tercero. mpvd recuerda en `updates.json` cuál fue la última versión anunciada y solo contesta `announce:
+  true` la primera vez; una versión aún más nueva vuelve a avisar. Y se pregunta **medio minuto después** de que
+  el demonio conecte, no al abrir: lo primero que tiene que pasar al abrir un reproductor es que se vea la
+  película.
+  **(5) Lo que no cuenta como versión nueva.** La comparación es por números (`0.2.0` → `(0, 2, 0)`) y lo que no
+  sea número se ignora, así que `0.2.0-rc1` no es más nuevo que `0.2.0`: quien no anda buscando candidatas no
+  tiene por qué enterarse de que existen. Y nunca se avisa «hacia atrás»: si el fichero anuncia una versión más
+  vieja que la instalada —porque alguien se adelantó o publicó mal—, no pasa nada.
+  **(6) Ningún identificador.** La petición no lleva nada que distinga a un equipo de otro: ni identificador, ni
+  versión del sistema, ni contador. Es una descarga de un fichero estático, igual que la de cualquier página. Si
+  algún día se quiere saber cuánta gente lo usa, eso es otra decisión y habrá que tomarla a la cara.
+- ADR-119 · La web: una sola fuente para tres idiomas, capturas de verdad y nada que venga de fuera (H50).
+  El diseño estaba escrito en docs/SITIO-WEB.md desde el 2026-10-02 y tenía dos cosas esperando a Ser: las
+  capturas y si el repositorio se hace público. Se ha construido todo lo que no depende de eso.
+  **(1) Una fuente, tres idiomas.** `web/contenido.json` + `web/plantilla.html` y `tools/build_web.py` escribe
+  `index.html`, `en/index.html` y `fr/index.html`. Escribir tres HTML a mano garantiza que en un mes digan cosas
+  distintas; un test comprueba que los tres idiomas tienen exactamente las mismas claves.
+  **(2) Las descargas se leen de `dist/`**, con el tamaño y el **SHA-256 de verdad** de cada archivo, y de ahí
+  sale también el `latest.json` que consulta el programa (ADR-118): la página y el aviso de versión no pueden
+  contradecirse porque son el mismo dato. Una página que anuncia una suma que no es la del fichero es peor que
+  una que no anuncia ninguna, y un enlace a algo que no se ha construido es un 404 en la cara de quien venía a
+  probarlo: solo se anuncia lo que existe.
+  **(3) Nada de fuera.** Ni un script, ni una fuente de Google, ni cookies, ni analítica —en la página de un
+  programa que dice «nada sale de tu ordenador», cargar una fuente de otro servidor sería una broma—. Lo vigila
+  un test que además mira los comentarios aparte, porque el propio HTML lleva escrito «ni cookies, ni analítica»
+  y hacer saltar el test con eso también sería una broma.
+  **(4) Las capturas son del programa de verdad** (`tools/capturas.sh`: abre el reproductor, pide cada pantalla
+  por su atajo y guarda `screenshot window`, que incluye la interfaz). Y aquí hubo que parar: **la primera tanda
+  salió con el menú enseñando el historial de Ser** —sus últimos vídeos, con sus títulos— camino de una página
+  pública. Ahora el guion fuerza una carpeta de datos vacía, el porqué está escrito en el propio guion y hay un
+  test que lo vigila. Las capturas se hacen con el vídeo de pruebas del proyecto, no con una película de nadie:
+  para la web quedarían mejor con contenido real, y por eso el archivo es un argumento del guion.
+  **(5) Lo que no está probado se dice EN la página**, no en una nota al pie: ARM sin ejecutar, Windows sin
+  abrir, macOS por Homebrew y por qué. El diseño lo pedía expresamente y hay un test que lo comprueba en los tres
+  idiomas: quien se entere después, se va.
+  **(6) La página «cómo está hecho» se genera de `docs/ARQUITECTURA.md`**, que es el único texto nuevo que hacía
+  falta escribir (el mapa de las dos piezas, cómo se hablan, la caché, qué sale a la red y cómo se prueba). No se
+  escribe dos veces: lo demás ya está en `docs/` y en los ADR. El conversor de Markdown son cincuenta líneas sin
+  dependencias (`tools/markdown_min.py`), por lo mismo que el servidor HTTP y los códigos QR son propios.
+  **(7) Lo que sigue esperando a Ser**: si el repositorio se hace público —sin eso la página exhaustiva no tiene
+  dónde vivir y la pública no puede enlazarlo—, dónde se sirve `/atalaya`, y si quiere rehacer las capturas con
+  una película de verdad. Está en NEEDS_HUMAN.md.
