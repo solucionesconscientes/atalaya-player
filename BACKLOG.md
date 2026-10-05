@@ -303,7 +303,7 @@ contrario», y «¿se pueden grabar varios canales al mismo tiempo?».
       la lista enseña la etiqueta («de lunes a viernes · mañana 21:30–23:00 · programada») y las tres salidas.
       37 tests nuevos entre `tests/test_schedule_repeat.py`, `test_iptv_schedule.py` y `test_mu_iptv_epg.py`.
 
-## H63/N2 · Tres pasadas seguidas limpias — ADR-121, ADR-122 · [~] arreglado y medido, faltan las pasadas
+## H63/N2 · Tres pasadas seguidas limpias — ADR-121, ADR-122, ADR-124 · [~] cuatro causas menos, sin cerrar
 - [x] N2a **La causa del que más se repetía**, encontrada y arreglada: al pulsar una fila uosc cierra el menú y el
       módulo lo reabre *cuando contesta mpvd*; el vigilante de 0,2 s de ADR-112 se dispara en medio si la ida y
       vuelta tarda más. Ahora los catorce vigilantes miran un ESTADO —`rpc.pending()`, cuántas peticiones hay en
@@ -323,6 +323,16 @@ contrario», y «¿se pueden grabar varios canales al mismo tiempo?».
       esperas de los tests —nueve con la misma fragilidad latente— preguntan por el registro.
       Y la primera prueba unitaria de Lua del proyecto (`tests/test_mu_uosc_cierre.py`, LuaJIT con un `mp` de
       pega): dos de sus cuatro casos fallan con la versión de antes, los otros dos vigilan que no se pase de largo.
+- [x] N2d **Tres causas más, de la tanda sobre ADR-123** (1, 2 y 5 fallos en las tres pasadas) — ADR-124:
+      **(a) la cuenta de «Continuar viendo» se infla**, y eso NO era cosa de los tests: la idempotencia guardaba
+      solo el último identificador por vídeo y un guardado de posición rezagado la pisaba. Ahora es una tabla con
+      clave primaria, así que lo garantiza SQLite y sobrevive a reiniciar el demonio.
+      **(b) `mu-prefs` publica `watching`**: mpv junta el primer aviso del observador con un cambio del mismo
+      instante, y ese primero se descarta a propósito, así que un cambio hecho en los primeros milisegundos se
+      pierde. De 1 de cada 3 a 11 de 12 en `test_prefs`.
+      **(c) un nombre de socket que se podía leer como un PID**: el arnés usaba 8 hexadecimales, que salen todo
+      numéricos el 2,3 % de las veces, y el lanzador de la segunda instancia le borraba el socket a la primera.
+      Observado 1 de cada 23; ahora 40 de 40.
 
 ## H50 · El sitio web del proyecto — ADR-119 · [x] (falta lo que depende de Ser)
 Diseñado en docs/SITIO-WEB.md. Construido todo lo que no depende de las dos decisiones suyas.

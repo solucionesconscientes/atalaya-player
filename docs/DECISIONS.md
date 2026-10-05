@@ -1787,3 +1787,35 @@
   **El nombre del fichero va en ASCII** (`EMPEZAR-AQUI.cmd`, sin tilde): el explorador de Windows enseña mal los
   nombres con acentos de un zip si quien lo comprimió no marcó UTF-8, y el primer fichero que alguien ve no puede
   salir con un nombre roto.
+- ADR-124 · Tres causas más de la batería, y una era un fallo del programa (H63/N2).
+  Tres pasadas completas sobre ADR-123 dieron **1, 2 y 5 fallos**, siempre distintos. Cogidos uno a uno con el
+  método que funciona —repetir el test solo en bucle hasta que caiga y leer el log de mpv—, salieron tres causas
+  que no tienen nada que ver entre sí. Dos eran de los tests; la primera, no.
+  **(1) La cuenta de «Continuar viendo» se infla (fallo del programa).** `test_mu_menu` daba `assert [3] == [2]`:
+  una reproducción contada dos veces. H58 ya lo había arreglado haciendo que el identificador de la reproducción
+  viajara en todas las llamadas, pero la memoria guardaba **solo el último identificador de cada vídeo**. Basta que
+  entre dos llamadas de la reproducción B se cuele un guardado de posición rezagado de la A —y el reproductor
+  guarda la posición cada 15 s y reintenta lo que no se contesta a tiempo— para que la memoria se pise y B vuelva a
+  contar. No es cosa de los tests: con el equipo cargado, al usuario se le infla la cuenta. Ahora la idempotencia
+  es un **estado del almacén**, no una memoria: una tabla `plays(key, play_id)` con clave primaria, así que «una
+  reproducción se cuenta una vez» lo garantiza SQLite, sobrevive a reiniciar el demonio y se poda a los dieciséis
+  últimos identificadores por vídeo (es un seguro, no un historial). El test nuevo reproduce el entrelazado sin
+  depender de ninguna carrera y falla con la versión de antes: `assert 3 == 2`.
+  **(2) Un cambio hecho en los primeros milisegundos no se puede distinguir del valor de partida.** Tres tests de
+  `test_prefs` fallaban **1 de cada 3** ejecutándolos solos. El log lo dijo: `volume` y `speed` se cambiaban a los
+  132 ms y nunca se guardaban, y `sub-scale` a los 137 ms sí. Causa: mpv **junta** el primer aviso del observador
+  con un cambio que llegue en el mismo instante, y `mu-prefs` descarta ese primer aviso **a propósito** —lo que
+  venga de tu `mpv.conf` o de la línea de órdenes no es una elección tuya de ahora—. El programa tenía razón y el
+  test estaba mal, pero el programa tampoco daba forma de saberlo: ahora publica `watching`, que es cuándo cuenta
+  de verdad un cambio, contando cuántas propiedades han dado ya su primer aviso (con un seguro de 1 s por si alguna
+  no existe en ese mpv). El test espera por ese estado. De 1 de cada 3 a 11 de 12 —lo que quedaba era (3)—.
+  **(3) Un nombre de socket que se podía leer como un PID.** `bin/mpv-uos` limpia los sockets huérfanos porque mpv
+  no borra el suyo al salir, y decide leyendo el nombre: `mpv-<pid>.sock`, y solo toca los que son **todos
+  dígitos**. El arnés nombraba los suyos con 8 hexadecimales al azar, que salen todo numéricos el **2,3 %** de las
+  veces ((10/16)^8): cuando eso pasaba, el lanzador de la segunda instancia le borraba el socket a la primera, que
+  estaba viva, y el test se quedaba 15 s esperando un socket que ya no existía. Observado 1 de cada 23, que para el
+  tamaño de la muestra es exactamente eso. El tag lleva ahora una letra delante, hay un test que lo vigila y el
+  lanzador dice en un comentario que ese nombre ES el pid, para quien cree sockets ahí en el futuro. 40 de 40.
+  **Lo que esto dice del método.** Las tres salieron de lo mismo: reproducir el fallo solo, en bucle, y leer el log
+  —no razonar sobre el código—. Y la primera recuerda por qué merece la pena: un «test frágil» puede ser un fallo
+  del programa esperando a que alguien lo mire.

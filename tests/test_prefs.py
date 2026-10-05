@@ -34,7 +34,11 @@ def pdir():
 
 def launch(pdir: Path, *extra: str, env: dict[str, str] | None = None):
     h = start_mpv(pdir / "run", [*BASE, *extra], env={"MPV_UOS_DATA_DIR": str(pdir / "data"), **(env or {})})
-    h.wait_property("user-data/mu/prefs", lambda v: bool(v) and "values" in v, timeout=10)
+    # H63 · no basta con que mu-prefs haya publicado: hay que esperar a que esté MIRANDO. mpv junta el primer aviso
+    # de cada observador con un cambio que llegue en el mismo instante, y ese primer aviso se descarta a propósito
+    # (lo que venga de tu mpv.conf no es una elección tuya de ahora), así que un cambio hecho en los primeros
+    # milisegundos se pierde. `watching` es ese estado y lo publica el propio script.
+    h.wait_property("user-data/mu/prefs", lambda v: bool(v) and v.get("watching") is True, timeout=15)
     for script in ("study", "menu", "av"):   # every script restored its own preferences
         h.wait_property(f"user-data/mu/{script}", bool, timeout=10)
     return h

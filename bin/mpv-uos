@@ -10,7 +10,9 @@ MPV_BIN="${MPV_UOS_MPV:-mpv}"
 RUNTIME_DIR="${MPV_UOS_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/mpv-uos}"
 mkdir -p "$RUNTIME_DIR"
 
-# Sockets of mpv processes that are gone (mpv never removes its IPC socket on exit).
+# Sockets of mpv processes that are gone (mpv never removes its IPC socket on exit). The name after `mpv-`
+# IS the pid: anything else is not ours and is never touched, so whoever creates sockets here (the test
+# harness included) must not use a name that can be read as a pid, or a live instance loses its socket.
 for s in "$RUNTIME_DIR"/mpv-*.sock; do
   [ -e "$s" ] || continue
   pid="${s##*/mpv-}"; pid="${pid%.sock}"

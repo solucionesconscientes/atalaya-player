@@ -78,3 +78,48 @@ def test_watch_methods(tmp_path, media_dir):
             await server.stop()
 
     asyncio.run(go())
+
+
+def test_una_reproduccion_se_cuenta_una_vez_aunque_se_entrelacen(tmp_path):
+    """H58/H63 · El fallo que tiraba `test_mu_menu` 1 de cada 3 pasadas, aquí sin depender de ninguna carrera.
+
+    La idempotencia estaba en memoria y recordaba SOLO el último identificador de cada vídeo. Basta que entre dos
+    llamadas de la reproducción B se cuele un guardado de posición rezagado de la A —lo normal con el equipo
+    cargado, porque el reproductor guarda la posición cada 15 s y reintenta lo que no se contesta a tiempo— para que
+    la siguiente llamada de B vuelva a contar. En uso real eso infla la cuenta de «Continuar viendo».
+    """
+    st = WatchStore(tmp_path / "w.sqlite3")
+    clave, ruta = "mu:peli", "/v/peli.mkv"
+    st.update(clave, ruta, "Peli", duration=600, position=10, new_play=True, play_id="primera")
+    assert st.get(clave)["plays"] == 1
+
+    st.update(clave, ruta, "Peli", duration=600, position=300, new_play=True, play_id="segunda")
+    assert st.get(clave)["plays"] == 2
+    # el guardado de posición rezagado de la reproducción ANTERIOR: antes pisaba la memoria
+    st.update(clave, ruta, "Peli", duration=600, position=120, play_id="primera")
+    # y los reintentos de la actual, que es lo que contaba de más
+    for _ in range(3):
+        st.update(clave, ruta, "Peli", duration=600, position=301, new_play=True, play_id="segunda")
+    assert st.get(clave)["plays"] == 2, "una reproducción se cuenta una vez, pase lo que pase en medio"
+
+    # y sobrevive a reiniciar el demonio, porque ahora es un estado del almacén y no una memoria del proceso
+    st.close()
+    otra = WatchStore(tmp_path / "w.sqlite3")
+    otra.update(clave, ruta, "Peli", duration=600, position=302, new_play=True, play_id="segunda")
+    assert otra.get(clave)["plays"] == 2
+    otra.update(clave, ruta, "Peli", duration=600, position=303, new_play=True, play_id="tercera")
+    assert otra.get(clave)["plays"] == 3
+    otra.close()
+
+
+def test_el_seguro_de_no_contar_dos_veces_no_crece_sin_fin(tmp_path):
+    """No es un historial: son los últimos identificadores de cada vídeo. Una serie de 300 capítulos no puede dejar
+    300 filas por vídeo en una tabla que solo existe para no sumar dos veces."""
+    from mpvd.watch import PLAYS_REMEMBERED
+    st = WatchStore(tmp_path / "w.sqlite3")
+    for i in range(PLAYS_REMEMBERED + 10):
+        st.update("mu:x", "/v/x.mkv", "X", duration=60, position=i, new_play=True, play_id=f"p{i}")
+    assert st.get("mu:x")["plays"] == PLAYS_REMEMBERED + 10        # todas contadas
+    guardados = st._conn.execute("SELECT COUNT(*) FROM plays WHERE key='mu:x'").fetchone()[0]
+    assert guardados == PLAYS_REMEMBERED
+    st.close()

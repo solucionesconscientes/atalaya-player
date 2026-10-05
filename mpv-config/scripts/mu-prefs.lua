@@ -132,13 +132,15 @@ local P = prefs.ns('mpv', factory, function(key, v)
 end)
 
 -- loads: files whose loading window already closed (lets tests and tools wait for "user changes count now")
-local state = { loading = false, loads = 0, applied = {}, skipped_cli = {}, confirm_token = nil, learned = '' }
+local state = { loading = false, loads = 0, applied = {}, skipped_cli = {}, confirm_token = nil,
+                learned = '', watching = false }
 
 local function publish()
   local st = prefs.status()
   mp.set_property_native('user-data/mu/prefs', {
     enabled = st.enabled, path = st.path, writes = st.writes, last_write = st.last_write, last_error = st.last_error,
     corrupt = st.corrupt, backup = st.backup, pending = st.pending, loading = state.loading, loads = state.loads,
+    watching = state.watching,
     values = P:all(),
     applied = state.applied, skipped_cli = state.skipped_cli, learned = state.learned,
   })
@@ -214,10 +216,27 @@ local function automatic(name)
   return false
 end
 
+-- H63 · `watching` dice cuándo cuenta de verdad un cambio, y es un ESTADO, no un plazo. Hace falta porque mpv
+-- JUNTA el primer aviso del observador con un cambio que llegue en el mismo instante, y ese primer aviso se
+-- descarta a propósito (si no, se guardaría como elección del usuario lo que venga de su mpv.conf o de la línea de
+-- órdenes). Así que un cambio hecho en los primeros milisegundos es indistinguible del valor de partida y se
+-- pierde: con el equipo cargado tiraba tres tests de test_prefs, y cualquier herramienta que arranque el
+-- reproductor y toque algo inmediatamente tiene el mismo problema. Ahora se cuenta cuántas propiedades han dado ya
+-- su primer aviso y se publica cuando están todas.
+local armed, ARMED_TOTAL = 0, #PROPS
+local function note_armed()
+  armed = armed + 1
+  if armed >= ARMED_TOTAL and not state.watching then state.watching = true; publish() end
+end
+-- el seguro: una propiedad que no exista en este mpv no avisaría nunca, y nadie puede quedarse esperando por eso
+mp.add_timeout(1.0, function()
+  if not state.watching then state.watching = true; publish() end
+end)
+
 for _, p in ipairs(PROPS) do
   local initial = true   -- the first notification is the start-up value (mpv.conf, command line or applied pref)
   mp.observe_property(p.name, OBSERVE_TYPE[p.kind], function(_, v)
-    if initial then initial = false; return end
+    if initial then initial = false; note_armed(); return end
     if v == nil or automatic(p.name) then return end
     if p.allow and not p.allow[v] then return end
     if P:set(p.name, v) then publish() end

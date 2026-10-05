@@ -26,6 +26,7 @@ FINISHED_TAIL = 30.0      # seconds before the end that count as "finished"
 FINISHED_RATIO = 0.95
 MIN_RESUME = 20.0         # do not bother resuming below this position
 NEW_PLAY_GRACE = 5.0   # s: un «nueva reproducción» repetido antes de esto es un reintento, no otra vez
+PLAYS_REMEMBERED = 16  # identificadores por vídeo que se guardan para no contar dos veces
 MAX_ENTRIES = 500
 
 SCHEMA = """
@@ -43,6 +44,17 @@ CREATE TABLE IF NOT EXISTS watch (
   search TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS watch_updated ON watch(updated_at DESC);
+-- H58/H63 · las reproducciones ya contadas, por identificador. Estaba en memoria y recordaba SOLO la última de
+-- cada vídeo, así que un guardado de posición rezagado de la reproducción anterior la pisaba y la siguiente
+-- llamada de la actual volvía a contar: la cuenta de «Continuar viendo» se inflaba justo cuando el equipo iba
+-- cargado. Con la clave primaria, «una reproducción se cuenta una vez» lo garantiza el almacén y además sobrevive
+-- a reiniciar el demonio.
+CREATE TABLE IF NOT EXISTS plays (
+  key TEXT NOT NULL,
+  play_id TEXT NOT NULL,
+  at REAL NOT NULL,
+  PRIMARY KEY (key, play_id)
+);
 """
 
 
@@ -78,12 +90,26 @@ class WatchStore:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(SCHEMA)
         self._lock = threading.Lock()
-        self._last_play: dict[str, float] = {}      # última «nueva reproducción» por clave (H58)
-        self._last_play_id: dict[str, str] = {}     # y su identificador, para que un reintento no cuente
+        self._last_play: dict[str, float] = {}      # última «nueva reproducción» por clave, sin identificador (H58)
 
     def close(self) -> None:
         with self._lock:
             self._conn.close()
+
+    def _counted(self, key: str, play_id: str) -> bool:
+        """¿Ya se contó esa reproducción? Caller holds the lock."""
+        return self._conn.execute("SELECT 1 FROM plays WHERE key=? AND play_id=?",
+                                  (key, play_id)).fetchone() is not None
+
+    def _remember_play(self, key: str, play_id: str, now: float) -> None:
+        """Apunta la reproducción ya contada y deja solo las últimas por vídeo: esto no es un historial, es un
+        seguro contra contar dos veces, y un seguro no tiene por qué crecer sin fin. Caller holds the lock."""
+        self._conn.execute("INSERT OR IGNORE INTO plays (key, play_id, at) VALUES (?,?,?)", (key, play_id, now))
+        self._conn.execute(
+            "DELETE FROM plays WHERE key=? AND play_id NOT IN"
+            " (SELECT play_id FROM plays WHERE key=? ORDER BY at DESC LIMIT ?)",
+            (key, key, PLAYS_REMEMBERED),
+        )
 
     @staticmethod
     def _row(r: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -124,10 +150,10 @@ class WatchStore:
         done = bool(finished) if finished is not None else is_finished(position, duration)
         search = normalize(f"{title} {os.path.basename(path)}")
         with self._lock:
+            contada = False
             if play_id:
-                visto = self._last_play_id.get(key) == play_id
-                self._last_play_id[key] = play_id
-                if visto:
+                contada = self._counted(key, play_id)
+                if contada:
                     new_play = False
             elif new_play:
                 if now - self._last_play.get(key, 0.0) < NEW_PLAY_GRACE:
@@ -141,6 +167,9 @@ class WatchStore:
                     " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     (key, path, title, kind or kind_of(path), duration, position, int(done), 1, now, now, search),
                 )
+                # el INSERT ya cuenta esta reproducción: que no la vuelva a contar el «he empezado esto» de detrás
+                if play_id and not contada:
+                    self._remember_play(key, play_id, now)
             else:
                 self._conn.execute(
                     "UPDATE watch SET path=?, title=?, kind=?, duration=?, position=?, finished=?, plays=plays+?,"
@@ -148,6 +177,8 @@ class WatchStore:
                     (path, title or old["title"], kind or old["kind"], duration or old["duration"], position, int(done),
                      int(new_play), now, search, key),
                 )
+                if play_id and new_play and not contada:
+                    self._remember_play(key, play_id, now)
             self._conn.execute(
                 "DELETE FROM watch WHERE key IN (SELECT key FROM watch ORDER BY updated_at DESC LIMIT -1 OFFSET ?)",
                 (MAX_ENTRIES,),

@@ -85,3 +85,17 @@ def test_launcher_opens_mpv_uos_links_at_their_minute(project_root: Path, tmp_pa
     # a malformed time is dropped, the file still opens
     args = _launcher_args(project_root, tmp_path, "mpv-uos://open?path=%2Fx.mkv&t=1%3Bquit")
     assert args[-1] == "/x.mkv" and not any(a.startswith("--start") for a in args)
+
+
+def test_el_nombre_del_socket_de_las_pruebas_no_se_puede_leer_como_un_pid(tmp_path):
+    """H63 · bin/mpv-uos borra `mpv-<pid>.sock` cuando ese PID ya no existe, y decide leyendo el NOMBRE. Un tag de 8
+    hexadecimales sale todo numérico el 2,3 % de las veces, y entonces la segunda instancia le borraba el socket a la
+    primera, viva: así fallaba test_two_instances_merge 1 de cada 23 veces. El nombre tiene que llevar una letra."""
+    from tests.conftest import start_mpv
+    h = start_mpv(tmp_path / "run")
+    try:
+        nombre = h.socket.stem.removeprefix("mpv-")
+        assert not nombre.isdigit(), f"«{nombre}» se puede leer como un PID: el lanzador lo borraría"
+        assert h.socket.exists()
+    finally:
+        h.stop()

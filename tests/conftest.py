@@ -142,7 +142,11 @@ def start_mpv(run_dir: Path, extra_args: list[str] | None = None, env: dict[str,
     read or write the user's real data, and one test's remembered volume/filters never leak into the next one.
     ``launcher``: another front end with bin/mpv-uos's arguments (the AppImage)."""
     run_dir.mkdir(parents=True, exist_ok=True)
-    tag = uuid.uuid4().hex[:8]
+    # H63 · la «t» no es decorativa: bin/mpv-uos limpia los sockets huérfanos leyendo el nombre COMO UN PID
+    # (`mpv-<pid>.sock`, porque mpv no borra el suyo al salir) y solo toca los que son todos dígitos. Un tag de 8
+    # hexadecimales sale todo numérico el 2,3 % de las veces ((10/16)^8), y entonces el lanzador de la SEGUNDA
+    # instancia le borraba el socket a la primera, que estaba viva: 1 de cada 23 pasadas de test_two_instances_merge.
+    tag = "t" + uuid.uuid4().hex[:8]
     socket = run_dir / f"mpv-{tag}.sock"
     log = run_dir / f"mpv-{tag}.log"
     args = [
