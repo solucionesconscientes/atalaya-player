@@ -303,7 +303,7 @@ contrario», y «¿se pueden grabar varios canales al mismo tiempo?».
       la lista enseña la etiqueta («de lunes a viernes · mañana 21:30–23:00 · programada») y las tres salidas.
       37 tests nuevos entre `tests/test_schedule_repeat.py`, `test_iptv_schedule.py` y `test_mu_iptv_epg.py`.
 
-## H63/N2 · Tres pasadas seguidas limpias — ADR-121, ADR-122, ADR-124 · [~] cuatro causas menos, sin cerrar
+## H63/N2 · Tres pasadas seguidas limpias — ADR-121 a ADR-129 · [x] conseguidas el 2026-10-06
 - [x] N2a **La causa del que más se repetía**, encontrada y arreglada: al pulsar una fila uosc cierra el menú y el
       módulo lo reabre *cuando contesta mpvd*; el vigilante de 0,2 s de ADR-112 se dispara en medio si la ida y
       vuelta tarda más. Ahora los catorce vigilantes miran un ESTADO —`rpc.pending()`, cuántas peticiones hay en
@@ -333,6 +333,18 @@ contrario», y «¿se pueden grabar varios canales al mismo tiempo?».
       **(c) un nombre de socket que se podía leer como un PID**: el arnés usaba 8 hexadecimales, que salen todo
       numéricos el 2,3 % de las veces, y el lanzador de la segunda instancia le borraba el socket a la primera.
       Observado 1 de cada 23; ahora 40 de 40.
+- [x] N2e **Conseguido el 2026-10-06: tres pasadas seguidas con 1.029 pasando, cero fallos y cero avisos de lint**,
+      en 20:24, 20:26 y 20:25 —tiempos clavados, que es la señal de que la máquina estaba sola—.
+      La tanda anterior sobre este mismo árbol dio 3 fallos en la primera pasada y limpias las otras dos. Dos eran
+      esperas agotadas de las conocidas, pero la tercera no tenía plazo que agotar: `assert True is False` en
+      `test_mu_av.py:219`. Al restaurar la ventana, el test esperaba a que volvieran el vídeo y el título y
+      entonces leía `minimized_audio` de una sentada; el título lo restaura mpv y esa bandera la publica mu-av en
+      su propio tic. **Dos avisos distintos del mismo gesto: esperar al primero no garantiza el segundo**, y por eso
+      fallaba una de cada tres veces y nunca dos seguidas (ADR-129). Era el último `assert` de lectura directa que
+      quedaba detrás de una espera.
+      Y la lección de medición de la noche, que costó una hora: una tanda dio **4 fallos que resultaron ser cero**
+      porque corrían dos baterías a la vez. **Una batería que comparte máquina con otra no mide el código, mide el
+      reparto de CPU**, y su rojo no se cree hasta repetirlo aislado.
 
 ## H50 · El sitio web del proyecto — ADR-119 · [x] (falta lo que depende de Ser)
 Diseñado en docs/SITIO-WEB.md. Construido todo lo que no depende de las dos decisiones suyas.
@@ -347,8 +359,18 @@ Diseñado en docs/SITIO-WEB.md. Construido todo lo que no depende de las dos dec
 - [x] W4 **`docs/ARQUITECTURA.md`**, el único texto nuevo que hacía falta (las dos piezas, cómo se hablan, la
       caché, qué sale a la red, cómo se prueba, cómo colaborar), y la página se genera de él con un conversor de
       Markdown de cincuenta líneas sin dependencias.
-- [~] W5 **Lo que espera a Ser**: si el repositorio se hace público (sin eso la página exhaustiva no tiene dónde
-      vivir), dónde se sirve `/atalaya` y si quiere rehacer las capturas con una película de verdad.
+- [x] W5 **Resuelto el 2026-10-05/06**: el repositorio **es público**
+      (`github.com/solucionesconscientes/atalaya-player`, MIT, rama por defecto `nocturno/2026-09-28`; `main` se
+      queda con el andamiaje porque la regla es no fusionar a `main`) y la página exhaustiva vive en
+      **solucionesconscientes.es/atalaya**, la dirección que ya fijaba `brand.json`. Para publicarlo hizo falta
+      `LICENSE` (MIT, separado de `TERCEROS.md` porque con los avisos pegados GitHub lo marcaba «Other») y la
+      atribución de SponsorBlock dentro del programa, al final del menú de Ayuda, que su licencia exige donde se
+      usan los datos (ADR-128).
+      Las capturas salieron **sin necesitar a Ser**: `tools/capturas.sh` corre entero sobre una pantalla virtual
+      (`xvfb-run`). De las seis se publican tres —menú, TV y salas—; la del índice sale con un error porque el
+      vídeo de pruebas es una carta de ajuste sin voz y sin voz no hay subtítulos de los que sacar índice.
+- [~] W6 **Lo único que sigue esperando a Ser**: el vídeo de cabecera de la página (15-20 s) y, si quiere,
+      rehacer las capturas con una película de verdad, que `tools/capturas.sh` ya admite como argumento.
 
 ## H68 · Avisar de que hay versión nueva (nunca instalar) — ADR-118 · [x]
 Ser, al decidir los paquetes: «¿es posible que la app te avise cuando haya actualizaciones disponibles?».

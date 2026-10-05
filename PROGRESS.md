@@ -1,6 +1,50 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## Resumen para Ser (2026-10-06, sesión interactiva de noche) · H63/N2 cerrado y el código publicado
+Dos cosas de golpe, como pediste: la batería y la publicación.
+
+### H63/N2 cerrado: tres pasadas seguidas limpias
+**1.029 pasando, cero fallos y cero avisos de lint, tres veces seguidas**, en 20:24, 20:26 y 20:25. Los tiempos
+clavados son parte de la prueba: cuando la máquina está ocupada, la misma pasada tarda de 22 a 26 minutos.
+
+Antes de eso hubo que tirar dos mediciones a la basura, y las dos lecciones valen más que el verde:
+
+- Una tanda tuya de las 22:18 dio **4 fallos**. Eran **cero**: corrían dos baterías a la vez (la tuya y la mía) y
+  los cuatro pasaron aislados. Una batería que comparte máquina con otra no mide el código, mide el reparto de CPU.
+- Otra dio 3 fallos y dos pasadas limpias. Dos eran esperas agotadas de las de siempre, pero el tercero no tenía
+  plazo que agotar: `assert True is False` en `test_mu_av.py:219`. Al restaurar la ventana, el test esperaba a que
+  volvieran el vídeo y el título y entonces leía `minimized_audio` de una sentada; el título lo restaura mpv y esa
+  bandera la publica mu-av en su propio tic. Dos avisos distintos del mismo gesto. Era el último `assert` de
+  lectura directa que quedaba detrás de una espera (ADR-129).
+
+### El código es público y el reproductor tiene su página
+- **github.com/solucionesconscientes/atalaya-player**, MIT. Antes de publicarlo: ni secretos ni claves, la
+  película de la raíz no estaba en git y hay un solo autor en todo el historial. La rama por defecto es el tronco
+  `nocturno/2026-09-28`; **`main` sigue con el andamiaje**, porque la regla del proyecto es no fusionar a `main` y
+  publicar no me parecía motivo para saltármela. Pasarlo es tuyo: `git push origin nocturno/2026-09-28:main`.
+- **solucionesconscientes.es/atalaya**, en vivo, con tarjeta en `/portfolio`. La URL no se eligió en la web: ya la
+  fijaba `brand.json` y la enseña la propia aplicación en Ayuda y Preferencias.
+- Hizo falta `LICENSE` (hasta ahora la licencia solo estaba en `pyproject.toml`, que es declararla sin concederla)
+  y la **atribución de SponsorBlock dentro del programa**, al final del menú de Ayuda, que su licencia exige donde
+  se usan los datos (ADR-128).
+- **Las capturas salieron sin ti**: `tools/capturas.sh` corre entero sobre una pantalla virtual (`xvfb-run`). Se
+  publican tres de seis; la del índice sale con un error porque el vídeo de pruebas es una carta de ajuste sin voz.
+
+### Probar a mano
+```bash
+bin/mpv-uos                      # alt+m → Ayuda: abajo del todo, de qué se apoya y la atribución de SponsorBlock
+tools/capturas.sh ~/tu/pelicula.mkv    # rehacer las capturas con una película de verdad (acepta el archivo)
+xvfb-run -a -s "-screen 0 1400x900x24" tools/capturas.sh   # o sin pantalla, como las hice yo
+xdg-open https://solucionesconscientes.es/atalaya
+```
+
+### SIGUIENTE PASO
+H63/N2 y H50/W5 están cerrados; **el siguiente hito sin empezar manda**. De esta tanda solo queda esperando a ti
+el **vídeo de cabecera de la página** (15-20 s: elegir un canal → pasar a radio → abrir un vídeo → crear una sala
+y copiar el enlace) y, si quieres, rehacer las capturas con una película de verdad. Ninguna de las dos bloquea nada.
+Y para cualquier medición futura: **una sola batería a la vez en la máquina**, o el resultado no vale.
+
 ## Resumen para Ser (2026-10-04, iteración 9) · H61-H66, H49 idiomas y H71 (torrents, fuera)
 De tus tres preguntas (minimizar no avisaba, cómo se ven los torrents, el mando de la tele en una Raspberry) y del
 «hazlo todo de golpe, menos la web» salió esta tanda. Lo de la web (H50) sigue sin empezar, como pediste.
