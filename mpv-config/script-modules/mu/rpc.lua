@@ -35,6 +35,15 @@ function M.call(method, params, cb, timeout)
   return id
 end
 
+-- H63/N2 · cuántas peticiones hay esperando respuesta. Lo usan los vigilantes de los menús: al pulsar una fila,
+-- uosc cierra el menú y el módulo lo reabre CUANDO CONTESTA mpvd, así que entre una cosa y otra el módulo no se
+-- puede dar por perdido. Antes se esperaba un plazo (0,2 s) y con el equipo cargado la ida y vuelta tarda más.
+function M.pending()
+  local n = 0
+  for _ in pairs(pending) do n = n + 1 end
+  return n
+end
+
 function M.cancel_all()
   for _, p in pairs(pending) do p.timer:kill() end
   pending = {}

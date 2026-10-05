@@ -303,6 +303,18 @@ contrario», y «¿se pueden grabar varios canales al mismo tiempo?».
       la lista enseña la etiqueta («de lunes a viernes · mañana 21:30–23:00 · programada») y las tres salidas.
       37 tests nuevos entre `tests/test_schedule_repeat.py`, `test_iptv_schedule.py` y `test_mu_iptv_epg.py`.
 
+## H63/N2 · Tres pasadas completas seguidas limpias — ADR-121 · [~] acotado y mejorado, no cerrado
+- [x] N2a **La causa del que más se repetía**, encontrada y arreglada: al pulsar una fila uosc cierra el menú y el
+      módulo lo reabre *cuando contesta mpvd*; el vigilante de 0,2 s de ADR-112 se dispara en medio si la ida y
+      vuelta tarda más. Ahora los catorce vigilantes miran un ESTADO —`rpc.pending()`, cuántas peticiones hay en
+      vuelo— en vez de un plazo. Medido en el test que fallaba: de 1 de cada 2 a **14 de 15**.
+- [x] N2b **Dos hipótesis descartadas con medidas** (para no repetir el trabajo): el demonio NO se bloquea (pulso
+      cada 0,25 s durante las pasadas; peor ping 0,03 s) y la cola de eventos NO se llena (instrumentada; cero
+      veces). De ahí queda la instrumentación: descartar un evento ya no es silencioso.
+- [~] N2c **Lo que falta**: tres pasadas seguidas limpias. En la tanda del 2026-10-05 fueron 3 fallos / 0 / 1, y
+      la última traza del que queda es otro camino —el módulo aparece en «Invitados» donde el test lo espera en la
+      raíz—, así que hay al menos un segundo fallo detrás. No se da por cerrado.
+
 ## H50 · El sitio web del proyecto — ADR-119 · [x] (falta lo que depende de Ser)
 Diseñado en docs/SITIO-WEB.md. Construido todo lo que no depende de las dos decisiones suyas.
 - [x] W1 **La página pública en tres idiomas** desde una sola fuente (`web/contenido.json` + `web/plantilla.html`

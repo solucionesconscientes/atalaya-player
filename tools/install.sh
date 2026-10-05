@@ -64,6 +64,22 @@ for arg in "$@"; do
 done
 
 say() { printf '• %s\n' "$*"; }
+
+# H72 · Si el paquete .deb está instalado, esta instalación de usuario lo TAPA: las dos ponen una entrada de
+# escritorio con el mismo identificador (mpv-uos.desktop) y la de ~/.local/share gana siempre, así que en el menú
+# sale la del repositorio aunque se acabe de instalar el paquete. Pasó de verdad el 2026-10-05, y desde fuera
+# parece que el paquete «no se ha instalado». Se avisa y se dice el comando exacto para deshacerlo.
+aviso_paquete() {
+  command -v dpkg-query >/dev/null 2>&1 || return 0
+  [ "$(dpkg-query -W -f='${db:Status-Status}' atalaya-player 2>/dev/null || true)" = installed ] || return 0
+  cat >&2 <<'AVISO'
+⚠ Tienes instalado el paquete atalaya-player (el .deb). Esta instalación de usuario lo va a TAPAR en el menú de
+  aplicaciones: las dos usan el mismo identificador y la de tu carpeta personal manda, así que en el menú verás y
+  abrirás esta copia del repositorio, no la del paquete.
+  · Para usar el paquete:        tools/install.sh --uninstall
+  · Para usar el repositorio:    sudo apt remove atalaya-player
+AVISO
+}
 run() { if [ "$DRY" = 1 ]; then printf '  (dry-run) %s\n' "$*"; else "$@"; fi; }
 ours() { [ -f "$1" ] && grep -qF "$MARK" "$1"; }
 
@@ -99,6 +115,8 @@ if [ "$UNINSTALL" = 1 ]; then
   say "desinstalado (el checkout, .cache/ y los datos de usuario no se tocan)"
   exit 0
 fi
+
+aviso_paquete
 
 # -- requirements -----------------------------------------------------------------------------------------
 missing=()

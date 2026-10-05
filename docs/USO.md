@@ -700,6 +700,14 @@ El nombre de la app sigue siendo provisional: cambiarlo es editar `name` en `bra
 - **Los subtítulos IA van lentos**: elige un modelo más pequeño en `alt+i` o activa el perfil ligero (`alt+v`); ver docs/BENCHMARKS.md.
 - **Un canal no carga**: puede estar caído o geobloqueado; la entrada *Comprobar canales en segundo plano* de los menús de TV los marca en segundo plano.
 - **YouTube falla**: `.venv/bin/python -m mpvd call ytdl.update.check` y luego `ytdl.update.apply` actualizan yt-dlp; necesita `node ≥ 22` o `deno`.
+- **Instalé el `.deb` y en el menú sigue saliendo el de antes**: tenías ya la instalación de usuario
+  (`tools/install.sh`), y las dos ponen una entrada con el mismo identificador: la de tu carpeta personal
+  (`~/.local/share/applications/mpv-uos.desktop`) **tapa siempre** a la del paquete. Elige una:
+  ```
+  tools/install.sh --uninstall     # quedarte con el paquete (no toca el repositorio ni tus datos)
+  sudo apt remove atalaya-player   # o al revés: quedarte con el repositorio
+  ```
+  Desde el 2026-10-05, `tools/install.sh` avisa de esto antes de instalar.
 - **«Con Atalaya va a tirones y con mpv no»**: compruébalo con números en vez de a ojo, con la misma película:
   ```
   tools/comparar.py "/ruta/a/la/peli.mkv"                  # en ventana, 2 vueltas de 25 s

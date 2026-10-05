@@ -399,6 +399,10 @@ mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
     if open == MENU or open == INPUT then return end
     -- H63/N3 · si acabamos de pedir nuestro menú y uosc aún no lo ha confirmado, no hay nada que olvidar
     if uosc.asking(MENU) then return end
+    -- H63/N2 · ni si estamos esperando a mpvd: al pulsar una fila, uosc cierra el menú y nosotros lo reabrimos
+    -- cuando llega la respuesta. Esperar un plazo era una carrera que se pierde con el equipo cargado; lo que
+    -- hay que mirar es si queda algo en vuelo.
+    if rpc.pending() > 0 then return end
     if #state.stack > 0 or state.view ~= '' or state.input then
       state.stack, state.view, state.input = {}, '', nil
       publish()

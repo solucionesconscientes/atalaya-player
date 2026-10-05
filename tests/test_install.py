@@ -151,3 +151,31 @@ def test_mpv_uos_links_are_registered(prefix):
         assert "x-scheme-handler/mpv-uos=mpv-uos.desktop" in mimeapps.read_text(encoding="utf-8")
         run(env, "--uninstall")
         assert "x-scheme-handler/mpv-uos" not in mimeapps.read_text(encoding="utf-8")
+
+
+def test_avisa_si_el_paquete_ya_esta_instalado(tmp_path, monkeypatch):
+    """H72 · Las dos instalaciones ponen una entrada de escritorio con el MISMO identificador
+    (`mpv-uos.desktop`), y la de `~/.local/share` tapa siempre a la de `/usr/share`: quien instale el .deb
+    teniendo la del repositorio ve en el menú la vieja y cree que el paquete no se ha instalado. Pasó de verdad
+    el 2026-10-05. No se puede arreglar desde el paquete (no debe tocar la carpeta personal de nadie), así que lo
+    que se hace es AVISAR aquí, con los dos comandos para decidir cuál se queda."""
+    import subprocess
+
+    guion = (ROOT / "tools/install.sh").read_text(encoding="utf-8")
+    assert "aviso_paquete" in guion and "atalaya-player" in guion
+
+    # un dpkg-query de pega que dice que el paquete está instalado
+    falso = tmp_path / "dpkg-query"
+    falso.write_text("#!/bin/sh\nprintf installed\n", encoding="utf-8")
+    falso.chmod(0o755)
+    entorno = dict(os.environ, PATH=f"{tmp_path}:{os.environ['PATH']}")
+    r = subprocess.run([str(ROOT / "tools/install.sh"), "--dry-run"], capture_output=True, text=True,
+                       env=entorno, cwd=ROOT, timeout=120)
+    assert "atalaya-player" in r.stderr and "tools/install.sh --uninstall" in r.stderr, r.stderr[:400]
+    assert "sudo apt remove atalaya-player" in r.stderr
+
+    # y sin paquete instalado, ni una palabra
+    falso.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    r = subprocess.run([str(ROOT / "tools/install.sh"), "--dry-run"], capture_output=True, text=True,
+                       env=entorno, cwd=ROOT, timeout=120)
+    assert "atalaya-player" not in r.stderr, r.stderr[:300]

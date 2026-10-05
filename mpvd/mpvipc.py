@@ -46,6 +46,7 @@ class MpvIpcClient:
         self._reader_task: asyncio.Task[None] | None = None
         self._closed = asyncio.Event()
         self.events: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=event_queue_size)
+        self.dropped = 0          # eventos descartados por cola llena (H63/N2): si esto sube, algo se pierde
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -109,7 +110,15 @@ class MpvIpcClient:
                         fut.set_result(msg)
                 elif "event" in msg:
                     if self.events.full():
-                        self.events.get_nowait()  # drop the oldest event rather than block mpv
+                        # H63/N2 · Descartar es lo correcto —bloquear aquí bloquearía a mpv, que es el
+                        # reproductor— pero NO puede ser silencioso: por esta cola llegan los `client-message`
+                        # con las peticiones de los scripts, así que un evento descartado puede ser una petición
+                        # que nadie va a contestar nunca, y desde fuera eso se ve como «el menú no hace nada».
+                        perdido = self.events.get_nowait()
+                        self.dropped += 1
+                        if self.dropped == 1 or self.dropped % 100 == 0:
+                            log.warning("cola de eventos de mpv llena (%d): se descarta %r", self.dropped,
+                                        perdido.get("event"))
                     self.events.put_nowait(msg)
         finally:
             self._closed.set()

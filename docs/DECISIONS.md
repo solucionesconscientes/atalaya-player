@@ -1696,3 +1696,42 @@
   **(7) Lo que sigue esperando a Ser**: si el repositorio se hace público —sin eso la página exhaustiva no tiene
   dónde vivir y la pública no puede enlazarlo—, dónde se sirve `/atalaya`, y si quiere rehacer las capturas con
   una película de verdad. Está en NEEDS_HUMAN.md.
+- ADR-120 · Dos instalaciones con el mismo identificador: la de tu carpeta personal tapa a la del paquete (H72).
+  Ser instaló el `.deb` el 2026-10-05 y en el menú le seguía saliendo el de antes. No era un fallo del paquete:
+  tenía desde antes la instalación de usuario de `tools/install.sh`, y las dos ponen una entrada de escritorio con
+  **el mismo identificador** (`mpv-uos.desktop`). Por la regla de XDG, la de `~/.local/share/applications` gana
+  siempre sobre la de `/usr/share/applications`, así que el menú abría el repositorio y desde fuera parecía que el
+  paquete no se había instalado.
+  **Qué NO se hace**: cambiarle el identificador a una de las dos. El identificador es lo que enlaza los tipos de
+  archivo, el `xdg-mime default`, los enlaces `mpv-uos://` y los accesos directos que ya existan; cambiarlo
+  rompería todo eso para quien ya lo tenga, a cambio de que en el menú salgan **dos** entradas, que es peor: nadie
+  sabría cuál abre qué. Tampoco se toca la carpeta personal desde el `postinst` del paquete: un paquete que borra
+  cosas del `$HOME` de alguien está mal, pase lo que pase.
+  **Qué se hace**: `tools/install.sh` comprueba si el paquete está instalado y **avisa antes de tapar nada**, con
+  los dos comandos para decidir cuál se queda (`tools/install.sh --uninstall` o `sudo apt remove atalaya-player`).
+  Está en docs/USO.md, en «Problemas frecuentes», y lo vigila un test con un `dpkg-query` de pega que comprueba
+  las dos caras: que avisa cuando el paquete está, y que no dice nada cuando no está.
+- ADR-121 · Los vigilantes de los menús esperan por un ESTADO, no por un plazo (H63/N2, parcial).
+  Tres pasadas completas seguidas: la segunda salió limpia (1.006 pasando) y las otras dos cayeron por timeouts de
+  los mismos sospechosos. El que más se repetía, `test_mu_share::test_menu_create_guests_permissions_close`,
+  fallaba **1 de cada 2** al repetirlo aislado.
+  **Lo encontrado y arreglado.** Al pulsar una fila, uosc **cierra el menú**; el módulo lo vuelve a abrir cuando
+  *mpvd contesta*. Entre una cosa y otra, el vigilante de ADR-112 —«si 0,2 s después de que el menú abierto deje
+  de ser el mío sigue sin haber uno mío, olvido dónde estaba»— se dispara, y con el equipo cargado la ida y vuelta
+  a mpvd tarda más de 0,2 s. El síntoma era exactamente el de N3: el módulo con `view` vacío, el rastro sin su
+  nivel intermedio («Atalaya Player › Invitados» en vez de «… › Compartir › Invitados»). ADR-112 ya cubría «he
+  pedido mi menú y uosc no lo ha confirmado»; faltaba **«estoy esperando a mpvd»**. El arreglo es el estado, no
+  otro plazo: `mu.rpc` expone `pending()` —cuántas peticiones hay en vuelo, que es dato exacto— y los catorce
+  vigilantes no olvidan nada mientras haya alguna. Medido: de fallar 1 de cada 2 a **14 de 15**.
+  **Dos hipótesis descartadas con medidas, para que nadie las repita.** (1) «El demonio se bloquea»: se midió con
+  un pulso cada 0,25 s durante las pasadas, incluidas las que fallan — **el peor ping fue de 0,03 s**, así que
+  mpvd no se para nunca. (2) «La cola de eventos se llena y se pierden peticiones»: `mpvipc` descarta el evento
+  más viejo cuando la cola está llena, y por esa cola llegan los `client-message` con las peticiones de los
+  scripts, así que era un sospechoso perfecto; se instrumentó y **no se llenó ni una vez**. Lo que sí queda de ahí
+  es la instrumentación: descartar es lo correcto —bloquear ahí bloquearía al reproductor— pero ya no es
+  silencioso, porque un evento descartado puede ser una petición que nadie va a contestar nunca.
+  **Lo que queda, dicho sin adornos.** Sigue habiendo un fallo de cada ~10 en ese test, y la última traza no es el
+  mismo camino: el módulo aparece en la vista «Invitados» en un punto donde el test lo espera en la raíz. Eso ya
+  no es el vigilante: es que la navegación puede llegar a un estado que el test no contempla, o que el aviso de
+  «Ana se ha unido» lo pisa otro aviso posterior. **No se cierra H63/N2** hasta que haya tres pasadas seguidas
+  limpias; lo honesto es decir que está acotado y mejorado, no que está resuelto.
