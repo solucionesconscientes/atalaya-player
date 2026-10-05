@@ -152,7 +152,9 @@ end
 local function start_poll()
   stop_poll()
   poll_timer = mp.add_periodic_timer(opts.poll_seconds, function()
-    if uosc.open_type() ~= MENU then stop_poll() return end
+    -- H63 · igual que en mu-recap: parar el sondeo porque en ESTE instante el menú no es nuestro deja la lista
+    -- de aparatos congelada, y el hueco de confirmación de uosc es de milisegundos
+    if not uosc.mine(MENU) then stop_poll() return end
     refresh_status(function() if uosc.open_type() == MENU then render(false) end end)
   end)
 end

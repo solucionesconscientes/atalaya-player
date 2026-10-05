@@ -1835,3 +1835,24 @@
   marca el trabajo que de verdad está ejecutando, y `cancel_session` lee una foto consistente porque corre entre
   dos `await`. La hipótesis que queda —que con la batería entera por delante la transición asíncrona no entra en
   los 10 s— **no está comprobada**; no se ha tocado nada por no arreglar lo que no se ha demostrado roto.
+- ADR-125 · «¿Es mío el menú?» es la pregunta que hay que hacer antes de tirar trabajo (H63/N2).
+  Con la máquina ya con memoria, tres pasadas completas dieron **0, 0 y 1 fallo**: `test_recap`, esperando 60 s a
+  que el resumen llegara a «hecho». Aislado pasa **10 de 10**, así que el log de la pasada completa era la única
+  fuente, y ahí estaba: `mu-recap`, al recibir la respuesta de mpvd, hacía
+  `if uosc.open_type() ~= MENU then state.status = 'idle'; return end` —o sea, **si en ese instante el menú abierto
+  no era el suyo, tiraba el resumen**—. Y ese instante es el hueco de ADR-112: entre pedirle el menú a uosc y verlo
+  confirmado pasan de 1 a 27 ms con el equipo ocupado. No es un test frágil: **pides «¿Qué me he perdido?» y no
+  sale nada**, y cuanto más cargado está el equipo, más fácil.
+  **La cura es un primitivo, no un parche.** `mu.uosc` expone `mine(tipo)` = «el menú abierto es mío **o** lo he
+  pedido y uosc aún no lo ha confirmado», con el mismo seguro de un segundo que `asking()`. Esa es la pregunta
+  correcta antes de **descartar** algo; para refrescar lo que ya está en pantalla sigue bastando `open_type()`,
+  porque perder un refresco se arregla en el siguiente.
+  **Dónde se ha aplicado y dónde NO.** Hay una docena de sitios que leen `open_type()`, y la mayoría solo deciden
+  si refrescan: ahí no se ha tocado nada, porque cambiarlo sería ruido. Se ha cambiado donde se **pierde trabajo**:
+  los dos caminos de `mu-recap` (el resumen y la prosa) y el sondeo de `mu-cast`, que paraba la lista de aparatos
+  por un milisegundo en el que el menú no era suyo.
+  **Lo que las pruebas pueden y no pueden demostrar.** El primitivo queda cerrado con cuatro casos deterministas en
+  la prueba unitaria de Lua (el hueco, el menú de otro, el seguro de un segundo y «si lo cierro yo, deja de ser
+  mío»). El fallo que lo levantó es 1 de cada 3 pasadas completas, así que **no** hay un test que lo reproduzca a
+  voluntad: lo honesto es decir que el mecanismo está demostrado y que la frecuencia se verá en las siguientes
+  tandas.

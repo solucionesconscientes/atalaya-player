@@ -113,3 +113,42 @@ def test_si_uosc_no_contesta_se_vuelve_a_creer_lo_que_publica() -> None:
       reloj = reloj + 1.5
       comprueba('pasado el seguro', 'mu-share', uosc.open_type())
     """).endswith("ok")
+
+
+def test_el_menu_es_mio_tambien_en_el_hueco_de_confirmacion() -> None:
+    """H63 · `mine()`: lo que hay que preguntar antes de TIRAR trabajo.
+
+    Entre «le pido el menú a uosc» y que lo confirme pasan de 1 a 27 ms (ADR-112). `mu-recap` miraba
+    `open_type() ~= MENU` para decidir si seguía habiendo alguien esperando el resumen, así que si la respuesta de
+    mpvd caía en ese hueco **tiraba el resumen** y volvía a «idle»: pedías «¿Qué me he perdido?» y no salía nada.
+    """
+    assert _corre("""
+      publica('mu-recap')
+      comprueba('el abierto es mío', true, uosc.mine('mu-recap'))
+      publica(nil)
+      comprueba('sin menú, no es mío', false, uosc.mine('mu-recap'))
+      uosc.open({ type = 'mu-recap', items = {} })        -- pedido, uosc aún no ha contestado
+      comprueba('pedido y sin confirmar: mío', true, uosc.mine('mu-recap'))
+      publica('mu-recap')
+      comprueba('confirmado: mío', true, uosc.mine('mu-recap'))
+    """).endswith("ok")
+
+
+def test_el_menu_de_otro_no_es_mio_y_el_seguro_tambien_vale_aqui() -> None:
+    assert _corre("""
+      publica('mu-share')
+      comprueba('el de otro no es mío', false, uosc.mine('mu-recap'))
+      uosc.open({ type = 'mu-recap', items = {} })
+      comprueba('pedido el mío: mío', true, uosc.mine('mu-recap'))
+      reloj = reloj + 1.5                                  -- uosc no contesta: manda lo publicado
+      comprueba('pasado el seguro', false, uosc.mine('mu-recap'))
+    """).endswith("ok")
+
+
+def test_si_lo_cierro_yo_deja_de_ser_mio() -> None:
+    """Lo contrario también importa: si cerramos nuestro menú a propósito, lo que llegue tarde NO debe reabrirlo."""
+    assert _corre("""
+      publica('mu-recap')
+      uosc.close('mu-recap')
+      comprueba('cerrado por nosotros', false, uosc.mine('mu-recap'))
+    """).endswith("ok")

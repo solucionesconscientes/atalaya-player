@@ -233,7 +233,9 @@ local function recap()
   show(uosc.loading_items(tr('Leyendo lo que se dijo…')), title, true)
   src.start, src['end'] = from, to
   rpc.call('recap.summarize', src, function(err, res)
-    if uosc.open_type() ~= MENU then state.status = 'idle'; publish(); return end
+    -- H63 · «mío» y no `open_type()` a secas: si la respuesta llega en el hueco entre pedir el menú y que uosc
+    -- lo confirme (de 1 a 27 ms, ADR-112), esto TIRABA el resumen y volvía a «idle»: lo pedías y no salía nada
+    if not uosc.mine(MENU) then state.status = 'idle'; publish(); return end
     if err then
       state.status, state.last_error = 'error', err.message or tostring(err)
       show(uosc.message_items(state.last_error, 'error'), title)
@@ -287,7 +289,9 @@ local function outline()
   show(uosc.loading_items(tr('Leyendo todo lo que se dice…')), title, true)
   if state.llm == nil then ask_llm() end
   rpc.call('recap.outline', src, function(err, res)
-    if uosc.open_type() ~= MENU then state.status = 'idle'; publish(); return end
+    -- H63 · «mío» y no `open_type()` a secas: si la respuesta llega en el hueco entre pedir el menú y que uosc
+    -- lo confirme (de 1 a 27 ms, ADR-112), esto TIRABA el resumen y volvía a «idle»: lo pedías y no salía nada
+    if not uosc.mine(MENU) then state.status = 'idle'; publish(); return end
     if err then
       state.status, state.last_error = 'error', err.message or tostring(err)
       show(uosc.message_items(state.last_error, 'error'), title)

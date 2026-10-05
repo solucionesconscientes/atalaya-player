@@ -43,6 +43,14 @@ function M.asking(menu_type, window)
   return asked.type == menu_type and asked.at >= 0 and (mp.get_time() - asked.at) < (window or 1.0)
 end
 
+-- H63 · «el menú de pantalla es mío»: el que hay abierto O el que he pedido y uosc aún no ha confirmado. Es la
+-- pregunta que hay que hacer antes de TIRAR trabajo —un resumen que acaba de llegar, un sondeo que se para—,
+-- porque `open_type()` sola es un instante y entre pedir el menú y verlo confirmado pasan de 1 a 27 ms (ADR-112).
+-- Para refrescar algo que ya está en pantalla basta `open_type()`: perder un refresco se arregla en el siguiente.
+function M.mine(menu_type)
+  return M.open_type() == menu_type or M.asking(menu_type)
+end
+
 mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
   if t ~= nil and t == asked.type then asked.at = -1 end     -- confirmado: ya no esperamos
   -- el cierre ya ha ocurrido cuando no hay menú o cuando el que hay es otro
