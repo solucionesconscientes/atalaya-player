@@ -20,7 +20,7 @@ pytestmark = pytest.mark.skipif(not whisper_available(), reason="whisper.cpp not
 @pytest.fixture
 def subs_mpv(daemon_env, media_dir):
     h = start_mpv(daemon_env.runtime_dir, [
-        "--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5,"
+        "--script-opts=mu-subs-precompute_next=yes,mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5,"
         f"mu-subs-model={asr_model()},mu-subs-reload_min_interval=0.2,mu-subs-chunk_seconds=6",
         "--keep-open=yes", "--pause=yes",
     ], env=daemon_env.env)

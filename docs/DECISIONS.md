@@ -1933,3 +1933,28 @@
   **Lo que deja la noche, además:** una tanda con 4 fallos que resultaron ser CERO —corrían dos baterías a la vez,
   los cuatro pasaron aislados—. Una batería compartiendo máquina con otra no mide el código, mide el reparto de CPU,
   y su rojo no se cree hasta repetirlo solo.
+- ADR-130 · Arranca limpio: nada se enciende por nuestra cuenta (H63, a raíz de unos tirones de Ser).
+  **Qué pasó.** Ser vio tirones con una serie 1080p HEVC 10 bits y, al abrir el mismo archivo con mpv a secas,
+  perfecto. Medido a pantalla completa, un minuto estable y alternando: **180 fotogramas perdidos por minuto con
+  sus preferencias y 0 sin ellas**. La causa era un filtro de vídeo que él mismo había encendido en el menú,
+  «Protección fotosensible» (`photosensitivity=frames=30`), que analiza treinta fotogramas por delante **en la
+  CPU** sobre cada fotograma de 1080p, en un equipo que ya gasta 1,3 de sus 4 núcleos descodificando ese HEVC
+  porque esta GPU no tiene HEVC 10 bits por hardware.
+  **Por qué es culpa nuestra igualmente.** El filtro lo encendió él, pero el programa se lo dejó encendido
+  semanas, no dijo nada mientras la imagen se rompía, y nada en pantalla relacionaba una cosa con la otra. Un
+  programa que va peor que el motor que lleva dentro y no lo dice no tiene razón de existir.
+  **La regla, que es de Ser:** el reproductor **arranca exactamente como mpv** y lo que cueste algo lo enciende
+  quien lo quiera. Apagado por defecto desde hoy: la detección de intro (`mu-intro.enabled`, que analizaba cada
+  archivo local al abrirlo), SponsorBlock (`mu-intro.sponsorblock`, que salía a la red por cada vídeo de
+  YouTube), y el pre-subtitulado del siguiente episodio (`mu-subs.precompute_next`, que transcribía con whisper
+  mientras veías el actual). Y fuera `vo=gpu-next` del mpv.conf: fijar un renderizador es decidir por el usuario
+  algo que mpv ya decide, y cuando mpv cambie nos quedaríamos con lo viejo.
+  **La única excepción, y con medida:** `hwdec=auto-safe` se queda. En un H.264 1080p de este equipo gasta **5 %
+  de un núcleo contra 35 % sin ella**, dos medidas de cada; y en lo que la GPU no sabe cae sola a software sin
+  penalización. No cuesta nada y ahorra batería: eso no es decidir por el usuario, es no hacerle pagar de más.
+  **En los tests.** Los seis que daban por hecho que esto venía encendido ahora lo encienden ellos
+  (`--script-opts=mu-intro-enabled=yes`…). Un test que depende de un valor por defecto se rompe cuando el valor
+  cambia, que es justo lo que ha pasado y por lo que ahora lo dicen.
+  **Lo que falta y no entra aquí:** que el programa avise cuando un filtro que has encendido no cabe en tu
+  máquina. Se mide ya (`frame-drop-count`) y mu-av tiene vista de diagnóstico; lo que falta es que no espere a
+  que la abras.

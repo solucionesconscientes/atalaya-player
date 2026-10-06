@@ -63,7 +63,7 @@ def sb_mpv(daemon_env, media_dir, tmp_path):
         "MPV_UOS_SPONSORBLOCK_URL": f"http://127.0.0.1:{sb.server_port}/api/skipSegments",
     }
     h = start_mpv(daemon_env.runtime_dir, [
-        "--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5,"
+        "--script-opts=mu-intro-enabled=yes,mu-intro-sponsorblock=yes,mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5,"
         f"mu-ytdl-ytdl_path={FAKE},mu-intro-poll_seconds=0.2,mu-intro-countdown_seconds=0,mu-intro-indicator=no",
         "--keep-open=yes", "--pause=yes",
     ], env=env)

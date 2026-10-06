@@ -21,7 +21,7 @@ local tr = require('mu.i18n').t
 local SCRIPT = mp.get_script_name()
 
 local opts = {
-  enabled = true,
+  enabled = false,        -- NADA se analiza sin pedirlo: alt+j lo enciende (ADR-130)
   auto_skip_intro = false,
   auto_skip_credits = false,
   countdown_seconds = 3,    -- automatic skips wait this long (Esc cancels); 0 = skip at once
@@ -32,7 +32,7 @@ local opts = {
   min_remaining = 1.0,      -- do not offer a skip when the segment is about to end anyway
   credits_tail = 15,        -- credits ending this close to the end of the file lead to the next episode
   watchdog_seconds = 20,    -- re-ask mpvd while an analysis is pending (restarted daemon, lost event)
-  sponsorblock = true,      -- H39/E3: tramos marcados en SponsorBlock de los vídeos de YouTube
+  sponsorblock = false,     -- H39/E3: consultarlo es salir a la red por cada vídeo, así que se pide (ADR-130)
   auto_skip_sponsor = true, -- los patrocinios se saltan solos: es lo que espera quien los activa
 }
 local on_options -- forward: script-opts changed at runtime (e.g. by a preferences system)

@@ -374,7 +374,7 @@ def test_mu_intro_lonely_notice_progress_and_manual_mark(daemon_env, intro_media
     shutil.copytree(intro_media / "solo", solo)
     named = tmp_path / "named"
     shutil.copytree(intro_media / "named", named)
-    h = start_mpv(d.runtime_dir, ["--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-intro-poll_seconds=0.2",
+    h = start_mpv(d.runtime_dir, ["--script-opts=mu-intro-enabled=yes,mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-intro-poll_seconds=0.2",
                                   "--keep-open=yes", "--pause=yes"], env=d.env)
     try:
         h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
@@ -418,7 +418,7 @@ def test_mu_intro_countdown_escape_and_next_episode_in_other_folder(daemon_env, 
     named = tmp_path / "named"
     shutil.copytree(intro_media / "named", named)
     ep1 = named / "Serie Prueba 1x01" / "Serie Prueba 1x01.mkv"
-    h = start_mpv(d.runtime_dir, ["--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-intro-poll_seconds=0.2,"
+    h = start_mpv(d.runtime_dir, ["--script-opts=mu-intro-enabled=yes,mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-intro-poll_seconds=0.2,"
                                   "mu-intro-auto_skip_credits=yes", "--keep-open=yes", "--pause=yes"], env=d.env)
     try:
         h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
@@ -460,7 +460,7 @@ def test_mu_intro_error_is_reported_not_stuck(daemon_env, intro_media, tmp_path)
     named = tmp_path / "named"
     shutil.copytree(intro_media / "named", named)
     ep3 = named / "Serie Prueba 1x03" / "Serie Prueba 1x03.mkv"
-    h = start_mpv(d.runtime_dir, ["--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1",
+    h = start_mpv(d.runtime_dir, ["--script-opts=mu-intro-enabled=yes,mu-core-watchdog_seconds=2,mu-core-retry_seconds=1",
                                   "--keep-open=yes", "--pause=yes"], env=d.env)
     try:
         h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
