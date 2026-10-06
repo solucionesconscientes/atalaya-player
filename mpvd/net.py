@@ -24,7 +24,9 @@ from mpvd.hashing import url_key
 
 log = logging.getLogger("mpvd.net")
 
-DEFAULT_USER_AGENT = f"{app_id().upper()}/{__version__} (+https://github.com/mpv-uos) mpvd"
+# El `+URL` de un User-Agent existe para que quien reciba la petición sepa a quién reclamar: apuntaba a un
+# github.com/mpv-uos que nunca ha existido. Desde que el código es público hay una dirección de verdad.
+DEFAULT_USER_AGENT = f"{app_id().upper()}/{__version__} (+https://github.com/solucionesconscientes/atalaya-player) mpvd"
 DEFAULT_TTL = 12 * 3600.0
 
 
