@@ -1,0 +1,195 @@
+# Windows de verdad para lo que aquí no se puede probar (docs/PLATAFORMAS.md): el instalador
+# (tools/install.ps1) con las DOS shells que va a encontrar —Windows PowerShell 5.1, que trae todo Windows, y
+# PowerShell 7—, los accesos del menú Inicio, los enlaces mpv-uos:// en HKCU, las descargas verificadas con
+# SHA-256 y el .zip portable que se le da a una persona.
+#
+# `windows-latest` es Windows Server 2025: NO trae winget (sí Chocolatey), no hay sesión gráfica y la cuenta es
+# administrador. Lo que esto NO prueba sigue anotado en docs/PLATAFORMAS.md, y la pasada a mano con ventanas
+# (SmartScreen, doble clic, cortafuegos, decodificación por hardware) está en docs/PRUEBA-WINDOWS-VM.md.
+#
+# Coste: gratis en repositorio público; en privado, los minutos de Windows cuentan el doble, así que esto solo
+# se dispara cuando cambia algo de Windows (paths de abajo) o a mano desde la pestaña Actions.
+name: Windows
+
+on:
+  push:
+    paths:
+      - '.github/workflows/windows.yml'
+      - 'bin/*.ps1'
+      - 'bin/*.cmd'
+      - 'tools/install.ps1'
+      - 'tools/empezar-windows.cmd'
+      - 'tools/build_zip_windows.sh'
+      - 'tests/test_install_on_windows.py'
+      - 'tests/test_windows_scripts.py'
+      - 'brand.json'
+      - 'vendor.lock'
+      - 'pyproject.toml'
+  pull_request:
+    paths:
+      - '.github/workflows/windows.yml'
+      - 'bin/*.ps1'
+      - 'bin/*.cmd'
+      - 'tools/install.ps1'
+      - 'tools/build_zip_windows.sh'
+      - 'tests/test_install_on_windows.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  instalador:
+    name: Instalador (PowerShell 5.1 y 7)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: mpv y ffmpeg (scoop, con chocolatey de reserva)
+        run: |
+          # scoop primero porque su mpv está al día (>= 0.41) y no necesita administrador; el de chocolatey es
+          # más antiguo, y entonces el instalador solo tiene que avisar («aviso: mpv x.y < 0.41»), no fallar.
+          $ErrorActionPreference = 'Continue'
+          $shims = Join-Path $env:USERPROFILE 'scoop\shims'
+          try {
+            Invoke-Expression "& {$(Invoke-RestMethod -UseBasicParsing https://get.scoop.sh)} -RunAsAdmin"
+            & (Join-Path $shims 'scoop.ps1') bucket add extras
+            & (Join-Path $shims 'scoop.ps1') install mpv ffmpeg
+          } catch {
+            Write-Host "::warning::scoop no ha podido: $($_.Exception.Message)"
+          }
+          $env:PATH = "$shims;$env:PATH"
+          if (-not (Get-Command mpv -ErrorAction SilentlyContinue)) { choco install -y --no-progress mpv }
+          if (-not (Get-Command ffprobe -ErrorAction SilentlyContinue)) { choco install -y --no-progress ffmpeg }
+          Add-Content -Path $env:GITHUB_PATH -Value $shims
+
+      - name: uv
+        run: |
+          Invoke-RestMethod -UseBasicParsing https://astral.sh/uv/install.ps1 | Invoke-Expression
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:USERPROFILE '.local\bin')
+
+      - name: "Qué máquina es esta (y que estén las dos shells y los programas)"
+        run: |
+          (Get-CimInstance Win32_OperatingSystem).Caption
+          "PowerShell de este paso: $($PSVersionTable.PSVersion)"
+          $ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          & $ps51 -NoProfile -Command '"Windows PowerShell: " + $PSVersionTable.PSVersion'
+          mpv --version | Select-Object -First 1
+          ffprobe -version | Select-Object -First 1
+          uv --version
+
+      - name: Entorno de Python
+        run: uv sync
+
+      - name: "Instalador: plan, instalación, accesos, enlaces y desinstalación"
+        run: uv run pytest tests/test_install_on_windows.py -v
+
+      - name: "Descargas de terceros (SHA-256 de vendor.lock y SHA2-256SUMS de yt-dlp)"
+        run: uv run pytest tests/test_install_on_windows.py -v -m network
+
+  construir-zip:
+    name: Construir el .zip portable (en Linux, como siempre)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: uv
+        run: |
+          curl -fsSL https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Construir
+        run: tools/build_zip_windows.sh --out dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zip-windows
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  probar-zip:
+    name: Abrir el .zip portable en Windows
+    needs: construir-zip
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: zip-windows
+          path: zip
+
+      - name: mpv y ffmpeg (scoop, con chocolatey de reserva)
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $shims = Join-Path $env:USERPROFILE 'scoop\shims'
+          try {
+            Invoke-Expression "& {$(Invoke-RestMethod -UseBasicParsing https://get.scoop.sh)} -RunAsAdmin"
+            & (Join-Path $shims 'scoop.ps1') bucket add extras
+            & (Join-Path $shims 'scoop.ps1') install mpv ffmpeg
+          } catch {
+            Write-Host "::warning::scoop no ha podido: $($_.Exception.Message)"
+          }
+          $env:PATH = "$shims;$env:PATH"
+          if (-not (Get-Command mpv -ErrorAction SilentlyContinue)) { choco install -y --no-progress mpv }
+          if (-not (Get-Command ffprobe -ErrorAction SilentlyContinue)) { choco install -y --no-progress ffmpeg }
+          Add-Content -Path $env:GITHUB_PATH -Value $shims
+
+      - name: "Descomprimir donde sea, como lo haría una persona"
+        run: |
+          $zip = (Get-ChildItem zip -Filter *.zip | Select-Object -First 1).FullName
+          "zip: $zip"
+          Expand-Archive -LiteralPath $zip -DestinationPath 'C:\Prueba Atalaya' -Force
+          $app = (Get-ChildItem 'C:\Prueba Atalaya' -Directory | Select-Object -First 1).FullName
+          Add-Content -Path $env:GITHUB_ENV -Value "APP_DIR=$app"
+          Get-ChildItem -LiteralPath $app | Select-Object Mode, Name
+
+      - name: El intérprete que va dentro arranca y encuentra mpvd
+        run: |
+          $py = Join-Path $env:APP_DIR '.venv\Scripts\python.exe'
+          if (-not (Test-Path -LiteralPath $py)) { throw "el .zip no trae .venv\Scripts\python.exe" }
+          $env:PYTHONPATH = $env:APP_DIR
+          & $py -c "import sys, mpvd; print(sys.version); print(mpvd.__file__)"
+          if ($LASTEXITCODE -ne 0) { throw "el intérprete del .zip no puede importar mpvd" }
+
+      - name: "«Empezar aquí» encuentra el mpv del sistema y no instala nada"
+        run: |
+          # bin\empezar.ps1 y no EMPEZAR-AQUI.cmd: el .cmd hace «pause» si algo falla y aquí nadie puede pulsar
+          # una tecla. Que el .cmd lo llame bien y sea ASCII ya lo comprueba tests/test_windows_scripts.py.
+          $ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          $out = & $ps51 -NoProfile -ExecutionPolicy Bypass -File (Join-Path $env:APP_DIR 'bin\empezar.ps1') `
+                 -DryRun 'pelicula.mkv'
+          $out
+          $plan = ($out | Select-Object -Last 1) | ConvertFrom-Json
+          if ($plan.origen -ne 'PATH') { throw "esperaba el mpv del PATH, no '$($plan.origen)'" }
+          if ($plan.instalado -ne $false) { throw 'no tenía que instalar nada: mpv ya estaba' }
+          if ($plan.argumentos -notcontains 'pelicula.mkv') { throw "no llegan los argumentos: $($plan.argumentos)" }
+
+      - name: El lanzador y el instalador que van dentro del .zip
+        run: |
+          $ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          $cmd = Join-Path $env:APP_DIR 'bin\mpv-uos.cmd'
+          $plan = (& $cmd -DryRun --fs 'video.mkv' | Select-Object -Last 1) | ConvertFrom-Json
+          if ($plan.mpv[1] -ne "--config-dir=$(Join-Path $env:APP_DIR 'mpv-config')") {
+            throw "el lanzador no usa la configuración del .zip: $($plan.mpv -join ' ')"
+          }
+          & (Join-Path $env:APP_DIR 'vendor\bin\yt-dlp.exe') --version
+          $env:MPV_UOS_INSTALL_DIR = Join-Path $env:TEMP 'atalaya-inst'
+          $env:MPV_UOS_START_MENU_DIR = Join-Path $env:TEMP 'atalaya-menu'
+          $plan = (& $ps51 -NoProfile -ExecutionPolicy Bypass -File (Join-Path $env:APP_DIR 'tools\install.ps1') `
+                   --dry-run --no-sync | Select-Object -Last 1) | ConvertFrom-Json
+          if ($plan.root -ne $env:APP_DIR) { throw "el instalador del .zip apunta a '$($plan.root)'" }
+          if (Test-Path -LiteralPath $env:MPV_UOS_INSTALL_DIR) { throw 'un plan no tenía que crear nada' }
+          "acciones: $(($plan.actions | ForEach-Object { $_.action }) -join ', ')"
