@@ -2,15 +2,42 @@
 
 Desarrollado y probado en Linux (Ubuntu, Wayland/KDE, mpv 0.41). Lo siguiente NO está probado fuera de Linux:
 
+## Qué se prueba en un Windows real, y qué no (desde 2026-10-09)
+
+`.github/workflows/windows.yml` ejecuta en cada cambio un **Windows Server 2025 de GitHub** (gratis: el
+repositorio es público) y pasa `tests/test_install_on_windows.py` con las **dos** shells que va a encontrar una
+persona: Windows PowerShell 5.1, que trae todo Windows, y PowerShell 7. Allí sí existen el registro, el menú
+Inicio y `WScript.Shell`, así que se comprueba de verdad:
+
+- el plan (`-DryRun`) y que no toque nada, también en las carpetas reales (`%LOCALAPPDATA%`, menú Inicio);
+- la instalación: `mpv-uos.cmd` en ASCII con CRLF, el `.lnk` leído de vuelta por COM (destino, argumentos,
+  `WindowStyle = 7`, icono) y las claves `mpv-uos://` en HKCU, incluido que **la orden registrada se ejecute**;
+- que instalar dos veces no cambie nada, y `-NoProtocol`;
+- la desinstalación: se lleva lo suyo y deja un `.lnk` ajeno, un `mpv-uos://` ajeno, un lanzador ajeno y los datos
+  del usuario (`%APPDATA%\mpv-uos`);
+- `cmd.exe` → `powershell.exe` 5.1 → `bin\mpv-uos.ps1` → mpv, con un fichero de verdad y acentos en el nombre;
+- las descargas de terceros contra las releases reales, con el SHA-256 de `vendor.lock` y el `SHA2-256SUMS` de
+  yt-dlp, más la segunda pasada que no vuelve a bajar nada;
+- el `.zip` portable: se construye en Linux, se descomprime en Windows y allí arrancan su propio CPython, su
+  `yt-dlp.exe`, el lanzador y el instalador que lleva dentro.
+
+Lo que ese Windows **no** puede dar, y sigue sin probar hasta la pasada a mano de `docs/PRUEBA-WINDOWS-VM.md`:
+no hay sesión gráfica (SmartScreen, doble clic en `EMPEZAR-AQUI.cmd`, que el acceso del menú Inicio abra el
+reproductor, el diálogo del cortafuegos, la ventana de error de `-Gui`), **no trae winget** (así que la cadena
+«instalo mpv y arranco» de `bin/empezar.ps1` no se ejecuta), la cuenta es administrador, no hay GPU (ni
+D3D11VA/DXVA2 ni HDR) y Windows Server no es Windows 11: ni Store, ni SMTC, ni los valores por defecto de un
+escritorio. Tampoco corre `tests/test_windows_scripts.py` en Windows: sus mpv de pega son guiones `#!/bin/sh` y
+solo valen en Linux.
+
 ## Resumen por componente
 | Componente | Linux | macOS | Windows |
 |---|---|---|---|
-| Lanzador `bin/mpv-uos` + config portable | ✅ probado | debería ir (Bash; `readlink -f` ≥ 12.3) | `bin/mpv-uos.ps1` (+ `.cmd`): probado con pwsh 7 en Linux (`-DryRun`), sin Windows real |
-| Instalación de usuario `tools/install.sh` | ✅ probado (XDG, `.desktop`) | ❌ usar `bin/mpv-uos` o un alias | `tools/install.ps1` (menú Inicio, `mpv-uos://` en HKCU): descargas y verificación probadas con pwsh 7 en Linux; sin Windows real |
+| Lanzador `bin/mpv-uos` + config portable | ✅ probado | debería ir (Bash; `readlink -f` ≥ 12.3) | `bin/mpv-uos.ps1` (+ `.cmd`): probado con pwsh 7 en Linux (`-DryRun`); en Windows real, lo ejecuta la CI (sección de arriba) |
+| Instalación de usuario `tools/install.sh` | ✅ probado (XDG, `.desktop`) | ❌ usar `bin/mpv-uos` o un alias | `tools/install.ps1` (menú Inicio, `mpv-uos://` en HKCU): probado con pwsh 7 en Linux y, en un Windows Server 2025 real, por la CI con las dos shells (sección de arriba); sin ratón |
 | AppImage (`tools/build_appimage.sh --arch x86_64\|aarch64`) | ✅ x86_64 probado sin ventana (mpv del sistema); aarch64 **cruzado desde x86-64** y revisado por dentro (runtime e intérprete ARM, catálogos), sin ejecutar | — | — |
 | `.app` de macOS (`tools/build_macos_app.sh`) | construido y validado (plist, lanzador) en Linux | ❌ sin abrir en un Mac (mpv de Homebrew) | — |
 | `.deb` (`tools/build_deb.sh --arch amd64\|arm64`) | ✅ amd64 probado: se extrae, arranca y mpvd se conecta con el intérprete del paquete; lintian sin más avisos que los inherentes a llevarlo dentro. arm64 cruzado y revisado por dentro | — | — |
-| `.zip` portable (`tools/build_zip_windows.sh`) | — | — | construido en Linux y revisado por dentro (lanzadores, `EMPEZAR-AQUI.cmd`, intérprete de Windows en su sitio, yt-dlp.exe); **sin abrir en un Windows** |
+| `.zip` portable (`tools/build_zip_windows.sh`) | — | — | construido en Linux y revisado por dentro (lanzadores, `EMPEZAR-AQUI.cmd`, intérprete de Windows en su sitio, yt-dlp.exe); la CI lo descomprime en Windows y arranca lo que lleva dentro; **sin abrirlo con doble clic** |
 | ARM64 (Raspberry Pi 5) | ⚠ paquetes hechos (`.deb` arm64 y AppImage aarch64, los dos cruzados y revisados por dentro), **sin ejecutar en una máquina ARM**: aquí no hay ninguna ni emulación | — | — |
 | uosc, thumbfast, scripts `mu-*` (Lua) | ✅ | debería ir (Lua puro; rutas con `utils.join_path`) | debería ir (mu-core ya distingue `.venv\Scripts\python.exe`) |
 | mpvd: JSON-RPC y IPC con mpv | ✅ socket Unix | socket Unix (no probado) | named pipes (`mpvd/transport.py`, lazo Proactor) probados con un lazo simulado; sin Windows real |
@@ -88,7 +115,7 @@ mpv-uos video.mkv          # o desde el menú Inicio → Atalaya Player; tambié
 ```
 `install.ps1` comprueba mpv (≥ 0.41), ffmpeg, ffprobe y uv, ejecuta `uv sync`, descarga y verifica con SHA-256 los binarios
 fijados en `vendor.lock` (`ziggy-windows.exe` de uosc, `yt-dlp.exe` contra el `SHA2-256SUMS` de su release, `deno.exe` si no hay
-deno/node ≥ 22 y, con `-Whisper`, whisper.cpp CPU `whisper-bin-x64.zip`), crea `%LOCALAPPDATA%\Atalaya Player\bin\mpv-uos.cmd`,
+deno/node ≥ 22 y, con `-Whisper`, whisper.cpp CPU `whisper-bin-x64.zip`), crea `%LOCALAPPDATA%\Atalaya\bin\mpv-uos.cmd` (`folder` de brand.json),
 un acceso en el menú Inicio y los enlaces `mpv-uos://` (en `HKCU\Software\Classes`). `-DryRun` enseña lo que haría sin tocar nada
 (una línea JSON); `-Uninstall` lo quita todo menos los datos (`%APPDATA%\mpv-uos`) y el checkout.
 El lanzador `bin\mpv-uos.ps1` pasa a mpv las mismas opciones que `bin/mpv-uos` y un `--input-ipc-server=\\.\pipe\mpv-uos-<pid>-<azar>`

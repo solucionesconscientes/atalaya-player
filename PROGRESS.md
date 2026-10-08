@@ -1,6 +1,31 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## Resumen para Ser (2026-10-09) · Windows deja de ser «debería ir»: hay CI y hay plan para el ratón
+
+Lo que no se podía probar aquí ya se prueba en un Windows de verdad, y lo que sigue necesitando ratón está
+escrito paso a paso en vez de pendiente de acordarse.
+
+- **`.github/workflows/windows.yml`** (nuevo): en cada cambio de algo de Windows, un Windows Server 2025 de
+  GitHub ejecuta el instalador con las **dos** shells (Windows PowerShell 5.1 y PowerShell 7). Tres trabajos: el
+  instalador, las descargas verificadas con SHA-256 contra las releases reales, y el `.zip` portable (se
+  construye en Linux y se descomprime y arranca en Windows). Gratis, porque el repositorio es público.
+- **`tests/test_install_on_windows.py`** (nuevo, 18 pruebas × 2 shells): el plan y las carpetas reales de
+  Windows, el `.lnk` leído de vuelta por COM, las claves `mpv-uos://` en HKCU **y la orden registrada
+  ejecutándose**, instalar dos veces, `-NoProtocol`, la desinstalación respetando lo ajeno y los datos del
+  usuario, `cmd.exe` → `powershell.exe` 5.1 → `mpv-uos.ps1` → mpv con un fichero con acentos, y las descargas
+  verificadas. Fuera de Windows se omite entera, así que `tools/check.sh` sigue igual.
+- **`docs/PRUEBA-WINDOWS-VM.md`** (nuevo): la pasada a mano, con los comandos exactos de `virt-install` para esta
+  máquina, la instantánea limpia, el truco de servir el `.zip` por HTTP para que SmartScreen actúe de verdad, y
+  la lista de comprobación de lo que solo se ve con ratón.
+- **`docs/PLATAFORMAS.md`**: nueva sección con qué cubre la CI y qué no (sin sesión gráfica, sin winget, sin GPU,
+  Server ≠ 11). Corregida la ruta del lanzador: `%LOCALAPPDATA%\Atalaya`, que es el `folder` de brand.json.
+
+**SIGUIENTE PASO**: `git push -u origin ci/windows-instalador` (lo tiene que hacer Ser, ver `NEEDS_HUMAN.md`) y
+mirar la primera pasada. Si el paso de mpv/ffmpeg con scoop falla en Windows Server 2025, cambiar ese paso por
+chocolatey a secas y volver a mirar. Con el verde en la mano, pasar a ✅ las filas de Windows de
+`docs/PLATAFORMAS.md` que correspondan.
+
 ## Resumen para Ser (2026-10-06, sesión interactiva de noche) · H63/N2 cerrado y el código publicado
 Dos cosas de golpe, como pediste: la batería y la publicación.
 

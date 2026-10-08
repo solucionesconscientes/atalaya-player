@@ -1,5 +1,34 @@
 # NEEDS_HUMAN — cosas que necesita Ser (con el comando exacto)
 
+## 2026-10-09 · Subir la rama de la CI de Windows, y los paquetes para la máquina virtual
+
+**1. La CI no existe hasta que la rama está en GitHub.** El workflow está escrito y probado todo lo que se puede
+probar aquí (sintaxis con el PowerShell de verdad, nombres de las acciones del instalador contra el propio
+script, la batería nueva recogida y omitida en Linux), pero **nunca se ha ejecutado**: eso solo pasa en GitHub.
+La regla del proyecto es que yo no empujo, así que es tuyo:
+
+```bash
+cd ~/Documentos/PROJECTES/MPV-UOS
+git push -u origin ci/windows-instalador
+gh run watch   # o la pestaña Actions de github.com/solucionesconscientes/atalaya-player
+```
+
+Es gratis: en repositorio público los minutos de GitHub Actions no se cobran. Lo más probable que falle en la
+primera pasada es el paso que instala mpv y ffmpeg (scoop, con chocolatey de reserva): si ahí se cae, el resto
+del workflow no dice nada todavía.
+
+**2. La pasada a mano con ratón** (SmartScreen, doble clic, menú Inicio, cortafuegos, winget) necesita un Windows
+11 de escritorio, y para eso hay que instalar los paquetes de virtualización, que llevan sudo:
+
+```bash
+sudo apt install qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients \
+                 virtinst virt-viewer virt-manager ovmf swtpm swtpm-tools
+sudo adduser "$USER" libvirt        # cierra y abre la sesión después
+```
+
+El resto (ISO de evaluación, crear la máquina, instantánea limpia y la lista de comprobación) está en
+`docs/PRUEBA-WINDOWS-VM.md`. `/dev/kvm` ya está; el equipo tiene 2 núcleos, así que Windows irá lento.
+
 ## 2026-10-05 · La máquina se ha quedado sin memoria, y 4,3 GiB son borrables
 ```bash
 rm -rf /tmp/claude-1000/-home-pc-Documentos-PROJECTES-MPV-UOS/23df8650-f347-4cfa-8d39-77e419c85e41
