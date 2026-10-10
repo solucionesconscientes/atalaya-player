@@ -251,7 +251,7 @@ def test_install_makes_a_start_menu_shortcut_that_hides_the_console(shell: str, 
     lnk = tmp_path / "menu" / f"{APP}.lnk"
     assert lnk.is_file()
     props = shortcut_properties(shell, lnk)
-    assert props["target"] == _windows_powershell()
+    assert os.path.normcase(props["target"]) == os.path.normcase(_windows_powershell())  # COM says C:\WINDOWS
     assert props["arguments"] == f'-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{PS1}" -Gui'
     assert props["style"] == 7                       # minimised: the hidden PowerShell only flashes briefly
     assert APP in str(props["description"])
