@@ -1958,3 +1958,9 @@
   **Lo que falta y no entra aquí:** que el programa avise cuando un filtro que has encendido no cabe en tu
   máquina. Se mide ya (`frame-drop-count`) y mu-av tiene vista de diagnóstico; lo que falta es que no espere a
   que la abras.
+- ADR-131 · mpv se instala por id exacto (`shinchiro.mpv`), no por el moniker «mpv» (corrige en parte ADR-123).
+  **Por qué:** en un Windows 11 Pro de verdad, con la fuente msstore respondiendo, `winget install mpv` coincide
+  también con MPV.NET y winget se niega a elegir (0x8A150016): no instala nada, y solo a veces. Además el paquete
+  bueno es un instalador que deja mpv en `Program Files\MPV Player\` sin tocar el PATH, así que `empezar.ps1` lo
+  busca también ahí. Las pistas para humanos de `install.ps1` y `mpv-uos.ps1` aún dicen «winget install mpv»: se
+  cambian aparte para no mezclar este arreglo con el texto que comprueban otros tests.

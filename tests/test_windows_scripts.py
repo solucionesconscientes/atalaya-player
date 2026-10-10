@@ -371,14 +371,18 @@ def test_el_arranque_encuentra_el_mpv_que_winget_deja_fuera_del_path(tmp_path):
 
 @needs_pwsh
 def test_el_arranque_instala_mpv_con_winget_si_falta(tmp_path):
-    local = tmp_path / "local"
-    destino = local / "Microsoft" / "WinGet" / "Links" / "mpv.exe"
+    # Como el instalador real de shinchiro.mpv: deja mpv en Program Files\MPV Player sin tocar el PATH. Y solo si se
+    # pide por id exacto, porque el moniker «mpv» es ambiguo en cuanto responde msstore (MPV.NET).
+    programas = tmp_path / "Program Files"
+    destino = programas / "MPV Player" / "mpv.exe"
     winget = tmp_path / "winget-de-pega"
     # el PATH del arranque está vacío a propósito, así que el winget de pega se busca sus propias órdenes
-    winget.write_text(f'#!/bin/sh\nPATH=/usr/bin:/bin\nmkdir -p "{destino.parent}"\n'
+    winget.write_text(f'#!/bin/sh\nPATH=/usr/bin:/bin\n'
+                      f'case "$*" in *"install --id shinchiro.mpv --exact"*) ;; *) exit 1 ;; esac\n'
+                      f'mkdir -p "{destino.parent}"\n'
                       f'printf "#!/bin/sh\\nexit 0\\n" > "{destino}"\nchmod +x "{destino}"\nexit 0\n')
     winget.chmod(0o755)
-    out = ps_empezar(tmp_path, LOCALAPPDATA=str(local), MU_WINGET=str(winget))
+    out = ps_empezar(tmp_path, ProgramFiles=str(programas), MU_WINGET=str(winget))
     got = last_json(out.stdout)
     assert got["instalado"] is True and got["mpv"] == str(destino)
     assert "winget" in out.stdout                      # y se lo cuenta a quien está mirando la ventana
@@ -388,7 +392,7 @@ def test_el_arranque_instala_mpv_con_winget_si_falta(tmp_path):
 def test_el_arranque_sin_mpv_y_sin_winget_dice_que_hacer(tmp_path):
     out = ps_empezar(tmp_path, check=False)
     assert out.returncode == 1
-    for esperado in ("winget install mpv", "scoop install mpv", "mpv.io", "0.41"):
+    for esperado in ("winget install --id shinchiro.mpv --exact", "scoop install mpv", "mpv.io", "0.41"):
         assert esperado in out.stderr, esperado
 
 

@@ -38,6 +38,7 @@ function Get-MuMpvCandidates {
     (Join-MuEnvPath 'USERPROFILE'  @('scoop', 'shims', 'mpv.exe')),
     (Join-MuEnvPath 'USERPROFILE'  @('scoop', 'apps', 'mpv', 'current', 'mpv.exe')),
     (Join-MuEnvPath 'ProgramData'  @('chocolatey', 'bin', 'mpv.exe')),
+    (Join-MuEnvPath 'ProgramFiles' @('MPV Player', 'mpv.exe')),
     (Join-MuEnvPath 'ProgramFiles' @('mpv', 'mpv.exe')),
     (Join-MuEnvPath 'ProgramW6432' @('mpv', 'mpv.exe'))
   )) {
@@ -101,11 +102,12 @@ function Get-MuWinget {
 }
 
 function Install-MuMpv {
-  # «mpv» is the catalogue moniker, which is what mpv.io itself documents. If some day it stops resolving to one
-  # package, winget asks instead of choosing, and that is why the failure below has to say what to do by hand.
+  # The exact id, not the «mpv» moniker: with msstore answering, «mpv» also matches MPV.NET and winget refuses to
+  # choose (0x8A150016). shinchiro.mpv is an installer that leaves mpv in Program Files\MPV Player without touching
+  # the PATH, hence that candidate above.
   param([string]$Winget)
   Write-Host 'Te falta mpv, que es el reproductor que Atalaya usa por debajo. Lo instalo con winget; tarda un minuto.'
-  & $Winget @('install', 'mpv', '--accept-package-agreements', '--accept-source-agreements')
+  & $Winget @('install', '--id', 'shinchiro.mpv', '--exact', '--accept-package-agreements', '--accept-source-agreements')
   $code = $LASTEXITCODE
   if ($null -ne $code -and $code -ne 0) {
     Write-Host ''
@@ -121,7 +123,7 @@ function Show-MuMissingMpv {
     'No encuentro mpv y no he podido instalarlo solo.',
     '',
     'Instálalo a mano, con una de estas tres (la primera es la fácil):',
-    '    winget install mpv',
+    '    winget install --id shinchiro.mpv --exact',
     '    scoop bucket add extras; scoop install mpv',
     '    o bájalo de https://mpv.io/installation/ y deja mpv.exe en el PATH',
     '',
