@@ -328,10 +328,23 @@ def test_the_installed_cmd_really_plays_a_file(shell: str, tmp_path: Path, insta
                     "-i", "testsrc=size=160x120:rate=10:duration=1", "-pix_fmt", "yuv420p", "-y", str(media)],
                    check=True, timeout=120)
     launcher = tmp_path / "inst" / "bin" / "mpv-uos.cmd"
-    out = subprocess.run([str(launcher), "--vo=null", "--ao=null", "--frames=1", "--msg-level=all=warn", str(media)],
-                         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
-                         env={**env, "MPV_UOS_DATA_DIR": str(tmp_path / "data"), "MPV_UOS_MPRIS": "0"})
-    assert out.returncode == 0, f"stdout:\n{out.stdout}\nstderr:\n{out.stderr}"
+    # --keep-open=no / --idle=no: mpv.conf keeps the window open and the launcher adds --idle=yes unless told
+    # otherwise, so without them mpv never exits. Output goes to files, not pipes: on a timeout only cmd.exe would
+    # die and the mpv grandchild would hold the pipes open forever; taskkill /T kills our own tree instead.
+    log_out, log_err = tmp_path / "stdout.txt", tmp_path / "stderr.txt"
+    with log_out.open("wb") as o, log_err.open("wb") as e:
+        proc = subprocess.Popen([str(launcher), "--vo=null", "--ao=null", "--frames=1", "--keep-open=no",
+                                 "--idle=no", "--msg-level=all=warn", str(media)], stdout=o, stderr=e,
+                                env={**env, "MPV_UOS_DATA_DIR": str(tmp_path / "data"), "MPV_UOS_MPRIS": "0"})
+        try:
+            code = proc.wait(timeout=120)
+        except subprocess.TimeoutExpired:
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, timeout=60)
+            proc.wait(timeout=60)
+            code = "timeout"
+    logs = (f"stdout:\n{log_out.read_text(encoding='utf-8', errors='replace')}\n"
+            f"stderr:\n{log_err.read_text(encoding='utf-8', errors='replace')}")
+    assert code == 0, f"exit {code}\n{logs}"
 
 
 # -- uninstalling, and everything it must not touch ---------------------------------------------------------------
