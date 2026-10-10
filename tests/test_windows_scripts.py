@@ -27,7 +27,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
-from tests.conftest import APP
+from tests.conftest import APP, APP_FOLDER
 
 ROOT = Path(__file__).resolve().parent.parent
 PS1 = ROOT / "bin" / "mpv-uos.ps1"
@@ -321,6 +321,21 @@ def test_ps1_really_runs_mpv_with_those_arguments(tmp_path):
     assert out[0].startswith("--config-dir=") and PIPE_RE.match(out[1].split("=", 1)[1])
     assert out[:1] + out[2:] == dry[1:2] + dry[3:]
     assert (tmp_path / "data" / "watch_later").is_dir()
+
+
+@needs_pwsh
+def test_ps1_logs_what_it_got_and_how_mpv_ended(tmp_path):
+    """The mpv-uos:// handler runs hidden from the browser: the log is the only trace of what Windows passed."""
+    bash_launcher_args(tmp_path)                      # writes the fake mpv
+    link = "mpv-uos://open?path=%2Fx%20y.mkv&t=5"
+    ps_launcher(tmp_path, "-Gui", link, dry=False, LOCALAPPDATA=str(tmp_path / "local"))
+    log = (tmp_path / "local" / APP_FOLDER / "lanzador.log").read_text(encoding="utf-8").splitlines()
+    assert len(log) == 3
+    assert "start gui=True" in log[0] and json.dumps([link]) in log[0]
+    assert '"--start=5","/x y.mkv"' in log[1] and "--input-ipc-server=" in log[1]
+    assert log[2].endswith("mpv exit=0")
+    ps_launcher(tmp_path, link, LOCALAPPDATA=str(tmp_path / "local"))    # -DryRun logs nothing
+    assert len((tmp_path / "local" / APP_FOLDER / "lanzador.log").read_text(encoding="utf-8").splitlines()) == 3
 
 
 @needs_pwsh

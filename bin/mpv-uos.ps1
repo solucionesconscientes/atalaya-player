@@ -150,6 +150,34 @@ foreach ($a in $args) {
   if ($s -eq '-DryRun') { $DryRun = $true } elseif ($s -eq '-Gui') { $Gui = $true } else { $argv += $s }
 }
 
+# Every real launch leaves a line in %LOCALAPPDATA%\<brand folder>\lanzador.log: the mpv-uos:// handler runs hidden
+# from the browser, and without this nothing tells what Windows actually passed or how mpv ended.
+$LogFile = $null
+if (-not $DryRun -and $env:LOCALAPPDATA) {
+  $folder = 'Atalaya'
+  try {
+    $b = (Get-Content -Raw -LiteralPath (Join-Path $Root 'brand.json') | ConvertFrom-Json).folder
+    if ($b) { $folder = [string]$b }
+  } catch { }
+  $LogFile = Join-Path (Join-Path $env:LOCALAPPDATA $folder) 'lanzador.log'
+}
+function Write-MuLog {
+  param([string]$Text)
+  if (-not $LogFile) { return }
+  try {
+    $dir = Split-Path -Parent $LogFile
+    if (-not (Test-Path -LiteralPath $dir)) { $null = New-Item -ItemType Directory -Force -Path $dir }
+    # shortcut: one old copy kept at 1 MB, enough to debug a handler; a real rotation if it ever matters
+    if ((Test-Path -LiteralPath $LogFile) -and (Get-Item -LiteralPath $LogFile).Length -gt 1MB) {
+      Move-Item -Force -LiteralPath $LogFile -Destination ($LogFile + '.1')
+    }
+    $line = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff') + " [$PID] " + $Text + [Environment]::NewLine
+    [System.IO.File]::AppendAllText($LogFile, $line, (New-Object System.Text.UTF8Encoding($false)))
+  } catch { }   # logging must never stop the player from opening
+}
+trap { Write-MuLog ('error: ' + $_ + ' @ ' + $_.InvocationInfo.PositionMessage); break }
+Write-MuLog ('start gui=' + $Gui + ' args=' + (ConvertTo-Json -Compress -InputObject @($argv)))
+
 # One pipe per instance, never inherited: a program opened from mpv would otherwise pass it on to the next mpv-uos.
 Remove-Item Env:MPV_UOS_SOCKET -ErrorAction SilentlyContinue
 $Pipe = Get-MuPipeName
@@ -176,7 +204,9 @@ if ($split.Downloads.Count -gt 0) {
     [ordered]@{ mpv = $null; mpvd = $cmd; pipe = $null; env = $exported } | ConvertTo-Json -Compress -Depth 4
     exit 0
   }
+  Write-MuLog ('mpvd ' + (ConvertTo-Json -Compress -InputObject @($cmd)))
   & $cmd[0] @($cmd[1..($cmd.Count - 1)])
+  Write-MuLog "mpvd exit=$LASTEXITCODE"
   exit $LASTEXITCODE
 }
 
@@ -190,11 +220,14 @@ if ($DryRun) {
 
 $found = Get-Command -Name $MpvBin -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $found) {
+  Write-MuLog "mpv not found: $MpvBin"
   Show-MuError -Gui $Gui -Message ("No encuentro mpv ($MpvBin). Instálalo (mpv >= 0.41) con «winget install mpv» o " +
     "«scoop bucket add extras; scoop install mpv», o indica el ejecutable en MPV_UOS_MPV.")
   exit 1
 }
 # mpv.com (console wrapper) is waited for and keeps the terminal output; a GUI mpv.exe returns at once.
+Write-MuLog ('mpv ' + (ConvertTo-Json -Compress -InputObject (@($found.Path) + $mpvArgs)))
 & $found.Path @mpvArgs
+Write-MuLog "mpv exit=$LASTEXITCODE"
 if ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }
 exit 0
