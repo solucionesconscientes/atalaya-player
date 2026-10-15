@@ -46,6 +46,7 @@ local state = {
   view = '', stack = {}, items = {},
   path = '', title = '', duration = 0, position = 0, kind = '', tracked = false, resumed = false,
   palette_query = '', palette_results = 0, last_error = '', start_shown = false, force_open = false,
+  goto_query = '',          -- lo último escrito en la caja del minuto (lo necesita el Enter sin fila seleccionada)
 }
 
 local function publish()
@@ -57,7 +58,10 @@ local function publish()
   })
 end
 
-local function osd(text) mp.osd_message(text, opts.osd_seconds) end
+local function osd(text)
+  mp.osd_message(text, opts.osd_seconds)
+  mp.set_property_native('user-data/mu/menu-osd', text)   -- último aviso (tests, mando), como en mu-intro
+end
 
 local function fail(err, what)
   local m = err and (err.message or tostring(err)) or 'error'
@@ -847,20 +851,46 @@ local function parse_time(text)
   return total, rel
 end
 
+-- H58/H74 · a dónde se va y por qué no se puede, en un solo sitio: lo usan la fila que se ve mientras escribes, el
+-- Enter con la fila seleccionada y el Enter SIN nada seleccionado (el que se perdía en silencio, ver `mu-menu-event`).
+-- Devuelve el destino en segundos (nil si no se puede ir) y el motivo para poder decirlo en pantalla.
+local function goto_target(text)
+  if text == '' then return nil end               -- todavía no se ha escrito nada: ni destino ni motivo que dar
+  local secs, rel = parse_time(text)
+  if not secs then return nil, tr('No entiendo «%s»'):format(text) end
+  local dur = mp.get_property_number('duration')
+  local destino = rel and ((mp.get_property_number('time-pos') or 0) + rel * secs) or secs
+  if dur and (destino < -0.5 or destino > dur + 0.5) then
+    return nil, tr('Eso se sale del archivo, que dura %s'):format(fmt_time(dur)), secs, rel
+  end
+  return math.max(0, destino), nil, secs, rel
+end
+
+-- Cierra la caja y salta. Una sola puerta para las tres formas de decirlo (la fila, el Enter con fila y el Enter solo).
+local function goto_go(destino)
+  mp.commandv('seek', math.max(0, destino), 'absolute+exact')
+  state.view = ''
+  state.stack = {}
+  state.goto_query = ''
+  publish()
+  uosc.close(GOTO)
+end
+
 local function goto_menu(query)
-  local secs, rel = parse_time(query)
+  local _, motivo, secs, rel = goto_target(query)
+  local dur = mp.get_property_number('duration')
   local items
-  if secs then
-    local dur = mp.get_property_number('duration')
-    local destino = rel and ((mp.get_property_number('time-pos') or 0) + rel * secs) or secs
-    local fuera = dur and (destino < -0.5 or destino > dur + 0.5)
+  local ejemplo = { title = tr('Escribe un minuto: 2:15, 1:02:15, 135 segundos, o +30 / −30'), icon = 'timer',
+                    selectable = false, muted = true }
+  if secs and not motivo then
     items = { { title = (rel and (rel > 0 and 'Avanzar ' or 'Retroceder ') or 'Ir a ') .. fmt_time(secs),
-                hint = fuera and 'se sale del archivo' or (dur and ('de ' .. fmt_time(dur)) or nil),
-                icon = fuera and 'error' or 'play_arrow', selectable = not fuera, muted = fuera,
-                value = fuera and '' or { goto_secs = secs, goto_rel = rel or 0 } } }
+                hint = dur and ('de ' .. fmt_time(dur)) or nil, icon = 'play_arrow',
+                value = { goto_secs = secs, goto_rel = rel or 0 } } }
   else
-    items = { { title = tr('Escribe un minuto: 2:15, 1:02:15, 135 segundos, o +30 / −30'), icon = 'timer',
-                selectable = false, muted = true } }
+    -- O no se entiende, o se sale del archivo: se dice aquí mismo, mientras se escribe, y no solo al pulsar Enter.
+    -- Sin nada escrito no hay nada que decir: solo el ejemplo.
+    items = { ejemplo }
+    if motivo then table.insert(items, 1, { title = motivo, icon = 'error', selectable = false, muted = true }) end
   end
   return { type = GOTO, title = tr('Ir a un minuto'), items = items, callback = { SCRIPT, EVENT },
            search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
@@ -1004,6 +1034,7 @@ views.palette = function()
 end
 
 views.minuto = function()   -- `goto` es palabra reservada en Lua
+  state.goto_query = ''
   uosc.open(goto_menu(''))
 end
 
@@ -1056,11 +1087,7 @@ mp.register_script_message(EVENT, function(json)
     if v.goto_secs then
       local destino = v.goto_rel ~= 0 and ((mp.get_property_number('time-pos') or 0) + v.goto_rel * v.goto_secs)
         or v.goto_secs
-      mp.commandv('seek', math.max(0, destino), 'absolute+exact')
-      state.view = ''
-      state.stack = {}
-      publish()
-      uosc.close(GOTO)
+      goto_go(destino)
       return
     end
     if v.child then
@@ -1126,7 +1153,19 @@ mp.register_script_message(EVENT, function(json)
     end
   elseif ev.type == 'search' then
     if state.view == 'palette' then run_palette(ev.query or '')
-    elseif state.view == 'minuto' then uosc.update(goto_menu(ev.query or '')) end
+    elseif state.view == 'minuto' then
+      state.goto_query = ev.query or ''
+      uosc.update(goto_menu(state.goto_query))
+    end
+  elseif ev.type == 'key' and state.view == 'minuto' and (ev.id == 'enter' or ev.id == 'kp_enter') then
+    -- H74 · el Enter SIN nada seleccionado, que es lo que pasa cuando lo escrito no se entiende o se sale del vídeo:
+    -- la única fila es la ayuda, que no se puede seleccionar, así que uosc no activa nada y manda el Enter como
+    -- `key`. Aquí se perdía en silencio: se escribía el minuto, se pulsaba Enter y no pasaba absolutamente nada.
+    local texto = state.goto_query or ''
+    if texto ~= '' then
+      local destino, motivo = goto_target(texto)
+      if destino then goto_go(destino) else osd(motivo) end
+    end
   elseif ev.type == 'back' then
     table.remove(state.stack)
     -- uosc only closes the menu whose type matches: the palette is PALETTE, so closing MENU did nothing at all
@@ -1156,6 +1195,7 @@ local function reset_state()
     state.stack = {}
     state.view = ''
     state.palette_query = ''
+    state.goto_query = ''
     publish()
   end
 end

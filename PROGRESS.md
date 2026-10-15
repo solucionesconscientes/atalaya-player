@@ -1,6 +1,42 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## Resumen para Ser (2026-10-15) · el minuto que no se entendía ya lo dice, y Windows queda a la espera del empujón
+
+### H74 · «Escribo el minuto, doy a Enter y no pasa nada» (ADR-133)
+Lo que reportaste tal cual, y era exacto: no pasaba nada **porque el aviso no existía**. En la caja «Ir a un minuto»
+(`g`, o su botón en la barra) uosc no activa ninguna fila cuando lo escrito no produce una fila seleccionable —la única
+que quedaba era la ayuda, que no se puede seleccionar—, así que mandaba el Enter como evento `key` y `mu-menu` no lo
+escuchaba. Ni saltaba ni decía por qué.
+
+- **Un solo sitio decide** el destino y el motivo de que no se pueda ir (`goto_target`), y de ahí beben los tres
+  caminos: la fila que ves mientras escribes, el Enter con una fila seleccionada y el Enter sin nada seleccionado.
+- **Escribiendo ya se ve**: si no se entiende («2x») o se sale del archivo («9:99»), el motivo sale dentro de la caja al
+  momento, y al pulsar Enter sale en pantalla con la caja abierta para corregir.
+- **Lo que es de uosc no se toca**: al borrar con ⌫ hasta dejar el cuadro vacío, el palette se cierra él solo
+  (`elements/Menu.lua:1043`); se acepta, se anota en `docs/UOSC_API.md` §7 y se vuelve a abrir con `g`.
+- **Los tests ahora teclean de verdad**: los de antes mandaban el evento `activate` ya cocinado, y por eso este fallo
+  pasó desapercibido. Los dos nuevos pulsan teclas por IPC (`keypress`, una por vez) esperando a que uosc enlace las
+  teclas del menú. 5 de 5 en `tests/test_mu_goto.py`.
+- Probar a mano:
+  ```bash
+  bin/mpv-uos pelicula.mkv
+  # g → «2x» + Enter: dice el motivo y la caja sigue abierta · borra y escribe 0:12 + Enter: salta y se cierra
+  ```
+
+### La prueba en Windows 11, ya arreglada (ADR-131, ADR-132) — pendiente de empujar
+Los cuatro puntos del brief están cerrados y commiteados en `ci/windows-instalador`: el acceso directo comparando rutas
+sin distinguir mayúsculas, el test que ya no se cuelga (`--keep-open=no`, salida a fichero y `taskkill` del árbol, no
+solo de `cmd.exe`), `winget install --id shinchiro.mpv --exact` con la búsqueda en `Program Files\MPV Player\`, el log
+del lanzador en `%LOCALAPPDATA%\Atalaya\lanzador.log`, y la ventana que abre maximizada y no «restaurada».
+El resumen completo, con lo que falta y por qué, está en `.tareas/resumen-arreglos.md`.
+
+**SIGUIENTE PASO**: es tuyo, y son dos comandos (`NEEDS_HUMAN.md`): `git push -u origin ci/windows-instalador` para que
+la CI de Windows corra por primera vez, y la pasada con ratón en la VM (necesita los paquetes de virtualización, que
+llevan `sudo`). Del lado del código, lo que queda del informe de Windows es leer `lanzador.log` para ver con qué forma
+llega `mpv-uos://` desde Edge cuando ya hay una ventana abierta: si trae `mpv-uos://open/?…`, basta con aceptar también
+esa forma al partir los argumentos.
+
 ## Resumen para Ser (2026-10-09) · Windows deja de ser «debería ir»: hay CI y hay plan para el ratón
 
 Lo que no se podía probar aquí ya se prueba en un Windows de verdad, y lo que sigue necesitando ratón está

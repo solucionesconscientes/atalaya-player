@@ -224,6 +224,9 @@ en `mpv-config/input.conf` (nombre de script = fichero sin `.lua`, `-` → `_`).
   (incluido el de otro script).
 - Cada Lua error dentro de uosc mata el script completo hasta reiniciar mpv (comprobado con `search-query-update`).
 - `select-menu-item` no hace nada si el usuario ha movido el ratón (`mouse_nav`).
+- En un `palette`, borrar con ⌫ hasta dejar el cuadro vacío **cierra el menú** él solo: `search_query_backspace`
+  llama a `self:back()` cuando la consulta se queda sin caracteres (`Menu.lua:1048-1053`). O sea que un `palette`
+  no puede quedarse abierto y vacío; si tu script quiere conservarlo, no lo vacíes del todo.
 - Iconos: solo nombres de Material Icons Rounded incluidos en la fuente vendorizada (`fonts/uosc_icons.otf`); un
   nombre inexistente se pinta como texto. `hide` en `set-button` sí existe aunque el README de la release no lo cite.
 - Discrepancias wiki vs código 5.13.0: la wiki dice que `search_debounce='submit'` se envía con `ctrl+Enter` (es Enter
@@ -235,7 +238,7 @@ en `mpv-config/input.conf` (nombre de script = fichero sin `.lua`, `-` → `_`).
 uosc 5.13.0 (`vendor.lock`, `main.lua:2`), mpv 0.41.0, 2026-09-28. Archivos: `main.lua:305-330, 434-435, 799-810,
 1086-1153`; `lib/menus.lua:1-49, 54-200, 567-703, 959-1110`; `lib/buttons.lua` (completo); `lib/std.lua:288-309`;
 `lib/utils.lua:430-440`; `lib/ass.lua:34-44`; `elements/Menu.lua:3-30, 34-60, 103-170, 172-330, 570-700, 789-860,
-942-1030, 1129-1362, 1364-1400, 1479-1690`; `elements/Controls.lua:33-217, 262-290`; `elements/ManagedButton.lua`,
+942-1055, 1129-1362, 1364-1400, 1479-1690`; `elements/Controls.lua:33-217, 262-290`; `elements/ManagedButton.lua`,
 `elements/CycleButton.lua`, `elements/Button.lua:1-40`; `script-opts/uosc.conf:28-115`; `tmp/dl/uosc-README.md:366-503`;
 wiki Home y Menu-API (github.com/tomasklaen/uosc/wiki, consultadas el mismo día). Prueba headless: mpv vía
 `bin/mpv-uos --vo=null --ao=null --idle=yes` con cliente IPC Python (socket y log en `tmp/`, ya borrables).

@@ -434,6 +434,25 @@ Decidido con Ser el 2026-10-04: «yo haría deb y appimage, ambos tb para arm»,
       cruzado se comprueba el contenido. 21 tests nuevos (`tests/test_deb.py`,
       `tests/test_lanzador_mpv_viejo.py`, el del zip en `tests/test_windows_scripts.py`).
 
+## H74 · Lo escrito que no lleva a ningún sitio se dice, y el Enter ya no se pierde (2026-10-15) — ADR-133 · [x]
+Reportado por Ser el mismo día, probando la app: en la caja «Ir a un minuto» escribió el minuto, pulsó Enter y **no pasó
+nada** —ni salto ni aviso—. La causa no era el salto: uosc no activa ninguna fila cuando lo escrito no produce una fila
+seleccionable (la única que quedaba era la ayuda) y manda ese Enter como evento `key`, que `mu-menu` no escuchaba.
+- [x] `goto_target` es el único sitio que decide a dónde se va y por qué no se puede: de ahí beben la fila que se ve
+      mientras escribes, el Enter con fila seleccionada y el Enter sin nada seleccionado.
+- [x] Escribiendo, el motivo se ve dentro de la caja al momento; al pulsar Enter sale en pantalla y **la caja se queda
+      abierta** para corregir sin volver a empezar.
+- [x] El cierre del palette al vaciarlo con ⌫ es de uosc (`elements/Menu.lua:1052`): se acepta y se documenta
+      (`docs/UOSC_API.md` §7) en vez de parchear uosc.
+Aceptación: los 5 tests de `tests/test_mu_goto.py` en verde —dos de ellos teclando de verdad por IPC (`keypress`, una tecla
+por vez, esperando a que uosc enlace las teclas del menú)— y `tools/check.sh` en verde.
+Probar a mano:
+```bash
+bin/mpv-uos pelicula.mkv
+# g (o el botón de la barra) → escribe «2x» → Enter: dice el motivo y la caja sigue abierta
+#                             → borra y escribe 0:12 → Enter: salta al segundo 12 y se cierra
+```
+
 ## H71 · La película de Ser, medida con los dos reproductores — ADR-115 · [x]
 Ser puso **su** película (`Silencio`, Scorsese 2016: MKV 2,7 GB, HEVC **Main 10**, 1920x804, 2,4 Mbps, 161 min) y
 pidió lo único que zanja la discusión: «compruébalo con mpv y mpv-uos; hasta que mpv-uos no sea igual o más ligero

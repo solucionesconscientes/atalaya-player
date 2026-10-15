@@ -1974,3 +1974,23 @@
   dentro del vídeo, y es una decisión suya, no un ajuste que se cuela.
   **Cómo se comprueba.** Con `--vo=null` (los tests no abren ventana) mpv refleja igualmente la opción en la
   propiedad `window-maximized`: comprobado a mano antes de escribir el test, y `tests/test_config.py` la exige.
+- ADR-133 · El minuto que no se entiende se dice en la caja, y el Enter sin fila ya no se pierde (H74, reportado por
+  Ser el 2026-10-15).
+  **Qué se vio.** En la caja «Ir a un minuto» (`g`, y su botón en la barra) escribió `2x`, pulsó Enter y no pasó nada:
+  ni salto, ni aviso, ni una pista de qué estaba mal. uosc no activa nada cuando lo escrito no produce una fila
+  seleccionable —la única que quedaba era la ayuda, que no se puede seleccionar— y manda ese Enter como evento `key`,
+  que nuestro script no escuchaba. El motivo tampoco se veía mientras se escribía: la fila de error solo aparecía
+  cuando ya se había vuelto a escribir.
+  **Decisión.** El destino y el motivo de que no se pueda ir salen de **una sola** función (`goto_target`), y de ahí
+  beben los tres caminos: la fila que se ve mientras escribes, el Enter con una fila seleccionada y el Enter sin nada
+  seleccionado. Si no se entiende o se sale del archivo, se dice dentro de la caja al momento y, al pulsar Enter, sale
+  en pantalla — y la caja **se queda abierta** para corregir sin volver a empezar. Es la misma regla de siempre: un
+  fallo nunca en silencio.
+  **Lo que no se hace:** parchear uosc para que el palette no se cierre solo. Al borrar con ⌫ hasta dejar el cuadro
+  vacío, uosc llama a `self:back()` y el menú se cierra (`elements/Menu.lua:1052`); se acepta su comportamiento
+  —es el mismo en su paleta de comandos—, se anota en `docs/UOSC_API.md` §7 y quien se lo piense mejor vuelve a
+  abrir la caja con `g`.
+  **Cómo se comprueba.** `tests/test_mu_goto.py` teclea de verdad por IPC, una tecla por vez (`keypress`) y esperando
+  a que uosc tenga las teclas del menú enlazadas: `0:12` + Enter salta al segundo 12 y cierra; `2x` y `9:99` dicen el
+  motivo, no mueven el vídeo y dejan la caja abierta. Los tests de arriba, que mandaban el evento `activate` ya
+  cocinado, no podían ver este fallo: por eso los dos nuevos van con teclas de verdad.
