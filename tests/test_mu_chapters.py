@@ -784,3 +784,45 @@ def test_las_instrucciones_dentro_de_la_app(video):
         assert h.script_errors() == [], h.script_errors()
     finally:
         h.stop()
+
+
+@pytest.fixture(scope="module")
+def charla_con_subs_dentro(charla_mkv, tmp_path_factory):
+    """La charla con la transcripción DENTRO del mkv, como pista de texto: ese es el camino de `subs.extract`."""
+    out = tmp_path_factory.mktemp("charla-subs") / "charla.mkv"
+    subprocess.run(["ffmpeg", "-v", "error", "-i", str(charla_mkv), "-i", str(SRT), "-map", "0:v", "-map", "1:0",
+                    "-c", "copy", "-c:s", "srt", "-metadata:s:s:0", "language=spa", str(out)],
+                   check=True, timeout=120)
+    return out
+
+
+def test_pista_dentro_del_video_se_extrae_y_vale_aunque_no_quepa_al_lado(daemon_env, charla_con_subs_dentro, tmp_path):
+    """Dos cosas de golpe: la pista de texto de dentro se extrae y se usa (diciéndolo), y si el vídeo está en una
+    carpeta donde no se puede escribir —mpvd deja el SRT en la carpeta de subtítulos— la copia lo encuentra igual."""
+    ro = tmp_path / "solo-lectura"
+    ro.mkdir()
+    v = ro / "charla.mkv"
+    shutil.copyfile(charla_con_subs_dentro, v)
+    fuera = tmp_path / "fuera"
+    fuera.mkdir()
+    ro.chmod(0o555)
+    h = start_mpv(daemon_env.runtime_dir, [OPTS_MPVD, "--keep-open=yes", "--pause=yes", str(v)],
+                  env={**daemon_env.env, "MPV_UOS_SUBS_SAVE_DIR": str(fuera)})
+    try:
+        h.wait_property("duration", lambda d: isinstance(d, (int, float)) and d > 500, timeout=20)
+        h.wait_property("user-data/mu/core", lambda c: bool(c) and c.get("mpvd") == "connected", timeout=40)
+        h.wait_property("user-data/mu/chapters", lambda st: bool(st) and st.get("path") == str(v), timeout=20)
+        pedir_transcripcion(h)
+        st = h.wait_property("user-data/mu/chapters",
+                             lambda s: bool(s) and (s.get("transcript") or {}).get("status") == "done", timeout=90)
+        t = st["transcript"]
+        assert t["source"] == "track" and t["lines"] > 0, t
+        assert Path(t["out"]).parent == fuera, f"se guardó en {t['out']}"
+        assert not (ro / "charla.es.srt").exists(), "en una carpeta de solo lectura no se escribe nada"
+        h.command("keypress", "ctrl+alt+c")           # sin SRT al lado: se lee el que dejó la transcripción
+        osd_de(h, "Copiado: ")
+        assert leer_portapapeles(h).startswith("Eres un editor de vídeo")
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+        ro.chmod(0o755)

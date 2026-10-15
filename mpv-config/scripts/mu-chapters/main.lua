@@ -148,6 +148,12 @@ end
 
 local function srt_blocks(v)
   local srt = find_srt(v)
+  -- Si no hay SRT junto al vídeo (carpeta sin permiso de escritura: mpvd lo deja en la carpeta de subtítulos), vale
+  -- el que acaba de guardar «Conseguir la transcripción»: es la misma transcripción, en otro sitio.
+  if not srt then
+    local out = state.transcript and state.transcript.out or ''
+    if out ~= '' and utils.file_info(out) then srt = out end
+  end
   if not srt then return nil end
   return chapters.parse_srt(read_file(srt) or '')
 end
