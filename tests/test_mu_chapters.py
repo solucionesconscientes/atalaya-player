@@ -16,6 +16,7 @@ import json
 import re
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -664,6 +665,122 @@ def test_quitar_capitulos_pregunta_y_borra_el_archivo(video):
 
         h.command("keypress", "ctrl+alt+d")          # ya no hay nada: lo dice, sin preguntar
         osd_de(h, "no tiene capítulos que quitar")
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+# == F4 · conseguir la transcripción y copiarla =====================================================================
+#
+# El trabajo lo hace mu-subs (los subtítulos de texto del vídeo, o whisper) y aquí solo se pide y se cuenta. Los dos
+# caminos se prueban: el de los subtítulos del vídeo entero y de verdad, y el de whisper hasta donde se puede en una
+# máquina donde el whisper.cpp vendorizado no arranca (GLIBC): que se pida, que se decida whisper y que el progreso —o
+# el motivo del fallo— se vean. Lo que no puede pasar nunca es que se quede callado.
+
+CLIP = "mu-chapters-test_clipboard=yes"
+OPTS_MPVD = f"--script-opts={CLIP}"
+
+
+@pytest.fixture
+def con_mpvd(daemon_env):
+    """Un mpv con mpvd de verdad (mu-subs guarda con `subs.save`, que es cosa del daemon)."""
+
+    def _abrir(v, *opts: str, min_duration: float = 500):
+        h = start_mpv(daemon_env.runtime_dir, [
+            OPTS_MPVD + "".join("," + o for o in opts), "--keep-open=yes", "--pause=yes", str(v)],
+            env=daemon_env.env)
+        h.wait_property("duration", lambda d: isinstance(d, (int, float)) and d > min_duration, timeout=20)
+        h.wait_property("user-data/mu/core", lambda c: bool(c) and c.get("mpvd") == "connected", timeout=40)
+        h.wait_property("user-data/mu/chapters", lambda st: bool(st) and st.get("path") == str(v), timeout=20)
+        return h
+
+    return _abrir
+
+
+def pedir_transcripcion(h) -> None:
+    """El botón, tal cual está en el menú (sin tecla propia): Menú → Subtítulos → Capítulos con una IA."""
+    h.command("script-binding", "mu_chapters/chapters-transcript")
+
+
+def test_un_boton_usa_los_subtitulos_del_video_y_avisa(con_mpvd, video):
+    v = con_srt(video)
+    h = con_mpvd(v)
+    try:
+        pedir_transcripcion(h)
+        st = h.wait_property("user-data/mu/chapters",
+                             lambda s: bool(s) and (s.get("transcript") or {}).get("status") == "done", timeout=90)
+        t = st["transcript"]
+        assert t["source"] == "track", "el vídeo ya trae subtítulos de texto: no se transcribe nada"
+        assert t["lines"] > 0 and t["chars"] > 0, t
+        assert "Transcripción lista" in st["osd"], st["osd"]
+        assert Path(t["out"]).is_file()
+        # y de ahí sale la copia de F2, sin hacer nada más
+        h.command("keypress", "ctrl+alt+c")
+        copiado = osd_de(h, "Copiado: ")
+        assert leer_portapapeles(h).startswith("Eres un editor de vídeo")
+        assert f"Copiado: {copiado['transcript']['lines']} líneas" in copiado["osd"], copiado["osd"]
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_sin_subtitulos_el_boton_pide_whisper_y_no_se_calla(con_mpvd, video):
+    h = con_mpvd(video)
+    try:
+        pedir_transcripcion(h)
+        # mu-subs decide por su cuenta: no hay pista de texto, así que whisper y el modelo del tier de hardware
+        st = h.wait_property("user-data/mu/chapters",
+                             lambda s: bool(s) and (s.get("transcript") or {}).get("source") == "ai", timeout=30)
+        subs = h.wait_property("user-data/mu/subs",
+                               lambda s: bool(s) and s.get("transcript_status") in
+                               ("transcribing", "saving", "done", "failed"), timeout=60)
+        if subs["transcript_status"] == "failed":
+            # en esta máquina el whisper-cli vendorizado no arranca (GLIBC): lo que se exige es que lo diga
+            st = osd_de(h, "No se pudo conseguir la transcripción", timeout=60)
+            assert st["transcript"]["error"], st["transcript"]
+        else:
+            assert subs["transcript_source"] == "ai"
+            h.wait_property("user-data/mu/chapters",
+                            lambda s: bool(s) and (s.get("transcript") or {}).get("status") == "transcribing", timeout=30)
+        # y el reproductor sigue entero
+        h.command("set_property", "pause", False)
+        h.wait_property("time-pos", lambda t: isinstance(t, (int, float)) and t > 0.5, timeout=10)
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_en_directo_no_pide_ninguna_transcripcion(tmp_path):
+    stream = "av://lavfi:sine=frequency=440"
+    h = start_mpv(TMP / "test-chapters", [OPTS, stream])
+    try:
+        h.wait_property("user-data/mu/chapters", lambda st: bool(st) and st.get("path") == stream, timeout=20)
+        pedir_transcripcion(h)
+        st = osd_de(h, "solo para archivos del equipo")
+        assert not st.get("transcript"), "en un directo no se pide nada"
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_las_instrucciones_dentro_de_la_app(video):
+    """F4 §5 · los cuatro pasos y los botones, dentro del menú: quien no sabe nada de IA no sale del reproductor."""
+    v = con_srt(video)
+    h = abrir(v)
+    try:
+        h.wait_property("user-data/mu/core", lambda c: bool(c) and c.get("uosc"), timeout=40)
+        h.command("script-binding", "mu_menu/root")
+        activar(h, item(h, "root", "Subtítulos"))
+        activar(h, item(h, "subs", "Capítulos con una IA"))
+        activar(h, item(h, "chapters", "Cómo funciona"))
+        ayuda = h.wait_property("user-data/mu/menu", lambda m: bool(m) and m.get("view") == "chapters_help"
+                                and any(i["title"].startswith("4 ·") for i in m.get("items", [])), timeout=15)
+        titulos = [i["title"] for i in ayuda["items"]]
+        assert [t[0] for t in titulos[:4]] == ["1", "2", "3", "4"], titulos
+        assert "ChatGPT" in titulos[2] and "Duck.ai" in titulos[2]
+        activar(h, item(h, "chapters_help", "Copiar la transcripción y el prompt"))
+        osd_de(h, "Copiado: ")
+        assert leer_portapapeles(h).startswith("Eres un editor de vídeo")
         assert h.script_errors() == [], h.script_errors()
     finally:
         h.stop()

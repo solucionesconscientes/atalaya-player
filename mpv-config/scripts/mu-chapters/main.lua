@@ -64,12 +64,17 @@ Antes de responder, comprueba que cada tiempo existe en la transcripción, que e
 00:00.
 ]]
 
-local state = { path = '', status = 'idle', osd = '', count = 0, source = '', file = '', pending = nil }
+local state = { path = '', status = 'idle', osd = '', count = 0, source = '', file = '', pending = nil,
+                transcript = nil }
 
 local function publish()
+  local t = state.transcript
   mp.set_property_native('user-data/mu/chapters', {
     path = state.path, status = state.status, osd = state.osd, count = state.count, source = state.source,
     file = state.file,
+    -- F4: lo que va pasando con «conseguir la transcripción», para el menú y los avisos (lo hace mu-subs)
+    transcript = t and { status = t.status, source = t.source, progress = t.progress or 0, lines = t.lines or 0,
+                         chars = t.chars or 0, out = t.out or '', error = t.error or '' } or nil,
   })
 end
 local function osd(text)
@@ -302,6 +307,73 @@ mp.observe_property('user-data/mu/confirm', 'native', function(_, answer)
   osd(p.remove and tr('Se quedan como estaban') or tr('No se han aplicado los capítulos'))
 end)
 
+-- -- F4 · conseguir la transcripción (el trabajo lo hace mu-subs) -----------------------------------------------------
+--
+-- Un solo botón, sin elegir modelo ni pista: se lo pedimos a mu-subs (`mu-subs-transcript`), que usa los subtítulos de
+-- texto que ya traiga el vídeo o transcribe con whisper, y deja el SRT al lado del vídeo. Aquí solo se cuenta lo que
+-- va pasando (progreso de verdad, el que publica mu-subs) y se avisa al terminar. Nada de APIs ni de abrir nada.
+
+local function subs_state()
+  local s = mp.get_property_native('user-data/mu/subs')
+  return type(s) == 'table' and s or {}
+end
+
+local function transcribing(t)
+  return t and (t.status == 'extracting' or t.status == 'transcribing' or t.status == 'saving')
+end
+
+-- Lo que se copiará: las líneas compactas y sus caracteres. Es el número que le sirve al usuario (no los cues del SRT).
+local function transcript_size(out, duration)
+  local text = out ~= '' and read_file(out) or nil
+  if not text then return 0, 0 end
+  local lines = chapters.compact(chapters.parse_srt(text), { duration = duration, line_seconds = opts.line_seconds }).lines
+  local chars = 0
+  for _, line in ipairs(lines) do chars = chars + #line end
+  return #lines, chars
+end
+
+local function ask_transcript()
+  local v = local_video()
+  if not v then return not_local() end
+  if transcribing(state.transcript) then return osd(tr('Ya se está consiguiendo la transcripción…')) end
+  state.transcript = { status = 'asking', progress = 0, said = -10 }
+  publish()
+  -- mu-subs avisa de lo que ha decidido (los subtítulos del vídeo o whisper); aquí se sigue desde su estado
+  mp.commandv('script-message-to', 'mu_subs', 'mu-subs-transcript')
+end
+
+mp.observe_property('user-data/mu/subs', 'native', function(_, subs)
+  local t = state.transcript
+  if not t or type(subs) ~= 'table' then return end
+  local status = subs.transcript_status or ''
+  if status == '' then return end                       -- mu-subs no tiene nada entre manos para este archivo
+  t.source = subs.transcript_source ~= '' and subs.transcript_source or t.source
+  if status == 'transcribing' then
+    local pct = math.floor((tonumber(subs.progress) or 0) * 100 + 0.5)
+    t.status, t.progress = 'transcribing', pct
+    -- un aviso cada 5 %: ni un OSD por fotograma ni un silencio de minutos. El «listos en …» lo calcula mu-subs.
+    if pct - (t.said or -10) < 5 then return publish() end
+    t.said = pct
+    local wait = subs.wait or ''
+    return osd(tr('Transcribiendo… %d %%'):format(pct) .. (wait ~= '' and (' · ' .. wait) or ''))
+  end
+  if status ~= 'done' and status ~= 'failed' then
+    t.status = status
+    return publish()
+  end
+  if t.status == status then return end                  -- ya se avisó: mu-subs publica muchas veces más
+  if status == 'failed' then
+    t.status, t.error = 'failed', subs.transcript_error or ''
+    return osd(tr('✗ No se pudo conseguir la transcripción: %s'):format(t.error ~= '' and t.error or tr('error')))
+  end
+  t.status, t.out = 'done', subs.transcript_out ~= '' and subs.transcript_out or (subs.save_out or '')
+  local v = local_video()
+  t.lines, t.chars = transcript_size(t.out, v and v.duration or 0)
+  local what = t.source == 'track' and (tr('Son los subtítulos que ya traía el vídeo') .. '\n') or ''
+  osd(tr('✓ Transcripción lista: %d líneas, %d caracteres'):format(t.lines, t.chars) .. '\n' .. what
+      .. tr('Pulsa ctrl+alt+c para copiarla junto con el prompt'))
+end)
+
 -- -- opening a file --------------------------------------------------------------------------------------------------
 
 local function load_saved()
@@ -329,6 +401,7 @@ end
 
 mp.register_event('start-file', function()
   state.path, state.status, state.count, state.source, state.file, state.pending = '', 'idle', 0, '', '', nil
+  state.transcript = nil
   publish()
 end)
 
@@ -341,6 +414,7 @@ end)
 mp.add_key_binding(nil, 'chapters-copy', copy)
 mp.add_key_binding(nil, 'chapters-paste', paste)
 mp.add_key_binding(nil, 'chapters-remove', remove)
+mp.add_key_binding(nil, 'chapters-transcript', ask_transcript)   -- F4: desde el menú, sin tecla propia
 
 publish()
 msg.info('mu-chapters loaded')

@@ -377,6 +377,15 @@ otros los escribe una IA de conversar (ChatGPT y compañía), que entiende de qu
 **no** llama a ninguna IA ni manda nada a internet por su cuenta: prepara el texto, tú lo pegas en la IA que quieras y
 pegas la respuesta de vuelta.
 
+**El camino corto**: Menú → Subtítulos → *Capítulos con una IA* → *Conseguir la transcripción*. Un solo botón, sin
+elegir modelo ni pista: si el vídeo ya trae subtítulos de texto usa esos (y lo dice), y si no transcribe con IA. Va
+contando por dónde va en pantalla («Transcribiendo… 37 % · listos en ~22 min») y al terminar avisa («✓ Transcripción
+lista: 214 líneas, 9 812 caracteres»); la fila del menú se queda marcada con *Transcripción lista*, y el SRT queda
+guardado junto al vídeo. Si no sabes por dónde empezar, ahí mismo está *Cómo funciona (4 pasos)*. Después, los pasos 2
+a 4 de aquí abajo.
+
+Y a mano, si prefieres hacerlo tú:
+
 1. **La transcripción, junto al vídeo.** Abre el vídeo y deja que se transcriba (`alt+c`), o selecciona los subtítulos
    que ya traiga. Después `alt+S` la guarda como `<vídeo>.<idioma>.srt` **al lado del vídeo**: de ahí la lee este
    flujo. Si no hay ningún SRT al lado, `ctrl+alt+c` lo dice y no copia nada.

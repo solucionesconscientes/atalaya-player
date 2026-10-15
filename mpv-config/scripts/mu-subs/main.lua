@@ -109,9 +109,11 @@ local state = {
   save = nil,             -- {kind=, status=, out=, name=, lines=, error=, coverage=, fallback=} last subs.save
   extract = nil,          -- {job=, srt=, status=, cb=} pending subs.extract of an embedded track
   adopted = '',           -- saved SRT (auto-loaded by mpv) shown instead of re-adding the cached AI track
+  transcript = nil,       -- F4: {status=, source=, out=, lines=} «conseguir la transcripción» pedido por mu-chapters
 }
 
 local set_button_state -- defined with the bindings
+local transcript_after_task -- forward: F4, defined with save_request (needs it)
 
 P:on_change(function(reason)
   if reason ~= 'reset' then return end
@@ -155,6 +157,11 @@ local function publish()
     save_out = state.save and state.save.out or '', save_name = state.save and state.save.name or '',
     save_lines = state.save and state.save.lines or 0, save_error = state.save and state.save.error or '',
     save_coverage = state.save and state.save.coverage or 0, save_fallback = state.save and state.save.fallback or false,
+    transcript_status = state.transcript and state.transcript.status or '',
+    transcript_source = state.transcript and state.transcript.source or '',
+    transcript_out = state.transcript and state.transcript.out or '',
+    transcript_lines = state.transcript and state.transcript.lines or 0,
+    transcript_error = state.transcript and state.transcript.error or '',
     extract_status = state.extract and state.extract.status or '', extract_srt = state.extract and state.extract.srt or '',
     adopted = state.adopted,
     web_status = state.web and state.web.status or '', web_srt = state.web and state.web.srt or '',
@@ -383,6 +390,7 @@ local function apply_task(t, from_event)
     notify_wait(t)
   end
   publish()
+  transcript_after_task(t)   -- F4: una transcripción pedida para los capítulos se guarda sola al terminar
 end
 
 local function start(quiet)
@@ -776,6 +784,9 @@ local function pct(x) return math.floor((x or 0) * 100 + 0.5) end
 local function save_done(res)
   state.save = { kind = res.kind, status = 'done', out = res.path, name = res.name, lines = res.lines or 0,
     coverage = res.coverage or 1, fallback = res.fallback or false }
+  if state.transcript then
+    state.transcript.status, state.transcript.out, state.transcript.lines = 'done', res.path or '', res.lines or 0
+  end
   publish()
   local extra = ''
   if res.partial then extra = string.format(' · parcial: %d%%', pct(res.coverage)) end
@@ -788,6 +799,9 @@ local function save_failed(message)
   state.save = state.save or {}
   state.save.status = 'failed'
   state.save.error = message
+  if state.transcript then
+    state.transcript.status, state.transcript.error = 'failed', message
+  end
   publish()
   osd(tr('✗ No se pudo guardar: %s'):format(message))
 end
@@ -849,6 +863,10 @@ local function save_request(kind, extra)
       save_done(res)
     elseif res.status == 'partial' then
       state.save = { kind = 'ai', status = 'partial', coverage = res.coverage or 0, lines = res.lines or 0 }
+      -- el flujo de F4 solo guarda transcripciones terminadas; si aun así llega a medias, se dice, no se calla
+      if state.transcript then
+        state.transcript.status, state.transcript.error = 'failed', tr('la transcripción quedó a medias')
+      end
       publish()
       osd(string.format('La pista IA va por el %d%%: elige «Completar y guardar» o «Guardar lo transcrito»',
         pct(res.coverage)))
@@ -876,6 +894,73 @@ local function save_default()
   else
     osd(tr('No hay subtítulos que guardar: selecciona una pista o inicia los subtítulos IA'))
   end
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- F4 · «conseguir la transcripción» para los capítulos con una IA (lo pide mu-chapters)
+--
+-- Una sola orden y sin preguntar nada: si el vídeo trae una pista de subtítulos de TEXTO se usa esa (se extrae con
+-- subs.extract y se guarda como SRT junto al vídeo, que es donde la lee el flujo de capítulos); si no hay ninguna (o
+-- la que hay es de imagen, que necesita OCR) se transcribe con whisper, con el modelo que elija el tier de hardware y
+-- sin preguntar, y el SRT se guarda solo al terminar. El estado se publica en `transcript_*` para que mu-chapters
+-- cuente el progreso y avise.
+
+-- La pista de texto más razonable del vídeo: ni las nuestras (IA, traducción, resincronizado) ni las de imagen.
+local function transcript_track()
+  local ours = {}
+  for _, f in ipairs({ state.srt, state.adopted, state.translate and state.translate.out,
+                       state.resync and state.resync.out }) do
+    if type(f) == 'string' and f ~= '' then ours[f] = true end
+  end
+  for _, t in ipairs(mp.get_property_native('track-list') or {}) do
+    local f = t['external-filename']
+    if t.type == 'sub' and not (f and ours[f]) and not (t.title or ''):find(TRACK_TITLE, 1, true)
+       and not IMAGE_CODECS[t.codec or ''] then
+      return t
+    end
+  end
+  return nil
+end
+
+local function transcript()
+  local raw = mp.get_property('path') or ''
+  if raw == '' then return osd(tr('No hay ningún archivo abierto')) end
+  if not is_local(raw) then return osd(tr('La transcripción es solo para archivos del equipo, no para directos ni enlaces')) end
+  if not rpc.connected() then
+    osd(tr('mpvd no está disponible; reintentando…'))
+    mp.commandv('script-message-to', 'mu_core', 'mu-ensure')
+    return
+  end
+  local track = transcript_track()
+  state.transcript = { status = track and 'extracting' or 'transcribing', source = track and 'track' or 'ai' }
+  publish()
+  if track then
+    -- se extrae y se guarda de una vez: `kind = track` ya pasa por subs.extract
+    osd(tr('El vídeo ya trae subtítulos: se usan esos'))
+    return save_request('track', { track = track, menu = false })
+  end
+  local t = state.task
+  if t and (t.complete or t.status == 'done') then
+    state.transcript.status = 'saving'
+    publish()
+    return save_request('ai', { menu = false })
+  end
+  osd(tr('El vídeo no trae subtítulos: transcribiendo con IA…'))
+  if not task_running() and not state.starting then start(false) end
+end
+
+transcript_after_task = function(t)
+  local tr_ = state.transcript
+  if not tr_ or tr_.status ~= 'transcribing' then return end
+  if t and (t.status == 'failed' or t.status == 'cancelled') then
+    -- el motor no ha podido (o alguien la ha parado): se dice, que lo que no puede pasar es quedarse callado
+    tr_.status, tr_.error = 'failed', t.error or (t.status == 'cancelled' and tr('cancelada') or '')
+    return publish()
+  end
+  if not (t and (t.complete or t.status == 'done')) then return end
+  tr_.status = 'saving'
+  publish()
+  save_request('ai', { menu = false })
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -1006,6 +1091,7 @@ mp.register_event('file-loaded', function()
     state.dual = false
     state.save = nil
     state.extract = nil
+    state.transcript = nil   -- F4: la transcripción que pidió mu-chapters era de este archivo
     state.web = nil          -- the web subtitles belonged to the video we just left
     state.wait_said = nil
     state.adopted = ''
@@ -1826,6 +1912,8 @@ mp.register_script_message('mu-subs-save', function(kind, mode)
   save_request(kind, { partial = mode == 'partial', complete = mode == 'complete' })
 end)
 mp.register_script_message('mu-subs-dual', function(v) apply_dual(v ~= 'no' and v ~= 'false') end)
+-- F4 · «conseguir la transcripción» de una vez (pista del vídeo o whisper) y dejarla guardada al lado del vídeo
+mp.register_script_message('mu-subs-transcript', transcript)
 mp.register_script_message('mu-subs-chapters', function(on) apply_chapters(on ~= 'no' and on ~= 'false') end)
 mp.register_script_message('mu-subs-set', function(key, value)
   if key == 'language' or key == 'model' or key == 'translate_engine' then state[key] = value

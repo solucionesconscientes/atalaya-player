@@ -467,12 +467,47 @@ views.subs = function()
   })
 end
 
--- H75 · la transcripción va a la IA que cada uno quiera y su respuesta vuelve como capítulos (mu-chapters, ADR-134)
+-- H75 · la transcripción va a la IA que cada uno quiera y su respuesta vuelve como capítulos (mu-chapters, ADR-134).
+-- F4: el primer botón consigue la transcripción (los subtítulos del vídeo o whisper) sin elegir nada; mientras trabaja
+-- y cuando acaba, la fila lo dice, para que no se pierda si el aviso de pantalla pasa.
+local function transcript_item()
+  local st = mp.get_property_native('user-data/mu/chapters') or {}
+  local t = type(st.transcript) == 'table' and st.transcript or {}
+  if t.status == 'done' then
+    return bind('Transcripción lista', tr('copiar y pegar'), 'task_alt', 'mu_chapters/chapters-transcript',
+                { active = true })
+  elseif t.status == 'extracting' or t.status == 'transcribing' or t.status == 'saving' then
+    return bind('Consiguiendo la transcripción…', ('%d %%'):format(tonumber(t.progress) or 0), 'spinner',
+                'mu_chapters/chapters-transcript', { active = true })
+  end
+  return bind('Conseguir la transcripción', tr('subtítulos del vídeo o IA'), 'auto_awesome',
+              'mu_chapters/chapters-transcript')
+end
+
 views.chapters = function()
   show(tr('Capítulos con una IA'), {
+    transcript_item(),
     bind('Copiar la transcripción para la IA', 'ctrl+alt+c', 'content_copy', 'mu_chapters/chapters-copy'),
     bind('Pegar los capítulos de la IA', 'ctrl+alt+p', 'content_paste', 'mu_chapters/chapters-paste'),
     bind('Quitar los capítulos de este vídeo', 'ctrl+alt+d', 'delete_sweep', 'mu_chapters/chapters-remove'),
+    sub('Cómo funciona (4 pasos)', tr('sin saber nada de IA'), 'help', 'chapters_help'),
+  })
+end
+
+-- F4 · las instrucciones dentro de la app: los cuatro pasos en lenguaje llano, y los botones a mano al final
+views.chapters_help = function()
+  show(tr('Capítulos con una IA: cómo funciona'), {
+    { title = tr('1 · El vídeo tiene que tener su transcripción: pide la de arriba y espera'), icon = 'looks_one',
+      selectable = false, muted = true },
+    { title = tr('2 · «Copiar la transcripción» deja en el portapapeles el texto y el prompt juntos'),
+      icon = 'looks_two', selectable = false, muted = true },
+    { title = tr('3 · Pégalo en una IA (ChatGPT gratis, Gemini o Duck.ai sin cuenta) y copia su respuesta'),
+      icon = 'looks_3', selectable = false, muted = true },
+    { title = tr('4 · «Pegar los capítulos»: aparecen en la barra y se guardan con el vídeo'), icon = 'looks_4',
+      selectable = false, muted = true },
+    transcript_item(),
+    bind('Copiar la transcripción y el prompt', 'ctrl+alt+c', 'content_copy', 'mu_chapters/chapters-copy'),
+    bind('Pegar los capítulos de la IA', 'ctrl+alt+p', 'content_paste', 'mu_chapters/chapters-paste'),
   })
 end
 
