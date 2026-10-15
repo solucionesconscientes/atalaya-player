@@ -313,11 +313,6 @@ end)
 -- texto que ya traiga el vídeo o transcribe con whisper, y deja el SRT al lado del vídeo. Aquí solo se cuenta lo que
 -- va pasando (progreso de verdad, el que publica mu-subs) y se avisa al terminar. Nada de APIs ni de abrir nada.
 
-local function subs_state()
-  local s = mp.get_property_native('user-data/mu/subs')
-  return type(s) == 'table' and s or {}
-end
-
 local function transcribing(t)
   return t and (t.status == 'extracting' or t.status == 'transcribing' or t.status == 'saving')
 end
