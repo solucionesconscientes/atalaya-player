@@ -1994,3 +1994,29 @@
   a que uosc tenga las teclas del menú enlazadas: `0:12` + Enter salta al segundo 12 y cierra; `2x` y `9:99` dicen el
   motivo, no mueven el vídeo y dejan la caja abierta. Los tests de arriba, que mandaban el evento `activate` ya
   cocinado, no podían ver este fallo: por eso los dos nuevos van con teclas de verdad.
+- ADR-134 · Capítulos vía IA externa: dónde vive cada pieza y qué se decidió sin estar escrito (H75, 2026-10-15).
+  La función (`docs/capitulos-ia/FICHA.md`) copia la transcripción con un prompt, el usuario la pasa a la IA que
+  quiera y pega de vuelta la respuesta. Lo que la ficha no fijaba, o fijaba para otro repo:
+  **(1) `chapter-list` lo sigue escribiendo solo mu-marks** (H52): mu-chapters es una fuente más, `chapters`, en modo
+  `instead`. Escribirlo directamente habría pisado las notas y los tramos, y al quitarlo no volverían los capítulos
+  del archivo.
+  **(2) Teclas: `ctrl+alt+c` copia y `ctrl+alt+p` pega** («c» de copiar, «p» de pegar). Se miraron TODAS las teclas
+  enlazadas en un mpv-uos arrancado (input.conf, las de mpv por defecto, uosc y los scripts: propiedad
+  `input-bindings`): las dos estaban libres, y `ctrl+alt+` ya tiene precedente aquí (`ctrl+alt+v`, `ctrl+alt+o`).
+  `ctrl+c`/`ctrl+v` no: la primera es «salir» en mpv y la segunda abre lo copiado. Las teclas se cambian en
+  `input.conf`, como todas; `mu-chapters.conf` no lleva teclas (ADR-083: un solo sitio para las teclas).
+  **(3) Confirmar los tiempos sospechosos con el diálogo de la casa** (`mu-confirm` de mu-menu: «Aplicarlos
+  igualmente» / «No, cancelar»), no con «pulsa otra vez»: es un sí o un no explícito, y sin uosc contesta «no».
+  **(4) Qué SRT se lee**: `<vídeo>.srt` y, si no hay, el primero por orden alfabético de `<vídeo>.<algo>.srt`, que es
+  como lo guarda «Guardar subtítulos (SRT)» (`<vídeo>.<idioma>.srt`).
+  **(5) Ajuste**: el 0 no se mueve nunca (lo pide el prompt, no sale del texto) ni cuenta para el control de calidad;
+  un primer capítulo a ≤ 15 s del principio se lleva al 0 en vez de meter un «Inicio» de pocos segundos que la
+  separación mínima borraría junto con el título bueno. Al título se le quitan `.`, `,`, `;`, `:` y `…` finales,
+  pero NO `?` ni `!`, que van con su `¿`/`¡`.
+  **(6) Portapapeles: solo `clipboard/text`.** Ni `mu.clip` (cae a `wl-copy`/`xclip`/`clip`) ni programas propios:
+  si mpv no tiene portapapeles se dice en pantalla. En los tests no hay pantalla, así que `test_clipboard=yes` usa
+  una propiedad `user-data` en su lugar, como `mu-ytdl-clipboard_text`.
+  **(7) Pruebas de las funciones puras dentro de mpv**, con un script sonda (`tests/fixtures/lua/chapters_probe.lua`)
+  y no con un script-message de prueba en el código de verdad: así el script que se instala no lleva nada de test.
+  **(8) El módulo puro no lleva `tr()`**: el extractor de cadenas solo recorre `scripts/`, así que «Inicio» y los
+  avisos se traducen en mu-chapters y se le pasan al módulo.
