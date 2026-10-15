@@ -23,6 +23,9 @@ respuesta para tener los capítulos. **Atalaya no llama a ninguna IA**: el texto
   share/HTTP, IPTV, instalación, letras, panel de descargas): **ninguno toca lo de este hito** y los 66 tests de
   `tests/test_mu_chapters.py` pasan. `tools/check.sh` acaba en rojo por el lint de Lua, que en esta máquina no se puede
   hacer: no hay ni `luacheck` ni `luajit` (lo avisa él mismo).
+- **Y con red**: 14 pasan, **2 fallan** (la letra de lrclib y los nombres de pista de un canal real de RTVE). Los
+  otros dos que fallaban en la línea base (búsqueda real en YouTube y un canal de IPTV) hoy han pasado: son servicios
+  de internet, no código nuestro.
 - Probar a mano:
   ```bash
   ffmpeg -v error -f lavfi -i color=c=black:s=320x240:r=5:d=510 -c:v mpeg4 tmp/charla.mkv
