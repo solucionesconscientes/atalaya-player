@@ -3,8 +3,12 @@
 --     pastes it into whatever AI they like.
 --   · chapters-paste (ctrl+alt+p): the AI's answer from the clipboard → checked, snapped to the SRT, saved as
 --     <video>.capitulos.txt (editable; the previous one kept as .bak) and drawn on uosc's timeline.
+--   · chapters-remove (ctrl+alt+d): the other way round: takes them off the timeline (and deletes the file next to
+--     the video, after asking), so a video the AI got wrong can be done again from scratch.
 --   · On opening a local file, its <video>.capitulos.txt (if any) is loaded at once. Nothing is ever written just
 --     by opening or playing; streams (IPTV, radio, links) are left alone.
+-- The prompt that is copied comes from prompt-ia.txt next to this module's (prompt_file), editable; the copy inside
+-- is the fallback.
 -- The parsing lives in mu.chapters (pure, tested apart). `chapter-list` is written only by mu-marks (H52): this is
 -- its source `chapters`, in `instead` mode. Clipboard: mpv's own `clipboard/text` and nothing else (ADR-134).
 -- Script name: mu_chapters. State for the tests: user-data/mu/chapters.
@@ -23,6 +27,7 @@ local opts = {
   line_seconds = 12,         -- seconds of speech per line of the compacted transcript
   confirm_seconds = 30,      -- how long the «times do not look like this transcript» question waits
   osd_seconds = 5,
+  prompt_file = '~~/script-modules/mu/prompt-ia.txt',   -- editable; the built-in prompt is the fallback
   test_clipboard = false,    -- tests: user-data/mu/chapters-clipboard stands in for the system clipboard
 }
 options.read_options(opts, 'mu-chapters')
@@ -67,7 +72,6 @@ local function publish()
     file = state.file,
   })
 end
-
 local function osd(text)
   mp.osd_message(text, opts.osd_seconds)
   state.osd = text
@@ -97,6 +101,15 @@ local function read_file(path)
   local data = f:read('*a')
   f:close()
   return data
+end
+
+-- What is copied in front of the transcript: `prompt_file`, editable, read on every copy so a change applies at once.
+-- If it is missing or empty (or somebody deletes it), the prompt of the script is used instead.
+local function prompt_text()
+  local path = mp.command_native({ 'expand-path', opts.prompt_file })
+  local text = path and path ~= '' and read_file(path) or nil
+  if text and text:find('%S') then return text end
+  return DEFAULT_PROMPT
 end
 
 -- The video being played, when it is a file of this computer with a known duration: { path, dir, stem, duration }.
@@ -185,6 +198,40 @@ local function not_local()
   osd(tr('Los capítulos con IA son solo para archivos del equipo, no para directos ni enlaces'))
 end
 
+-- -- quitar los capítulos de este vídeo ------------------------------------------------------------------------------
+
+-- Lo que se enseña en la barra se quita de la fuente `chapters` de mu-marks (así vuelven los del archivo, si los
+-- tenía) y el fichero de al lado se borra: dejarlo sería un «quitar» que vuelve solo al reabrir el vídeo.
+local function forget(v)
+  mp.commandv('script-message-to', 'mu_marks', 'mu-marks-clear', 'chapters')
+  state.count, state.status, state.source, state.file, state.pending = 0, 'cleared', '', '', nil
+  local file = chapters_file(v)
+  if not utils.file_info(file) then return osd(tr('Capítulos quitados de la barra')) end
+  local ok, err = os.remove(file)
+  if not ok then
+    state.status = 'error'
+    msg.warn('cannot remove ' .. file .. ': ' .. tostring(err))
+    return osd(tr('Capítulos quitados, pero no se ha podido borrar el archivo: %s'):format(tostring(err)))
+  end
+  osd(tr('Capítulos quitados (y borrado el archivo de al lado)'))
+end
+
+local function remove()
+  local v = local_video()
+  if not v then return not_local() end
+  local file = chapters_file(v)
+  if state.count == 0 and not utils.file_info(file) then
+    return osd(tr('Este vídeo no tiene capítulos que quitar'))
+  end
+  local token = 'mu-chapters-rm-' .. math.floor(mp.get_time() * 1000)
+  state.pending = { token = token, path = v.path, video = v, remove = true }
+  state.status = 'confirm'
+  publish()
+  mp.commandv('script-message-to', 'mu_menu', 'mu-confirm', token,
+              tr('¿Quitar los capítulos de este vídeo? El archivo de al lado se borra'),
+              tostring(opts.confirm_seconds), tr('Sí, quitarlos'), tr('No, dejarlos'))
+end
+
 local function copy()
   local v = local_video()
   if not v then return not_local() end
@@ -198,7 +245,7 @@ local function copy()
     return osd(tr('La transcripción junto al vídeo está vacía o no es un SRT'))
   end
   local lines = chapters.compact(blocks, { duration = v.duration, line_seconds = opts.line_seconds }).lines
-  local text = chapters.prompt(DEFAULT_PROMPT, v.duration, lines)
+  local text = chapters.prompt(prompt_text(), v.duration, lines)
   if not clipboard_set(text) then
     state.status = 'error'
     return osd(tr('No se ha podido copiar: mpv no tiene portapapeles en este sistema'))
@@ -247,9 +294,12 @@ mp.observe_property('user-data/mu/confirm', 'native', function(_, answer)
   local p = state.pending
   if not p or type(answer) ~= 'table' or answer.token ~= p.token then return end
   state.pending = nil
-  if answer.answer == 'yes' and mp.get_property('path') == p.path then return apply(p.video, p.list) end
+  if answer.answer == 'yes' and mp.get_property('path') == p.path then
+    if p.remove then return forget(p.video) end
+    return apply(p.video, p.list)
+  end
   state.status = 'cancelled'
-  osd(tr('No se han aplicado los capítulos'))
+  osd(p.remove and tr('Se quedan como estaban') or tr('No se han aplicado los capítulos'))
 end)
 
 -- -- opening a file --------------------------------------------------------------------------------------------------
@@ -290,6 +340,7 @@ end)
 
 mp.add_key_binding(nil, 'chapters-copy', copy)
 mp.add_key_binding(nil, 'chapters-paste', paste)
+mp.add_key_binding(nil, 'chapters-remove', remove)
 
 publish()
 msg.info('mu-chapters loaded')

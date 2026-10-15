@@ -595,3 +595,75 @@ def test_desde_el_menu_sin_recordar_teclas(video):
         assert h.script_errors() == [], h.script_errors()
     finally:
         h.stop()
+
+
+# == F3 · pulido: el prompt editable y quitar los capítulos =========================================================
+#
+# `prompt-ia.txt` vive junto al módulo (`mpv-config/script-modules/mu/`) y se lee en cada copia: quien lo edite ve el
+# cambio sin reiniciar. El de dentro del script es la red de seguridad si el archivo no está.
+
+
+def test_el_prompt_se_lee_del_archivo_y_se_relee_en_cada_copia(video, tmp_path):
+    v = con_srt(video)
+    mio = tmp_path / "mi-prompt.txt"
+    mio.write_text("Prompt mío, con acentos y ñ.\n", encoding="utf-8")
+    h = abrir(v, f"mu-chapters-prompt_file={mio}")
+    try:
+        h.command("keypress", "ctrl+alt+c")
+        osd_de(h, "Copiado: ")
+        assert leer_portapapeles(h).startswith("Prompt mío, con acentos y ñ.\n\nDURACIÓN TOTAL: ")
+        mio.write_text("Otro prompt, ya cambiado.\n", encoding="utf-8")
+        h.command("keypress", "ctrl+alt+c")
+        h.wait_property("user-data/mu/chapters-clipboard",
+                        lambda t: bool(t) and t.startswith("Otro prompt, ya cambiado.\n\nDURACIÓN TOTAL: "), timeout=10)
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_sin_archivo_de_prompt_se_copia_el_de_dentro(video, tmp_path):
+    v = con_srt(video)
+    h = abrir(v, f"mu-chapters-prompt_file={tmp_path / 'no-existe.txt'}")
+    try:
+        h.command("keypress", "ctrl+alt+c")
+        osd_de(h, "Copiado: ")
+        assert leer_portapapeles(h).startswith("Eres un editor de vídeo experto en estructurar contenido"), \
+            leer_portapapeles(h)[:60]
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_quitar_capitulos_pregunta_y_borra_el_archivo(video):
+    v = con_srt(video)
+    txt = capitulos_txt(v)
+    h = abrir(v)
+    try:
+        h.wait_property("user-data/mu/core", lambda c: bool(c) and c.get("uosc"), timeout=40)
+        pegar_en_portapapeles(h, REPLY)
+        h.command("keypress", "ctrl+alt+p")
+        h.wait_property("chapter-list", lambda c: len(c or []) == 7, timeout=10)
+        assert txt.exists()
+
+        h.command("keypress", "ctrl+alt+d")
+        req = h.wait_property("user-data/mu/confirm_request",
+                              lambda r: bool(r) and "Quitar los capítulos" in (r.get("text") or ""), timeout=10)
+        assert estado(h)["status"] == "confirm"
+        confirmar(h, "no")
+        osd_de(h, "Se quedan como estaban")
+        assert len(h.get("chapter-list") or []) == 7 and txt.exists(), "decir que no no quita nada"
+
+        h.command("keypress", "ctrl+alt+d")
+        h.wait_property("user-data/mu/confirm_request",
+                        lambda r: bool(r) and r.get("token") != req["token"], timeout=10)
+        confirmar(h, "yes")
+        h.wait_property("chapter-list", lambda c: not c, timeout=10)
+        assert not txt.exists(), "el archivo de al lado se va con ellos"
+        assert estado(h)["status"] == "cleared" and estado(h)["count"] == 0
+        osd_de(h, "borrado el archivo de al lado")
+
+        h.command("keypress", "ctrl+alt+d")          # ya no hay nada: lo dice, sin preguntar
+        osd_de(h, "no tiene capítulos que quitar")
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()

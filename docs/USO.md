@@ -371,6 +371,40 @@ Con la transcripción hecha, la paleta (`alt+p`) busca por **idea** en la secci�
 allí. Menú de subtítulos IA → *Capítulos por tema* crea capítulos titulados con una frase del propio vídeo. Requiere `--extras` y el
 modelo de embeddings (se descarga desde el menú). Más en docs/SEMANTICA.md.
 
+## 5b. Capítulos con una IA: el texto va y vuelve
+Los «capítulos por tema» de arriba los calcula el propio equipo con un modelo pequeño: sirven para orientarse. Estos
+otros los escribe una IA de conversar (ChatGPT y compañía), que entiende de qué se habla y titula mucho mejor. Atalaya
+**no** llama a ninguna IA ni manda nada a internet por su cuenta: prepara el texto, tú lo pegas en la IA que quieras y
+pegas la respuesta de vuelta.
+
+1. **La transcripción, junto al vídeo.** Abre el vídeo y deja que se transcriba (`alt+c`), o selecciona los subtítulos
+   que ya traiga. Después `alt+S` la guarda como `<vídeo>.<idioma>.srt` **al lado del vídeo**: de ahí la lee este
+   flujo. Si no hay ningún SRT al lado, `ctrl+alt+c` lo dice y no copia nada.
+2. **Copiar para la IA**: `ctrl+alt+c`, o Menú → Subtítulos → *Capítulos con una IA* → *Copiar la transcripción*. Deja
+   en el portapapeles, de una vez, el prompt + la duración total + la transcripción compacta en líneas de unos 12 s con
+   su `[mm:ss]`. El aviso dice cuántas líneas van y cuántos miles de tokens son.
+   - **El prompt es tuyo**: es `mpv-config/script-modules/mu/prompt-ia.txt` (el de referencia, en
+     `docs/capitulos-ia/prompt-ia.txt`). Se lee cada vez que copias, así que puedes cambiarlo y volver a copiar sin
+     reiniciar nada.
+3. **Pegar en la IA.** Abre la IA en el navegador, pega y espera su lista. Cualquiera que acepte un texto largo sirve;
+   las recomendadas son **ChatGPT** (gratis), **Gemini** y, sin cuenta, **Duck.ai**. El prompt le pide el formato
+   exacto (`MM:SS Título`) y que los tiempos sean los de la transcripción.
+4. **Pegar los capítulos**: `ctrl+alt+p`. Lee la respuesta del portapapeles, la ajusta a la transcripción (los tiempos
+   redondeados caen en el inicio del subtítulo que les toca), la pone en la barra de uosc y la guarda como
+   `<vídeo>.capitulos.txt`, editable a mano. Al reabrir el vídeo se cargan solos (el anterior queda en `.bak`).
+
+- Los tres avisos que te puedes encontrar: «no hay transcripción junto al vídeo» (paso 1), «el portapapeles está
+  vacío» (paso 3) y «los tiempos no parecen de esta transcripción» (la IA contestó sobre otro vídeo: pregunta antes de
+  aplicar nada, y si dices que sí se aplican tal cual).
+- Un vídeo que ya trae sus propios capítulos no se pisa: se avisa y se queda como estaba. Se cambia con
+  `respect_existing` en `mpv-config/script-opts/mu-chapters.conf`.
+- `ctrl+alt+d` los quita: pregunta primero, los saca de la barra y borra el archivo de al lado.
+- En IPTV, radio y enlaces no hay nada que hacer: esto es para archivos del equipo.
+- **Límite honesto**: un vídeo partido en dos **no está soportado**. El flujo es un archivo, una transcripción y una
+  respuesta; pegar los capítulos de dos mitades en un solo vídeo no cuadra los tiempos. Si el vídeo es larguísimo y la
+  IA te corta la respuesta, pídele los capítulos por tramos y escríbelos tú en el `.capitulos.txt` (una línea por
+  capítulo, `MM:SS Título`): para eso es editable.
+
 ## 6. Series: saltar intro y créditos
 Abre un episodio: mpvd compara su audio (huellas Chromaprint, requiere `fpcalc`) con los episodios vecinos y detecta la intro y los
 créditos. La primera vez tarda unos segundos por episodio (≈10 s en una serie de 50 min); después sale de la caché al instante.

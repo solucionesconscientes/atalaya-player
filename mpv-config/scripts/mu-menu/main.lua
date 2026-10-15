@@ -472,6 +472,7 @@ views.chapters = function()
   show(tr('Capítulos con una IA'), {
     bind('Copiar la transcripción para la IA', 'ctrl+alt+c', 'content_copy', 'mu_chapters/chapters-copy'),
     bind('Pegar los capítulos de la IA', 'ctrl+alt+p', 'content_paste', 'mu_chapters/chapters-paste'),
+    bind('Quitar los capítulos de este vídeo', 'ctrl+alt+d', 'delete_sweep', 'mu_chapters/chapters-remove'),
   })
 end
 
