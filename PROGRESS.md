@@ -18,6 +18,11 @@ respuesta para tener los capítulos. **Atalaya no llama a ninguna IA**: el texto
 - **`ctrl+alt+d`** los quita (pregunta antes) y **«Cómo funciona (4 pasos)»** lo explica dentro de la app, en lenguaje
   llano, con ChatGPT/Gemini/Duck.ai como recomendadas.
 - Un vídeo con capítulos propios no se pisa, y en IPTV, radio y enlaces no se hace nada.
+- **La batería de esta pasada** (server1, sin red): **1052 pasan, 18 fallan, 64 omitidos** en 42 min. Los 18 son de
+  las familias que ya estaban anotadas el 15-oct (subtítulos y ASR por el `whisper-cli` que no arranca por GLIBC,
+  share/HTTP, IPTV, instalación, letras, panel de descargas): **ninguno toca lo de este hito** y los 66 tests de
+  `tests/test_mu_chapters.py` pasan. `tools/check.sh` acaba en rojo por el lint de Lua, que en esta máquina no se puede
+  hacer: no hay ni `luacheck` ni `luajit` (lo avisa él mismo).
 - Probar a mano:
   ```bash
   ffmpeg -v error -f lavfi -i color=c=black:s=320x240:r=5:d=510 -c:v mpeg4 tmp/charla.mkv

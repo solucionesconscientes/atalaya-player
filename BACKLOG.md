@@ -450,7 +450,7 @@ IA, no usa claves y no abre nada: prepara el texto, lo copia y lee la respuesta 
 - [x] **F4** un solo botón consigue la transcripción (los subtítulos de texto del vídeo con `subs.extract`, o whisper
       sin preguntar modelo), con el progreso de verdad en pantalla («Transcribiendo… 37 % · listos en ~22 min»), aviso
       al terminar, la fila del menú marcada y «Cómo funciona (4 pasos)» dentro de la app.
-- [x] La batería: los tests de `tests/test_mu_chapters.py` (64), y ningún fallo nuevo en el resto — los de ASR y
+- [x] La batería: los tests de `tests/test_mu_chapters.py` (66), y ningún fallo nuevo en el resto — los de ASR y
       subtítulos siguen cayendo por el `whisper-cli` vendorizado (GLIBC), que es de la máquina.
 Aceptación: con un vídeo y su SRT, copiar → pegar en una IA → pegar la respuesta deja los capítulos en la barra de uosc,
 persisten al reabrir y `ctrl+alt+d` los quita; en IPTV y radio no se hace nada ni se ensucia el log.
