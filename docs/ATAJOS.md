@@ -102,6 +102,8 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 | `alt+c` | Iniciar / detener los subtítulos IA del archivo actual (la transcripción parcial queda en caché y se reanuda) |
 | `alt+x` | Resincronizar la pista de subtítulos externa seleccionada con la transcripción IA (desfase + deriva por tramos) |
 | `alt+S` | Guardar subtítulos como SRT junto al vídeo (`<vídeo>.<idioma>.srt`): la pista seleccionada (IA, traducción, resincronizada, externa o interna de texto) o, si no hay, la pista IA |
+| `ctrl+alt+c` | **Capítulos con una IA**: copia la transcripción que hay junto al vídeo (`alt+S` la guarda), compactada y con el prompt delante, para pegarla en la IA que quieras (menú: Subtítulos → Capítulos con una IA) |
+| `ctrl+alt+p` | Pega los capítulos que ha contestado la IA: se ajustan a la transcripción, se guardan como `<vídeo>.capitulos.txt` (editable; el anterior queda en `.bak`) y salen en la barra; al reabrir el vídeo se cargan solos |
 | (menú `alt+i`) | Traducir la pista seleccionada (también pistas internas de texto) con el motor Rápido (Argos) o Máxima calidad (OPUS-MT, es/ca/fr ↔ en) · Duales: original arriba + traducción abajo · Guardar subtítulos (SRT) |
 
 ## Sonido e imagen (mu-av, filtros libavfilter validados)

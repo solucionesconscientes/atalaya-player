@@ -461,8 +461,17 @@ views.subs = function()
     cmd('Mostrar u ocultar', 'v', 'visibility', { 'cycle', 'sub-visibility' }, { separator = true }),
     child('Panel de subtítulos', 'alt+i', 'closed_caption', 'mu_subs', 'subs-menu'),
     child('Resumen e índice del vídeo', 'alt+R · alt+I', 'history_edu', 'mu_recap', 'recap-menu'),
+    sub('Capítulos con una IA', 'copiar y pegar', 'auto_stories', 'chapters'),
     bind('Guardar subtítulos (SRT)', 'alt+S', 'save', 'mu_subs/subs-save'),
     child('Buscar subtítulos en internet', 'OpenSubtitles', 'travel_explore', 'mu_library', 'library-subs'),
+  })
+end
+
+-- H75 · la transcripción va a la IA que cada uno quiera y su respuesta vuelve como capítulos (mu-chapters, ADR-134)
+views.chapters = function()
+  show(tr('Capítulos con una IA'), {
+    bind('Copiar la transcripción para la IA', 'ctrl+alt+c', 'content_copy', 'mu_chapters/chapters-copy'),
+    bind('Pegar los capítulos de la IA', 'ctrl+alt+p', 'content_paste', 'mu_chapters/chapters-paste'),
   })
 end
 
@@ -1365,7 +1374,10 @@ mp.register_script_message('mu-confirm', function(token, text, seconds, si, no)
     return
   end
   uosc.open({
-    type = CONFIRM_MENU, title = text or '¿Confirmar?', callback = { SCRIPT, 'mu-menu-confirm-event' }, on_close = 'callback',
+    -- H75 · el token viaja como argumento del callback: uosc cierra el menú ANTERIOR con su animación, y ese
+    -- «close» tardío llegaba cuando el token de turno ya era el del diálogo NUEVO, al que contestaba «no» solo.
+    -- Con el token delante, un cierre se atribuye al diálogo que se cierra y a ningún otro.
+    type = CONFIRM_MENU, title = text or '¿Confirmar?', callback = { SCRIPT, 'mu-menu-confirm-event', token }, on_close = 'callback',
     items = {
       { title = (si and si ~= '') and si or 'Sí, adelante', icon = 'check',
         value = { token = token, answer = 'yes' } },
@@ -1382,12 +1394,17 @@ mp.register_script_message('mu-confirm-close', function(token)
   if confirm_state.token == token then confirm_answer(token, 'timeout') end
 end)
 
-mp.register_script_message('mu-menu-confirm-event', function(json)
-  local ev = utils.parse_json(json or '') or {}
+-- `mu-menu-confirm-event [<token>] <json>`: uosc pone delante el token del diálogo que manda el evento (ver arriba);
+-- los tests y mpvd mandan solo el JSON, así que sin él se contesta al diálogo de turno.
+mp.register_script_message('mu-menu-confirm-event', function(token, json)
+  local ev = utils.parse_json((json or token) or '') or {}
+  if not json then token = nil end
   if ev.type == 'activate' and type(ev.value) == 'table' then
     confirm_answer(ev.value.token, ev.value.answer)
   elseif ev.type == 'close' or ev.type == 'back' then
-    if confirm_state.token then confirm_answer(confirm_state.token, 'no') end
+    if confirm_state.token and (not token or token == confirm_state.token) then
+      confirm_answer(confirm_state.token, 'no')
+    end
   end
 end)
 

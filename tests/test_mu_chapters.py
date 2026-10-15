@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 
 import pytest
 
@@ -306,3 +308,290 @@ def test_flujo_completo_con_el_srt_real(probe):
     assert res["suspicious"] is False and res["matched"] == res["total"] == 6
     assert times(res["chapters"]) == [0, 61.2, 125.7, 210.0, 300.4, 380.2, 470.0]
     assert probe("format", res["chapters"], 510).splitlines()[1] == "01:01 Los ingredientes justos"
+
+
+# == F2 · integración en mpv: mu-chapters ==========================================================================
+#
+# Un vídeo de 8 min 30 s (negro, 1 fps: se genera en un segundo) con la charla al lado como `charla.srt`, que es lo
+# que deja «Guardar subtítulos (SRT)». El portapapeles del sistema no existe en un mpv sin ventana, así que los tests
+# usan el de prueba: `mu-chapters-test_clipboard=yes` → `user-data/mu/chapters-clipboard` hace de portapapeles.
+
+OPTS = "--script-opts=mu-core-autostart=no,mu-chapters-test_clipboard=yes"
+REPLY = ("```\n00:00 Presentación del taller\n01:01 Los ingredientes justos\n02:05 Amasado a mano\n"
+         "03:30 La fermentación\n05:00 Formar el pan\n06:20 Al horno\n07:50 Despedida\n```")
+REPLY_TITLES = ["Presentación del taller", "Los ingredientes justos", "Amasado a mano", "La fermentación",
+                "Formar el pan", "Al horno", "Despedida"]
+# a más de 15 s de cualquier bloque de la charla: no pueden salir de esta transcripción
+LEJOS = "00:00 Uno\n01:47 Dos\n03:00 Tres\n04:26 Cuatro\n05:50 Cinco\n07:17 Seis"
+
+
+@pytest.fixture(scope="module")
+def charla_mkv(tmp_path_factory):
+    out = tmp_path_factory.mktemp("charla") / "charla.mkv"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=32x32:r=1:d=510",
+                    "-c:v", "mpeg4", str(out)], check=True, timeout=120)
+    return out
+
+
+@pytest.fixture
+def video(charla_mkv, tmp_path):
+    """La charla sin transcripción al lado (los tests que la quieren copian el SRT con `con_srt`)."""
+    v = tmp_path / "charla.mkv"
+    shutil.copyfile(charla_mkv, v)
+    return v
+
+
+def con_srt(v):
+    shutil.copyfile(SRT, v.with_suffix(".srt"))
+    return v
+
+
+def capitulos_txt(v):
+    return v.with_name(v.stem + ".capitulos.txt")
+
+
+def abrir(v, *opts: str, min_duration: float = 500):
+    h = start_mpv(TMP / "test-chapters", [OPTS + "".join("," + o for o in opts), "--keep-open=yes", "--pause=yes",
+                                          str(v)])
+    h.wait_property("duration", lambda d: isinstance(d, (int, float)) and d > min_duration, timeout=20)
+    h.wait_property("user-data/mu/chapters", lambda st: bool(st) and st.get("path") == str(v), timeout=20)
+    return h
+
+
+def estado(h):
+    return h.get("user-data/mu/chapters") or {}
+
+
+def osd_de(h, texto: str, timeout: float = 10):
+    return h.wait_property("user-data/mu/chapters", lambda st: bool(st) and texto in (st.get("osd") or ""),
+                           timeout=timeout)
+
+
+def leer_portapapeles(h):
+    try:
+        return h.get("user-data/mu/chapters-clipboard")
+    except Exception:  # noqa: BLE001 - unset user-data is "property unavailable"
+        return None
+
+
+def pegar_en_portapapeles(h, text: str) -> None:
+    h.command("set_property", "user-data/mu/chapters-clipboard", text)
+
+
+def titulos(h):
+    return [c["title"] for c in h.get("chapter-list") or []]
+
+
+def test_copiar_para_la_ia_con_la_tecla(video):
+    v = con_srt(video)
+    h = abrir(v)
+    try:
+        h.command("keypress", "ctrl+alt+c")
+        st = osd_de(h, "Copiado: ")
+        text = leer_portapapeles(h)
+        assert text.startswith("Eres un editor de vídeo experto"), text[:80]
+        assert re.search(r"\n\nDURACIÓN TOTAL: 0:08:(29|30)\n\nTRANSCRIPCIÓN:\n\[00:00\] Hola a todos", text)
+        assert "Amara" not in text and "<i>" not in text
+        n = text.count("\n[")
+        assert f"Copiado: {n} líneas (~1 mil tokens)" in st["osd"], st["osd"]
+        assert st["status"] == "copied"
+        assert not capitulos_txt(v).exists(), "copiar no escribe nada junto al vídeo"
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_pegar_aplica_guarda_y_al_reabrir_se_cargan_solos(video):
+    v = con_srt(video)
+    txt = capitulos_txt(v)
+    bak = txt.with_name(txt.name + ".bak")
+    h = abrir(v)
+    try:
+        pegar_en_portapapeles(h, REPLY)
+        h.command("keypress", "ctrl+alt+p")
+        st = osd_de(h, "7 capítulos aplicados")
+        assert st["status"] == "applied" and st["source"] == "paste" and st["count"] == 7
+        assert st["file"] == str(txt)
+        cl = h.wait_property("chapter-list", lambda c: len(c or []) == 7, timeout=10)
+        assert [round(c["time"], 1) for c in cl] == [0, 61.2, 125.7, 210.0, 300.4, 380.2, 470.0], "ajustados al SRT"
+        assert [c["title"] for c in cl] == REPLY_TITLES
+        assert txt.read_text(encoding="utf-8").splitlines() == [
+            "00:00 Presentación del taller", "01:01 Los ingredientes justos", "02:05 Amasado a mano",
+            "03:30 La fermentación", "05:00 Formar el pan", "06:20 Al horno", "07:50 Despedida"]
+        assert not bak.exists(), "la primera vez no hay nada que guardar de copia"
+
+        # reabrir el vídeo: los capítulos salen del archivo al instante, sin pegar nada
+        pegar_en_portapapeles(h, "")
+        h.command("loadfile", str(v), "replace")
+        st = h.wait_property("user-data/mu/chapters", lambda s: bool(s) and s.get("source") == "file"
+                             and s.get("count") == 7, timeout=10)
+        cl = h.wait_property("chapter-list", lambda c: [x["time"] for x in c or []] == [0, 61, 125, 210, 300, 380, 470],
+                             timeout=10)
+        assert [c["title"] for c in cl] == REPLY_TITLES
+
+        # pegar otra vez guarda una copia .bak de lo que había
+        pegar_en_portapapeles(h, "00:00 Uno\n05:00 Dos")
+        h.command("keypress", "ctrl+alt+p")
+        h.wait_property("chapter-list", lambda c: [x["title"] for x in c or []] == ["Uno", "Dos"], timeout=10)
+        assert txt.read_text(encoding="utf-8") == "00:00 Uno\n05:00 Dos\n"
+        assert bak.read_text(encoding="utf-8").startswith("00:00 Presentación del taller\n")
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_sin_srt_lo_dice_y_no_copia_nada(video):
+    h = abrir(video)
+    try:
+        h.command("keypress", "ctrl+alt+c")
+        st = osd_de(h, "alt+S")
+        assert "transcripción" in st["osd"]
+        assert not leer_portapapeles(h)
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_sin_srt_se_puede_pegar_sin_ajuste(video):
+    h = abrir(video)
+    try:
+        pegar_en_portapapeles(h, REPLY)
+        h.command("keypress", "ctrl+alt+p")
+        osd_de(h, "7 capítulos aplicados")
+        cl = h.wait_property("chapter-list", lambda c: len(c or []) == 7, timeout=10)
+        assert [c["time"] for c in cl] == [0, 61, 125, 210, 300, 380, 470], "sin SRT no hay a qué ajustar"
+        assert capitulos_txt(video).exists()
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+@pytest.mark.parametrize("pegado, aviso", [("", "vacío"), ("   \n", "vacío"),
+                                           ("Lo siento, no puedo ayudarte con eso.", "No reconozco")])
+def test_portapapeles_vacio_o_basura_lo_dice_y_mpv_sigue(video, pegado, aviso):
+    v = con_srt(video)
+    h = abrir(v)
+    try:
+        pegar_en_portapapeles(h, pegado)
+        h.command("keypress", "ctrl+alt+p")
+        osd_de(h, aviso)
+        assert not h.get("chapter-list")
+        assert not capitulos_txt(v).exists()
+        h.command("set_property", "pause", False)
+        h.wait_property("time-pos", lambda t: isinstance(t, (int, float)) and t > 0.5, timeout=10)
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def confirmar(h, respuesta: str) -> None:
+    """Contesta al diálogo de confirmación de la casa (`mu-confirm` de mu-menu), como haría uosc al elegir."""
+    req = h.wait_property("user-data/mu/confirm_request", lambda r: bool(r) and r.get("token"), timeout=10)
+    ev = {"type": "activate", "value": {"token": req["token"], "answer": respuesta}}
+    h.command("script-message-to", "mu_menu", "mu-menu-confirm-event", json.dumps(ev))
+
+
+def test_tiempos_sospechosos_piden_confirmacion(video):
+    v = con_srt(video)
+    txt = capitulos_txt(v)
+    h = abrir(v)
+    try:
+        h.wait_property("user-data/mu/core", lambda c: bool(c) and c.get("uosc"), timeout=40)
+        pegar_en_portapapeles(h, LEJOS)
+        h.command("keypress", "ctrl+alt+p")
+        req = h.wait_property("user-data/mu/confirm_request",
+                              lambda r: bool(r) and "no parecen de esta transcripción" in (r.get("text") or ""),
+                              timeout=10)
+        assert "5 de 5" in req["text"], req["text"]
+        h.wait_property("user-data/uosc/menu/type", lambda t: t == "mu-confirm", timeout=10)
+        assert estado(h)["status"] == "confirm"
+        assert not h.get("chapter-list") and not txt.exists(), "nada se aplica antes de contestar"
+
+        confirmar(h, "no")
+        osd_de(h, "No se han aplicado")
+        assert not h.get("chapter-list") and not txt.exists()
+
+        h.command("keypress", "ctrl+alt+p")
+        h.wait_property("user-data/mu/confirm_request",
+                        lambda r: bool(r) and r.get("token") != req["token"], timeout=10)
+        confirmar(h, "yes")
+        cl = h.wait_property("chapter-list", lambda c: len(c or []) == 6, timeout=10)
+        assert [c["time"] for c in cl] == [0, 107, 180, 266, 350, 437]
+        assert txt.exists()
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+@pytest.mark.parametrize("respetar", [True, False])
+def test_capitulos_propios_no_se_pisan_si_respect_existing(media_dir, tmp_path, respetar):
+    v = tmp_path / "con capítulos.mkv"
+    shutil.copyfile(media_dir / "chapters.mkv", v)
+    opts = ["mu-chapters-min_gap=5"] + ([] if respetar else ["mu-chapters-respect_existing=no"])
+    h = abrir(v, *opts, min_duration=20)
+    try:
+        h.wait_property("chapter-list", lambda c: len(c or []) == 3, timeout=10)
+        propios = titulos(h)
+        pegar_en_portapapeles(h, "00:00 Mi uno\n00:20 Mi dos")
+        h.command("keypress", "ctrl+alt+p")
+        if respetar:
+            osd_de(h, "ya trae sus propios capítulos")
+            assert titulos(h) == propios
+            assert not capitulos_txt(v).exists()
+        else:
+            h.wait_property("chapter-list", lambda c: [x["title"] for x in c or []] == ["Mi uno", "Mi dos"],
+                            timeout=10)
+            assert capitulos_txt(v).exists()
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_en_directo_no_hace_nada(tmp_path):
+    stream = "av://lavfi:sine=frequency=440"
+    h = start_mpv(TMP / "test-chapters", [OPTS, stream])
+    try:
+        h.wait_property("user-data/mu/chapters", lambda st: bool(st) and st.get("path") == stream, timeout=20)
+        h.command("keypress", "ctrl+alt+c")
+        osd_de(h, "solo para archivos del equipo")
+        assert not leer_portapapeles(h)
+        pegar_en_portapapeles(h, REPLY)
+        h.command("keypress", "ctrl+alt+p")
+        h.wait_property("user-data/mu/chapters", lambda st: st.get("status") != "applied", timeout=5)
+        assert not h.get("chapter-list")
+        assert estado(h)["count"] == 0
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def item(h, view: str, texto: str):
+    v = h.wait_property("user-data/mu/menu", lambda m: bool(m) and m.get("view") == view
+                        and any(texto in i["title"] for i in m.get("items", [])), timeout=15)
+    return next(i for i in v["items"] if texto in i["title"])
+
+
+def activar(h, it) -> None:
+    ev = {"type": "activate", "value": it["value"], "menu_id": "{root}", "is_pointer": False, "alt": False,
+          "ctrl": False, "shift": False}
+    h.command("script-message-to", "mu_menu", "mu-menu-event", json.dumps(ev))
+
+
+def test_desde_el_menu_sin_recordar_teclas(video):
+    """En este reproductor todo se puede hacer sin saberse las teclas: Menú → Subtítulos → Capítulos con una IA."""
+    v = con_srt(video)
+    h = abrir(v)
+    try:
+        h.wait_property("user-data/mu/core", lambda c: bool(c) and c.get("uosc"), timeout=40)
+        h.command("script-binding", "mu_menu/root")
+        activar(h, item(h, "root", "Subtítulos"))
+        activar(h, item(h, "subs", "Capítulos con una IA"))
+        copiar = item(h, "chapters", "Copiar la transcripción")
+        assert copiar["hint"] == "ctrl+alt+c"
+        assert item(h, "chapters", "Pegar los capítulos")["hint"] == "ctrl+alt+p"
+        activar(h, copiar)
+        osd_de(h, "Copiado: ")
+        assert leer_portapapeles(h).startswith("Eres un editor de vídeo")
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()

@@ -12,11 +12,12 @@
 --
 -- `add` (the default) keeps the film's own chapters; `instead` replaces them while that source is alive (what the
 -- AI chapters of mu-subs do). The originals are remembered and put back when the source clears or the file changes.
+-- Sources: `chapters` = chapters pasted from an external AI (mu-chapters, `instead`), `subs`, `cut`, `notes`.
 local mp = require('mp')
 local msg = require('mp.msg')
 local utils = require('mp.utils')
 
-local ORDER = { 'subs', 'cut', 'notes' }      -- fixed order so `instead` and ties never depend on table iteration
+local ORDER = { 'chapters', 'subs', 'cut', 'notes' }      -- fixed order so `instead` and ties never depend on table iteration
 
 local originals = nil        -- the film's own chapters, captured before anyone writes
 local sources = {}           -- name -> { mode = , marks = { {time=, title=} } }
