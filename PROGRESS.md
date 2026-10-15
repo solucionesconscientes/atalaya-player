@@ -20,7 +20,7 @@ respuesta para tener los capítulos. **Atalaya no llama a ninguna IA**: el texto
 - Un vídeo con capítulos propios no se pisa, y en IPTV, radio y enlaces no se hace nada.
 - Probar a mano:
   ```bash
-  tools/make_test_media.sh 2>/dev/null; ffmpeg -v error -f lavfi -i color=c=black:s=320x240:r=5:d=510 -c:v mpeg4 tmp/charla.mkv
+  ffmpeg -v error -f lavfi -i color=c=black:s=320x240:r=5:d=510 -c:v mpeg4 tmp/charla.mkv
   cp tests/fixtures/chapters/charla.srt tmp/charla.srt          # o alt+S con cualquier vídeo tuyo
   bin/mpv-uos tmp/charla.mkv
   # MENU → Subtítulos → Capítulos con una IA → Conseguir la transcripción → espera el «✓ Transcripción lista»
@@ -28,6 +28,13 @@ respuesta para tener los capítulos. **Atalaya no llama a ninguna IA**: el texto
   # pega en ChatGPT, copia su respuesta, y en el reproductor: ctrl+alt+p → los capítulos salen en la barra
   # cierra y vuelve a abrir el vídeo: se cargan solos · ctrl+alt+d los quita
   ```
+
+**SIGUIENTE PASO**: de Ser, dos cosas y las dos están en `NEEDS_HUMAN.md`: pegar el texto en una IA de verdad una vez
+(es el único paso de H75 que no ha hecho nadie) y empujar `feat/capitulos-ia`. Del lado del código no queda nada de
+H75; lo apuntado para otra sesión, por orden: (1) que los `tools/build_*.sh` escriban `dist/SHA256SUMS` solos —hoy se
+hace a mano y por eso el fichero estaba desfasado—; (2) volver a pasar el test de F4 sin subtítulos en una máquina
+donde `whisper-cli` arranque (aquí no puede: GLIBC, ver abajo); (3) un vídeo partido en dos sigue **sin soportar**, y
+está documentado como límite: si se quiere, eso sí es una fase nueva.
 
 ## Resumen para Ser (2026-10-15) · el minuto que no se entendía ya lo dice, y Windows queda a la espera del empujón
 
