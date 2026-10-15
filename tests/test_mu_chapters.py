@@ -826,3 +826,42 @@ def test_pista_dentro_del_video_se_extrae_y_vale_aunque_no_quepa_al_lado(daemon_
     finally:
         h.stop()
         ro.chmod(0o755)
+
+
+def test_sin_subtitulos_la_transcripcion_ya_hecha_se_guarda_y_se_avisa(con_mpvd, daemon_env, video):
+    """El camino de la transcripción (vídeo sin pistas de texto) hasta el final, sin depender del motor: se le manda a
+    mu-subs el aviso que manda mpvd cuando una transcripción termina —`mu-event` con la tarea de verdad, la de
+    `asr.inject`— y se comprueba lo que encadena F4: guardarla sola al estar lista, decir cuántas líneas van y dejar el
+    prompt copiable. Lo que no se prueba aquí es que whisper decodifique: eso es de mpvd y tiene sus tests. En esta
+    máquina el motor no arranca (GLIBC), así que sin esto el camino de la IA solo se podría probar por el lado del
+    fallo (el test de arriba)."""
+    segs = [{"start": 0.5, "end": 9.0, "text": "Bienvenidos al taller de pan."},
+            {"start": 9.0, "end": 20.0, "text": "Hoy hacemos pan en casa, paso a paso."},
+            {"start": 20.0, "end": 32.0, "text": "Los ingredientes son muy pocos."}]
+    daemon_env.cli("ensure")
+    daemon_env.wait(daemon_env.alive, timeout=30)
+    tarea = daemon_env.call("asr.inject", {"path": str(video), "segments": segs, "duration": 510.0})
+    assert tarea["complete"] and tarea["cues"] == 3, tarea
+
+    h = con_mpvd(video)
+    try:
+        # el `path` va vacío porque mu-subs solo acepta el de la tarea cuando no ha empezado ninguna, y aquí no se ha
+        # empezado: la transcripción ya estaba hecha.
+        h.command("script-message-to", "mu_subs", "mu-event",
+                  json.dumps({"event": "asr", "task": {**tarea, "path": ""}}))
+        h.wait_property("user-data/mu/subs", lambda s: bool(s) and s.get("status") == "done", timeout=20)
+
+        pedir_transcripcion(h)
+        st = h.wait_property("user-data/mu/chapters",
+                             lambda s: bool(s) and (s.get("transcript") or {}).get("status") == "done", timeout=60)
+        t = st["transcript"]
+        assert t["source"] == "ai" and t["lines"] >= 1 and t["chars"] > 0, t
+        assert "Transcripción lista" in st["osd"], st["osd"]
+        assert Path(t["out"]).is_file() and Path(t["out"]).parent == video.parent, t["out"]
+
+        h.command("keypress", "ctrl+alt+c")           # el paso siguiente del flujo: copiarla para la IA
+        osd_de(h, "Copiado: ")
+        assert "TRANSCRIPCIÓN:" in leer_portapapeles(h)
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
