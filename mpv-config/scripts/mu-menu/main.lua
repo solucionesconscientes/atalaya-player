@@ -497,7 +497,7 @@ end
 -- F4 · las instrucciones dentro de la app: los cuatro pasos en lenguaje llano, y los botones a mano al final
 views.chapters_help = function()
   show(tr('Capítulos con una IA: cómo funciona'), {
-    { title = tr('1 · El vídeo tiene que tener su transcripción: pide la de arriba y espera'), icon = 'looks_one',
+    { title = tr('1 · El vídeo tiene que tener su transcripción: pídesela con el botón de abajo y espera'), icon = 'looks_one',
       selectable = false, muted = true },
     { title = tr('2 · «Copiar la transcripción» deja en el portapapeles el texto y el prompt juntos'),
       icon = 'looks_two', selectable = false, muted = true },
