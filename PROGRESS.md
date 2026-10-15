@@ -31,6 +31,16 @@ solo de `cmd.exe`), `winget install --id shinchiro.mpv --exact` con la búsqueda
 del lanzador en `%LOCALAPPDATA%\Atalaya\lanzador.log`, y la ventana que abre maximizada y no «restaurada».
 El resumen completo, con lo que falta y por qué, está en `.tareas/resumen-arreglos.md`.
 
+### La batería en server1, medida (2026-10-15) — no está verde, y no es por lo de hoy
+- Sin red: **980 pasan, 23 fallan**, 64 omitidos (43:43). Con red: 12 pasan, **4 fallan**.
+- **Ninguno es de este cambio**: los 15 primeros se relanzaron en solitario y 14 fallan también aislados, en zonas que
+  el cambio no toca (share/HTTP, subtítulos, IPTV, instalación, letras, panel de descargas).
+- **Causa raíz de casi todos los de subtítulos y ASR**: el `whisper-cli` vendorizado pide **`GLIBC_2.43`**, que esta
+  Debian no tiene (`EngineError: whisper-cli failed (1)`). Es de la máquina, no del código.
+- Los 4 con red son de internet de verdad (lrclib, búsqueda real en YouTube y dos canales de IPTV en directo).
+- Qué hacer con esto: o se revendoriza whisper para este glibc, o la batería se pasa en la máquina donde el binario sí
+  corre. Decidirlo es de Ser.
+
 **SIGUIENTE PASO**: es tuyo, y son dos comandos (`NEEDS_HUMAN.md`): `git push -u origin ci/windows-instalador` para que
 la CI de Windows corra por primera vez, y la pasada con ratón en la VM (necesita los paquetes de virtualización, que
 llevan `sudo`). Del lado del código, lo que queda del informe de Windows es leer `lanzador.log` para ver con qué forma
