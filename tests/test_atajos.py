@@ -86,7 +86,7 @@ def test_cada_tecla_tiene_nombre_en_la_paleta():
     for key, cmd in input_conf_bindings():
         if cmd in nombrados:
             continue
-        m = re.match(r"script-binding ([\w/]+)", cmd)
+        m = re.match(r"script-binding ([\w/-]+)", cmd)
         if m and (f"'{m.group(1)}'" in en_menus or f'"{m.group(1)}"' in en_menus):
             continue          # se abre desde algún menú: tiene nombre allí
         sin_nombre.append((key, cmd))
