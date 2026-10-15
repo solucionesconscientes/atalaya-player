@@ -1964,3 +1964,13 @@
   bueno es un instalador que deja mpv en `Program Files\MPV Player\` sin tocar el PATH, así que `empezar.ps1` lo
   busca también ahí. Las pistas para humanos de `install.ps1` y `mpv-uos.ps1` aún dicen «winget install mpv»: se
   cambian aparte para no mezclar este arreglo con el texto que comprueban otros tests.
+- ADR-132 · La ventana abre siempre maximizada, nunca «restaurada» (pedido por Ser, 2026-10-15).
+  **Qué se vio.** Al arrancar, la ventana salía a media pantalla —el tamaño por defecto de mpv— y con un vídeo
+  dentro eso es verlo pequeño sin haberlo pedido.
+  **La decisión, que es de Ser:** `window-maximized=yes` en `mpv-config/mpv.conf`. Una línea, la misma en Linux,
+  Windows y macOS. Solo afecta a cómo abre: el tamaño y el estado de la ventana no se guardan entre sesiones, así
+  que nadie se queda con una ventana maximizada que no pidió.
+  **Y no contradice ADR-130** («nada se enciende por nuestra cuenta»): esto no cuesta CPU ni cambia lo que se ve
+  dentro del vídeo, y es una decisión suya, no un ajuste que se cuela.
+  **Cómo se comprueba.** Con `--vo=null` (los tests no abren ventana) mpv refleja igualmente la opción en la
+  propiedad `window-maximized`: comprobado a mano antes de escribir el test, y `tests/test_config.py` la exige.

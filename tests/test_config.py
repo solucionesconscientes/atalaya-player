@@ -47,6 +47,12 @@ def test_mpv_conf_options_exist_in_installed_mpv(project_root: Path, mpv_option_
     assert not unknown, f"options unknown to this mpv: {unknown}"
 
 
+def test_la_ventana_abre_maximizada(mpv_headless):
+    """Pedido por Ser (2026-10-15): «abrir siempre maximizado, no restaurado» (ADR-132). Con --vo=null no hay
+    ventana, pero mpv refleja igual la opción en la propiedad, así que se exige sin abrir nada."""
+    assert mpv_headless.get("window-maximized") is True
+
+
 def test_input_conf_parses_without_errors(mpv_headless, project_root: Path):
     log = mpv_headless.log_text()
     m = re.search(r"input\.conf parsed: (\d+) binds", log)
