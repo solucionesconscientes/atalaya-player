@@ -434,6 +434,28 @@ Decidido con Ser el 2026-10-04: «yo haría deb y appimage, ambos tb para arm»,
       cruzado se comprueba el contenido. 21 tests nuevos (`tests/test_deb.py`,
       `tests/test_lanzador_mpv_viejo.py`, el del zip en `tests/test_windows_scripts.py`).
 
+## H75 · Capítulos con una IA externa: la transcripción va y vuelve (2026-10-15, pedido por Ser) — ADR-134 y ADR-135 · [x]
+Ser lo pidió así: «que le mande la transcripción a una IA y me devuelva los capítulos». Atalaya **no** llama a ninguna
+IA, no usa claves y no abre nada: prepara el texto, lo copia y lee la respuesta del portapapeles. Ficha y fases en
+`docs/capitulos-ia/` (F1 módulos puros, F2 mpv, F3 pulido, F4 transcribir y copiar).
+- [x] **F1** `mu.chapters`, módulo puro (SRT → transcripción compacta, respuesta de la IA leída con tolerancia, ajuste
+      a la transcripción, validación, formato del archivo). Probado dentro del Lua de mpv de verdad.
+- [x] **F2** `mu-chapters/main.lua` y sus dos atajos: `ctrl+alt+c` copia (prompt + duración + transcripción) y
+      `ctrl+alt+p` pega la respuesta como capítulos (`<vídeo>.capitulos.txt`, con `.bak`), que al reabrir se cargan
+      solos. `chapter-list` lo sigue escribiendo mu-marks (fuente `chapters`, modo `instead`). Menú: Subtítulos →
+      Capítulos con una IA. Sin SRT, con el portapapeles vacío o con basura: lo dice y mpv sigue igual.
+- [x] **F3** el prompt es un archivo editable (`prompt-ia.txt` junto al módulo, leído en cada copia), `ctrl+alt+d`
+      quita los capítulos (pregunta antes), `mu-chapters.conf` con lo que se puede cambiar y `docs/USO.md` §5b con el
+      flujo en cuatro pasos y el límite de «vídeo partido, no soportado».
+- [x] **F4** un solo botón consigue la transcripción (los subtítulos de texto del vídeo con `subs.extract`, o whisper
+      sin preguntar modelo), con el progreso de verdad en pantalla («Transcribiendo… 37 % · listos en ~22 min»), aviso
+      al terminar, la fila del menú marcada y «Cómo funciona (4 pasos)» dentro de la app.
+- [x] La batería: los tests de `tests/test_mu_chapters.py` (64), y ningún fallo nuevo en el resto — los de ASR y
+      subtítulos siguen cayendo por el `whisper-cli` vendorizado (GLIBC), que es de la máquina.
+Aceptación: con un vídeo y su SRT, copiar → pegar en una IA → pegar la respuesta deja los capítulos en la barra de uosc,
+persisten al reabrir y `ctrl+alt+d` los quita; en IPTV y radio no se hace nada ni se ensucia el log.
+Probar a mano: los comandos están en `PROGRESS.md` (H75).
+
 ## H74 · Lo escrito que no lleva a ningún sitio se dice, y el Enter ya no se pierde (2026-10-15) — ADR-133 · [x]
 Reportado por Ser el mismo día, probando la app: en la caja «Ir a un minuto» escribió el minuto, pulsó Enter y **no pasó
 nada** —ni salto ni aviso—. La causa no era el salto: uosc no activa ninguna fila cuando lo escrito no produce una fila

@@ -1,5 +1,31 @@
 # NEEDS_HUMAN — cosas que necesita Ser (con el comando exacto)
 
+## 2026-10-15 · Los capítulos con una IA: la rama y una prueba que solo puedes hacer tú
+
+**1. Pegar en una IA de verdad, una vez.** El flujo está probado de punta a punta con vídeos reales y con respuestas
+de IA de ejemplo (los formatos que devuelven ChatGPT, Gemini y compañía están en los tests), pero **nadie ha pegado
+todavía el texto en una IA real y ha traído la respuesta**. Es el único paso que necesita ojos y manos:
+
+```bash
+bin/mpv-uos ~/Vídeos/pelicula.mkv        # o el vídeo que quieras, mejor de más de 20 min
+# MENU → Subtítulos → Capítulos con una IA → «Conseguir la transcripción»  (si el vídeo ya trae subtítulos, usa esos)
+#                                          → «Copiar la transcripción para la IA» (ctrl+alt+c)
+# Abre ChatGPT (o Gemini o Duck.ai), pega, copia su respuesta entera y vuelve al reproductor: ctrl+alt+p
+```
+Qué mirar: que los capítulos salgan en la barra con títulos que tengan sentido, que al cerrar y reabrir el vídeo
+aparezcan solos, y que los tiempos caigan en el inicio de una frase (no a mitad). Si la IA devuelve los capítulos de
+otro vídeo, el reproductor pregunta antes de aplicarlos: eso es lo que tiene que pasar.
+
+**2. Subir la rama cuando la des por buena** (la regla del proyecto es que yo no empujo):
+
+```bash
+cd ~/Documentos/PROJECTES/productos/atalaya-player
+git push -u origin feat/capitulos-ia
+```
+
+Los paquetes nuevos están en `dist/` (fuera de git, como siempre) por si los quieres instalar: el `.deb` de amd64 y el
+`.AppImage` de x86_64 son los de esta máquina.
+
 ## 2026-10-09 · Subir la rama de la CI de Windows, y los paquetes para la máquina virtual
 
 **1. La CI no existe hasta que la rama está en GitHub.** El workflow está escrito y probado todo lo que se puede

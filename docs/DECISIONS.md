@@ -2020,3 +2020,28 @@
   y no con un script-message de prueba en el código de verdad: así el script que se instala no lleva nada de test.
   **(8) El módulo puro no lleva `tr()`**: el extractor de cadenas solo recorre `scripts/`, así que «Inicio» y los
   avisos se traducen en mu-chapters y se le pasan al módulo.
+- ADR-135 · Capítulos con IA, F3 y F4: el prompt editable, quitarlos y la transcripción de un botón (H75, 2026-10-15).
+  **(1) El prompt es un archivo** (`mpv-config/script-modules/mu/prompt-ia.txt`, opción `prompt_file`), copia del de
+  `docs/capitulos-ia/` y leído **en cada copia**: es lo que más se quiere retocar y no puede obligar a reiniciar mpv.
+  Si falta o está vacío se usa el que lleva el script dentro, para que borrarlo no rompa nada.
+  **(2) `ctrl+alt+d` quita los capítulos** (libre: mirado en `input-bindings` de un mpv arrancado, como las otras dos).
+  Pregunta antes con el diálogo de la casa porque borra un archivo del usuario, y quitar es las dos cosas: sacarlos de
+  la fuente `chapters` de mu-marks —así vuelven los del archivo si los tenía— y borrar el `.capitulos.txt`, que si se
+  quedara sería un «quitar» que vuelve solo al reabrir.
+  **(3) El diálogo de confirmación sustituido se contestaba solo** (arreglado en mu-menu): uosc cierra el menú anterior
+  con su animación, y ese `close` tardío llegaba cuando el token de turno ya era el del diálogo NUEVO, al que
+  contestaba «no». Ahora el token viaja como argumento del callback y un cierre se atribuye al diálogo que se cierra.
+  Lo cazó `test_tiempos_sospechosos_piden_confirmacion` en una pasada completa (en solitario pasaba): una carrera de
+  milisegundos que ningún test unitario del módulo puro podía ver.
+  **(4) F4: el trabajo lo hace mu-subs, no mu-chapters.** mu-chapters encadena y cuenta; quien sabe de pistas, modelos
+  y guardado es mu-subs, así que la orden es suya (`mu-subs-transcript`). Pista de subtítulos de TEXTO del vídeo si la
+  hay (se extrae con `subs.extract` y se guarda como SRT junto al vídeo), y si no —o si es de imagen, que necesita
+  OCR— whisper con el modelo del tier de hardware, sin preguntar. El SRT se guarda solo al terminar: es exactamente lo
+  que va a copiar el paso siguiente, y pedírselo al usuario sería pedirle que entienda qué es un SRT.
+  **(5) El progreso es el de verdad y se dice siempre.** mu-subs publica `transcript_status/source/out/lines` y
+  mu-chapters pone un OSD cada 5 % (ni una barra falsa ni uno por segundo) con el «listos en …» que mu-subs ya sabía
+  calcular. Si el motor falla o alguien para la transcripción, se dice: callarse es lo único que no puede pasar.
+  **(6) «N líneas, M caracteres» son los de la transcripción compacta** que se va a copiar, no los cues del SRT: es el
+  número que le sirve a quien va a pegarla en una IA.
+  **(7) Ni navegador ni APIs ni claves** (decisión de Ser del 15-oct): el texto va y vuelve por el portapapeles. Las
+  recomendadas (ChatGPT gratis, Gemini, Duck.ai) se dicen dentro de la app, en «Cómo funciona (4 pasos)», y nada más.

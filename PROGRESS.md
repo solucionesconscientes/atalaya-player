@@ -1,6 +1,34 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## Resumen para Ser (2026-10-15, noche) · los capítulos los escribe una IA, y tú solo pegas dos veces
+
+### H75 · Capítulos con una IA externa (ADR-134 y ADR-135) — hecho entero
+Lo que pediste el 15-oct: que el reproductor prepare la transcripción, la mandes a la IA que quieras y pegues su
+respuesta para tener los capítulos. **Atalaya no llama a ninguna IA**: el texto va y vuelve por el portapapeles.
+
+- **Conseguir la transcripción, un solo botón** (Menú → Subtítulos → *Capítulos con una IA* → *Conseguir la
+  transcripción*): si el vídeo ya trae subtítulos de texto usa esos (y lo dice); si no, transcribe con whisper sin
+  preguntarte modelo. Mientras trabaja lo cuenta en pantalla («Transcribiendo… 37 % · listos en ~22 min») y al
+  terminar avisa («✓ Transcripción lista: 214 líneas, 9 812 caracteres»); la fila del menú se queda marcada.
+- **Copiar para la IA** (`ctrl+alt+c`): el prompt + la duración + la transcripción compacta, todo de una vez. El prompt
+  es un archivo editable (`mpv-config/script-modules/mu/prompt-ia.txt`) que se lee en cada copia.
+- **Pegar los capítulos** (`ctrl+alt+p`): la respuesta de la IA se ajusta a la transcripción, se pone en la barra y se
+  guarda como `<vídeo>.capitulos.txt` (editable; el anterior queda en `.bak`). Al reabrir el vídeo se cargan solos.
+- **`ctrl+alt+d`** los quita (pregunta antes) y **«Cómo funciona (4 pasos)»** lo explica dentro de la app, en lenguaje
+  llano, con ChatGPT/Gemini/Duck.ai como recomendadas.
+- Un vídeo con capítulos propios no se pisa, y en IPTV, radio y enlaces no se hace nada.
+- Probar a mano:
+  ```bash
+  tools/make_test_media.sh 2>/dev/null; ffmpeg -v error -f lavfi -i color=c=black:s=320x240:r=5:d=510 -c:v mpeg4 tmp/charla.mkv
+  cp tests/fixtures/chapters/charla.srt tmp/charla.srt          # o alt+S con cualquier vídeo tuyo
+  bin/mpv-uos tmp/charla.mkv
+  # MENU → Subtítulos → Capítulos con una IA → Conseguir la transcripción → espera el «✓ Transcripción lista»
+  #                                   → Copiar la transcripción para la IA (ctrl+alt+c)
+  # pega en ChatGPT, copia su respuesta, y en el reproductor: ctrl+alt+p → los capítulos salen en la barra
+  # cierra y vuelve a abrir el vídeo: se cargan solos · ctrl+alt+d los quita
+  ```
+
 ## Resumen para Ser (2026-10-15) · el minuto que no se entendía ya lo dice, y Windows queda a la espera del empujón
 
 ### H74 · «Escribo el minuto, doy a Enter y no pasa nada» (ADR-133)
