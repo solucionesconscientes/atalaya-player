@@ -1,11 +1,60 @@
 # Atalaya Player
 
-**<https://solucionesconscientes.es/atalaya>**
+**TV, radio, YouTube, descargas y salas para ver juntos, en un reproductor libre sobre mpv.**
 
-Reproductor multiplataforma sobre **mpv ≥ 0.41 + uosc ≥ 5.13** con un daemon companion en Python (**mpvd**) que hace lo pesado
-(IA, red, índices, descargas) y habla con mpv por JSON IPC. Local-first; sin fork de mpv; configuración portable.
+[Web](https://solucionesconscientes.es/atalaya) · [Descargar](https://github.com/solucionesconscientes/atalaya-player/releases/tag/v0.1.0) · [Guía de uso](docs/USO.md) · [Atajos](docs/ATAJOS.md) · [Arquitectura](docs/ARQUITECTURA.md) · [Decisiones](docs/DECISIONS.md)
 
-**Guía de uso: `docs/USO.md`** · Teclas: `docs/ATAJOS.md` · Visión: `docs/VISION.md` · Plan: `BACKLOG.md` · Estado: `PROGRESS.md` · Decisiones: `docs/DECISIONS.md` · Plataformas: `docs/PLATAFORMAS.md`
+Atalaya Player es **mpv con lo que le falta**: una interfaz uosc propia, un daemon en Python (`mpvd`) que hace lo pesado (red, índices, descargas, IA, salas) y 24 scripts Lua finos que hablan con él por JSON-RPC. Sin fork de mpv, sin cuentas y sin telemetría. Todo lo local se queda en tu equipo; lo que sale a internet se dice antes.
+
+## Descargar (v0.1.0)
+
+| Si tienes | Descarga |
+|---|---|
+| Windows 10/11 | **[Instalador .exe](https://github.com/solucionesconscientes/atalaya-player/releases/download/v0.1.0/Atalaya-0.1.0-setup.exe)** (sin consola, «Abrir con») o [.zip portable](https://github.com/solucionesconscientes/atalaya-player/releases/download/v0.1.0/Atalaya-0.1.0-windows-x86_64.zip) |
+| Ubuntu, Debian, Mint (x86-64) | [atalaya-player_0.1.0_amd64.deb](https://github.com/solucionesconscientes/atalaya-player/releases/download/v0.1.0/atalaya-player_0.1.0_amd64.deb) |
+| Cualquier Linux x86-64 sin instalar | [Atalaya-x86_64.AppImage](https://github.com/solucionesconscientes/atalaya-player/releases/download/v0.1.0/Atalaya-x86_64.AppImage) |
+| Raspberry Pi / ARM64 | [.deb arm64](https://github.com/solucionesconscientes/atalaya-player/releases/download/v0.1.0/atalaya-player_0.1.0_arm64.deb) o [AppImage aarch64](https://github.com/solucionesconscientes/atalaya-player/releases/download/v0.1.0/Atalaya-aarch64.AppImage) |
+| macOS (Apple Silicon) | Desde el repositorio con Homebrew: `brew install mpv ffmpeg uv chromaprint` y `tools/install.sh` |
+
+Las sumas SHA-256 están en [SHA256SUMS](https://github.com/solucionesconscientes/atalaya-player/releases/download/v0.1.0/SHA256SUMS). Ningún paquete lleva mpv dentro: se usa el del sistema, **0.41 o superior**, para no romper la aceleración por hardware.
+
+## Qué hace
+
+- **TV y radio en abierto**: TDTChannels (571 canales de TV y 1.055 emisoras el 24-oct-2026), iptv-org por país y categoría y Radio Browser. Guía EPG, favoritos, recientes, búsqueda sin acentos, grabación programada y listas M3U propias. Si la lista principal falla, prueba espejos y una copia incluida: la TV no se queda vacía.
+- **Vídeos de internet con yt-dlp**: YouTube y cualquier sitio que yt-dlp soporte, vídeo o solo audio, con todos los formatos y presets de descarga; actualización diaria del binario con suma verificada.
+- **Sin patrocinios**: SponsorBlock salta patrocinios y autopromociones; solo se envía un prefijo de 4 caracteres del hash del vídeo.
+- **Ver juntos**: sala privada o pública, enlace y QR; los invitados entran desde el navegador sin instalar nada. El estado va por SSE y el túnel de Cloudflare es opcional.
+- **Subtítulos con IA en tu equipo**: whisper.cpp con tiempos por palabra, estimación antes de empezar, traducción offline, subtítulos duales, resincronización de SRT y capítulos por tema.
+- **Descargas y biblioteca**: vídeo/audio con contenedor, códecs, resolución y tamaño; biblioteca local, búsqueda y descargas por lotes.
+- **Estudio**: repetir línea, velocidad inteligente, notas con enlace al minuto y clips (MP4/MKV/GIF/MP3/Opus/WAV).
+- **Salón y mando**: pantalla grande, mando de consola, PWA de mando por Wi-Fi y envío DLNA.
+- **MCP**: controla el reproductor desde Claude Code u otro asistente (tools `status`, `play`, `seek`, `download`, `search_dialogue`…).
+- **Privacidad por diseño**: sin cuentas, sin cookies, sin analítica; la nube viene apagada y el aviso de versión es una petición al día sin identificador.
+
+## Estado (24 de octubre de 2026)
+
+| Plataforma | Estado |
+|---|---|
+| Linux x86-64 | **Probado**: desarrollo y uso diario (Ubuntu/KDE Wayland) |
+| Windows 10/11 | **Instalador probado en Windows 11 (VM)**: abre sin consola, «Abrir con» y TV con lista incluida. Queda pendiente probarlo en hardware real |
+| Linux ARM64 | Paquetes construidos; **sin ejecutar en una máquina ARM** |
+| macOS Apple Silicon | Guía y script; **sin probar en un Mac real** (sin firma de Apple) |
+
+La versión es **0.1.0**. Lo que garantiza que funciona son las pruebas automáticas del repositorio, no la buena voluntad: `uv run pytest` (sin red) y `uv run pytest -m network` (con red).
+
+## Capturas
+
+| Menú | TV y radio | Ver juntos |
+|---|---|---|
+| ![Menú principal](docs/capturas/menu.webp) | ![TV y radio](docs/capturas/tv.webp) | ![Salas](docs/capturas/sala.webp) |
+
+Se generan con `tools/capturas.sh` sobre una pantalla virtual y una carpeta de datos vacía: no hay historial ni favoritos de nadie.
+
+## Documentación
+
+[Guía de uso](docs/USO.md) · [Atajos](docs/ATAJOS.md) · [Plataformas](docs/PLATAFORMAS.md) · [Arquitectura](docs/ARQUITECTURA.md) · [Decisiones](docs/DECISIONS.md) · [TV y fuentes](docs/FUENTES_IPTV.md) · [Subtítulos IA](docs/WHISPER.md) · [Estudio](docs/ESTUDIO.md) · [Salas](docs/REMOTE.md) · [MCP](docs/MCP.md) · [Prueba en Windows VM](docs/PRUEBA-WINDOWS-VM.md)
+
+---
 
 ## Requisitos (Linux)
 - mpv ≥ 0.41 con Lua (`mpv --version`), ffmpeg/ffprobe, [uv](https://docs.astral.sh/uv/).
@@ -13,7 +62,7 @@ Reproductor multiplataforma sobre **mpv ≥ 0.41 + uosc ≥ 5.13** con un daemon
 
 ## Puesta en marcha
 ```bash
-git clone <repo> Atalaya Player && cd Atalaya Player
+git clone https://github.com/solucionesconscientes/atalaya-player.git atalaya-player && cd atalaya-player
 uv sync              # crea .venv con Python 3.12 y el paquete mpvd
 tools/vendor.sh      # descarga y verifica uosc 5.13.0 (+ ziggy), thumbfast y yt-dlp según vendor.lock
 tools/check.sh       # lint + tests headless; debe acabar en "✅ check OK"
