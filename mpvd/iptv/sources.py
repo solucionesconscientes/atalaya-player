@@ -104,7 +104,8 @@ def load_source(http: HttpCache, source: Source, force: bool = False, timeout: f
     is better than an empty TV menu; ``state.error`` records why the main URL failed.
     """
     errors: list[str] = []
-    urls = [source.url, *FALLBACK_URLS.get(source.id, [])]
+    official = any(s.id == source.id and s.url == source.url for s in BUILTIN_SOURCES)
+    urls = [source.url, *(FALLBACK_URLS.get(source.id, []) if official else [])]
     for index, url in enumerate(urls):
         try:
             res = http.fetch(url, ttl=source.ttl, force=force or index > 0, timeout=timeout)
@@ -118,7 +119,7 @@ def load_source(http: HttpCache, source: Source, force: bool = False, timeout: f
                 state.error = "; ".join(errors) or None
             return state
         errors.append(f"{url}: lista vacía")
-    bundled = _bundled(source.id)
+    bundled = _bundled(source.id) if official else None
     if bundled is not None:
         try:
             state = _from_text(source, bundled.read_text(encoding="utf-8"), from_cache=True)
