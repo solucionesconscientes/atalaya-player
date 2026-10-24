@@ -555,7 +555,10 @@ views.source = function(args)
   rpc.call('iptv.channels', { source = args.id, compact = true, merge = true, limit = 5000 }, function(err, res)
     if err then show(title, uosc.message_items(fail(err, 'iptv.channels'), 'error')) return end
     if #res.items == 0 then
-      show(title, uosc.message_items(tr('Lista vacía o no descargada (Actualizar listas)'), 'info'))
+      local detail = res.error and ('\n' .. res.error) or ''
+      local items = uosc.message_items(tr('Lista vacía o no descargada (Actualizar listas)') .. detail, 'error')
+      table.insert(items, { title = tr('Actualizar listas'), icon = 'refresh', value = { view = 'refresh' } })
+      show(title, items)
       return
     end
     show_channels(title, res.items, function()

@@ -229,8 +229,10 @@ class IptvService:
         health = self.store.health()
         tracks = self.store.tracks()
         page = rows[offset: offset + limit]
+        state = self._states.get(source_id) if source_id is not None else None
         return {
             "total": len(rows), "offset": offset,
+            "error": state.error if state is not None else None,
             "items": [self._decorate(ch, favs, health, compact, alternatives=n, tracks=tracks) for ch, n in page],
         }
 

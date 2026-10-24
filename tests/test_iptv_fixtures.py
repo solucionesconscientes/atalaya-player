@@ -121,3 +121,19 @@ def test_radio_browser_fixture_mapping():
 )
 def test_clean_title(title, name, flags):
     assert clean_title(title) == (name, flags)
+
+
+def test_bundled_list_is_used_when_the_network_fails():
+    """The TV menu must never be empty just because Cloudflare/TLS fails on Windows."""
+    from mpvd.iptv.sources import BUILTIN_SOURCES, load_source
+    from mpvd.net import FetchError
+
+    class Down:
+        def fetch(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            raise FetchError("sin red (simulado)")
+
+    for source in BUILTIN_SOURCES[:2]:
+        state = load_source(Down(), source)
+        assert state.channels, source.id
+        assert state.error and "sin red" in state.error
+        assert state.from_cache is True
