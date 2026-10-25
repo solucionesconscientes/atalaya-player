@@ -48,6 +48,10 @@ if [ ! -d "$DATA_DIR/watch_later" ]; then
   fi
 fi
 export MPV_UOS_ROOT="$ROOT"
+# El paquete trae el código de mpvd en $ROOT/mpvd, pero el intérprete vive en $ROOT/python y no lo tiene
+# instalado en site-packages. Sin esto, `python -m mpvd` solo funciona si el cwd es la raíz del paquete;
+# al abrir un vídeo de otra carpeta, mu-core no lo encuentra y el menú dice «mpvd no disponible».
+export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 export MPV_UOS_DATA_DIR="$DATA_DIR"
 
 # «Enviar a MPV-UOS» from the browser (H23): mpv-uos://download?url=<url>[&preset=<id>] queues the download in
