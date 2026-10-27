@@ -38,6 +38,7 @@ solo valen en Linux.
 | `.app` de macOS (`tools/build_macos_app.sh`) | construido y validado (plist, lanzador) en Linux | ❌ sin abrir en un Mac (mpv de Homebrew) | — |
 | `.deb` (`tools/build_deb.sh --arch amd64\|arm64`) | ✅ amd64 probado: se extrae, arranca y mpvd se conecta con el intérprete del paquete; lintian sin más avisos que los inherentes a llevarlo dentro. arm64 cruzado y revisado por dentro | — | — |
 | `.zip` portable (`tools/build_zip_windows.sh`) | — | — | construido en Linux y revisado por dentro (lanzadores, `EMPEZAR-AQUI.cmd`, intérprete de Windows en su sitio, yt-dlp.exe); la CI lo descomprime en Windows y arranca lo que lleva dentro; **sin abrirlo con doble clic** |
+| Instalador `.exe` (`tools/build_win_installer.sh`, NSIS) | se compila en Linux con `makensis` | — | construido y revisado por dentro (contiene el zip, el icono, el `install.ps1` y una **copia de reserva de mpv** que solo se descomprime si el equipo no tiene ninguno); **sin ejecutar en Windows**: el asistente, los accesos y la desinstalación están sin probar a mano |
 | ARM64 (Raspberry Pi 5) | ⚠ paquetes hechos (`.deb` arm64 y AppImage aarch64, los dos cruzados y revisados por dentro), **sin ejecutar en una máquina ARM**: aquí no hay ninguna ni emulación | — | — |
 | uosc, thumbfast, scripts `mu-*` (Lua) | ✅ | debería ir (Lua puro; rutas con `utils.join_path`) | debería ir (mu-core ya distingue `.venv\Scripts\python.exe`) |
 | mpvd: JSON-RPC y IPC con mpv | ✅ socket Unix | socket Unix (no probado) | named pipes (`mpvd/transport.py`, lazo Proactor) probados con un lazo simulado; sin Windows real |
@@ -102,7 +103,9 @@ lo instala con winget si falta y arranca el reproductor— en un solo doble clic
 eso: no se ejecuta al hacer doble clic y la directiva de ejecución lo bloquea. Un `.exe` o un `.msi` sin firmar se
 come el aviso de SmartScreen, que asusta más que descomprimir una carpeta (ADR-117, confirmado con Ser el
 2026-10-05); con certificado el `.msi` sí es mejor, y es decisión suya. Dentro va `tools\install.ps1` para quien
-quiera accesos directos y los enlaces `mpv-uos://`. mpv **no** va dentro: se usa el del sistema para no perder la
+quiera accesos directos y los enlaces `mpv-uos://`: `EMPEZAR-AQUI.cmd` lo llama con `-Shortcuts -Desktop`, que crea solo
+el lanzador, los atajos y `mpv-uos://` sin exigir mpv, ffmpeg ni uv (el zip ya trae su Python y yt-dlp, y mpv lo instala el
+arranque justo después); desde un clon, sin `-Shortcuts`, sigue exigiéndolo todo. mpv **no** va dentro: se usa el del sistema para no perder la
 aceleración por hardware, y eso es lo que el arranque instala por ti si no lo tienes.
 
 ### Desde un clon del repositorio

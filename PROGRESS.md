@@ -1,6 +1,92 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## Resumen para Ser (2026-10-22) · los capítulos tienen su pantalla, la IA contesta en dos bloques y los cajones se trocean (H76)
+
+Lo que pediste después de usar el flujo: que se entienda de un vistazo qué hay y qué se puede hacer, que la IA
+devuelva también los puntos clave, y que Herramientas deje de ser una lista de quince filas.
+
+- **La pantalla de capítulos** (**Reproducción › Capítulos**, tecla `c`, y también en la paleta `alt+p`): primero los
+  capítulos que tiene el vídeo, una fila por capítulo con su minuto (Enter salta); después, tras
+  una fila separadora, *Crear capítulos con una IA…* y *Quitar los capítulos de este vídeo*. Un vídeo sin capítulos ya
+  no enseña una lista vacía: una fila que lo dice —y que no se puede elegir— y, debajo, la de crearlos.
+- **«Capítulos con una IA» es su propia pantalla** (ya no cuelga de Subtítulos): *Cómo funciona* · una fila de estado
+  que dice lo que hay (*Subtítulos en español · 35 líneas*, o *Este vídeo no contiene transcripción*) · *Copiar
+  subtítulos y el prompt* (`ctrl+alt+c`) cuando el vídeo los trae, *Copiar el prompt* cuando no · *Pegar los capítulos
+  de la IA* (`ctrl+alt+p`).
+- **Copiar de una vez**: `ctrl+alt+c` con subtítulos copia el prompt, una línea en blanco y la transcripción (el prompt
+  ya acaba en `TRANSCRIPCIÓN:`). Aviso: *Prompt y transcripción copiados: N líneas (~X mil tokens)*. Sin subtítulos,
+  la misma tecla copia solo el prompt. *Copiar solo la transcripción* y *Copiar solo el prompt* siguen en la ayuda.
+- **«Cómo funciona», en cuatro pasos de una idea cada uno** (uosc corta las frases largas) y con las acciones debajo:
+  *Abrir riverside.com/transcription* (abre el navegador del sistema: `xdg-open` / `start` / `open`, sin dependencias
+  nuevas) · *Copiar solo la transcripción* (si la hay) · *Copiar solo el prompt* · *Pegar los capítulos de la IA* · y,
+  al final y en voz baja, *Conseguir la transcripción aquí (tarda)* (whisper, el último recurso).
+- **El prompt pide dos bloques en una sola respuesta**: BLOQUE 1 — CAPÍTULOS (una línea `MM:SS Título` por capítulo, en
+  un bloque de código) y BLOQUE 2 — PUNTOS CLAVE (8-12 viñetas `- MM:SS — una frase`). Al pegar, **solo los capítulos
+  van a la barra**: el parseo para en la primera línea que no es capítulo después de haber leído uno, así que las
+  viñetas no se cuelan; el aviso dice *N capítulos · M puntos clave*, o solo *N capítulos* si no venían.
+- **Herramientas pasa de quince filas a cinco**: *Reproducción* (Tramos, Saltar intro y créditos, Estudio, Repetir este
+  archivo, Repetir la lista, Orden aleatorio, Mostrar en la carpeta) · *Compartir y mando* (Mando desde el móvil,
+  Compartir: ver juntos, Enviar a la tele, Panel de descargas en el navegador, Mis notas) · *Buscar comandos, canales y
+  recientes…* · *Temporizador para dormir* (se va de Imagen y sonido: sirve para cualquier reproducción) · *Todas las
+  teclas*. *Estado del reproductor* y *Capítulos* salen de ahí: el estado sigue en la paleta (mpvd) y los capítulos
+  pasan a *Reproducción* con la tecla `c` (uosc ya no los abre: dos listas de capítulos era una de más).
+- **Menos jerga en los menús**: *Guardar los subtítulos* (antes «(SRT)»), *Buscar subtítulos en internet* sin la marca
+  OpenSubtitles, *Quitar las rayas* (antes «(desentrelazar)»), *Idioma del audio* / *Idioma del vídeo* (antes «Pista
+  de…»).
+- **Instalador de Windows: el fallo de los accesos directos, encontrado y cerrado**. El zip trae su propio
+  `bin\mpv-uos.cmd` (una línea, sin la marca del instalador); `install.ps1 -Shortcuts` lo tomaba por ajeno y salía
+  con código 1 *antes* de crear nada, así que el `.exe` avisaba y se quedaba sin atajos. Ahora ese lanzador se
+  reconoce como propio (`Test-MuOwnLauncher`), el instalador le pasa `-Log` y cada paso queda escrito en
+  `instalador.log` (el aviso ofrece abrirlo), y el icono del atajo es el del mpv incluido, no el de PowerShell.
+  Dos pruebas nuevas reproducen el caso exacto de la VM.
+- **Idiomas**: 33 cadenas nuevas en `locales/en.json` y `fr.json`, 18 que ya no se usan fuera; el test que compara
+  catálogo y código en verde.
+- **Tests**: `tests/test_mu_chapters.py` (76), `test_i18n.py` y `test_atajos.py` en verde. Nuevos: el parseo de los dos
+  bloques (y que una lista plana siga valiendo), la pantalla de la IA según haya o no transcripción, el estado vacío de
+  la pantalla de capítulos, copiar todo de una vez, pegar dos bloques y el aviso con los puntos clave.
+
+**SIGUIENTE PASO**: lo revisa Ser con un vídeo de verdad (copiar, pegar en la IA, pegar la respuesta) y decide si la
+pantalla de capítulos merece una fila fija en *Reproducción* —ahora se abre con la binding `chapters` y desde la paleta
+`alt+p`—. Sin commitear nada y sin push.
+
+## Resumen para Ser (2026-10-20, noche) · el prompt por un lado y la transcripción por otro (H75/F5)
+
+Lo que pediste al ver el menú: que se copie **solo el prompt**, que se explique que va pegado **junto con la
+transcripción** en la IA, y que haya dónde pegar la respuesta. Y que toda descarga de YouTube traiga su transcripción
+por defecto.
+
+- **El menú queda en lo que hace falta**: *Copiar el prompt para la IA* (`ctrl+alt+c`) · *Copiar la transcripción*
+  (solo cuando el vídeo trae subtítulos; dice cuántas líneas) o, si no los trae, *Conseguir la transcripción* ·
+  *Pegar los capítulos de la IA* (`ctrl+alt+p`) · *Quitar* y *Cómo funciona (3 pasos)*.
+- **El prompt ya no arrastra la transcripción**: se copia con la duración total y termina en la línea
+  `TRANSCRIPCIÓN:`, para pegar debajo lo que siga. La transcripción se copia aparte, compacta y con sus `[mm:ss]`,
+  para que se entienda qué es cada cosa y valga también una transcripción de fuera.
+- **Si el vídeo no trae transcripción**, los pasos lo dicen y mandan a <https://riverside.com/transcription>;
+  whisper se queda como opción, avisando de que tarda.
+- **Descargas de YouTube con transcripción por defecto**: el `.srt` baja junto al vídeo o audio (opción
+  *Subtítulos → archivo SRT aparte*), tanto en la descarga normal como en las listas y lotes (casilla
+  *Subtítulos (SRT) aparte* marcada). Sigue siendo cambiable en las dos.
+- **El prompt** (`mpv-config/script-modules/mu/prompt-ia.txt`) ahora dice que la transcripción va después de las
+  instrucciones y acepta formatos con el tiempo en línea aparte o sin marcas (reparto proporcional), que es lo que
+  devuelve riverside.
+- **Instalador `.exe` para Windows** (`tools/build_win_installer.sh` + `tools/atalaya.nsi`, NSIS): un solo fichero,
+  asistente en español, instalación por usuario en `%LOCALAPPDATA%\Programs\Atalaya` sin UAC, accesos directos y
+  desinstalador; los ficheros instalados no llevan marca de Internet, así que `EMPEZAR-AQUI.cmd` ya no cae en el
+  Control Inteligente de Aplicaciones. La primera página explica el aviso azul. Se compila en Linux con `makensis`
+  (Inno Setup no compila aquí: hace falta Windows o Wine, y no hay ni uno ni otro).
+- **mpv va dentro, como reserva**: si el equipo ya tiene mpv, se usa ese y no se instala nada; si no lo tiene, el
+  instalador deja la build oficial de shinchiro en `<app>\mpv\` (34 MB comprimidos, `MPV_WIN_*` en `vendor.lock`
+  con SHA-256) y ni el lanzador ni `empezar.ps1` vuelven a pedir instalarlo. El instalador pasa de 32 a 68 MB.
+  Sigue mandando el mpv del sistema (ADR-067/ADR-117): la copia propia es solo el suelo cuando no hay ninguno.
+- **Tests**: `tests/test_mu_chapters.py` (67) y `tests/test_mu_ytdl_batch.py` (5) en verde, y `test_i18n.py` con los
+  catálogos en/fr al día (13 cadenas fuera, 15 dentro).
+
+**SIGUIENTE PASO**: los paquetes de `dist/` (deb amd64/arm64, AppImage x86_64/aarch64, zip de Windows y el
+`Atalaya-0.1.0-setup.exe`) rehechos con este cambio, sin commitear nada y sin push: los revisa Ser y él decide qué
+sube. El instalador **no se ha ejecutado en Windows**: el asistente, los accesos y la desinstalación están sin
+probar a mano.
+
 ## Resumen para Ser (2026-10-15, noche) · los capítulos los escribe una IA, y tú solo pegas dos veces
 
 ### H75 · Capítulos con una IA externa (ADR-134 y ADR-135) — hecho entero

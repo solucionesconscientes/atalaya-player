@@ -4,8 +4,9 @@
 # (bin\mpv-uos.cmd → bin\mpv-uos.ps1) y tools\install.ps1 para quien quiera accesos directos y los enlaces
 # mpv-uos://. Se descomprime donde sea y funciona: no hace falta instalar nada, ni uv, ni un clon del repositorio.
 #
-# Un .zip y no un instalador: un .exe o un .msi sin firmar se come el aviso de SmartScreen, que asusta más que
-# descomprimir una carpeta (decidido con Ser el 2026-10-04). La firma cuesta dinero y hay que renovarla.
+# Un .zip y, además, el instalador .exe de tools/build_win_installer.sh (NSIS, H75/F5): el .exe instala por usuario
+# sin UAC y deja los ficheros sin marca de Internet, que es lo que hace que EMPEZAR-AQUI.cmd no caiga en el Control
+# Inteligente de Aplicaciones. El .zip se queda como portable para quien no quiera instalar.
 #
 # mpv NO va dentro, igual que en Linux (ADR-067): se usa el del sistema. El lanzador avisa de cómo instalarlo
 # (winget install mpv) si no lo encuentra. En Windows esto es una incomodidad de más que en Linux y está anotado
@@ -46,11 +47,19 @@ mkdir -p "$APP"
 git -C "$ROOT" ls-files -z -- bin mpv-config mpvd locales brand.json pyproject.toml vendor.lock README.md \
     docs/USO.md docs/ATAJOS.md docs/PLATAFORMAS.md docs/marca tools/install.ps1 \
     | (cd "$ROOT" && xargs -0 cp --parents -t "$APP")
+mkdir -p "$APP/tools"
+cp "$ROOT/tools/verificar-iptv.py" "$APP/tools/"    # comprobación de listas/canales en el Windows de destino
 mkdir -p "$APP/mpv-config/scripts/uosc/bin"
 # de los tres ayudantes de uosc, solo el de Windows: los otros dos son 11 MB que aquí no se usan
 cp "$ROOT/mpv-config/scripts/uosc/bin/ziggy-windows.exe" "$APP/mpv-config/scripts/uosc/bin/" 2>/dev/null || true
 # el ayudante del despertador es de Linux (rtcwake); en Windows lo hace schtasks desde mpvd
 rm -f "$APP/bin/wake"
+# lanzador GUI: sin consola y con un .exe real para «Abrir con» (Windows 11 no lista ProgIDs sueltos)
+if [ ! -f "$ROOT/tools/launcher/Atalaya.exe" ]; then
+  echo "falta tools/launcher/Atalaya.exe (compilar con tools/launcher/build.sh)" >&2
+  exit 1
+fi
+cp "$ROOT/tools/launcher/Atalaya.exe" "$APP/bin/Atalaya.exe"
 # la puerta de entrada, arriba y con un nombre que no se pueda confundir (ADR-123): un .ps1 no se ejecuta al hacer
 # doble clic y el nombre va en ASCII a propósito, porque un acento en el nombre de un fichero dentro de un zip lo
 # enseña mal el explorador de Windows si quien lo comprimió no marcó UTF-8
@@ -72,6 +81,9 @@ rm -rf "$APP/.venv/Scripts/Lib/test" "$APP/.venv/Scripts/Lib/idlelib" "$APP/.ven
        "$APP/.venv/Scripts/Lib/turtledemo" "$APP/.venv/Scripts/Lib/site-packages/pip" \
        "$APP/.venv/Scripts/Lib/site-packages/pip-"* "$APP/.venv/Scripts/tcl" "$APP/.venv/Scripts/DLLs/_tkinter.pyd"
 find "$APP/.venv" -name '__pycache__' -type d -prune -exec rm -rf {} +
+# Cinturón y tirantes: aunque una variable de entorno no llegue, site-packages apunta a la raíz de la app.
+mkdir -p "$APP/.venv/Scripts/Lib/site-packages"
+printf '%s\n' '../../../..' > "$APP/.venv/Scripts/Lib/site-packages/atalaya.pth"
 # los extras ligeros, con ruedas de Windows
 mapfile -t pkgs < <(python3 - "$ROOT/pyproject.toml" desktop <<'PYEOF'
 import sys, tomllib
@@ -104,22 +116,28 @@ $NAME $VERSION — versión portable para Windows (64 bits)
 $SITE
 
 CÓMO SE USA
-  1. Descomprime esta carpeta donde quieras (el Escritorio vale).
+  1. Descomprime esta carpeta donde quieras (el Escritorio vale) y quédate con ella:
+     esta carpeta ES la aplicación, así que no la muevas ni la borres después.
   2. Doble clic en EMPEZAR-AQUI.cmd, y ya está. Para abrir una película, arrástrala encima.
 
      Eso busca mpv —el reproductor que $NAME usa por debajo— y, si no lo tienes, lo instala
-     con winget («winget install mpv») y sigue. Si winget no estuviera, te dirá en una línea
-     qué hacer. No hace falta ser administrador y no se cambia ningún ajuste de tu Windows.
+     con winget («winget install --id shinchiro.mpv --exact») y sigue. Si winget no
+     estuviera, te dirá en una línea qué hacer. No hace falta ser administrador y no se
+     cambia ningún ajuste de tu Windows.
 
      Windows puede preguntarte «¿Quieres ejecutar este archivo?»: es porque viene de internet
      y no está firmado. Firmar cuesta dinero y caduca, así que lo que puedes hacer en su lugar
      es comprobar la suma SHA-256 del zip, que está publicada en $SITE.
 
-SI QUIERES ACCESOS DIRECTOS Y QUE LOS ENLACES mpv-uos:// FUNCIONEN
-  Abre PowerShell en esta carpeta y ejecuta:
-      powershell -NoProfile -ExecutionPolicy Bypass -File tools\\install.ps1
-  No hace falta ser administrador: todo se queda en tu usuario. Para deshacerlo:
-      powershell -NoProfile -ExecutionPolicy Bypass -File tools\\install.ps1 -Uninstall
+ACCESOS DIRECTOS Y ENLACES mpv-uos://
+  EMPEZAR-AQUI.cmd no crea nada por su cuenta: la primera vez pregunta si quieres un acceso
+  directo en el Escritorio y en el menú Inicio, y si activas los enlaces mpv-uos://. Si dices
+  que sí, lo hace install.ps1, todo en tu usuario y sin administrador.
+  Si dijiste que no y lo quieres después, abre PowerShell en esta carpeta y ejecuta:
+      powershell -NoProfile -ExecutionPolicy Bypass -File tools\install.ps1 -Shortcuts -Desktop
+  (sin -Desktop crea solo el del menú Inicio; -Shortcuts es porque esta carpeta ya trae lo
+  demás y no hace falta comprobar requisitos). Para deshacerlo:
+      powershell -NoProfile -ExecutionPolicy Bypass -File tools\install.ps1 -Uninstall
 
 QUÉ LLEVA DENTRO
   La aplicación, un Python 3.12 propio (no hace falta instalar Python) y yt-dlp.
@@ -128,7 +146,7 @@ QUÉ LLEVA DENTRO
   dirá qué es lo que no va a funcionar.
 
 QUÉ SE GUARDA Y DÓNDE
-  Lo tuyo (favoritos, notas, preferencias, dónde te quedaste) en %APPDATA%\\mpv-uos.
+  Lo tuyo (favoritos, notas, preferencias, dónde te quedaste) en %APPDATA%\mpv-uos.
   Lo que se puede recalcular (subtítulos generados, miniaturas) en %LOCALAPPDATA%.
   Esta carpeta no se escribe: puedes dejarla en un lápiz USB.
 

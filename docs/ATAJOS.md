@@ -31,7 +31,7 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 | `ctrl+u` | Abrir URL: pega o escribe un enlace («Pegar: …» con el del portapapeles); con texto, busca en YouTube |
 | `ctrl+f` | Buscar en YouTube: Enter busca y Enter reproduce; Tab: añadir a la lista o descargar |
 | `p` | Lista de reproducción |
-| `c` | Capítulos |
+| `c` | Capítulos (la lista para saltar y, al final, *Crear capítulos con una IA…* y *Quitar*) |
 | `s` | Subtítulos · `alt+s` cargar subtítulos |
 | `a` | Pistas de audio · `m` silenciar |
 | `v` | Mostrar / ocultar subtítulos · `ctrl+alt+v` los secundarios |
@@ -47,6 +47,7 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 | Tecla | Acción |
 |---|---|
 | `alt+t` | Menú TV y radio (España TV/Radio, Mundo por país, Radio mundial, Favoritos, Recientes, Mis listas) |
+| `alt+shift+t` | **Cambiar de canal sin volver al menú**: abre directamente la lista de la fuente que estás viendo (TV o radio); el canal actual sale marcado con `▶ viendo ahora` |
 | `alt+f` | Buscar canal o emisora (paleta) |
 | `alt+UP` / `alt+DOWN` | Canal siguiente / anterior dentro del grupo actual |
 | `alt+G` | Guía de programación del canal que estás viendo (grabar un programa desde ella) |
@@ -102,7 +103,7 @@ Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muest
 | `alt+c` | Iniciar / detener los subtítulos IA del archivo actual (la transcripción parcial queda en caché y se reanuda) |
 | `alt+x` | Resincronizar la pista de subtítulos externa seleccionada con la transcripción IA (desfase + deriva por tramos) |
 | `alt+S` | Guardar subtítulos como SRT junto al vídeo (`<vídeo>.<idioma>.srt`): la pista seleccionada (IA, traducción, resincronizada, externa o interna de texto) o, si no hay, la pista IA |
-| `ctrl+alt+c` | **Capítulos con una IA**: copia la transcripción que hay junto al vídeo (`alt+S` la guarda), compactada y con el prompt delante, para pegarla en la IA que quieras (menú: Subtítulos → Capítulos con una IA) |
+| `ctrl+alt+c` | **Capítulos con una IA**: si el vídeo trae subtítulos, copia el prompt **y** la transcripción de una vez (el prompt acaba en `TRANSCRIPCIÓN:`, la transcripción va debajo); si no los trae, copia **solo el prompt** (con la duración del vídeo). La pantalla de capítulos (**Reproducción › Capítulos**, tecla `c`, y en la paleta) enseña lo que hay y, en *Crear capítulos con una IA…*, las filas *Copiar subtítulos y el prompt* / *Copiar el prompt* y *Copiar solo el prompt* para cada cosa por separado |
 | `ctrl+alt+p` | Pega los capítulos que ha contestado la IA: se ajustan a la transcripción, se guardan como `<vídeo>.capitulos.txt` (editable; el anterior queda en `.bak`) y salen en la barra; al reabrir el vídeo se cargan solos |
 | `ctrl+alt+d` | Quitar los capítulos de este vídeo: pregunta primero y luego los saca de la barra y borra `<vídeo>.capitulos.txt` (si el vídeo traía capítulos suyos, vuelven esos) |
 | (menú `alt+i`) | Traducir la pista seleccionada (también pistas internas de texto) con el motor Rápido (Argos) o Máxima calidad (OPUS-MT, es/ca/fr ↔ en) · Duales: original arriba + traducción abajo · Guardar subtítulos (SRT) |

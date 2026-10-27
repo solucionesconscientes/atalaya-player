@@ -59,8 +59,10 @@ falta, avisa con la orden para instalarlo. Los subtítulos IA y los modelos se d
 - **Continuar viendo** (`alt+h`): los recientes se reconocen por contenido, aunque renombres o muevas el archivo.
 
 ## 2. Ver la tele y escuchar la radio
-1. `alt+t` → *España TV* / *España radio* (TDTChannels), *Mundo* (iptv-org por país y categoría), *Radio mundial* (Radio Browser).
-   En *Mundo* y *Radio mundial* tu país sale primero; países y categorías van en español.
+1. `alt+t` → *España TV* / *España radio* (TDTChannels), *Mundo* (iptv-org por país y categoría, **sin canales de España**), *Radio mundial* (Radio Browser).
+   - Mientras ves un canal, `alt+shift+t` abre **su lista** (sin pasar por el menú raíz); el canal actual queda marcado y `alt+↑`/`alt+↓` cambia dentro del grupo.
+   *España* sale solo de TDTChannels; de *Mundo* se excluyen los canales españoles y cualquier URL que ya esté en la lista de España, para que no haya dos entradas del mismo canal.
+   En *Mundo* y *Radio mundial* tu país sale primero; países y categorías van en español. En *Radio mundial* se quitan solo las copias que ya están en *España · Radio*, no todas las emisoras españolas.
 2. `alt+f` busca un canal por nombre sin acentos; `Tab` sobre un canal: favorito o copiar URL.
 3. `alt+↑` / `alt+↓` cambian de canal dentro del grupo; `alt+r` graba el directo en la carpeta de grabaciones
    (`~/Vídeos/Atalaya/Grabaciones` por defecto): es el mismo botón «Grabar» del reproductor, con su punto rojo y su
@@ -374,37 +376,36 @@ modelo de embeddings (se descarga desde el menú). Más en docs/SEMANTICA.md.
 ## 5b. Capítulos con una IA: el texto va y vuelve
 Los «capítulos por tema» de arriba los calcula el propio equipo con un modelo pequeño: sirven para orientarse. Estos
 otros los escribe una IA de conversar (ChatGPT y compañía), que entiende de qué se habla y titula mucho mejor. Atalaya
-**no** llama a ninguna IA ni manda nada a internet por su cuenta: prepara el texto, tú lo pegas en la IA que quieras y
-pegas la respuesta de vuelta.
+**no** llama a ninguna IA ni manda nada a internet por su cuenta: prepara el prompt, tú lo pegas en la IA que quieras
+junto con la transcripción y pegas la respuesta de vuelta.
 
-**El camino corto**: Menú → Subtítulos → *Capítulos con una IA* → *Conseguir la transcripción*. Un solo botón, sin
-elegir modelo ni pista: si el vídeo ya trae subtítulos de texto usa esos (y lo dice), y si no transcribe con IA. Va
-contando por dónde va en pantalla («Transcribiendo… 37 % · listos en ~22 min») y al terminar avisa («✓ Transcripción
-lista: 214 líneas, 9 812 caracteres»); la fila del menú se queda marcada con *Transcripción lista*, y el SRT queda
-guardado junto al vídeo. Si no sabes por dónde empezar, ahí mismo está *Cómo funciona (4 pasos)*. Después, los pasos 2
-a 4 de aquí abajo.
+**El camino corto**: la pantalla de capítulos (binding `chapters` de `mu_menu`; también en la paleta `alt+p` como
+*Capítulos de este vídeo*) → *Crear capítulos con una IA…*.
 
-Y a mano, si prefieres hacerlo tú:
-
-1. **La transcripción, junto al vídeo.** Abre el vídeo y deja que se transcriba (`alt+c`), o selecciona los subtítulos
-   que ya traiga. Después `alt+S` la guarda como `<vídeo>.<idioma>.srt` **al lado del vídeo**: de ahí la lee este
-   flujo. Si no hay ningún SRT al lado, `ctrl+alt+c` lo dice y no copia nada.
-2. **Copiar para la IA**: `ctrl+alt+c`, o Menú → Subtítulos → *Capítulos con una IA* → *Copiar la transcripción*. Deja
-   en el portapapeles, de una vez, el prompt + la duración total + la transcripción compacta en líneas de unos 12 s con
-   su `[mm:ss]`. El aviso dice cuántas líneas van y cuántos miles de tokens son.
+1. **Copiar.** Si el vídeo trae subtítulos, `ctrl+alt+c` (o *Copiar subtítulos y el prompt*) deja en el portapapeles el
+   prompt, una línea en blanco y la transcripción, en ese orden: el prompt acaba en «TRANSCRIPCIÓN:», así que se pega
+   todo junto en la IA. Si no los trae, la misma tecla copia **solo el prompt** (y la duración total), para pegarlo
+   con la transcripción debajo, y la fila de estado de la pantalla lo dice.
    - **El prompt es tuyo**: es `mpv-config/script-modules/mu/prompt-ia.txt` (el de referencia, en
      `docs/capitulos-ia/prompt-ia.txt`). Se lee cada vez que copias, así que puedes cambiarlo y volver a copiar sin
      reiniciar nada.
-3. **Pegar en la IA.** Abre la IA en el navegador, pega y espera su lista. Cualquiera que acepte un texto largo sirve;
-   las recomendadas son **ChatGPT** (gratis), **Gemini** y, sin cuenta, **Duck.ai**. El prompt le pide el formato
-   exacto (`MM:SS Título`) y que los tiempos sean los de la transcripción.
-4. **Pegar los capítulos**: `ctrl+alt+p`. Lee la respuesta del portapapeles, la ajusta a la transcripción (los tiempos
-   redondeados caen en el inicio del subtítulo que les toca), la pone en la barra de uosc y la guarda como
-   `<vídeo>.capitulos.txt`, editable a mano. Al reabrir el vídeo se cargan solos (el anterior queda en `.bak`).
+2. **La transcripción**: si el vídeo no la trae, sácala en <https://riverside.com/transcription> (gratis, un minuto);
+   *Abrir riverside.com/transcription*, en la pantalla de ayuda, la abre en el navegador. Whisper dentro de Atalaya
+   (*Conseguir la transcripción aquí (tarda)*) es el último recurso y se dice así. Las filas *Copiar solo la
+   transcripción* y *Copiar solo el prompt* son para cuando quieres llevarte cada cosa por su lado.
+3. **Pegar en la IA**: cualquiera que acepte un texto largo sirve; las recomendadas son **ChatGPT** (gratis),
+   **Gemini** y, sin cuenta, **Duck.ai**. El prompt pide **dos bloques en una sola respuesta**: los capítulos
+   (`MM:SS Título`, con los tiempos de la transcripción) y de 8 a 12 puntos clave (`- MM:SS — una frase`).
+4. **Pegar la respuesta**: `ctrl+alt+p`. Lee el portapapeles, se queda con el bloque de capítulos (las viñetas de los
+   puntos clave no se cuelan), los ajusta a la transcripción (los tiempos redondeados caen en el inicio del subtítulo
+   que les toca), los pone en la barra de uosc y los guarda como `<vídeo>.capitulos.txt`, editable a mano. Al reabrir
+   el vídeo se cargan solos (el anterior queda en `.bak`). El aviso dice «N capítulos · M puntos clave», o solo
+   «N capítulos» si la respuesta no traía el segundo bloque.
+   - *Cómo funciona*, dentro de la pantalla, lo cuenta en cuatro pasos y deja los botones a mano al final.
 
-- Los tres avisos que te puedes encontrar: «no hay transcripción junto al vídeo» (paso 1), «el portapapeles está
-  vacío» (paso 3) y «los tiempos no parecen de esta transcripción» (la IA contestó sobre otro vídeo: pregunta antes de
-  aplicar nada, y si dices que sí se aplican tal cual).
+- Los tres avisos que te puedes encontrar: «Este vídeo no trae transcripción» (al copiar o pegar sin ella), «el
+  portapapeles está vacío» (paso 4) y «los tiempos no parecen de esta transcripción» (la IA contestó sobre otro vídeo:
+  pregunta antes de aplicar nada, y si dices que sí se aplican tal cual).
 - Un vídeo que ya trae sus propios capítulos no se pisa: se avisa y se queda como estaba. Se cambia con
   `respect_existing` en `mpv-config/script-opts/mu-chapters.conf`.
 - `ctrl+alt+d` los quita: pregunta primero, los saca de la barra y borra el archivo de al lado.
@@ -766,3 +767,25 @@ El nombre de la app sigue siendo provisional: cambiarlo es editar `name` en `bra
 - **Mirar qué está pasando mientras ves algo**: `tools/diagnostico.sh` (o `tools/diagnostico.py`) recoge cada dos
   segundos los fotogramas perdidos, el códec, si hay aceleración por hardware y qué procesos están gastando CPU,
   y deja un informe en `tmp/diag/`. Ctrl+C cuando quieras: lo recogido se guarda.
+
+## Avisar de que hay versión nueva
+
+La aplicación **no se actualiza sola**: consulta una vez al día si hay una versión más reciente y lo dice.
+Nunca descarga ni reemplaza nada (ADR-118).
+
+- Dónde se mira: **Preferencias → Buscar actualizaciones**.
+- Cuándo avisa solo: una vez al día, en un aviso discreto; si ya lo dijo para esa versión, no repite.
+- Qué necesita: `latest.json` en la web del proyecto (`https://solucionesconscientes.es/atalaya/latest.json`).
+- En una copia del repositorio está apagado a propósito: ahí se actualiza con `git pull`.
+- Para apagarlo del todo: `MPV_UOS_UPDATES=0`.
+
+### Publicar una versión (mantenedor)
+
+```bash
+tools/build_deb.sh && tools/build_appimage.sh && tools/build_zip_windows.sh && tools/build_win_installer.sh
+tools/gen_latest_json.py --notas "Qué cambia, en dos líneas"
+# subir latest.json a la web, junto a la página de Atalaya
+```
+
+`gen_latest_json.py` lee lo que hay en `dist/`, calcula el SHA-256 de cada paquete y escribe `latest.json`.
+Si un paquete no está, no aparece: no puede anunciar algo que no existe.

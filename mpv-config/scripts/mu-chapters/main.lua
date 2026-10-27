@@ -1,8 +1,12 @@
 -- mu-chapters: «Capítulos vía IA externa» (H75, ADR-134, docs/capitulos-ia/FICHA.md). Nothing runs a model here:
---   · chapters-copy (ctrl+alt+c): the SRT next to the video, compacted, plus a prompt → the clipboard. The user
---     pastes it into whatever AI they like.
+--   · chapters-copy (ctrl+alt+c): only the prompt (plus the video's duration) → the clipboard. The person pastes it
+--     into whatever AI they like, with the transcription underneath.
+--   · chapters-copy-transcript: the SRT next to the video, compacted, no prompt → the clipboard.
+--   · chapters-copy-all (ctrl+alt+c cuando el vídeo trae subtítulos): the prompt, a blank line and the transcription
+--     in one go → the clipboard. Es lo que se pega en la IA de una vez (H76).
 --   · chapters-paste (ctrl+alt+p): the AI's answer from the clipboard → checked, snapped to the SRT, saved as
---     <video>.capitulos.txt (editable; the previous one kept as .bak) and drawn on uosc's timeline.
+--     <video>.capitulos.txt (editable; the previous one kept as .bak) and drawn on uosc's timeline. De la respuesta
+--     se queda con el BLOQUE 1 (capítulos); los puntos clave solo se cuentan para decirlo (H76).
 --   · chapters-remove (ctrl+alt+d): the other way round: takes them off the timeline (and deletes the file next to
 --     the video, after asking), so a video the AI got wrong can be done again from scratch.
 --   · On opening a local file, its <video>.capitulos.txt (if any) is loaded at once. Nothing is ever written just
@@ -28,20 +32,23 @@ local opts = {
   confirm_seconds = 30,      -- how long the «times do not look like this transcript» question waits
   osd_seconds = 5,
   prompt_file = '~~/script-modules/mu/prompt-ia.txt',   -- editable; the built-in prompt is the fallback
+  open_command = '',         -- programa que abre una dirección ('' = xdg-open / start / open); los tests usan `true`
   test_clipboard = false,    -- tests: user-data/mu/chapters-clipboard stands in for the system clipboard
 }
 options.read_options(opts, 'mu-chapters')
 
 -- docs/capitulos-ia/prompt-ia.txt, with its long lines wrapped (line breaks inside a paragraph do not matter to an AI)
 local DEFAULT_PROMPT = [[
-Eres un editor de vídeo experto en estructurar contenido. Te paso la transcripción de un vídeo o audio con una marca
-de tiempo [mm:ss] o [h:mm:ss] al inicio de cada línea. Tu tarea es dividirlo en capítulos con sus puntos clave.
+Eres un editor de vídeo experto en estructurar contenido. Después de estas instrucciones te paso la transcripción de
+un vídeo o audio, con una marca de tiempo [mm:ss] o [h:mm:ss] al inicio de cada línea. Tu tarea es dividirlo en
+capítulos y señalar sus puntos clave.
 
 REGLAS
 1. Cada capítulo marca un cambio real de tema o de idea, no un resumen cada pocos minutos. Cantidad: aproximadamente
 uno cada 5-8 minutos; mínimo 4 y máximo 20.
 2. El tiempo de cada capítulo debe copiarse EXACTAMENTE de una marca de tiempo que exista en la transcripción: la de
-la línea donde empieza ese tema. Nunca calcules, redondees ni inventes tiempos.
+la línea donde empieza ese tema. Nunca calcules, redondees ni inventes tiempos. Si la transcripción no trae ninguna
+marca de tiempo, reparte los capítulos por proporción del texto y redondea al minuto.
 3. El primer capítulo empieza en 00:00. Entre un capítulo y el siguiente debe haber al menos 45 segundos. Orden
 cronológico.
 4. Título: máximo 7 palabras, concreto e informativo (qué se explica, se decide o se demuestra). Evita títulos vacíos
@@ -50,28 +57,46 @@ emojis, sin comillas y sin signos al final.
 5. Ignora saludos, publicidad, peticiones de suscripción y repeticiones, salvo que formen una sección con contenido
 propio.
 6. La transcripción puede tener errores de reconocimiento de voz; interprétalos por el contexto.
+7. La transcripción puede venir con el tiempo en una línea aparte (encima del texto) o en párrafos largos: úsalo
+igual, sin pedirme nada más.
 
 FORMATO DE SALIDA (estricto)
-Responde SOLO con un bloque de código con una línea por capítulo, sin texto antes ni después, con este formato:
+Responde SOLO con los dos bloques de abajo, en este orden y sin texto antes ni después. Pon cada bloque dentro de un
+bloque de código.
+
+BLOQUE 1 — CAPÍTULOS
+Una línea por capítulo, con este formato:
 MM:SS Título
 Si el vídeo dura más de una hora, usa H:MM:SS en todas las líneas.
 
+BLOQUE 2 — PUNTOS CLAVE
+De 8 a 12 viñetas, una idea por viñeta, con este formato:
+- MM:SS — una frase
+
 Ejemplo del formato (no copies el contenido):
+BLOQUE 1 — CAPÍTULOS
 00:00 Título del primer tema
 07:42 Título del segundo tema
+BLOQUE 2 — PUNTOS CLAVE
+- 00:30 — Lo que se cuenta al principio
+- 08:15 — Lo que se decide en el segundo tema
 
-Antes de responder, comprueba que cada tiempo existe en la transcripción, que están en orden y que el primero es
-00:00.
+Antes de responder, comprueba que cada tiempo existe en la transcripción (o cae donde toca si no había marcas), que
+están en orden y que el primero es 00:00.
 ]]
 
 local state = { path = '', status = 'idle', osd = '', count = 0, source = '', file = '', pending = nil,
-                transcript = nil }
+                transcript = nil, text_ready = false, text_cues = 0, text_lang = '' }
 
 local function publish()
   local t = state.transcript
   mp.set_property_native('user-data/mu/chapters', {
     path = state.path, status = state.status, osd = state.osd, count = state.count, source = state.source,
     file = state.file,
+    -- F5: si hay transcripción que copiar (el .srt de al lado o el que dejó «Conseguir la transcripción»), para que
+    -- el menú enseñe «Copiar la transcripción» en vez de «Conseguirla». H76: con el idioma, para poder decir
+    -- «Subtítulos en español · N líneas» sin que el menú vuelva a leer el archivo.
+    text = { ready = state.text_ready, cues = state.text_cues, lang = state.text_lang or '' },
     -- F4: lo que va pasando con «conseguir la transcripción», para el menú y los avisos (lo hace mu-subs)
     transcript = t and { status = t.status, source = t.source, progress = t.progress or 0, lines = t.lines or 0,
                          chars = t.chars or 0, out = t.out or '', error = t.error or '' } or nil,
@@ -158,6 +183,45 @@ local function srt_blocks(v)
   return chapters.parse_srt(read_file(srt) or '')
 end
 
+-- El idioma de esa transcripción, en dos letras: el del nombre (<video>.es.srt, que es como los dejan mpvd y las
+-- descargas) o, si el archivo se llama <video>.srt, el de la primera pista de subtítulos del vídeo. '' si no se sabe.
+local ISO3 = { spa = 'es', eng = 'en', fre = 'fr', fra = 'fr', cat = 'ca', por = 'pt', ger = 'de', deu = 'de', ita = 'it' }
+local function lang_code(code)
+  code = tostring(code or ''):lower():gsub('[^%a]', '')
+  if code == '' then return '' end
+  return ISO3[code:sub(1, 3)] or code:sub(1, 2)
+end
+
+local function srt_lang(v, srt)
+  local _, name = utils.split_path(srt)
+  local rest = (#name > #v.stem + 1) and name:sub(#v.stem + 2) or ''
+  local code = rest:match('^(%a%a%a?)%.[Ss][Rr][Tt]$')
+  if code then return lang_code(code) end
+  for _, t in ipairs(mp.get_property_native('track-list') or {}) do
+    local l = t.type == 'sub' and lang_code(t.lang) or ''
+    if l ~= '' then return l end
+  end
+  return ''
+end
+
+-- ¿Hay transcripción que se pueda copiar? El .srt de al lado o el que acaba de dejar «Conseguir la transcripción».
+-- Se mira al abrir el archivo y cuando una transcripción termina, no en cada aviso: un SRT de una hora tarda en
+-- parsearse y el menú se pinta muchas veces.
+local function refresh_text()
+  local v = local_video()
+  state.text_ready, state.text_cues, state.text_lang = false, 0, ''
+  if not v then return end
+  local srt = find_srt(v)
+  if not srt then
+    local out = state.transcript and state.transcript.out or ''
+    if out ~= '' and utils.file_info(out) then srt = out end
+  end
+  if not srt then return end
+  state.text_cues = #chapters.parse_srt(read_file(srt) or '')
+  state.text_ready = state.text_cues > 0
+  if state.text_ready then state.text_lang = srt_lang(v, srt) end
+end
+
 -- Writes the file keeping the previous one as .bak. os.rename fails on Windows when the target exists, hence the
 -- remove first.
 local function save(path, content)
@@ -190,16 +254,22 @@ local function show_marks(list)
   state.count = #list
 end
 
-local function apply(v, list)
+-- Lo que se dice al aplicar: los capítulos que van a la barra y, si la respuesta los traía, los puntos clave (H76).
+local function applied_text(n, points)
+  if (tonumber(points) or 0) > 0 then return tr('%d capítulos · %d puntos clave'):format(n, points) end
+  return tr('%d capítulos'):format(n)
+end
+
+local function apply(v, list, points)
   local file = chapters_file(v)
   local ok, err = save(file, chapters.format(list, v.duration))
   show_marks(list)
   state.status, state.source, state.file = 'applied', 'paste', file
   if ok then
-    osd(tr('%d capítulos aplicados y guardados junto al vídeo'):format(#list))
+    osd(tr('%s aplicados y guardados junto al vídeo'):format(applied_text(#list, points)))
   else
     msg.warn('cannot save ' .. file .. ': ' .. tostring(err))
-    osd(tr('%d capítulos aplicados, pero no se han podido guardar: %s'):format(#list, tostring(err)))
+    osd(tr('%s aplicados, pero no se han podido guardar: %s'):format(applied_text(#list, points), tostring(err)))
   end
 end
 
@@ -243,28 +313,82 @@ local function remove()
               tostring(opts.confirm_seconds), tr('Sí, quitarlos'), tr('No, dejarlos'))
 end
 
+-- F5: el prompt se copia solo (con la duración del vídeo y la línea donde va la transcripción). Así la persona pega
+-- el prompt en la IA y, debajo, la transcripción — la del vídeo o una que tenga de donde sea — y se entiende qué es
+-- cada cosa. La transcripción tiene su propia fila.
 local function copy()
   local v = local_video()
   if not v then return not_local() end
+  if not clipboard_set(chapters.prompt_head(prompt_text(), v.duration)) then
+    state.status = 'error'
+    return osd(tr('No se ha podido copiar: mpv no tiene portapapeles en este sistema'))
+  end
+  state.status = 'copied'
+  osd(tr('Prompt copiado') .. '\n' .. tr('Pégalo en la IA y, debajo, la transcripción del vídeo'))
+end
+
+-- Las líneas que se copian de la transcripción: el SRT compactado, con sus [mm:ss]. nil si no hay de dónde.
+local function transcript_lines(v)
   local blocks = srt_blocks(v)
-  if not blocks then
-    state.status = 'error'
-    return osd(tr('No hay transcripción junto al vídeo: guárdala con alt+S'))
-  end
-  if #blocks == 0 then
-    state.status = 'error'
-    return osd(tr('La transcripción junto al vídeo está vacía o no es un SRT'))
-  end
+  if not blocks or #blocks == 0 then return nil end
   local lines = chapters.compact(blocks, { duration = v.duration, line_seconds = opts.line_seconds }).lines
-  local text = chapters.prompt(prompt_text(), v.duration, lines)
+  return #lines > 0 and lines or nil
+end
+
+-- H76 · el pegado de una vez: el prompt, una línea en blanco y la transcripción. El prompt ya termina en
+-- «TRANSCRIPCIÓN:», así que la transcripción cae justo debajo, donde toca. Sin transcripción no hay nada que juntar:
+-- la misma tecla copia solo el prompt, que es lo único que se puede copiar.
+local function copy_all()
+  local v = local_video()
+  if not v then return not_local() end
+  local lines = transcript_lines(v)
+  if not lines then return copy() end
+  local text = chapters.prompt_head(prompt_text(), v.duration) .. '\n' .. table.concat(lines, '\n')
   if not clipboard_set(text) then
     state.status = 'error'
     return osd(tr('No se ha podido copiar: mpv no tiene portapapeles en este sistema'))
   end
   state.status = 'copied'
   local thousands = math.max(1, math.floor(chapters.tokens(text) / 1000 + 0.5))
-  osd(tr('Copiado: %d líneas (~%d mil tokens)'):format(#lines, thousands) .. '\n'
-      .. tr('Pégalo en tu IA, copia su respuesta y pulsa ctrl+alt+p'))
+  osd(tr('Prompt y transcripción copiados: %d líneas (~%d mil tokens)'):format(#lines, thousands))
+end
+
+-- Abrir la página donde se saca la transcripción, en el navegador del sistema y sin dependencias: la orden que ya
+-- usa cada plataforma. `open_command` sirve para los tests (y para quien prefiera otro navegador).
+local RIVERSIDE = 'https://riverside.com/transcription'
+
+local function browser_command()
+  if opts.open_command ~= '' then return { opts.open_command } end
+  local platform = mp.get_property_native('platform') or ''
+  if platform == 'windows' then return { 'cmd', '/c', 'start', '' } end   -- `start` es del cmd, no un programa
+  if platform == 'darwin' then return { 'open' } end
+  return { 'xdg-open' }
+end
+
+local function open_riverside()
+  local args = browser_command()
+  args[#args + 1] = RIVERSIDE
+  mp.command_native_async({ name = 'subprocess', args = args, detach = true, playback_only = false }, function() end)
+  osd(tr('Abriendo %s'):format((RIVERSIDE:gsub('^https?://', ''))))
+end
+
+local function copy_transcript()
+  local v = local_video()
+  if not v then return not_local() end
+  local lines = transcript_lines(v)
+  if not lines then
+    state.status = 'error'
+    return osd(tr('Este vídeo no trae transcripción: sácala en riverside.com/transcription o con «Conseguir la transcripción»'))
+  end
+  local text = table.concat(lines, '\n')
+  if not clipboard_set(text) then
+    state.status = 'error'
+    return osd(tr('No se ha podido copiar: mpv no tiene portapapeles en este sistema'))
+  end
+  state.status = 'copied-transcript'
+  local thousands = math.max(1, math.floor(chapters.tokens(text) / 1000 + 0.5))
+  osd(tr('Transcripción copiada: %d líneas (~%d mil tokens)'):format(#lines, thousands) .. '\n'
+      .. tr('Pégala debajo del prompt, en el mismo mensaje'))
 end
 
 local function paste()
@@ -272,7 +396,9 @@ local function paste()
   if not v then return not_local() end
   local text = clipboard_get()
   if not text:find('%S') then return osd(tr('El portapapeles está vacío: copia antes la respuesta de la IA')) end
-  local list = chapters.parse_reply(text)
+  -- H76 · de la respuesta se queda con los capítulos; los puntos clave solo se cuentan, para poder decirlo
+  local answer = chapters.parse_answer(text)
+  local list = answer.chapters
   if #list == 0 then
     return osd(tr('No reconozco capítulos en lo copiado: tienen que ser líneas «MM:SS Título»'))
   end
@@ -289,10 +415,10 @@ local function paste()
   local res = chapters.fit(list, { duration = v.duration, starts = starts, tolerance = opts.tolerance,
                                    min_gap = opts.min_gap, first_title = tr('Inicio') })
   if #res.chapters == 0 then return osd(tr('Ninguno de esos capítulos cabe en este vídeo')) end
-  if not res.suspicious then return apply(v, res.chapters) end
+  if not res.suspicious then return apply(v, res.chapters, answer.points) end
 
   local token = 'mu-chapters-' .. math.floor(mp.get_time() * 1000)
-  state.pending = { token = token, path = v.path, video = v, list = res.chapters }
+  state.pending = { token = token, path = v.path, video = v, list = res.chapters, points = answer.points }
   state.status = 'confirm'
   publish()
   mp.commandv('script-message-to', 'mu_menu', 'mu-confirm', token,
@@ -307,7 +433,7 @@ mp.observe_property('user-data/mu/confirm', 'native', function(_, answer)
   state.pending = nil
   if answer.answer == 'yes' and mp.get_property('path') == p.path then
     if p.remove then return forget(p.video) end
-    return apply(p.video, p.list)
+    return apply(p.video, p.list, p.points)
   end
   state.status = 'cancelled'
   osd(p.remove and tr('Se quedan como estaban') or tr('No se han aplicado los capítulos'))
@@ -370,9 +496,10 @@ mp.observe_property('user-data/mu/subs', 'native', function(_, subs)
   t.status, t.out = 'done', subs.transcript_out ~= '' and subs.transcript_out or (subs.save_out or '')
   local v = local_video()
   t.lines, t.chars = transcript_size(t.out, v and v.duration or 0)
+  refresh_text()
   local what = t.source == 'track' and (tr('Son los subtítulos que ya traía el vídeo') .. '\n') or ''
   osd(tr('✓ Transcripción lista: %d líneas, %d caracteres'):format(t.lines, t.chars) .. '\n' .. what
-      .. tr('Pulsa ctrl+alt+c para copiarla junto con el prompt'))
+      .. tr('Ya puedes copiarla desde «Capítulos con una IA»'))
 end)
 
 -- -- opening a file --------------------------------------------------------------------------------------------------
@@ -402,20 +529,24 @@ end
 
 mp.register_event('start-file', function()
   state.path, state.status, state.count, state.source, state.file, state.pending = '', 'idle', 0, '', '', nil
-  state.transcript = nil
+  state.transcript, state.text_ready, state.text_cues, state.text_lang = nil, false, 0, ''
   publish()
 end)
 
 mp.register_event('file-loaded', function()
   state.path = mp.get_property('path') or ''
+  refresh_text()
   publish()
   load_saved()
 end)
 
 mp.add_key_binding(nil, 'chapters-copy', copy)
+mp.add_key_binding(nil, 'chapters-copy-all', copy_all)                 -- H76: ctrl+alt+c cuando hay transcripción
+mp.add_key_binding(nil, 'chapters-copy-transcript', copy_transcript)   -- F5: desde el menú, sin tecla propia
 mp.add_key_binding(nil, 'chapters-paste', paste)
 mp.add_key_binding(nil, 'chapters-remove', remove)
 mp.add_key_binding(nil, 'chapters-transcript', ask_transcript)   -- F4: desde el menú, sin tecla propia
+mp.add_key_binding(nil, 'chapters-open-riverside', open_riverside)   -- H76: la página de la transcripción, en el navegador
 
 publish()
 msg.info('mu-chapters loaded')

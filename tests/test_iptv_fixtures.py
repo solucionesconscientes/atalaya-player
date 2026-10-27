@@ -137,3 +137,28 @@ def test_bundled_list_is_used_when_the_network_fails():
         assert state.channels, source.id
         assert state.error and "sin red" in state.error
         assert state.from_cache is True
+
+
+def test_iptv_org_excluye_espana_para_no_solaparse_con_tdtchannels():
+    from mpvd.iptv.sources import BUILTIN_SOURCES, _from_text
+    world = "#EXTM3U\n" \
+            "#EXTINF:-1 tvg-id=\"FranceInfo.fr\",France Info\nhttps://x/fr.m3u8\n" \
+            "#EXTINF:-1 tvg-id=\"Antena3.es\",Antena 3\nhttps://x/es.m3u8\n"
+    source = next(s for s in BUILTIN_SOURCES if s.id == "iptv_org")
+    state = _from_text(source, world)
+    assert [c.name for c in state.channels] == ["France Info"]
+
+
+def test_iptv_org_no_comparte_url_con_la_lista_espanola():
+    from mpvd.iptv.service import IptvService
+    from mpvd.iptv.sources import BUILTIN_SOURCES, _from_text
+    tdt = next(s for s in BUILTIN_SOURCES if s.id == "tdt_tv")
+    world = next(s for s in BUILTIN_SOURCES if s.id == "iptv_org")
+    spanish = _from_text(tdt, "#EXTM3U\n#EXTINF:-1 tvg-id=\"La1.es\",La 1\nhttps://x/la1.m3u8\n")
+    international = _from_text(world, "#EXTM3U\n" \
+        "#EXTINF:-1 tvg-id=\"La1.us\",La 1 (internacional)\nhttps://x/la1.m3u8\n" \
+        "#EXTINF:-1 tvg-id=\"FranceInfo.fr\",France Info\nhttps://x/fr.m3u8\n")
+    service = IptvService.__new__(IptvService)
+    service._states = {"tdt_tv": spanish, "iptv_org": international}
+    service._drop_cross_source_duplicates()
+    assert [c.name for c in international.channels] == ["France Info"]

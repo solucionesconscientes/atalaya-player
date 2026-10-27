@@ -8,10 +8,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import shutil
 import urllib.request
 from collections import Counter
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 from mpvd.iptv import labels
 from mpvd.iptv import tracks as trk
@@ -113,7 +115,26 @@ class IptvService:
         the loop it made mpvd stop answering mpv and the menus while «Actualizar listas» ran."""
         await asyncio.to_thread(self._rebuild_index)
 
+    def _drop_cross_source_duplicates(self) -> None:
+        """Una misma URL no puede estar en dos listas: España (TDTChannels) manda; de iptv-org se cae lo que ya
+        esté en la lista española, aunque su tvg-id diga otro país. Se hace al reconstruir el índice, cuando ya
+        están cargadas las listas que haya."""
+        seen: set[str] = set()
+        order = ["tdt_tv", "tdt_radio", "iptv_org"]
+        order += [sid for sid in self._states if sid not in order]
+        for sid in order:
+            state = self._states.get(sid)
+            if state is None:
+                continue
+            if sid == "iptv_org":
+                # Solo se compara con direcciones de red: los ficheros locales de las pruebas pueden repetirse
+                # entre listas sin ser el mismo canal.
+                state.channels = [c for c in state.channels
+                                  if not c.url.startswith(("http://", "https://")) or c.url not in seen]
+            seen.update(c.url for c in state.channels)
+
     def _rebuild_index(self) -> None:
+        self._drop_cross_source_duplicates()
         self._index = SearchIndex()
         self._by_id = {}
         self._dups = {}
@@ -218,7 +239,54 @@ class IptvService:
         """Radio Browser countries in Spanish, home country first, then by number of stations."""
         rows = [{**r, "name": labels.country_name(r["code"], r.get("name")), "flag": labels.flag(r["code"])}
                 for r in self.radio.countries()]
+        # El recuento de España es el que se ve en el menú: si TDT ya está cargada, no cuentes sus copias.
+        if self._states.get("tdt_radio") and self._states["tdt_radio"].channels:
+            try:
+                unique_es = self._drop_radio_duplicates(self.radio.by_country("es", 5000))
+                for row in rows:
+                    if row["code"].lower() == "es":
+                        row["count"] = len(unique_es)
+            except Exception as exc:  # noqa: BLE001 - el recuento es informativo; la lista se abre igual
+                log.debug("no se pudo contar Radio Browser España sin duplicados: %s", exc)
         return self._home_first(rows)
+
+    @staticmethod
+    def _radio_url_key(url: str) -> tuple[str, str]:
+        """Host + path, normalised: the same stream often changes scheme, query or trailing slash between lists."""
+        parts = urlsplit((url or "").strip())
+        host = parts.netloc.lower().removeprefix("www.")
+        return host, re.sub(r"/+", "/", parts.path).rstrip("/").lower()
+
+    @staticmethod
+    def _radio_name_key(name: str) -> str:
+        """Nombre comparable: sin acentos, mayúsculas, paréntesis de calidad ni separadores."""
+        text = normalize(name or "")
+        text = re.sub(r"\s*[\(\[].*?[\)\]]\s*", " ", text)
+        text = re.sub(r"\s+(espana|spain|esp)\s*$", "", text)  # «Cadena SER España» == «Cadena SER»
+        return re.sub(r"[^a-z0-9]+", "", text)
+
+    def _drop_radio_duplicates(self, stations: list[Channel]) -> list[Channel]:
+        """Radio mundial no repite lo que ya está en España · Radio (TDTChannels).
+
+        No se excluye todo el país: Radio Browser tiene emisoras españolas que no están en TDT y sí merecen
+        conservarse. Se quitan solo las copias: misma URL normalizada, o mismo nombre + país cuando el país es
+        España (que es la lista con la que se compara).
+        """
+        state = self._states.get("tdt_radio")
+        if state is None or not state.channels:
+            return stations
+        # Solo se comparan direcciones de red: los ficheros locales de las pruebas no son la misma emisora.
+        urls = {self._radio_url_key(c.url) for c in state.channels
+                if c.url.startswith(("http://", "https://"))}
+        names = {self._radio_name_key(c.name) for c in state.channels}
+        out: list[Channel] = []
+        for ch in stations:
+            if ch.url.startswith(("http://", "https://")) and self._radio_url_key(ch.url) in urls:
+                continue
+            if (ch.country or "").lower() == "es" and self._radio_name_key(ch.name) in names:
+                continue
+            out.append(ch)
+        return out
 
     def list_channels(self, source_id: str | None = None, offset: int = 0, limit: int = 500, compact: bool = False,
                       merge: bool = False, **filters: Any) -> dict[str, Any]:
@@ -360,6 +428,8 @@ class IptvService:
                     chans += await asyncio.to_thread(self.radio.search, q, max(limit, 50))
         else:
             raise RpcError(INVALID_PARAMS, f"scope must be one of {SEARCH_SCOPES}")
+        if scope in ("radio", "radio_top"):
+            chans = self._drop_radio_duplicates(chans)
         unique = list({ch.id: ch for ch in chans}.values())
         return self.decorate_found(SearchIndex(unique).search(query, limit=limit), compact)
 
@@ -385,6 +455,8 @@ class IptvService:
 
     async def radio_stations(self, country: str | None = None, tag: str | None = None, q: str | None = None,
                              top: int | None = None, limit: int = 200, compact: bool = False) -> list[dict[str, Any]]:
+        # Para poder quitar las copias de la lista española hace falta tenerla cargada.
+        await self.ensure_loaded("tdt_radio")
         if q:
             chans = await asyncio.to_thread(self.radio.search, q, limit, country)
         elif country:
@@ -393,6 +465,7 @@ class IptvService:
             chans = await asyncio.to_thread(self.radio.by_tag, tag, limit)
         else:
             chans = await asyncio.to_thread(self.radio.top, top or limit)
+        chans = self._drop_radio_duplicates(chans)
         favs = self.store.favorite_ids()
         health = self.store.health()
         return [self._decorate(c, favs, health, compact) for c in chans]
@@ -720,6 +793,7 @@ def register(server: MpvdServer, service: IptvService) -> None:  # noqa: C901
     async def radio_countries(ctx: RpcContext) -> list[dict[str, Any]]:
         """Countries in Radio Browser with station counts (Spanish names, the user's country first)."""
         try:
+            await service.ensure_loaded("tdt_radio")
             return await asyncio.to_thread(service.radio_countries)
         except Exception as exc:  # noqa: BLE001 - network
             raise RpcError(UNAVAILABLE, f"radio-browser: {exc}") from exc

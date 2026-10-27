@@ -44,12 +44,14 @@ def test_una_sola_puerta_lista_con_casillas_y_ajustes(ytdl_mpv):
     descargar(h, "https://fake.test/uno https://fake.test/dos, https://fake.test/uno", "Seguir con 2 enlaces")
     st = ytdl_state(h, lambda v: v.get("view") == "picklist" and "Descargar 2" in titles(v), timeout=40)
     assert titles(st)[0].startswith("Para todos: ") and st["pick"]["total"] == 2 and st["pick"]["marked"] == 2
-    assert next(i for i in st["items"] if i["title"] == "Subtítulos (SRT) aparte")["hint"] == "no"
+    assert next(i for i in st["items"] if i["title"] == "Subtítulos (SRT) aparte")["hint"] == "sí", \
+        "H75/F5: la transcripción baja por defecto"
     send_event(h, {"type": "activate", "index": 4, "value": {"pick_download": True}})
     wait_view(h, "downloads")
     for url in ("https://fake.test/uno", "https://fake.test/dos"):
         a = argv_for(arglog, url)
         assert "--download-archive" in a
+        assert "--write-subs" in a and "--convert-subs" in a, "H75/F5: la transcripción baja por defecto"
     d.wait(lambda: sum(1 for r in d.call("ytdl.downloads.list") if r["status"] == "done") >= 2, timeout=60)
 
     # una lista: cada entrada con su casilla; se desmarca la 2ª → solo 1,3,4,5 en una carpeta numerada
@@ -134,22 +136,23 @@ def test_formato_comun_formato_por_fila_srt_y_lo_que_no_se_puede_bajar(ytdl_mpv)
                     and any(i["hint"] and "Opus 128" in i["hint"] for i in v["items"]), timeout=20)
     assert "1 con formato propio" in titles(st)[0] or st["items"][0]["hint"] == "1 con formato propio"
 
-    # SRT solo para la segunda fila
+    # H75/F5: el SRT baja por defecto en todas las filas; la acción de la fila lo apaga solo en la segunda
     send_event(h, {"type": "activate", "index": 6, "value": {"pick_toggle": 2}, "action": "srt"})
-    st = ytdl_state(h, lambda v: any(i["hint"] and "con SRT" in i["hint"] for i in v["items"]), timeout=20)
+    send_event(h, {"type": "activate", "index": 6, "value": {"pick_toggle": 2}, "action": "srt"})
+    st = ytdl_state(h, lambda v: any(i["hint"] and "sin SRT" in i["hint"] for i in v["items"]), timeout=20)
     assert st["pick"]["marked"] == 2, "la acción de la fila no debe marcar ni desmarcar"
 
-    # dos grupos → dos llamadas: el primero en Opus sin SRT, el segundo en 480p con SRT
+    # dos grupos → dos llamadas: el primero en Opus con su SRT, el segundo en 480p sin él
     send_event(h, {"type": "activate", "index": 4, "value": {"pick_download": True}})
     wait_view(h, "downloads")
     a3 = argv_for(arglog, "https://fake.test/tres")
     a4 = argv_for(arglog, "https://fake.test/cuatro")
     # el grupo de la primera fila baja audio Opus («-x» es como yt-dlp llama a extraer el audio)
     assert "-x" in a3 and a3[a3.index("--audio-format") + 1] == "opus"
-    assert "--write-subs" not in a3, a3
-    # el de la segunda, vídeo 480p con los subtítulos en un .srt aparte
+    assert "--write-subs" in a3 and "--convert-subs" in a3, a3
+    # el de la segunda, vídeo 480p y sin subtítulos: se apagaron a mano
     assert "-x" not in a4 and "height<=?480" in " ".join(a4), a4
-    assert "--write-subs" in a4 and "--convert-subs" in a4, a4
+    assert "--write-subs" not in a4 and "--embed-subs" not in a4, a4
     assert h.script_errors() == [], h.script_errors()
 
 

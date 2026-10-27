@@ -182,6 +182,38 @@ def test_respuesta_con_bloque_de_codigo_y_texto_alrededor(probe):
     assert titles(res) == ["Presentación del taller", "Los ingredientes", "Amasado a mano"]
 
 
+def test_respuesta_de_dos_bloques_solo_devuelve_los_capitulos(probe):
+    """H76 · la IA contesta con los capítulos y, debajo, los puntos clave. A la barra solo van los capítulos: la
+    primera línea que no es un capítulo (el encabezado del segundo bloque) cierra el primero, y las viñetas —que
+    también empiezan por un tiempo— no se cuelan."""
+    text = ("BLOQUE 1 — CAPÍTULOS\n```text\n00:00 Presentación del taller\n01:01 Los ingredientes\n"
+            "02:05 Amasado a mano\n```\n\nBLOQUE 2 — PUNTOS CLAVE\n- 00:30 — El pan de casa\n"
+            "- 01:15 — Los ingredientes\n- 02:20 — El amasado\n")
+    res = probe("parse_answer", text)
+    assert times(res["chapters"]) == [0, 61, 125]
+    assert titles(res["chapters"]) == ["Presentación del taller", "Los ingredientes", "Amasado a mano"]
+    assert res["points"] == 3
+    assert titles(probe("parse_reply", text)) == titles(res["chapters"]), "las viñetas no son capítulos"
+
+
+def test_el_segundo_bloque_pega_justo_detras_del_ultimo_capitulo(probe):
+    """Sin línea en blanco de por medio: el encabezado también cierra el bloque de capítulos."""
+    text = "00:00 Uno\n07:42 Dos\nBLOQUE 2 — PUNTOS CLAVE\n- 00:30 — Una idea\n"
+    res = probe("parse_answer", text)
+    assert titles(res["chapters"]) == ["Uno", "Dos"] and res["points"] == 1
+
+
+def test_lista_plana_sin_encabezados_sigue_funcionando(probe):
+    """Lo que ya funcionaba no se rompe: una lista de capítulos sin encabezados ni bloques, con o sin viñeta."""
+    res = probe("parse_answer", "00:00 Uno\n01:01 Dos\n02:05 - Tres")
+    assert times(res["chapters"]) == [0, 61, 125]
+    assert titles(res["chapters"]) == ["Uno", "Dos", "Tres"]
+    assert res["points"] == 0
+    # y una lista plana con un bloque de puntos detrás tampoco mete las viñetas en los capítulos
+    res = probe("parse_answer", "00:00 Uno\n01:01 Dos\n\n- 03:00 — Un punto clave\n")
+    assert titles(res["chapters"]) == ["Uno", "Dos"] and res["points"] == 1
+
+
 def test_respuesta_con_horas(probe):
     res = probe("parse_reply", "0:00:00 Uno\n0:59:30 Dos\n1:02:03 Tres\n10:15:00 Cuatro")
     assert times(res) == [0, 3570, 3723, 36900]
@@ -317,11 +349,16 @@ def test_flujo_completo_con_el_srt_real(probe):
 # que deja «Guardar subtítulos (SRT)». El portapapeles del sistema no existe en un mpv sin ventana, así que los tests
 # usan el de prueba: `mu-chapters-test_clipboard=yes` → `user-data/mu/chapters-clipboard` hace de portapapeles.
 
-OPTS = "--script-opts=mu-core-autostart=no,mu-chapters-test_clipboard=yes"
+OPTS = "--script-opts=mu-core-autostart=no,mu-chapters-test_clipboard=yes,mu-chapters-open_command=/bin/true"
 REPLY = ("```\n00:00 Presentación del taller\n01:01 Los ingredientes justos\n02:05 Amasado a mano\n"
          "03:30 La fermentación\n05:00 Formar el pan\n06:20 Al horno\n07:50 Despedida\n```")
 REPLY_TITLES = ["Presentación del taller", "Los ingredientes justos", "Amasado a mano", "La fermentación",
                 "Formar el pan", "Al horno", "Despedida"]
+# H76 · lo que contesta la IA cuando se le piden los dos bloques: los capítulos y, debajo, los puntos clave
+REPLY_DOS_BLOQUES = ("BLOQUE 1 — CAPÍTULOS\n```text\n00:00 Presentación del taller\n01:01 Los ingredientes justos\n"
+                     "02:05 Amasado a mano\n03:30 La fermentación\n```\n\nBLOQUE 2 — PUNTOS CLAVE\n"
+                     "- 00:30 — El pan de casa, sin máquinas\n- 01:15 — Los ingredientes son muy pocos\n"
+                     "- 02:20 — El amasado, a mano\n")
 # a más de 15 s de cualquier bloque de la charla: no pueden salir de esta transcripción
 LEJOS = "00:00 Uno\n01:47 Dos\n03:00 Tres\n04:26 Cuatro\n05:50 Cinco\n07:17 Seis"
 
@@ -344,6 +381,12 @@ def video(charla_mkv, tmp_path):
 
 def con_srt(v):
     shutil.copyfile(SRT, v.with_suffix(".srt"))
+    return v
+
+
+def con_srt_en_espanol(v):
+    """Como lo deja mpvd al guardarlos: `<vídeo>.es.srt`. De ahí sale el «Subtítulos en español» del menú."""
+    shutil.copyfile(SRT, v.with_name(v.stem + ".es.srt"))
     return v
 
 
@@ -383,19 +426,38 @@ def titulos(h):
     return [c["title"] for c in h.get("chapter-list") or []]
 
 
-def test_copiar_para_la_ia_con_la_tecla(video):
+def test_copiar_el_prompt_a_solas(video):
+    """F5 · `chapters-copy` copia SOLO el prompt (con la duración y la línea donde va la transcripción): es lo que
+    hace la fila «Copiar solo el prompt» de la ayuda, y lo que hace `ctrl+alt+c` cuando el vídeo no trae subtítulos.
+    Con subtítulos, la misma tecla copia las dos cosas (H76)."""
     v = con_srt(video)
     h = abrir(v)
     try:
-        h.command("keypress", "ctrl+alt+c")
-        st = osd_de(h, "Copiado: ")
+        h.command("script-binding", "mu_chapters/chapters-copy")
+        st = osd_de(h, "Prompt copiado")
         text = leer_portapapeles(h)
         assert text.startswith("Eres un editor de vídeo experto"), text[:80]
-        assert re.search(r"\n\nDURACIÓN TOTAL: 0:08:(29|30)\n\nTRANSCRIPCIÓN:\n\[00:00\] Hola a todos", text)
-        assert "Amara" not in text and "<i>" not in text
-        n = text.count("\n[")
-        assert f"Copiado: {n} líneas (~1 mil tokens)" in st["osd"], st["osd"]
+        assert re.search(r"\n\nDURACIÓN TOTAL: 0:08:(29|30)\n\nTRANSCRIPCIÓN:\n$", text), text[-120:]
+        assert "Hola a todos" not in text, "el prompt no lleva la transcripción"
         assert st["status"] == "copied"
+        assert not capitulos_txt(v).exists(), "copiar no escribe nada junto al vídeo"
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_copiar_la_transcripcion_va_aparte_con_sus_minutos(video):
+    """F5 · la transcripción se copia sola: el texto compactado con [mm:ss] delante, sin prompt."""
+    v = con_srt(video)
+    h = abrir(v)
+    try:
+        h.command("script-binding", "mu_chapters/chapters-copy-transcript")
+        st = osd_de(h, "Transcripción copiada: ")
+        text = leer_portapapeles(h)
+        assert text.startswith("[00:00] Hola a todos"), text[:80]
+        assert "Eres un editor" not in text, "la transcripción no lleva el prompt"
+        assert text.count("\n[") > 0 and "Amara" not in text and "<i>" not in text
+        assert f"Transcripción copiada: {text.count(chr(10)) + 1} líneas" in st["osd"], st["osd"]
         assert not capitulos_txt(v).exists(), "copiar no escribe nada junto al vídeo"
         assert h.script_errors() == [], h.script_errors()
     finally:
@@ -411,6 +473,7 @@ def test_pegar_aplica_guarda_y_al_reabrir_se_cargan_solos(video):
         pegar_en_portapapeles(h, REPLY)
         h.command("keypress", "ctrl+alt+p")
         st = osd_de(h, "7 capítulos aplicados")
+        assert "puntos clave" not in st["osd"], "una respuesta sin puntos clave no los inventa"
         assert st["status"] == "applied" and st["source"] == "paste" and st["count"] == 7
         assert st["file"] == str(txt)
         cl = h.wait_property("chapter-list", lambda c: len(c or []) == 7, timeout=10)
@@ -441,13 +504,18 @@ def test_pegar_aplica_guarda_y_al_reabrir_se_cargan_solos(video):
         h.stop()
 
 
-def test_sin_srt_lo_dice_y_no_copia_nada(video):
+def test_sin_transcripcion_el_prompt_se_copia_igual_y_la_transcripcion_lo_dice(video):
+    """F5 · sin SRT el prompt se copia igual (no lo necesita); al copiar la transcripción se dice de dónde sacarla."""
     h = abrir(video)
     try:
         h.command("keypress", "ctrl+alt+c")
-        st = osd_de(h, "alt+S")
-        assert "transcripción" in st["osd"]
-        assert not leer_portapapeles(h)
+        osd_de(h, "Prompt copiado")
+        assert leer_portapapeles(h).startswith("Eres un editor de vídeo")
+        h.command("set_property", "user-data/mu/chapters-clipboard", "")
+        h.command("script-binding", "mu_chapters/chapters-copy-transcript")
+        st = osd_de(h, "riverside.com/transcription")
+        assert "transcripción" in st["osd"], st["osd"]
+        assert not leer_portapapeles(h), "sin transcripción no se copia nada"
         assert h.script_errors() == [], h.script_errors()
     finally:
         h.stop()
@@ -579,20 +647,142 @@ def activar(h, it) -> None:
 
 
 def test_desde_el_menu_sin_recordar_teclas(video):
-    """En este reproductor todo se puede hacer sin saberse las teclas: Menú → Subtítulos → Capítulos con una IA."""
+    """H76 · en este reproductor todo se puede hacer sin saberse las teclas: la pantalla de capítulos (la binding
+    `chapters`, que también está en la paleta) → «Crear capítulos con una IA…» → la fila de copiar, con su tecla a
+    la vista."""
+    v = con_srt_en_espanol(video)
+    h = abrir(v)
+    try:
+        h.wait_property("user-data/mu/core", lambda c: bool(c) and c.get("uosc"), timeout=40)
+        h.command("script-binding", "mu_menu/chapters")
+        assert item(h, "chapters", "Este vídeo no tiene capítulos"), "sin capítulos se dice, no se enseña una lista vacía"
+        activar(h, item(h, "chapters", "Crear capítulos con una IA"))
+        copiar = item(h, "chapters_ia", "Copiar subtítulos y el prompt")
+        assert copiar["hint"] == "ctrl+alt+c"
+        assert item(h, "chapters_ia", "Pegar los capítulos")["hint"] == "ctrl+alt+p"
+        activar(h, copiar)
+        osd_de(h, "Prompt y transcripción copiados")
+        assert leer_portapapeles(h).startswith("Eres un editor de vídeo")
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_copiar_los_subtitulos_y_el_prompt_de_una_vez(video):
+    """H76 · con transcripción, `ctrl+alt+c` lo copia todo de una vez: el prompt (que ya acaba en «TRANSCRIPCIÓN:»),
+    una línea en blanco y la transcripción. Es el pegado que la IA espera."""
+    v = con_srt(video)
+    h = abrir(v)
+    try:
+        h.command("keypress", "ctrl+alt+c")
+        st = osd_de(h, "Prompt y transcripción copiados: ")
+        text = leer_portapapeles(h)
+        prompt, sep, resto = text.partition("\n\n[00:00] ")
+        assert sep, text[-200:]
+        assert prompt.startswith("Eres un editor de vídeo experto") and prompt.rstrip().endswith("TRANSCRIPCIÓN:")
+        assert "Hola a todos" in resto, "la transcripción va detrás, compactada y con sus minutos"
+        assert re.search(r"copiados: %d líneas \(~\d+ mil tokens\)$" % (resto.count("\n") + 1), st["osd"]), st["osd"]
+        assert not capitulos_txt(v).exists(), "copiar no escribe nada junto al vídeo"
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_pegar_dos_bloques_se_queda_con_los_capitulos_y_cuenta_los_puntos(video):
+    """H76 · de la respuesta de dos bloques solo van a la barra los capítulos; las viñetas de los puntos clave no se
+    cuelan y el aviso dice cuántas vinieron."""
+    v = con_srt(video)
+    h = abrir(v)
+    try:
+        pegar_en_portapapeles(h, REPLY_DOS_BLOQUES)
+        h.command("keypress", "ctrl+alt+p")
+        st = osd_de(h, "4 capítulos · 3 puntos clave")
+        cl = h.wait_property("chapter-list", lambda c: len(c or []) == 4, timeout=10)
+        assert [c["title"] for c in cl] == ["Presentación del taller", "Los ingredientes justos", "Amasado a mano",
+                                            "La fermentación"], "las viñetas no son capítulos"
+        assert [round(c["time"], 1) for c in cl] == [0, 61.2, 125.7, 210.0], "ajustados al SRT"
+        assert "aplicados y guardados junto al vídeo" in st["osd"], st["osd"]
+        assert capitulos_txt(v).read_text(encoding="utf-8").splitlines() == [
+            "00:00 Presentación del taller", "01:01 Los ingredientes justos", "02:05 Amasado a mano",
+            "03:30 La fermentación"]
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_la_pantalla_de_la_ia_dice_que_subtitulos_hay(video):
+    """H76 · la fila de estado: con transcripción, en qué idioma y cuántas líneas; sin ella, que no hay. Y la fila
+    de copiar cambia con ella."""
+    v = con_srt_en_espanol(video)
+    h = abrir(v)
+    try:
+        h.wait_property("user-data/mu/core", lambda c: bool(c) and c.get("uosc"), timeout=40)
+        h.command("script-binding", "mu_menu/chapters")
+        activar(h, item(h, "chapters", "Crear capítulos con una IA"))
+        st = h.wait_property("user-data/mu/menu",
+                             lambda m: bool(m) and m.get("view") == "chapters_ia" and len(m.get("items", [])) >= 4,
+                             timeout=15)
+        titulos = [i["title"] for i in st["items"]]
+        assert titulos == ["Cómo funciona", "Subtítulos en español · 35 líneas", "Copiar subtítulos y el prompt",
+                           "Pegar los capítulos de la IA"], titulos
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_la_pantalla_de_la_ia_sin_transcripcion_ofrece_el_prompt(video):
+    h = abrir(video)
+    try:
+        h.wait_property("user-data/mu/core", lambda c: bool(c) and c.get("uosc"), timeout=40)
+        h.command("script-binding", "mu_menu/chapters")
+        activar(h, item(h, "chapters", "Crear capítulos con una IA"))
+        st = h.wait_property("user-data/mu/menu",
+                             lambda m: bool(m) and m.get("view") == "chapters_ia" and len(m.get("items", [])) >= 4,
+                             timeout=15)
+        assert [i["title"] for i in st["items"]] == ["Cómo funciona", "Este vídeo no contiene transcripción",
+                                                     "Copiar el prompt", "Pegar los capítulos de la IA"]
+        activar(h, item(h, "chapters_ia", "Copiar el prompt"))
+        osd_de(h, "Prompt copiado")
+        assert leer_portapapeles(h).startswith("Eres un editor de vídeo")
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_la_pantalla_de_capitulos_sin_capitulos(video):
+    """H76 · sin capítulos no hay lista vacía: una fila que lo dice (y no se puede elegir) y, debajo, la de crearlos."""
     v = con_srt(video)
     h = abrir(v)
     try:
         h.wait_property("user-data/mu/core", lambda c: bool(c) and c.get("uosc"), timeout=40)
-        h.command("script-binding", "mu_menu/root")
-        activar(h, item(h, "root", "Subtítulos"))
-        activar(h, item(h, "subs", "Capítulos con una IA"))
-        copiar = item(h, "chapters", "Copiar la transcripción")
-        assert copiar["hint"] == "ctrl+alt+c"
-        assert item(h, "chapters", "Pegar los capítulos")["hint"] == "ctrl+alt+p"
-        activar(h, copiar)
-        osd_de(h, "Copiado: ")
-        assert leer_portapapeles(h).startswith("Eres un editor de vídeo")
+        h.command("script-binding", "mu_menu/chapters")
+        st = h.wait_property("user-data/mu/menu",
+                             lambda m: bool(m) and m.get("view") == "chapters" and m.get("items"), timeout=15)
+        assert [i["title"] for i in st["items"]] == ["Este vídeo no tiene capítulos", "Crear capítulos con una IA…"]
+        vacia = st["items"][0]
+        assert vacia["value"] == "" and vacia["submenu"] == 0, "la fila del aviso no lleva a ningún sitio"
+        assert h.script_errors() == [], h.script_errors()
+    finally:
+        h.stop()
+
+
+def test_la_pantalla_de_capitulos_los_ensena_y_salta(media_dir, tmp_path):
+    """Con capítulos: la lista primero (una fila por capítulo, con su minuto) y, separadas, crear y quitar."""
+    v = tmp_path / "con capítulos.mkv"
+    shutil.copyfile(media_dir / "chapters.mkv", v)
+    h = abrir(v, min_duration=20)
+    try:
+        h.wait_property("user-data/mu/core", lambda c: bool(c) and c.get("uosc"), timeout=40)
+        h.command("script-binding", "mu_menu/chapters")
+        st = h.wait_property("user-data/mu/menu", lambda m: bool(m) and m.get("view") == "chapters"
+                             and len(m.get("items", [])) == 5, timeout=15)
+        titulos = [i["title"] for i in st["items"]]
+        assert titulos[3].startswith("Crear capítulos con una IA") and titulos[4].startswith("Quitar los capítulos"), titulos
+        segunda = st["items"][1]
+        assert segunda["hint"] and segunda["value"].get("seek") is not None, segunda
+        activar(h, segunda)
+        h.wait_property("time-pos", lambda t: isinstance(t, (int, float)) and t > 0.5, timeout=10)
+        h.wait_property("user-data/mu/menu-osd", lambda o: bool(o) and o.startswith("⏱"), timeout=10)
         assert h.script_errors() == [], h.script_errors()
     finally:
         h.stop()
@@ -610,11 +800,11 @@ def test_el_prompt_se_lee_del_archivo_y_se_relee_en_cada_copia(video, tmp_path):
     mio.write_text("Prompt mío, con acentos y ñ.\n", encoding="utf-8")
     h = abrir(v, f"mu-chapters-prompt_file={mio}")
     try:
-        h.command("keypress", "ctrl+alt+c")
-        osd_de(h, "Copiado: ")
+        h.command("script-binding", "mu_chapters/chapters-copy")
+        osd_de(h, "Prompt copiado")
         assert leer_portapapeles(h).startswith("Prompt mío, con acentos y ñ.\n\nDURACIÓN TOTAL: ")
         mio.write_text("Otro prompt, ya cambiado.\n", encoding="utf-8")
-        h.command("keypress", "ctrl+alt+c")
+        h.command("script-binding", "mu_chapters/chapters-copy")
         h.wait_property("user-data/mu/chapters-clipboard",
                         lambda t: bool(t) and t.startswith("Otro prompt, ya cambiado.\n\nDURACIÓN TOTAL: "), timeout=10)
         assert h.script_errors() == [], h.script_errors()
@@ -626,8 +816,8 @@ def test_sin_archivo_de_prompt_se_copia_el_de_dentro(video, tmp_path):
     v = con_srt(video)
     h = abrir(v, f"mu-chapters-prompt_file={tmp_path / 'no-existe.txt'}")
     try:
-        h.command("keypress", "ctrl+alt+c")
-        osd_de(h, "Copiado: ")
+        h.command("script-binding", "mu_chapters/chapters-copy")
+        osd_de(h, "Prompt copiado")
         assert leer_portapapeles(h).startswith("Eres un editor de vídeo experto en estructurar contenido"), \
             leer_portapapeles(h)[:60]
         assert h.script_errors() == [], h.script_errors()
@@ -714,11 +904,11 @@ def test_un_boton_usa_los_subtitulos_del_video_y_avisa(con_mpvd, video):
         assert t["lines"] > 0 and t["chars"] > 0, t
         assert "Transcripción lista" in st["osd"], st["osd"]
         assert Path(t["out"]).is_file()
-        # y de ahí sale la copia de F2, sin hacer nada más
-        h.command("keypress", "ctrl+alt+c")
-        copiado = osd_de(h, "Copiado: ")
-        assert leer_portapapeles(h).startswith("Eres un editor de vídeo")
-        assert f"Copiado: {copiado['transcript']['lines']} líneas" in copiado["osd"], copiado["osd"]
+        # y de ahí sale la copia de la transcripción, sin hacer nada más
+        h.command("script-binding", "mu_chapters/chapters-copy-transcript")
+        copiado = osd_de(h, "Transcripción copiada: ")
+        assert leer_portapapeles(h).startswith("[")
+        assert f"Transcripción copiada: {copiado['transcript']['lines']} líneas" in copiado["osd"], copiado["osd"]
         assert h.script_errors() == [], h.script_errors()
     finally:
         h.stop()
@@ -764,22 +954,30 @@ def test_en_directo_no_pide_ninguna_transcripcion(tmp_path):
 
 
 def test_las_instrucciones_dentro_de_la_app(video):
-    """F4 §5 · los cuatro pasos y los botones, dentro del menú: quien no sabe nada de IA no sale del reproductor."""
+    """H76 · los cuatro pasos y las acciones, dentro del menú: una idea por fila (uosc corta las frases largas),
+    riverside con su botón y whisper al final y en voz baja."""
     v = con_srt(video)
     h = abrir(v)
     try:
         h.wait_property("user-data/mu/core", lambda c: bool(c) and c.get("uosc"), timeout=40)
-        h.command("script-binding", "mu_menu/root")
-        activar(h, item(h, "root", "Subtítulos"))
-        activar(h, item(h, "subs", "Capítulos con una IA"))
-        activar(h, item(h, "chapters", "Cómo funciona"))
+        h.command("script-binding", "mu_menu/chapters")
+        activar(h, item(h, "chapters", "Crear capítulos con una IA"))
+        activar(h, item(h, "chapters_ia", "Cómo funciona"))
         ayuda = h.wait_property("user-data/mu/menu", lambda m: bool(m) and m.get("view") == "chapters_help"
                                 and any(i["title"].startswith("4 ·") for i in m.get("items", [])), timeout=15)
         titulos = [i["title"] for i in ayuda["items"]]
         assert [t[0] for t in titulos[:4]] == ["1", "2", "3", "4"], titulos
-        assert "ChatGPT" in titulos[2] and "Duck.ai" in titulos[2]
-        activar(h, item(h, "chapters_help", "Copiar la transcripción y el prompt"))
-        osd_de(h, "Copiado: ")
+        assert "riverside.com/transcription" in titulos[1] and "whisper" in titulos[1], "de dónde sacarla, y el aviso"
+        assert titulos[4] == "Abrir riverside.com/transcription", titulos
+        assert "Copiar solo la transcripción" in titulos and "Copiar solo el prompt" in titulos
+        assert titulos[-1] == "Conseguir la transcripción aquí (tarda)", "whisper, al final y sin destacar"
+
+        abrir_fila = item(h, "chapters_help", "Abrir riverside.com/transcription")
+        copiar_fila = item(h, "chapters_help", "Copiar solo el prompt")
+        activar(h, abrir_fila)            # las dos filas se leen antes: al abrir el navegador el menú se cierra
+        osd_de(h, "Abriendo riverside.com/transcription")
+        activar(h, copiar_fila)
+        osd_de(h, "Prompt copiado")
         assert leer_portapapeles(h).startswith("Eres un editor de vídeo")
         assert h.script_errors() == [], h.script_errors()
     finally:
@@ -819,9 +1017,9 @@ def test_pista_dentro_del_video_se_extrae_y_vale_aunque_no_quepa_al_lado(daemon_
         assert t["source"] == "track" and t["lines"] > 0, t
         assert Path(t["out"]).parent == fuera, f"se guardó en {t['out']}"
         assert not (ro / "charla.es.srt").exists(), "en una carpeta de solo lectura no se escribe nada"
-        h.command("keypress", "ctrl+alt+c")           # sin SRT al lado: se lee el que dejó la transcripción
-        osd_de(h, "Copiado: ")
-        assert leer_portapapeles(h).startswith("Eres un editor de vídeo")
+        h.command("script-binding", "mu_chapters/chapters-copy-transcript")   # sin SRT al lado: se lee el de la transcripción
+        osd_de(h, "Transcripción copiada: ")
+        assert leer_portapapeles(h).startswith("[")
         assert h.script_errors() == [], h.script_errors()
     finally:
         h.stop()
@@ -859,9 +1057,9 @@ def test_sin_subtitulos_la_transcripcion_ya_hecha_se_guarda_y_se_avisa(con_mpvd,
         assert "Transcripción lista" in st["osd"], st["osd"]
         assert Path(t["out"]).is_file() and Path(t["out"]).parent == video.parent, t["out"]
 
-        h.command("keypress", "ctrl+alt+c")           # el paso siguiente del flujo: copiarla para la IA
-        osd_de(h, "Copiado: ")
-        assert "TRANSCRIPCIÓN:" in leer_portapapeles(h)
+        h.command("script-binding", "mu_chapters/chapters-copy-transcript")   # el paso siguiente del flujo
+        osd_de(h, "Transcripción copiada: ")
+        assert "[00:00]" in leer_portapapeles(h)
         assert h.script_errors() == [], h.script_errors()
     finally:
         h.stop()

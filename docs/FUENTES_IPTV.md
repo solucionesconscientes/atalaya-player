@@ -1,5 +1,15 @@
 # Fuentes de TV/radio para H2 (formato real verificado)
 
+> **Reparto actual:** *España · TV* y *España · Radio* salen solo de TDTChannels. *Mundo · TV* sale de iptv-org
+> **sin canales de España** (`exclude_countries=("es",)`), y al reconstruir el catálogo se quitan de iptv-org las
+> URLs que ya estén en TDTChannels: hoy son 54 canales internacionales repetidos, de 11 038 a 10 984. Así las dos
+> listas no se solapan y el menú *Mundo · TV por país* no ofrece España.
+>
+> **Radio:** *España · Radio* es TDTChannels. *Radio mundial* (Radio Browser) no elimina todo el país: quita solo
+> las copias que ya están en TDTChannels, por URL normalizada o por nombre + país. Así desaparecen los duplicados
+> (en la comprobación: 445 de 1.439 emisoras españolas) y se conservan las ~994 que solo están en Radio Browser.
+> No se aplica el filtro ciego `country=ES` porque TDTChannels no cubre toda la radio española.
+
 Fecha de verificación: 2026-09-28 (host dell, curl 8.x, sin proxy). Todo lo de aquí se ha comprobado contra
 la fuente real; lo marcado "por verificar" es una hipótesis que hay que contrastar con `mpv --list-options`
 antes de usarla. Fixtures recortadas de estas mismas descargas en `tests/fixtures/iptv/`.

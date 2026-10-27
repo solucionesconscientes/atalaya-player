@@ -461,94 +461,158 @@ views.subs = function()
     cmd('Mostrar u ocultar', 'v', 'visibility', { 'cycle', 'sub-visibility' }, { separator = true }),
     child('Panel de subtítulos', 'alt+i', 'closed_caption', 'mu_subs', 'subs-menu'),
     child('Resumen e índice del vídeo', 'alt+R · alt+I', 'history_edu', 'mu_recap', 'recap-menu'),
-    sub('Capítulos con una IA', 'copiar y pegar', 'auto_stories', 'chapters'),
-    bind('Guardar subtítulos (SRT)', 'alt+S', 'save', 'mu_subs/subs-save'),
-    child('Buscar subtítulos en internet', 'OpenSubtitles', 'travel_explore', 'mu_library', 'library-subs'),
+    bind('Guardar los subtítulos', 'alt+S', 'save', 'mu_subs/subs-save'),
+    child('Buscar subtítulos en internet', nil, 'travel_explore', 'mu_library', 'library-subs'),
   })
 end
 
--- H75 · la transcripción va a la IA que cada uno quiera y su respuesta vuelve como capítulos (mu-chapters, ADR-134).
--- F4: el primer botón consigue la transcripción (los subtítulos del vídeo o whisper) sin elegir nada; mientras trabaja
--- y cuando acaba, la fila lo dice, para que no se pierda si el aviso de pantalla pasa.
-local function transcript_item()
-  local st = mp.get_property_native('user-data/mu/chapters') or {}
-  local t = type(st.transcript) == 'table' and st.transcript or {}
-  if t.status == 'done' then
-    return bind('Transcripción lista', tr('copiar y pegar'), 'task_alt', 'mu_chapters/chapters-transcript',
-                { active = true })
-  elseif t.status == 'extracting' or t.status == 'transcribing' or t.status == 'saving' then
-    return bind('Consiguiendo la transcripción…', ('%d %%'):format(tonumber(t.progress) or 0), 'spinner',
-                'mu_chapters/chapters-transcript', { active = true })
+-- H76 · la pantalla de capítulos: primero los que ya tiene el vídeo, para saltar; al final, una fila separadora y
+-- lo que los crea o los quita. Un vídeo sin capítulos lo dice en una fila que no se puede elegir, y la pantalla
+-- sigue sirviendo para crearlos, que es justo lo que hace falta entonces.
+local function chapter_rows()
+  local list = mp.get_property_native('chapter-list') or {}
+  local rows = {}
+  for _, c in ipairs(list) do
+    rows[#rows + 1] = { title = tostring(c.title or ''), hint = fmt_time(c.time), icon = 'bookmark',
+                        value = { seek = c.time } }
   end
-  return bind('Conseguir la transcripción', tr('subtítulos del vídeo o IA'), 'auto_awesome',
-              'mu_chapters/chapters-transcript')
+  if #rows == 0 then
+    rows[1] = { title = tr('Este vídeo no tiene capítulos'), icon = 'bookmark_border', selectable = false,
+                muted = true }
+  end
+  rows[#rows + 1] = sub('Crear capítulos con una IA…', tr('copiar y pegar'), 'auto_stories', 'chapters_ia',
+                        { separator = #list > 0 })
+  if #list > 0 then
+    rows[#rows + 1] = bind('Quitar los capítulos de este vídeo', 'ctrl+alt+d', 'delete_sweep',
+                           'mu_chapters/chapters-remove')
+  end
+  return rows
 end
 
 views.chapters = function()
+  show(tr('Capítulos'), chapter_rows())
+end
+
+-- Cuántas líneas de transcripción hay para copiar (0 = el vídeo no trae ninguna).
+local function chapter_cues()
+  local st = mp.get_property_native('user-data/mu/chapters') or {}
+  local t = type(st.text) == 'table' and st.text or {}
+  if t.ready then return tonumber(t.cues) or 0 end
+  return 0
+end
+
+-- H76 · el idioma de los subtítulos, en palabras (el código tal cual si no es de los de casa).
+local SUB_LANGS = { es = tr('español'), en = tr('inglés'), fr = tr('francés'), ca = tr('catalán') }
+
+-- La fila de estado de «Capítulos con una IA»: qué transcripción hay, o que no hay ninguna. Es la que cambia.
+local function text_state_row()
+  local st = mp.get_property_native('user-data/mu/chapters') or {}
+  local t = type(st.text) == 'table' and st.text or {}
+  if not t.ready then
+    return { title = tr('Este vídeo no contiene transcripción'), icon = 'subtitles_off', selectable = false,
+             muted = true }
+  end
+  local n = tonumber(t.cues) or 0
+  local name = SUB_LANGS[tostring(t.lang or ''):lower():sub(1, 2)]
+  return { title = name and tr('Subtítulos en %s · %d líneas'):format(name, n) or tr('%d líneas de subtítulos'):format(n),
+           icon = 'subtitles', selectable = false, muted = true }
+end
+
+-- H76 · la IA: se copia (o se copian los subtítulos y el prompt de una vez, si el vídeo los trae) y se pega. Dos
+-- filas fijas y una que depende de si hay transcripción.
+views.chapters_ia = function()
+  local cues = chapter_cues()
   show(tr('Capítulos con una IA'), {
-    transcript_item(),
-    bind('Copiar la transcripción para la IA', 'ctrl+alt+c', 'content_copy', 'mu_chapters/chapters-copy'),
+    sub('Cómo funciona', nil, 'info', 'chapters_help'),
+    text_state_row(),
+    cues > 0 and bind('Copiar subtítulos y el prompt', 'ctrl+alt+c', 'content_copy', 'mu_chapters/chapters-copy-all',
+                      { separator = true })
+      or bind('Copiar el prompt', 'ctrl+alt+c', 'content_copy', 'mu_chapters/chapters-copy', { separator = true }),
     bind('Pegar los capítulos de la IA', 'ctrl+alt+p', 'content_paste', 'mu_chapters/chapters-paste'),
-    bind('Quitar los capítulos de este vídeo', 'ctrl+alt+d', 'delete_sweep', 'mu_chapters/chapters-remove'),
-    sub('Cómo funciona (4 pasos)', tr('sin saber nada de IA'), 'help', 'chapters_help'),
   })
 end
 
--- F4 · las instrucciones dentro de la app: los cuatro pasos en lenguaje llano, y los botones a mano al final
+-- H76 · las instrucciones dentro de la app: cuatro pasos con una idea cada uno (uosc corta las frases largas) y,
+-- debajo, las acciones a mano en el orden en que se usan. Whisper se queda al final y en voz baja: es el último
+-- recurso, y así se dice.
 views.chapters_help = function()
-  show(tr('Capítulos con una IA: cómo funciona'), {
-    { title = tr('1 · El vídeo tiene que tener su transcripción: pídesela con el botón de abajo y espera'), icon = 'looks_one',
+  local cues = chapter_cues()
+  local items = {
+    { title = tr('1 · El vídeo puede traer subtítulos: si los trae, se copian aquí tal cual.'), icon = 'looks_one',
       selectable = false, muted = true },
-    { title = tr('2 · «Copiar la transcripción» deja en el portapapeles el texto y el prompt juntos'),
+    { title = tr('2 · Si no los trae, sácalos en riverside.com/transcription (gratis, un minuto). Con whisper dentro de Atalaya tarda mucho: es el último recurso.'),
       icon = 'looks_two', selectable = false, muted = true },
-    { title = tr('3 · Pégalo en una IA (ChatGPT gratis, Gemini o Duck.ai sin cuenta) y copia su respuesta'),
-      icon = 'looks_3', selectable = false, muted = true },
-    { title = tr('4 · «Pegar los capítulos»: aparecen en la barra y se guardan con el vídeo'), icon = 'looks_4',
+    { title = tr('3 · Copia el prompt y pégalo en tu IA junto con la transcripción.'), icon = 'looks_3',
       selectable = false, muted = true },
-    transcript_item(),
-    bind('Copiar la transcripción y el prompt', 'ctrl+alt+c', 'content_copy', 'mu_chapters/chapters-copy'),
-    bind('Pegar los capítulos de la IA', 'ctrl+alt+p', 'content_paste', 'mu_chapters/chapters-paste'),
-  })
+    { title = tr('4 · Pega aquí la respuesta: los capítulos aparecen en la barra y se guardan.'), icon = 'looks_4',
+      selectable = false, muted = true },
+    bind('Abrir riverside.com/transcription', tr('en el navegador'), 'open_in_browser',
+         'mu_chapters/chapters-open-riverside', { separator = true }),
+  }
+  if cues > 0 then
+    table.insert(items, bind('Copiar solo la transcripción', tr('%d líneas'):format(cues), 'subtitles',
+                             'mu_chapters/chapters-copy-transcript'))
+  end
+  table.insert(items, bind('Copiar solo el prompt', 'ctrl+alt+c', 'content_copy', 'mu_chapters/chapters-copy'))
+  table.insert(items, bind('Pegar los capítulos de la IA', 'ctrl+alt+p', 'content_paste', 'mu_chapters/chapters-paste'))
+  table.insert(items, bind('Conseguir la transcripción aquí (tarda)', nil, 'auto_awesome',
+                           'mu_chapters/chapters-transcript', { muted = true, separator = true }))
+  show(tr('Capítulos con una IA: cómo funciona'), items)
 end
 
 views.av = function()
   show(tr('Imagen y sonido'), {
-    bind('Pista de audio', 'a', 'graphic_eq', 'uosc/audio'),
+    bind('Idioma del audio', 'a', 'graphic_eq', 'uosc/audio'),
     bind('Salida de sonido', nil, 'speaker', 'uosc/audio-device'),
     cmd('Silenciar', 'm', 'volume_off', { 'cycle', 'mute' }, { separator = true }),
-    bind('Pista de vídeo', nil, 'movie', 'uosc/video'),
+    bind('Idioma del vídeo', nil, 'movie', 'uosc/video'),
     bind('Calidad del directo o del vídeo', 'ctrl+q', 'high_quality', 'uosc/stream-quality'),
     cmd('Relación de aspecto', 'A', 'aspect_ratio', { 'cycle-values', 'video-aspect-override', '16:9', '4:3', '2.35:1', '-1' }),
-    cmd('Quitar rayas (desentrelazar)', 'd', 'blur_linear', { 'cycle', 'deinterlace' }, { separator = true }),
+    cmd('Quitar las rayas', 'd', 'blur_linear', { 'cycle', 'deinterlace' }, { separator = true }),
     child('Filtros: diálogo claro, modo noche, ruido…', 'alt+v', 'tune', 'mu_av', 'av-menu'),
     bind('Modo noche', 'alt+n', 'bedtime', 'mu_av/av-night'),
     child('Audiolibros y podcasts', 'alt+A', 'menu_book', 'mu_books', 'books-menu', { separator = true }),
-    -- K3 · el temporizador sirve para cualquier reproducción, no solo para un audiolibro: dentro del menú de
-    -- audiolibros nadie lo encontraba viendo una película
-    child('Temporizador para dormir', nil, 'bedtime', 'mu_books', 'sleep-menu'),
     child('Letra de la canción', 'alt+K', 'lyrics', 'mu_lyrics', 'lyrics-menu'),
   })
 end
 
+-- H76 · Herramientas era quince filas mezcladas; ahora es un índice de cinco. Lo que se hace mientras se reproduce
+-- tiene su pantalla («Reproducción») y lo que se hace con el móvil, la tele o los demás, la suya («Compartir y
+-- mando»). El temporizador sigue aquí y no en Imagen y sonido: sirve para cualquier reproducción, no solo para una
+-- película (K3), y ese es su sitio.
 views.tools = function()
   show(tr('Herramientas'), {
+    sub('Reproducción', tr('tramos, intro, estudio…'), 'play_circle', 'playback'),
+    sub('Compartir y mando', tr('móvil, tele, notas'), 'share', 'share_remote'),
     sub('Buscar comandos, canales y recientes…', 'alt+p', 'search', 'palette'),
+    child('Temporizador para dormir', nil, 'bedtime', 'mu_books', 'sleep-menu'),
+    bind('Todas las teclas', nil, 'keyboard', 'uosc/keybinds'),
+  })
+end
+
+-- Lo que se toca mientras se ve algo: los tramos, el intro, el estudio y las tres formas de repetir.
+views.playback = function()
+  show(tr('Reproducción'), {
+    sub('Capítulos', 'c', 'bookmark', 'chapters'),
     child('Tramos: elegir trozos y guardarlos', 'ctrl+l', 'content_cut', 'mu_cut', 'cut-menu'),
     child('Saltar intro y créditos', 'alt+j', 'skip_next', 'mu_intro', 'intro-menu'),
     child('Estudio: repetir, velocidad, notas', 'alt+e', 'school', 'mu_study', 'study-menu'),
-    child('Mis notas', 'alt+B', 'sticky_note_2', 'mu_notes', 'notes-menu'),
-    child('Mando desde el móvil', 'alt+Z', 'qr_code_2', 'mu_remote', 'remote-menu'),
-    cmd('Panel de descargas en el navegador', nil, 'open_in_browser',
-        { 'script-message-to', 'mu_remote', 'mu-remote-downloads' }),
-    child('Compartir: ver juntos', 'alt+W', 'group', 'mu_share', 'share-menu'),
-    child('Enviar a la tele', 'alt+E', 'cast', 'mu_cast', 'cast-menu', { separator = true }),
-    bind('Capítulos', 'c', 'bookmark', 'uosc/chapters'),
-    cmd('Repetir este archivo', 'L', 'repeat_one', { 'cycle-values', 'loop-file', 'inf', 'no' }),
+    cmd('Repetir este archivo', 'L', 'repeat_one', { 'cycle-values', 'loop-file', 'inf', 'no' }, { separator = true }),
     cmd('Repetir la lista', nil, 'repeat_on', { 'cycle-values', 'loop-playlist', 'inf', 'no' }),
-    bind('Orden aleatorio de la lista', nil, 'shuffle', 'uosc/shuffle'),
+    bind('Orden aleatorio', nil, 'shuffle', 'uosc/shuffle'),
     bind('Mostrar en la carpeta', 'alt+o', 'folder', 'uosc/show-in-directory', { separator = true }),
-    { title = tr('Estado del reproductor'), icon = 'monitor_heart', value = { action = 'status' } },
-    bind('Todas las teclas', nil, 'keyboard', 'uosc/keybinds'),
+  })
+end
+
+-- Lo que se hace con otro aparato o con otra persona: el móvil, la sala, la tele, las descargas y las notas.
+views.share_remote = function()
+  show(tr('Compartir y mando'), {
+    child('Mando desde el móvil', 'alt+Z', 'qr_code_2', 'mu_remote', 'remote-menu'),
+    child('Compartir: ver juntos', 'alt+W', 'group', 'mu_share', 'share-menu'),
+    child('Enviar a la tele', 'alt+E', 'cast', 'mu_cast', 'cast-menu'),
+    cmd('Panel de descargas en el navegador', nil, 'open_in_browser',
+        { 'script-message-to', 'mu_remote', 'mu-remote-downloads' }, { separator = true }),
+    child('Mis notas', 'alt+B', 'sticky_note_2', 'mu_notes', 'notes-menu'),
   })
 end
 
@@ -569,6 +633,9 @@ views.prefs = function()
       hint = (LANG_NAMES[P:get('lang')] or LANG_NAMES['']) .. ' · ' .. tr('al reiniciar') },
     { title = tr('Ayuda y novedades en %s'):format(brand.site:gsub('^https?://', '')), icon = 'language',
       value = { site = true }, actions = { { name = 'copy', icon = 'content_copy', label = tr('Copiar la dirección') } } },
+    -- H68 · mira si hay versión nueva y lo dice; no descarga ni instala nada (eso lo decide la persona)
+    { title = tr('Buscar actualizaciones'), icon = 'system_update', value = { check_updates = true },
+      hint = tr('avisa cuando hay una versión nueva, sin instalar nada') },
   })
 end
 
@@ -746,7 +813,8 @@ local CURATED = {
   { title = tr('Biblioteca (películas, series, seguir viendo, carpetas)'), cmd = 'script-binding mu_library/library-menu' },
   { title = tr('Buscar en YouTube'), cmd = 'script-binding mu_ytdl/yt-search' },
   { title = tr('Captura de pantalla'), cmd = 'async screenshot' },
-  { title = tr('Capítulos'), cmd = 'script-binding uosc/chapters' },
+  { title = tr('Capítulos'), cmd = 'script-binding mu_menu/chapters' },
+  { title = tr('Capítulos de este vídeo (crear con IA, quitar)'), cmd = 'script-binding mu_menu/chapters' },
   { title = tr('Compartir › Mostrar / ocultar el QR de la sala'), cmd = 'script-binding mu_share/share-qr' },
   { title = tr('Compartir › Ver juntos (sala, invitados, cerrar)'), cmd = 'script-binding mu_share/share-menu' },
   { title = tr('Convertir › Convertir vídeo o audio (archivo o carpeta)'), cmd = 'script-binding mu_convert/convert-menu' },
@@ -797,6 +865,7 @@ local CURATED = {
   { title = tr('TV y radio › Canal siguiente'), cmd = 'script-binding mu_iptv/zap-next' },
   { title = tr('TV y radio › Guía del canal que estás viendo'), cmd = 'script-binding mu_iptv/tv-guide' },
   { title = tr('TV y radio › Menú de canales'), cmd = 'script-binding mu_iptv/tv-menu' },
+  { title = tr('TV y radio › Cambiar de canal sin volver al menú'), cmd = 'script-binding mu_iptv/tv-channels' },
   { title = tr('Ver › Calidad del stream'), cmd = 'script-binding uosc/stream-quality' },
   { title = tr('Ver › Relación de aspecto'), cmd = 'cycle-values video-aspect-override "16:9" "4:3" "2.35:1" "-1"' },
   { title = tr('Vídeos de internet › Calidad'), cmd = 'script-binding mu_ytdl/ytdl-quality' },
@@ -1160,6 +1229,20 @@ mp.register_script_message(EVENT, function(json)
         osd(tr('Abriendo %s'):format(brand.site))
         uosc.close(MENU)
       end
+    elseif v.check_updates then
+      osd(tr('Buscando actualizaciones…'))
+      rpc('updates.check', { force = true }, function(err, res)
+        if err or type(res) ~= 'table' then osd(tr('No se pudo comprobar la versión')); return end
+        if res.error and not res.newer then
+          osd(tr('No se pudo comprobar: %s'):format(tostring(res.error)))
+          return
+        end
+        if res.newer then
+          osd(tr('Hay una versión nueva: %s'):format(tostring(res.latest or '')))
+        else
+          osd(tr('Estás al día (%s)'):format(tostring(res.current or '')))
+        end
+      end, 20)
     elseif v.pref then
       set_pref(v.pref, not opts[v.pref])
       reopen_current()
@@ -1172,6 +1255,8 @@ mp.register_script_message(EVENT, function(json)
       uosc.close(PALETTE)
       run_action(v.action)
     elseif v.seek then
+      -- H76 · también cierra el MENÚ: las filas que saltan a un capítulo viven en una vista, no en la paleta
+      uosc.close(MENU)
       uosc.close(PALETTE)
       mp.commandv('seek', tostring(v.seek), 'absolute')
       osd('⏱ ' .. fmt_time(v.seek))
@@ -1325,6 +1410,9 @@ end
 mp.add_key_binding(nil, 'goto', open_goto)
 mp.add_key_binding(nil, 'recents', function() open_under_root('recents') end)
 mp.add_key_binding(nil, 'help', function() open_under_root('help') end)
+-- H76 · la pantalla de capítulos (saltar, crear con IA, quitar) ya no cuelga de Subtítulos: se abre desde la paleta
+-- (alt+p → «Capítulos de este vídeo…») y desde esta binding, con la raíz debajo para que ⌫ tenga dónde volver.
+mp.add_key_binding(nil, 'chapters', function() open_under_root('chapters') end)
 -- the ● button and «Grabar» belong to mu-record (H18); kept for old bindings
 mp.add_key_binding(nil, 'record', function() mp.commandv('script-binding', 'mu_record/record-menu') end)
 mp.add_key_binding(nil, 'resume-toggle', function() set_pref('resume', not opts.resume) end)

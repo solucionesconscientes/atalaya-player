@@ -14,11 +14,25 @@ SRT con el mismo nombre.
 - Capa fina de mpv: atajos, portapapeles, OSD, chapter-list, archivo lateral.
 
 ## Flujo
-1. Atajo A «Copiar para IA»: lee el SRT, lo compacta y copia: contenido de prompt-ia.txt + "\n\nDURACIÓN TOTAL:
-   h:mm:ss\n\nTRANSCRIPCIÓN:\n" + líneas compactas. OSD: «Copiado: N líneas (~X mil tokens)».
-2. Atajo B «Pegar capítulos»: lee el portapapeles, parsea, valida, ajusta, guarda nombre.capitulos.txt (formato
-   "MM:SS Título", editable a mano; si ya existe, copia de seguridad .bak) y asigna chapter-list.
-3. Al abrir un archivo, si existe nombre.capitulos.txt se cargan al instante.
+Cuatro pasos, los mismos que cuenta la pantalla de ayuda dentro del reproductor (menú → capítulos → *Crear capítulos
+con una IA…* → *Cómo funciona*):
+
+1. **Copiar.** Si el vídeo trae subtítulos (pista de texto o `.srt` al lado), «Copiar subtítulos y el prompt»
+   (`ctrl+alt+c` → binding `chapters-copy-all`) deja en el portapapeles el prompt, **una línea en blanco** y la
+   transcripción compacta, en ese orden: el prompt ya acaba en la línea «TRANSCRIPCIÓN:». OSD:
+   «Prompt y transcripción copiados: N líneas (~X mil tokens)».
+   Si no los trae, la misma tecla copia **solo el prompt** (`chapters-copy`: contenido de `prompt-ia.txt` +
+   «DURACIÓN TOTAL: h:mm:ss» + «TRANSCRIPCIÓN:») y el OSD es «Prompt copiado».
+2. **Copiar por separado** (pantalla de ayuda): «Copiar solo la transcripción» (`chapters-copy-transcript`) copia solo
+   las líneas «[mm:ss] texto», con OSD «Transcripción copiada: N líneas (~X mil tokens)»; «Copiar solo el prompt» es
+   `chapters-copy`. Y «Abrir riverside.com/transcription» (`chapters-open-riverside`) abre esa página en el navegador
+   del sistema (xdg-open / start / open), con OSD «Abriendo riverside.com/transcription». Whisper se queda al final,
+   en voz baja: «Conseguir la transcripción aquí (tarda)» (`chapters-transcript`, mu-subs).
+3. **Pegar capítulos** (`ctrl+alt+p`): lee el portapapeles, parsea, valida, ajusta, guarda nombre.capitulos.txt
+   (formato "MM:SS Título", editable a mano; si ya existe, copia de seguridad .bak) y asigna chapter-list. OSD:
+   «N capítulos · M puntos clave aplicados y guardados junto al vídeo» cuando la respuesta trae el segundo bloque, y
+   «N capítulos aplicados y guardados junto al vídeo» cuando no.
+4. Al abrir un archivo, si existe nombre.capitulos.txt se cargan al instante.
 
 ## Transcripción compacta
 Une bloques del SRT en líneas de ~10-15 s: "[mm:ss] texto" ("[h:mm:ss]" si el vídeo dura >= 1 h, en todas las líneas).
@@ -26,8 +40,16 @@ Quita etiquetas HTML, colapsa espacios, elimina líneas vacías y duplicadas con
 alucinación de Whisper («Gracias por ver el vídeo», «Suscríbete», «Subtítulos por…»).
 
 ## Parseo de la respuesta de la IA (tolerante)
-Acepta con o sin bloque de código, con viñetas/numeración/negritas/corchetes, separadores " ", "-", "–", "—", ":",
-y tiempos mm:ss o h:mm:ss. Limpia el título (markdown, comillas, signos finales).
+El prompt pide **dos bloques en una sola respuesta**: BLOQUE 1 — CAPÍTULOS, una línea por capítulo, en un bloque de
+código con formato `MM:SS Título`; BLOQUE 2 — PUNTOS CLAVE, de 8 a 12 viñetas `- MM:SS — una frase`.
+
+`parse_answer` lee los dos y `parse_reply` devuelve solo los capítulos: acepta con o sin bloque de código, con
+viñetas/numeración/negritas/corchetes, separadores " ", "-", "–", "—", ":", y tiempos mm:ss o h:mm:ss; limpia el
+título (markdown, comillas, signos finales). Ignora las líneas de valla (```) y **para en la primera línea que no es un
+capítulo después de haber leído al menos uno**: así el encabezado del segundo bloque cierra el primero y las viñetas
+—que también empiezan por un tiempo— no se cuelan como capítulos. Las listas planas sin encabezados siguen valiendo
+igual. `parse_answer` cuenta además las líneas con tiempo que vienen detrás del corte (`points`), que es lo que dice el
+OSD al pegar («N capítulos · M puntos clave»).
 
 ## Validación y ajuste
 - Descartar tiempos > duración y duplicados; ordenar; separación mínima 45 s (se conserva el anterior).

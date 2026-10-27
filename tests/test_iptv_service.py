@@ -9,6 +9,8 @@ import pytest
 
 from mpvd.client import MpvdClient
 from mpvd.config import Settings
+from mpvd.iptv.model import Channel
+from mpvd.iptv.service import IptvService
 from mpvd.iptv.sources import Source
 from mpvd.rpc import NOT_FOUND, RpcError
 from mpvd.server import MpvdServer
@@ -204,3 +206,19 @@ def test_loading_every_list_rebuilds_the_search_index_once(tmp_path, monkeypatch
     assert len(states) == 3 and sum(len(s.channels) for s in states) == 60
     assert len(calls) == 1, f"reconstrucciones del índice: {len(calls)}"
     assert len(server.iptv.search("Canal 1-3")) >= 1
+
+
+def test_radio_mundial_no_repite_lo_que_ya_esta_en_espana():
+    """Radio mundial conserva las emisoras españolas únicas, pero no las copias de TDTChannels."""
+    def ch(name, url, country="es"):
+        return Channel(id=url, name=name, url=url, kind="radio", source="radio_browser", country=country)
+    tdt = [ch("Cadena SER", "https://stream.example/ser"),
+           ch("Los 40", "https://stream.example/40")]
+    rb = [ch("Cadena SER", "https://stream.example/ser?token=2"),      # misma URL normalizada
+          ch("Cadena SER España", "https://otro.example/ser"),           # mismo nombre + país
+          ch("Radio Local", "https://otro.example/local"),               # única: se queda
+          ch("Cadena SER", "https://mx.example/ser", country="mx")]      # mismo nombre, otro país: se queda
+    service = IptvService.__new__(IptvService)
+    service._states = {"tdt_radio": type("S", (), {"channels": tdt})()}
+    out = service._drop_radio_duplicates(rb)
+    assert [c.url for c in out] == ["https://otro.example/local", "https://mx.example/ser"]

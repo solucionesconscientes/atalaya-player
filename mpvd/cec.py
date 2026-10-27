@@ -21,9 +21,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import fcntl
 import glob
 import logging
+
+try:  # Windows no trae fcntl (ni CEC): el servicio queda inactivo allí, pero mpvd debe arrancar igual
+    import fcntl
+except ImportError:  # pragma: no cover - solo Windows
+    fcntl = None  # type: ignore[assignment]
 import os
 import stat
 import struct
@@ -125,6 +129,10 @@ class CecService:
         return {"running": False}
 
     def _read(self, path: str) -> None:
+        if fcntl is None:
+            # Sin fcntl no hay ioctl: CEC es de Linux. En Windows el servicio simplemente no hace nada.
+            log.info("cec: plataforma sin fcntl, se ignora %s", path)
+            return
         try:
             fd = os.open(path, os.O_RDWR | os.O_NONBLOCK) if _is_chardev(path) \
                 else os.open(path, os.O_RDONLY | os.O_NONBLOCK)
@@ -133,7 +141,7 @@ class CecService:
             self._emit({"status": "lost"})
             return
         chardev = _is_chardev(path)
-        if chardev:
+        if chardev and fcntl is not None:
             # hacerse «follower»: sin esto el kernel no entrega los mensajes dirigidos a este aparato
             with contextlib.suppress(OSError):
                 fcntl.ioctl(fd, CEC_S_MODE, struct.pack("<I", CEC_MODE_FOLLOWER))
@@ -144,7 +152,7 @@ class CecService:
                 r, _, _ = select.select([fd], [], [], 0.25)
                 if not r:
                     continue
-                if chardev:
+                if chardev and fcntl is not None:
                     raw = bytearray(MSG_SIZE)
                     try:
                         fcntl.ioctl(fd, CEC_RECEIVE, raw)

@@ -146,3 +146,19 @@ Lo que pase aquí es lo único que convierte un «debería ir» en un «probado�
 - Cambia en `docs/PLATAFORMAS.md` las casillas de Windows que hayan pasado, con la fecha y la versión de Windows.
 - Si algo falla, abre la tarea en `BACKLOG.md` con el síntoma exacto y, si hace falta, una entrada en
   `NEEDS_HUMAN.md`. Un fallo que solo se ve con ratón es exactamente lo que no iba a aparecer en la CI.
+
+## 9. TV y radio: listas y canales (Windows)
+
+Con el `.zip` actualizado, desde su carpeta:
+
+```powershell
+.venv\Scripts\python.exe tools\verificar-iptv.py --limite 3 --tiempo 20
+```
+
+El script descarga las tres listas, las cuenta y abre una muestra de cada una con el `mpv` de Windows. Lo que
+importa es separar dos cosas: si **la lista no carga** (red, proxy, TLS) o si **un canal concreto no responde**
+(geobloqueo, emisión caída). Para ver solo las listas, `--solo-listas`; para dejar el informe, `--salida informe.json`.
+
+En el uso normal, `alt+t` abre *España TV* (TDTChannels), *España radio* y *Mundo* (iptv-org sin España). Mientras
+ves un canal, `alt+shift+t` abre directamente su lista; el canal actual sale marcado. Si un canal falla, `Tab` →
+*Comprobar canales en segundo plano* dice cuáles responden y con qué calidad.

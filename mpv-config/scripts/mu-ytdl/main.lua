@@ -613,10 +613,12 @@ end
 
 local function default_dl_options(settings)
   return {
-    container = settings.container or 'mp4', subtitles = settings.subtitles == true,
+    -- H75/F5: toda descarga de YouTube baja también la transcripción (.srt junto al fichero) salvo que se apague en
+    -- las opciones; es lo que hace falta para los capítulos con una IA y para buscar dentro de lo descargado.
+    container = settings.container or 'mp4', subtitles = settings.subtitles ~= false,
     chapters = settings.chapters ~= false, thumbnail = settings.thumbnail == true,
     metadata = settings.metadata ~= false, sponsorblock = settings.sponsorblock or 'none', playlist = false,
-    subs_mode = 'embed', sub_langs = settings.sub_langs or 'orig,es.*,en.*',
+    subs_mode = settings.subs_mode or 'file', sub_langs = settings.sub_langs or 'orig,es.*,en.*',
   }
 end
 
@@ -1126,9 +1128,11 @@ end
 local function pick_set_entries(entries, source, url, title, asked)
   local sel = {}
   for i = 1, #entries do sel[i] = true end
+  -- H75/F5: la transcripción también por defecto aquí; si en la lista anterior se apagó, se respeta.
+  local keep = state.pick and state.pick.common_srt
   state.pick = { entries = entries, sel = sel, fmt = {}, srt = {}, source = source, url = url, asked = asked,
                  title = title or '', common = (state.pick and state.pick.common) or P:get('pick_preset') or PICK_DEFAULT,
-                 common_srt = (state.pick and state.pick.common_srt) or false }
+                 common_srt = keep == nil and true or keep }
 end
 
 -- ---------------------------------------------------------------------------------------------

@@ -411,7 +411,7 @@ def test_missing_programs_are_explained_with_the_exact_commands(shell: str, tmp_
     empty.mkdir()
     out = installer(shell, "-NoVendor", env=install_env(tmp_path, PATH=str(empty)), check=False)
     assert out.returncode == 1
-    for hint in ("winget install mpv", "scoop install mpv", "winget install Gyan.FFmpeg", "winget install astral-sh.uv"):
+    for hint in ("winget install --id shinchiro.mpv --exact", "scoop install mpv", "winget install Gyan.FFmpeg", "winget install astral-sh.uv"):
         assert hint in out.stderr, hint
     assert not (tmp_path / "inst").exists()
 

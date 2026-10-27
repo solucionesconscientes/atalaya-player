@@ -23,10 +23,11 @@ class Source:
     builtin: bool = True
     country: str | None = None  # all channels belong to this country (ISO2) when set
     country_from_tvg_id: bool = False  # iptv-org style "Name.cc@Feed" ids
+    exclude_countries: tuple[str, ...] = ()  # países que no deben aparecer en esta lista
 
     def to_dict(self) -> dict[str, Any]:
         return {"id": self.id, "name": self.name, "url": self.url, "kind": self.kind, "region": self.region,
-                "ttl": self.ttl, "builtin": self.builtin}
+                "ttl": self.ttl, "builtin": self.builtin, "exclude_countries": list(self.exclude_countries)}
 
 
 # Verified 2026-09-28 (see docs/FUENTES_IPTV.md); tdt_radio is skipped automatically if the URL 404s.
@@ -34,8 +35,9 @@ class Source:
 # playlist wins, and a copy bundled with the app is the last resort so TV is never an empty menu.
 FALLBACK_URLS: dict[str, list[str]] = {
     "tdt_tv": [
+        # Solo TDTChannels: si su lista principal falla, se usa esta otra URL del mismo proyecto y, en último
+        # caso, la copia incluida en la app. No se cae a la lista española de iptv-org: España es TDTChannels.
         "https://www.tdtchannels.com/lists/tv.m3u",
-        "https://iptv-org.github.io/iptv/countries/es.m3u",
     ],
     "tdt_radio": [
         "https://www.tdtchannels.com/lists/radio.m3u",
@@ -47,7 +49,7 @@ BUILTIN_SOURCES: list[Source] = [
     Source("tdt_radio", "España · Radio (TDTChannels)", "https://www.tdtchannels.com/lists/radio.m3u8", "radio", "es",
            country="es"),
     Source("iptv_org", "Mundo · TV (iptv-org)", "https://iptv-org.github.io/iptv/index.m3u", "tv", "world",
-           country_from_tvg_id=True),
+           country_from_tvg_id=True, exclude_countries=("es",)),
 ]
 
 
@@ -85,6 +87,9 @@ def _from_text(source: Source, text: str, *, fetched_at: float = 0.0, stale: boo
         return state
     channels = [entry_to_channel(e, source.id, source.kind, source.country, source.country_from_tvg_id)
                 for e in pl.entries]
+    if source.exclude_countries:
+        excluidos = {c.lower() for c in source.exclude_countries}
+        channels = [c for c in channels if (c.country or "").lower() not in excluidos]
     state.channels = dedupe(channels)
     state.loaded_at = time.time()
     state.fetched_at = fetched_at

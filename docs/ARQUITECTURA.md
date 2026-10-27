@@ -19,7 +19,7 @@ puede haber roto allí.
 | Torrents | Se construyeron y se quitaron (ADR-111): dependen de que haya pares, de que la red deje pasar DHT y de un extra que no viene de fábrica, y cuando falla cualquiera de las tres lo que se ve es «no funciona», indistinguible de un fallo nuestro. Para algo que no es crítico, el coste de soporte es desproporcionado. |
 | Llevar mpv dentro de los paquetes | Rompe la aceleración por hardware, que depende de los drivers de la máquina (ADR-067, confirmado midiendo en ADR-115). |
 | Un «modo ligero» aparte | Medido: no hay nada que apagar. La interfaz cuesta 1,2 % de un núcleo y los 23 scripts y el servicio cuestan 0,0 mientras se reproduce (ADR-115). |
-| Actualizarse solo | Avisar sí, reemplazarse a sí mismo mientras está en marcha no: hecho mal, deja a alguien sin reproductor, y en Linux eso ya lo saben hacer apt y el gestor de AppImage (ADR-118). |
+| Actualizarse solo | Avisar sí (`mpvd/updates.py` + Preferencias), reemplazarse a sí mismo mientras está en marcha no: hecho mal, deja a alguien sin reproductor, y en Linux eso ya lo saben hacer apt y el gestor de AppImage (ADR-118). |
 | Cuentas, nube, analítica | Local primero. Los servicios de nube opcionales vienen apagados. |
 
 ## Las dos piezas

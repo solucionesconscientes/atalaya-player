@@ -44,6 +44,8 @@ function Get-MuMpvCandidates {
   )) {
     if ($p) { $out += $p }
   }
+  # Copia de reserva que deja el instalador .exe cuando el equipo no tenía mpv (tools/build_win_installer.sh)
+  if ($Root) { $out += (Join-Path (Join-Path $Root 'mpv') 'mpv.exe') }
   return $out
 }
 

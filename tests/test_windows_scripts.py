@@ -289,7 +289,8 @@ def test_ps1_dry_run_builds_the_same_mpv_command_as_bash(tmp_path, args):
     assert ipc == [2] and mpv[2] == "--input-ipc-server=" + got["pipe"]
     bash_ipc = next(i for i, a in enumerate(expected) if a.startswith("--input-ipc-server="))
     assert mpv[1:2] + mpv[3:] == expected[:bash_ipc] + expected[bash_ipc + 1:]
-    assert got["env"] == {"MPV_UOS_ROOT": str(ROOT), "MPV_UOS_DATA_DIR": str(tmp_path / "data")}
+    assert got["env"] == {"MPV_UOS_ROOT": str(ROOT), "MPV_UOS_DATA_DIR": str(tmp_path / "data"),
+                          "PYTHONPATH": str(ROOT)}
 
 
 @needs_pwsh
@@ -330,19 +331,44 @@ def test_ps1_logs_what_it_got_and_how_mpv_ended(tmp_path):
     link = "mpv-uos://open?path=%2Fx%20y.mkv&t=5"
     ps_launcher(tmp_path, "-Gui", link, dry=False, LOCALAPPDATA=str(tmp_path / "local"))
     log = (tmp_path / "local" / APP_FOLDER / "lanzador.log").read_text(encoding="utf-8").splitlines()
-    assert len(log) == 3
+    # start · mpv=<binario> · argumentos · exit (la línea del binario sirve para diagnosticar «falta mpv»)
+    assert len(log) == 4
     assert "start gui=True" in log[0] and json.dumps([link]) in log[0]
-    assert '"--start=5","/x y.mkv"' in log[1] and "--input-ipc-server=" in log[1]
-    assert log[2].endswith("mpv exit=0")
+    assert log[1].split("mpv=", 1)[1]
+    assert '"--start=5","/x y.mkv"' in log[2] and "--input-ipc-server=" in log[2]
+    assert "mpv exit=0" in log[3] and log[3].endswith("s")   # «mpv exit=0 tras 0s»: código y cuánto duró
     ps_launcher(tmp_path, link, LOCALAPPDATA=str(tmp_path / "local"))    # -DryRun logs nothing
-    assert len((tmp_path / "local" / APP_FOLDER / "lanzador.log").read_text(encoding="utf-8").splitlines()) == 3
+    assert len((tmp_path / "local" / APP_FOLDER / "lanzador.log").read_text(encoding="utf-8").splitlines()) == 4
+
+
+@needs_pwsh
+def test_ps1_encuentra_el_mpv_de_program_files_sin_path(tmp_path):
+    """El instalador de shinchiro deja mpv en Program Files\\MPV Player sin tocar el PATH; si el .exe lo vio y no
+    copió la reserva, el lanzador tiene que encontrarlo ahí o diría «falta mpv» con mpv instalado."""
+    programas = tmp_path / "Program Files"
+    exe = programas / "MPV Player" / "mpv.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("#!/bin/sh\nexit 0\n")
+    exe.chmod(0o755)
+    vacio = tmp_path / "sin-path"
+    vacio.mkdir()
+    got = last_json(ps_launcher(tmp_path, "x.mkv", MPV_UOS_MPV="", PATH=str(vacio),
+                                ProgramFiles=str(programas)).stdout)
+    assert got["mpv"][0] == str(exe)
+
+
+@needs_pwsh
+def test_ps1_acepta_el_enlace_con_barra_de_edge(tmp_path):
+    """Edge puede pasar mpv-uos://open/?path=… (con barra); antes no se reconocía y quedaba en Inicio."""
+    got = last_json(ps_launcher(tmp_path, "mpv-uos://open/?path=%2Fx.mkv&t=5").stdout)
+    assert "--start=5" in got["mpv"] and "/x.mkv" in got["mpv"]
 
 
 @needs_pwsh
 def test_ps1_without_mpv_explains_how_to_install_it(tmp_path):
     out = ps_launcher(tmp_path, "x.mkv", dry=False, check=False, MPV_UOS_MPV="mpv-that-does-not-exist")
     assert out.returncode == 1
-    assert "winget install mpv" in out.stderr and "scoop install mpv" in out.stderr
+    assert "winget install --id shinchiro.mpv --exact" in out.stderr and "scoop install mpv" in out.stderr
 
 
 # -- PowerShell: «Empezar aquí» (ADR-123) -----------------------------------------------------------------------------
@@ -428,7 +454,7 @@ def test_el_arranque_lanza_el_reproductor_con_ese_mpv(tmp_path):
 
 def install_env(tmp_path: Path, **extra: str) -> dict[str, str]:
     return ps_env(tmp_path, MPV_UOS_INSTALL_DIR=str(tmp_path / "inst"), MPV_UOS_START_MENU_DIR=str(tmp_path / "menu"),
-                  **extra)
+                  MPV_UOS_DESKTOP_DIR=str(tmp_path / "desktop"), **extra)
 
 
 def tools_available(*names: str) -> bool:
@@ -482,6 +508,113 @@ def test_install_then_uninstall_in_a_temporary_folder(tmp_path):
 
 
 @needs_pwsh
+def test_install_desktop_shortcut_is_planned_recorded_and_removed(tmp_path):
+    """"-Desktop" deja además un atajo en el Escritorio: se planifica, se apunta en install.json y el
+    desinstalador se lleva ese y no los ajenos (en Linux el .lnk no se puede crear: COM es de Windows)."""
+    if not tools_available("mpv", "ffmpeg", "ffprobe"):
+        pytest.skip("mpv/ffmpeg/ffprobe not on PATH")
+    env = install_env(tmp_path)
+    plan = last_json(run_ps(tmp_path, ["-File", str(INSTALL), "--dry-run", "--no-sync", "-Desktop"], env=env).stdout)
+    acts = {a["action"]: a for a in plan["actions"]}
+    assert "create-desktop-shortcut" in acts and "create-shortcut" in acts
+    assert acts["create-desktop-shortcut"]["target"] == str(tmp_path / "desktop" / f"{APP}.lnk")
+
+    run_ps(tmp_path, ["-File", str(INSTALL), "-NoSync", "-NoVendor", "-Desktop"], env=env)
+    state = json.loads((tmp_path / "inst" / "install.json").read_text())
+    assert state["desktop_shortcut"] == str(tmp_path / "desktop" / f"{APP}.lnk")
+    (tmp_path / "desktop").mkdir(parents=True, exist_ok=True)
+    mio = Path(state["desktop_shortcut"])
+    mio.write_text("ours")
+    ajeno = tmp_path / "desktop" / "Otro.lnk"
+    ajeno.write_text("x")
+    out = run_ps(tmp_path, ["-File", str(INSTALL), "--uninstall"], env=env)
+    assert "desinstalado" in out.stdout
+    assert not mio.exists() and ajeno.exists()
+
+
+@needs_pwsh
+def test_install_without_desktop_leaves_the_desktop_alone(tmp_path):
+    if not tools_available("mpv", "ffmpeg", "ffprobe"):
+        pytest.skip("mpv/ffmpeg/ffprobe not on PATH")
+    env = install_env(tmp_path)
+    plan = last_json(run_ps(tmp_path, ["-File", str(INSTALL), "--dry-run", "--no-sync"], env=env).stdout)
+    assert "create-desktop-shortcut" not in {a["action"] for a in plan["actions"]}
+
+
+def install_env_sin_nada(tmp_path: Path) -> dict[str, str]:
+    """Un Windows recién descomprimido el zip: ni mpv, ni ffmpeg, ni uv en el PATH."""
+    vacio = tmp_path / "sin-nada"
+    vacio.mkdir(exist_ok=True)
+    return install_env(tmp_path, PATH=str(vacio))
+
+
+@needs_pwsh
+def test_install_shortcuts_crea_los_atajos_sin_mpv_ni_uv(tmp_path):
+    """El zip portable: «S» en EMPEZAR-AQUI.cmd tiene que dejar los atajos aunque mpv aún no esté instalado."""
+    env = install_env_sin_nada(tmp_path)
+    plan = last_json(run_ps(tmp_path, ["-File", str(INSTALL), "--dry-run", "-Shortcuts", "-Desktop"], env=env).stdout)
+    acts = {a["action"] for a in plan["actions"]}
+    assert {"write-launcher", "create-shortcut", "create-desktop-shortcut", "register-protocol",
+            "register-fileassoc", "write-state"} == acts
+
+    out = run_ps(tmp_path, ["-File", str(INSTALL), "-Shortcuts", "-Desktop"], env=env)
+    assert "Faltan programas" not in out.stderr
+    state = json.loads((tmp_path / "inst" / "install.json").read_text())
+    assert (tmp_path / "inst" / "bin" / "mpv-uos.cmd").is_file()
+    assert state["shortcut"] == str(tmp_path / "menu" / f"{APP}.lnk")
+    assert state["desktop_shortcut"] == str(tmp_path / "desktop" / f"{APP}.lnk")
+    for lnk in (state["shortcut"], state["desktop_shortcut"]):   # en Linux no hay COM: se simulan los .lnk
+        Path(lnk).parent.mkdir(parents=True, exist_ok=True)
+        Path(lnk).write_text("ours")
+    run_ps(tmp_path, ["-File", str(INSTALL), "--uninstall"], env=env)
+    assert not Path(state["shortcut"]).exists() and not Path(state["desktop_shortcut"]).exists()
+    assert not (tmp_path / "inst").exists()
+
+
+@needs_pwsh
+def test_install_desde_un_clon_sigue_exigiendo_los_requisitos(tmp_path):
+    """Sin -Shortcuts nada se vuelve más permisivo: faltan cosas → aviso y código 1, sin crear nada."""
+    env = install_env_sin_nada(tmp_path)
+    out = run_ps(tmp_path, ["-File", str(INSTALL), "-Desktop"], env=env, check=False)
+    assert out.returncode == 1 and "Faltan programas en el PATH" in out.stderr
+    assert "mpv (>= 0.41)" in out.stderr and "uv:" in out.stderr
+    assert not (tmp_path / "inst").exists() and not (tmp_path / "desktop").exists()
+
+
+def test_empezar_aqui_pide_solo_los_atajos():
+    texto = EMPEZAR_CMD.read_bytes().decode("ascii")
+    assert 'tools\\install.ps1" -Shortcuts -Desktop' in texto
+
+
+@needs_pwsh
+def test_install_shortcuts_acepta_el_lanzador_que_viene_en_el_zip(tmp_path):
+    """Regresión del instalador .exe: el zip ya trae bin\\mpv-uos.cmd (shim de una línea, sin la marca del
+    instalador). Antes eso abortaba con código 1 y el .exe se quedaba sin accesos directos; ahora se reconoce
+    como propio, se reescribe con el lanzador completo y la instalación termina bien."""
+    env = install_env_sin_nada(tmp_path)
+    launcher = tmp_path / "inst" / "bin" / "mpv-uos.cmd"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_bytes(CMD.read_bytes())          # exactamente el que viaja en el zip
+    assert b"generated by MPV-UOS tools/install.ps1" not in launcher.read_bytes()
+
+    out = run_ps(tmp_path, ["-File", str(INSTALL), "-Shortcuts", "-Desktop"], env=env)
+    assert "no se sobrescribe" not in out.stderr, out.stderr
+    raw = launcher.read_bytes()
+    assert b"generated by MPV-UOS tools/install.ps1" in raw and b"goto run" in raw
+    state = json.loads((tmp_path / "inst" / "install.json").read_text())
+    assert state["shortcut"] == str(tmp_path / "menu" / f"{APP}.lnk")
+
+
+@needs_pwsh
+def test_install_shortcuts_deja_log_si_se_le_pide(tmp_path):
+    """El .exe pasa -Log: si algo falla, el motivo queda escrito y no hay que adivinar el código."""
+    env = install_env_sin_nada(tmp_path)
+    log = tmp_path / "instalador.log"
+    run_ps(tmp_path, ["-File", str(INSTALL), "-Shortcuts", "-Log", str(log)], env=env)
+    assert log.is_file() and "write-launcher" in log.read_text(encoding="utf-8", errors="replace")
+
+
+@needs_pwsh
 def test_install_never_overwrites_a_foreign_launcher(tmp_path):
     if not tools_available("mpv", "ffmpeg", "ffprobe"):
         pytest.skip("mpv/ffmpeg/ffprobe not on PATH")
@@ -502,7 +635,7 @@ def test_install_without_mpv_explains_how_to_get_it(tmp_path):
     out = run_ps(tmp_path, ["-File", str(INSTALL), "-NoVendor"], env=install_env(tmp_path, PATH=str(empty)),
                  check=False)
     assert out.returncode == 1
-    for hint in ("winget install mpv", "scoop install mpv", "winget install Gyan.FFmpeg", "winget install astral-sh.uv"):
+    for hint in ("winget install --id shinchiro.mpv --exact", "scoop install mpv", "winget install Gyan.FFmpeg", "winget install astral-sh.uv"):
         assert hint in out.stderr, hint
 
 
@@ -697,6 +830,9 @@ def test_el_zip_portable_lleva_lo_necesario_y_nada_de_linux(zip_windows):
              or "__pycache__" in n or "/tests/" in n]
     assert not sobra, sobra[:5]
     # y el papel dice lo que hay que decir: que mpv se instala aparte y que esto no se ha probado en Windows
-    assert "EMPEZAR-AQUI.cmd" in texto and "winget install mpv" in texto
+    assert "EMPEZAR-AQUI.cmd" in texto and "winget install --id shinchiro.mpv --exact" in texto
+    assert "no la muevas ni la borres" in texto, "el paso 1 tiene que decir que la carpeta ES la aplicación"
+    assert "directo en el Escritorio y en el menú Inicio" in texto, "la pregunta S/N crea los dos atajos"
+    assert "-Desktop" in texto, "el LEE-ME tiene que decir cómo pedir el del Escritorio a mano"
     assert "NO lleva mpv" in texto and "NO se ha podido probar" in texto
     assert "\r\n" in texto, "en Windows los saltos de línea son CRLF o el Bloc de notas lo enseña todo junto"

@@ -346,13 +346,16 @@ local function channel_hint(ch)
 end
 
 local function channel_item(ch)
+  local current = type(state.current) == 'table' and state.current.id == ch.id
+  local hint = channel_hint(ch)
   return {
     title = ch.name,
-    hint = channel_hint(ch),
+    hint = hint,
     icon = ch.kind == 'radio' and 'radio' or 'live_tv',
     value = { play = ch.id, name = ch.name },
     muted = (ch.health == false and (tonumber(ch.health_alive) or 0) == 0) or nil,
-    bold = ch.favorite or nil,
+    bold = ch.favorite or current or nil,
+    active = current or nil,
   }
 end
 
@@ -513,7 +516,8 @@ views.root = function()
     { title = tr('Buscar canal o emisora…'), icon = 'search', value = { view = 'search' } },
     { title = tr('España · TV'), icon = 'live_tv', value = { view = 'source', id = 'tdt_tv' } },
     { title = tr('España · Radio'), icon = 'radio', value = { view = 'source', id = 'tdt_radio' } },
-    { title = tr('Mundo · TV por país'), icon = 'public', value = { view = 'world' } },
+    { title = tr('Mundo · TV por país'), icon = 'public', hint = tr('iptv.org · sin España'),
+      value = { view = 'world' } },
     { title = tr('Radio mundial'), icon = 'language', value = { view = 'radio' } },
     { title = tr('Favoritos'), icon = 'star', value = { view = 'favorites' } },
     { title = tr('Recientes'), icon = 'history', value = { view = 'recents' } },
@@ -546,7 +550,7 @@ views.root = function()
   show(tr('TV y radio'), items)
 end
 
-local SOURCE_TITLES = { tdt_tv = 'España · TV', tdt_radio = 'España · Radio' }
+local SOURCE_TITLES = { tdt_tv = 'España · TV', tdt_radio = 'España · Radio', iptv_org = 'Mundo · TV' }
 
 views.source = function(args)
   local title = args.name or SOURCE_TITLES[args.id] or args.id
@@ -1629,7 +1633,32 @@ local function open_root()
   open_view({ name = 'root' })
 end
 
+-- «Cambiar de canal»: la lista de la fuente que estás viendo, sin pasar por el menú raíz. La reproducción sigue
+-- debajo del menú; al elegir, cambia el canal y el menú se cierra. En radio de Radio Browser se abre su país.
+local function open_current_channels()
+  if not uosc.available() then osd(tr('uosc no está cargado')) return end
+  local cur = state.current
+  if type(cur) ~= 'table' then
+    osd(tr('No hay un canal activo: abre TV y radio (alt+t)'))
+    open_root()
+    return
+  end
+  state.stack = {}
+  if cur.source == 'radio_browser' then
+    if cur.country and cur.country ~= '' then
+      open_view({ name = 'radio_country', args = { id = cur.country, name = cur.country } })
+    else
+      open_view({ name = 'radio' })
+    end
+  elseif cur.source and cur.source ~= '' then
+    open_view({ name = 'source', args = { id = cur.source, name = SOURCE_TITLES[cur.source] or cur.source } })
+  else
+    open_root()
+  end
+end
+
 N:binding('tv-menu', open_root)
+N:binding('tv-channels', open_current_channels)
 mp.register_script_message('mu-iptv-play', function(channel_id) if channel_id and channel_id ~= '' then play(channel_id) end end)
 N:binding('tv-search', function()
   state.stack = {}

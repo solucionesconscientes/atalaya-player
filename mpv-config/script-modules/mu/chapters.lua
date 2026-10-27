@@ -5,6 +5,7 @@
 --   compact(blocks, opts)        → { lines = { '[mm:ss] text', … }, text =, long = }   what is sent to the AI
 --   prompt(prompt, duration, lines), tokens(text), clock(seconds, long)
 --   parse_reply(text)            → { { time =, title = }, … }   what the AI answered, read tolerantly
+--   parse_answer(text)           → { chapters =, points = }      the same, plus how many key points came along
 --   fit(list, opts)              → { chapters =, matched =, total =, suspicious = }
 --   format(list, duration)       → 'MM:SS Title\n…'   the <video>.capitulos.txt that can be edited by hand
 --
@@ -123,10 +124,15 @@ function M.compact(blocks, opts)
   return { lines = lines, text = table.concat(lines, '\n'), long = long }
 end
 
-function M.prompt(prompt_text, duration, lines)
+-- What is copied when only the prompt is asked for: the prompt, how long the video is, and the line where the
+-- transcription goes — so the person pastes it right underneath, in the same message to the AI.
+function M.prompt_head(prompt_text, duration)
   local head = tostring(prompt_text or ''):gsub('%s+$', '')
   return head .. '\n\nDURACIÓN TOTAL: ' .. M.clock(duration, true) .. '\n\nTRANSCRIPCIÓN:\n'
-    .. table.concat(lines or {}, '\n')
+end
+
+function M.prompt(prompt_text, duration, lines)
+  return M.prompt_head(prompt_text, duration) .. table.concat(lines or {}, '\n')
 end
 
 -- Rough: ~4 bytes per token for Spanish or English text. Only shown as «~N mil tokens».
@@ -200,20 +206,31 @@ local function clean_title(t)
   return t
 end
 
-function M.parse_reply(text)
-  local out = {}
+-- H76 · la respuesta trae DOS bloques: los capítulos (los que van a la barra) y los puntos clave (que solo se
+-- cuentan, para poder decir cuántos vinieron). Se lee en una pasada y se para en la primera línea que no es un
+-- capítulo después de haber leído uno: ahí empieza el segundo bloque. Las vallas (```) no cuentan ni cierran.
+function M.parse_answer(text)
+  local chapters, points, closed = {}, 0, false
   for _, line in ipairs(lines_of(text)) do
     local s = trim(line)
     if s:sub(1, 3) ~= '```' then
       local t, rest = read_time(strip_lead(s))
-      if t then
-        local title = clean_title(strip_after_time(rest))
-        if title ~= '' then out[#out + 1] = { time = t, title = title } end
+      if not closed then
+        local title = t and clean_title(strip_after_time(rest)) or ''
+        if t and title ~= '' then
+          chapters[#chapters + 1] = { time = t, title = title }
+        elseif #chapters > 0 then
+          closed = true
+        end
+      elseif t then
+        points = points + 1
       end
     end
   end
-  return out
+  return { chapters = chapters, points = points }
 end
+
+function M.parse_reply(text) return M.parse_answer(text).chapters end
 
 -- -- check and adjust ------------------------------------------------------------------------------------------------
 

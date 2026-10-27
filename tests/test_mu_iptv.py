@@ -133,6 +133,15 @@ def test_menus_play_zap_favorites_record_and_search(tv):
                           and v["current"].get("id") == chans["Canal Uno"]["id"])
     assert cur["current"]["name"] == "Canal Uno"
     h.wait_property("user-data/uosc/menu/type", lambda v: v is None, timeout=10)
+
+    # alt+shift+t: la lista de la fuente que se está viendo, sin pasar por la raíz
+    h.command("keypress", "alt+shift+t")
+    wait_view(h, "source:tdt_tv")
+    quick = h.wait_property("user-data/mu/iptv-menu",
+                            lambda v: bool(v) and v.get("title") == "España · TV", timeout=20)
+    assert quick["title"] == "España · TV"
+    send_event(h, {"type": "back"})
+    wait_view(h, "root")
     h.wait_property("options/force-media-title", lambda v: v == "Canal Uno", timeout=10)
 
     # zapping stays inside the group (Pruebas: Uno <-> Dos) and wraps
