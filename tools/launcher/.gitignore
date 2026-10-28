@@ -1,0 +1,4 @@
+# Binarios del lanzador de Windows: se compilan, no se versionan
+*.exe
+*.pdb
+*.obj
