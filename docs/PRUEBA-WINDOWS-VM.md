@@ -152,7 +152,7 @@ Lo que pase aquí es lo único que convierte un «debería ir» en un «probado�
 Con el `.zip` actualizado, desde su carpeta:
 
 ```powershell
-.venv\Scripts\python.exe tools\verificar-iptv.py --limite 3 --tiempo 20
+runtime\python.exe tools\verificar-iptv.py --limite 3 --tiempo 20
 ```
 
 El script descarga las tres listas, las cuenta y abre una muestra de cada una con el `mpv` de Windows. Lo que

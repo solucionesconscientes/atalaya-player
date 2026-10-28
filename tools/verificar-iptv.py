@@ -9,7 +9,7 @@ Sirve igual en Linux y en Windows:
 
 En Windows, desde la carpeta de Atalaya:
 
-    .venv\\Scripts\\python.exe tools\\verificar-iptv.py
+    runtime\\python.exe tools\\verificar-iptv.py
 
 No modifica nada: descarga a una caché temporal, cuenta canales y abre cada muestra con
 `mpv --no-video --frames=1`. Un canal puede fallar por geobloqueo o por estar caído; lo

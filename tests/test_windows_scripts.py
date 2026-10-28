@@ -35,6 +35,7 @@ CMD = ROOT / "bin" / "mpv-uos.cmd"
 INSTALL = ROOT / "tools" / "install.ps1"
 EMPEZAR = ROOT / "bin" / "empezar.ps1"
 EMPEZAR_CMD = ROOT / "tools" / "empezar-windows.cmd"
+CERRAR = ROOT / "tools" / "cerrar-atalaya.ps1"
 BASH = ROOT / "bin" / "mpv-uos"
 PWSH_DIR = ROOT / ".cache" / "pwsh"
 PWSH_VERSION = "7.6.6"
@@ -105,7 +106,11 @@ def test_ps1_launcher_passes_the_same_key_options_as_bash():
     assert "-m mpvd link --root" in bash and "'-m', 'mpvd', 'link', '--root'" in ps1
     # IPC through a named pipe (man mpv 0.41, --input-ipc-server: "On Windows, named pipes are used ... \\.\pipe\<name>")
     assert "'\\\\.\\pipe\\mpv-uos-'" in ps1
-    assert ".venv\\Scripts\\python.exe" in ps1
+    # ADR-137 · el intérprete del paquete vive en runtime\; .venv\Scripts se sigue mirando para copias antiguas
+    assert "Test-Path -LiteralPath $c -PathType Leaf" in ps1
+    assert "'runtime\\python.exe'" in ps1
+    assert "'.venv\\Scripts\\python.exe'" in ps1
+    assert ps1.index("'runtime\\python.exe'") < ps1.index("'.venv\\Scripts\\python.exe'")
 
 
 def test_cmd_wrapper_calls_the_ps1():
@@ -116,7 +121,7 @@ def test_cmd_wrapper_calls_the_ps1():
     assert '"%~dp0mpv-uos.ps1" %*' in line
 
 
-@pytest.mark.parametrize("script", [PS1, EMPEZAR, INSTALL], ids=lambda p: p.name)
+@pytest.mark.parametrize("script", [PS1, EMPEZAR, INSTALL, CERRAR], ids=lambda p: p.name)
 def test_los_ps1_que_se_reparten_llevan_bom(script: Path):
     """ADR-123 · Windows PowerShell 5.1 —el que viene con Windows— lee un fichero SIN BOM como ANSI, así que los
     acentos de los mensajes le llegan destrozados a quien usa el programa. Se vio en el aviso de que falta mpv,
@@ -136,7 +141,7 @@ def test_el_arranque_de_windows_es_ascii_y_se_salta_la_directiva():
     assert "if errorlevel 1 pause" in texto                # si no, el fallo se lo lleva la ventana al cerrarse
 
 
-@pytest.mark.parametrize("script", [PS1, EMPEZAR, INSTALL], ids=lambda p: p.name)
+@pytest.mark.parametrize("script", [PS1, EMPEZAR, INSTALL, CERRAR], ids=lambda p: p.name)
 def test_ps1_avoids_powershell7_only_syntax(script: Path):
     """Windows 10/11 ship Windows PowerShell 5.1: no ??, ?., &&/||, ternaries, $IsWindows, -AsHashtable, -Parallel."""
     code = "\n".join(line for line in script.read_text().splitlines() if not line.lstrip().startswith("#"))
@@ -231,7 +236,7 @@ def test_spawn_lock_uses_msvcrt_on_windows(tmp_path, monkeypatch):
 
 
 @needs_pwsh
-@pytest.mark.parametrize("script", [PS1, EMPEZAR, INSTALL], ids=lambda p: p.name)
+@pytest.mark.parametrize("script", [PS1, EMPEZAR, INSTALL, CERRAR], ids=lambda p: p.name)
 def test_ps1_parses_without_errors(tmp_path, script: Path):
     code = (f"$t = $null; $e = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile("
             f"{ps_quote(script)}, [ref]$t, [ref]$e); "
@@ -812,7 +817,7 @@ def zip_windows():
 
 def test_el_zip_portable_lleva_lo_necesario_y_nada_de_linux(zip_windows):
     """Lo que tiene que poder hacer quien lo descomprime: doble clic y que abra. Es decir: los dos lanzadores, el
-    intérprete DONDE lo busca el .ps1 (.venv\\Scripts\\python.exe), yt-dlp.exe, los catálogos de idiomas y el
+    intérprete DONDE lo busca el .ps1 (runtime\\python.exe, ADR-137), yt-dlp.exe, los catálogos de idiomas y el
     papel que explica que mpv se instala aparte. Y nada de Linux ni de macOS, que son 11 MB de nada."""
     import zipfile
     with zipfile.ZipFile(zip_windows) as z:
@@ -820,12 +825,15 @@ def test_el_zip_portable_lleva_lo_necesario_y_nada_de_linux(zip_windows):
         texto = z.read("Atalaya/LEE-ME.txt").decode("utf-8")
     for ruta in ("Atalaya/EMPEZAR-AQUI.cmd", "Atalaya/bin/empezar.ps1",
                  "Atalaya/bin/mpv-uos.cmd", "Atalaya/bin/mpv-uos.ps1", "Atalaya/tools/install.ps1",
-                 "Atalaya/.venv/Scripts/python.exe", "Atalaya/vendor/bin/yt-dlp.exe",
+                 "Atalaya/runtime/python.exe", "Atalaya/vendor/bin/yt-dlp.exe",
                  "Atalaya/mpv-config/scripts/uosc/bin/ziggy-windows.exe", "Atalaya/locales/en.json",
                  "Atalaya/locales/fr.json", "Atalaya/mpvd/server.py", "Atalaya/LEE-ME.txt"):
         assert ruta in nombres, f"falta {ruta}"
     # el intérprete tiene que encontrar su biblioteca al lado, o no arranca
-    assert any(n.startswith("Atalaya/.venv/Scripts/Lib/os.py") for n in nombres)
+    assert "Atalaya/runtime/Lib/os.py" in nombres
+    # y no queda ni un fichero en .venv (antes eran 965 de un CPython completo dentro de Scripts)
+    sobra_venv = [n for n in nombres if n.startswith("Atalaya/.venv/")]
+    assert not sobra_venv, f"el zip sigue llevando .venv: {sobra_venv[:5]}"
     sobra = [n for n in nombres if "ziggy-linux" in n or "ziggy-darwin" in n or n.endswith("bin/wake")
              or "__pycache__" in n or "/tests/" in n]
     assert not sobra, sobra[:5]
@@ -836,3 +844,36 @@ def test_el_zip_portable_lleva_lo_necesario_y_nada_de_linux(zip_windows):
     assert "-Desktop" in texto, "el LEE-ME tiene que decir cómo pedir el del Escritorio a mano"
     assert "NO lleva mpv" in texto and "NO se ha podido probar" in texto
     assert "\r\n" in texto, "en Windows los saltos de línea son CRLF o el Bloc de notas lo enseña todo junto"
+
+
+# -- H75 · instalador: no se puede quedar un python.exe cargado ----------------------------------------------------
+
+
+def test_el_instalador_cierra_por_ruta_y_por_nombre_antes_de_borrar_el_runtime():
+    """ADR-137 · el fallo real era «Error abriendo archivo para escritura:
+    …\\AppData\\Local\\Programs\\Atalaya\\.venv\\Scripts\\python.exe». El instalador tiene que cerrar lo que corre
+    desde su carpeta (por ruta y por nombre), comprobar que ya no queda nada y, si queda, decirlo en castellano."""
+    nsi = (ROOT / "tools" / "atalaya.nsi").read_text(encoding="utf-8")
+    assert 'RMDir /r "$INSTDIR\\runtime"' in nsi
+    assert 'RMDir /r "$INSTDIR\\.venv"' in nsi
+    assert "SetOverwrite on" in nsi
+    # primero cerrar, luego borrar e instalar
+    assert nsi.index("cerrar-atalaya.ps1") < nsi.index('RMDir /r "$INSTDIR\\runtime"')
+    assert "No se ha podido cerrar Atalaya Player" in nsi
+    cerrar = (ROOT / "tools" / "cerrar-atalaya.ps1").read_text(encoding="utf-8")
+    for nombre in ("python.exe", "mpv.exe", "Atalaya.exe"):
+        assert nombre in cerrar, nombre
+    assert "Path.StartsWith" in cerrar and "Stop-Process" in cerrar
+    # vuelve a mirar después de matar, y si sigue vivo lo dice y sale con código distinto de 0
+    assert cerrar.count("Get-MuDelAtalaya") >= 2
+    assert "Start-Sleep" in cerrar and "exit 2" in cerrar and "Sigue en marcha" in cerrar
+
+
+def test_el_intérprete_del_paquete_esta_en_runtime_y_no_en_venv():
+    """El build de Windows tiene que dejar el CPython en runtime\\ (lo que buscan el .ps1 y mu-core), no en
+    .venv\\Scripts: allí parecía un venv que no era (sin pyvenv.cfg) y el instalador fallaba al sobrescribirlo."""
+    build = (ROOT / "tools" / "build_zip_windows.sh").read_text(encoding="utf-8")
+    assert 'mv "$WORK/py/python" "$APP/runtime"' in build
+    assert "$APP/.venv" not in build, "el zip de Windows ya no debe crear .venv"
+    mu_core = (ROOT / "mpv-config" / "scripts" / "mu-core.lua").read_text(encoding="utf-8")
+    assert mu_core.index("'runtime\\\\python.exe'") < mu_core.index("'.venv\\\\Scripts\\\\python.exe'")

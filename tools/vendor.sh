@@ -32,6 +32,16 @@ echo "uosc $UOSC_VERSION"
 if fetch "$UOSC_ZIP_URL" "$UOSC_ZIP_SHA256" "$DL/uosc-$UOSC_VERSION.zip"; then
   # The zip ships scripts/uosc/** (Lua + bin/ziggy-*) and fonts/**; extract over mpv-config/.
   unzip -q -o "$DL/uosc-$UOSC_VERSION.zip" -d mpv-config
+  # Lo que la API de uosc no permite va en patches/ (ver patches/README.md): se reaplica al vendorizar.
+  for p in "$ROOT"/patches/*.patch; do
+    [ -f "$p" ] || continue
+    if patch -p1 -N -d "$ROOT" < "$p" >>"$ROOT/.cache/vendor-patches.log" 2>&1; then
+      echo "  aplicado $(basename "$p")"
+    else
+      echo "  ERROR: no se pudo aplicar $(basename "$p") (¿cambió uosc?)" >&2
+      status=1
+    fi
+  done
   echo "  instalado en mpv-config/scripts/uosc (+ fonts, + bin/ziggy)"
 else
   status=1

@@ -65,7 +65,10 @@ cp "$ROOT/tools/launcher/Atalaya.exe" "$APP/bin/Atalaya.exe"
 # enseña mal el explorador de Windows si quien lo comprimió no marcó UTF-8
 cp "$ROOT/tools/empezar-windows.cmd" "$APP/EMPEZAR-AQUI.cmd"
 
-# 2. el intérprete, en el sitio exacto donde lo busca bin\mpv-uos.ps1: .venv\Scripts\python.exe
+# 2. el intérprete, en `runtime\` (ADR-137): un CPython completo metido en `.venv\Scripts` no era un venv (no hay
+# pyvenv.cfg), y sus 965 ficheros dentro de una carpeta llamada «Scripts» hacían que el instalador pareciera tocar
+# ficheros de un entorno ajeno. `runtime\python.exe` es lo primero que busca bin\mpv-uos.ps1 y mu-core; `.venv\Scripts`
+# se sigue aceptando como segunda opción para copias instaladas antes del cambio.
 tarball="$ROOT/vendor/cpython-windows.tar.gz"
 if [ ! -f "$tarball" ]; then
   mkdir -p "$ROOT/vendor"
@@ -75,15 +78,14 @@ if [ ! -f "$tarball" ]; then
 fi
 mkdir -p "$WORK/py"
 tar -xzf "$tarball" -C "$WORK/py"
-mkdir -p "$APP/.venv"
-mv "$WORK/py/python" "$APP/.venv/Scripts"      # python.exe con su Lib y sus DLL al lado: así se encuentra solo
-rm -rf "$APP/.venv/Scripts/Lib/test" "$APP/.venv/Scripts/Lib/idlelib" "$APP/.venv/Scripts/Lib/tkinter" \
-       "$APP/.venv/Scripts/Lib/turtledemo" "$APP/.venv/Scripts/Lib/site-packages/pip" \
-       "$APP/.venv/Scripts/Lib/site-packages/pip-"* "$APP/.venv/Scripts/tcl" "$APP/.venv/Scripts/DLLs/_tkinter.pyd"
-find "$APP/.venv" -name '__pycache__' -type d -prune -exec rm -rf {} +
+mv "$WORK/py/python" "$APP/runtime"             # python.exe con su Lib y sus DLL al lado: así se encuentra solo
+rm -rf "$APP/runtime/Lib/test" "$APP/runtime/Lib/idlelib" "$APP/runtime/Lib/tkinter" \
+       "$APP/runtime/Lib/turtledemo" "$APP/runtime/Lib/site-packages/pip" \
+       "$APP/runtime/Lib/site-packages/pip-"* "$APP/runtime/tcl" "$APP/runtime/DLLs/_tkinter.pyd"
+find "$APP/runtime" -name '__pycache__' -type d -prune -exec rm -rf {} +
 # Cinturón y tirantes: aunque una variable de entorno no llegue, site-packages apunta a la raíz de la app.
-mkdir -p "$APP/.venv/Scripts/Lib/site-packages"
-printf '%s\n' '../../../..' > "$APP/.venv/Scripts/Lib/site-packages/atalaya.pth"
+mkdir -p "$APP/runtime/Lib/site-packages"
+printf '%s\n' '../../..' > "$APP/runtime/Lib/site-packages/atalaya.pth"
 # los extras ligeros, con ruedas de Windows
 mapfile -t pkgs < <(python3 - "$ROOT/pyproject.toml" desktop <<'PYEOF'
 import sys, tomllib
@@ -94,7 +96,7 @@ PYEOF
 )
 if [ "${#pkgs[@]}" -gt 0 ] && command -v uv >/dev/null; then
   uv pip install --quiet --python-platform x86_64-pc-windows-msvc --python-version 3.12 --only-binary :all: \
-    --target "$APP/.venv/Scripts/Lib/site-packages" "${pkgs[@]}" || \
+    --target "$APP/runtime/Lib/site-packages" "${pkgs[@]}" || \
     echo "aviso: los extras de escritorio no tienen rueda para Windows; se sigue sin ellos" >&2
 fi
 

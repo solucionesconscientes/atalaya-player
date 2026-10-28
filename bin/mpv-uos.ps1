@@ -137,9 +137,12 @@ function Get-MuLanguage {
 }
 
 function Get-MuPython {
-  # The interpreter with the mpvd package: the project's venv (Windows layout first), else python from PATH.
+  # The interpreter with the mpvd package: the packaged runtime (runtime\python.exe, where the zip and the
+  # installer put it since ADR-137), then the old .venv\Scripts of an already installed copy, else python from PATH.
   param([string]$Root)
-  foreach ($c in @((Join-Path $Root '.venv\Scripts\python.exe'), (Join-Path (Join-Path (Join-Path $Root '.venv') 'bin') 'python'))) {
+  foreach ($c in @((Join-Path $Root 'runtime\python.exe'),
+                   (Join-Path $Root '.venv\Scripts\python.exe'),
+                   (Join-Path (Join-Path (Join-Path $Root '.venv') 'bin') 'python'))) {
     if (Test-Path -LiteralPath $c -PathType Leaf) { return $c }
   }
   return 'python'

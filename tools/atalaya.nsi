@@ -82,14 +82,37 @@ FunctionEnd
 
 Section "Atalaya Player" SecMain
   SectionIn RO
-  ; Si la versión anterior está abierta, python312.dll está cargado y NSIS no puede sobrescribirlo.
-  ; Se cierra solo lo que corre desde esta carpeta; el usuario no tiene que hacer nada.
+  ; ADR-137 · Si la versión anterior está abierta, python.exe está cargado y NSIS no puede sobrescribirlo (el síntoma
+  ; era «Error abriendo archivo para escritura: …\AppData\Local\Programs\Atalaya\.venv\Scripts\python.exe»). Se cierra
+  ; lo que corre desde ESTA carpeta, por ruta y por nombre, y se comprueba que ya no queda nada antes de seguir.
   InitPluginsDir
   SetOutPath "$PLUGINSDIR"
   File "${__FILEDIR__}\cerrar-atalaya.ps1"
   DetailPrint "Cerrando una instalación anterior de Atalaya si está abierta…"
-  nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\cerrar-atalaya.ps1" -InstallDir "$INSTDIR"'
+  nsExec::ExecToStack 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\cerrar-atalaya.ps1" -InstallDir "$INSTDIR"'
   Pop $0
+  Pop $1
+  ${If} $0 != 0
+    MessageBox MB_OK|MB_ICONSTOP "No se ha podido cerrar Atalaya Player, así que el instalador no puede reemplazar sus archivos.$\r$\n$\r$\n$1$\r$\n$\r$\nCierra el reproductor (o el daemon) y vuelve a ejecutar este instalador."
+    Abort
+  ${EndIf}
+
+  ; El intérprete vive en runtime\ (antes en .venv\Scripts). Se borra antes de extraer para que no queden restos de
+  ; la versión anterior; si Windows no deja, se dice en castellano en vez de dejar que falle NSIS a medias.
+  SetOverwrite on
+  ClearErrors
+  RMDir /r "$INSTDIR\runtime"
+  ${If} ${Errors}
+    MessageBox MB_OK|MB_ICONSTOP "No se ha podido reemplazar el intérprete de Atalaya ($INSTDIR\runtime).$\r$\n$\r$\nCierra cualquier programa que lo esté usando y vuelve a ejecutar el instalador."
+    Abort
+  ${EndIf}
+  ClearErrors
+  RMDir /r "$INSTDIR\.venv"
+  ${If} ${Errors}
+    MessageBox MB_OK|MB_ICONSTOP "No se ha podido borrar el intérprete anterior de Atalaya ($INSTDIR\.venv).$\r$\n$\r$\nCierra cualquier programa que lo esté usando y vuelve a ejecutar el instalador."
+    Abort
+  ${EndIf}
+
   SetOutPath "$INSTDIR"
   File /r "${SRCDIR}\*.*"
 

@@ -40,7 +40,7 @@ solo valen en Linux.
 | `.zip` portable (`tools/build_zip_windows.sh`) | — | — | construido en Linux y revisado por dentro (lanzadores, `EMPEZAR-AQUI.cmd`, intérprete de Windows en su sitio, yt-dlp.exe); la CI lo descomprime en Windows y arranca lo que lleva dentro; **sin abrirlo con doble clic** |
 | Instalador `.exe` (`tools/build_win_installer.sh`, NSIS) | se compila en Linux con `makensis` | — | construido y revisado por dentro (contiene el zip, el icono, el `install.ps1` y una **copia de reserva de mpv** que solo se descomprime si el equipo no tiene ninguno); **sin ejecutar en Windows**: el asistente, los accesos y la desinstalación están sin probar a mano |
 | ARM64 (Raspberry Pi 5) | ⚠ paquetes hechos (`.deb` arm64 y AppImage aarch64, los dos cruzados y revisados por dentro), **sin ejecutar en una máquina ARM**: aquí no hay ninguna ni emulación | — | — |
-| uosc, thumbfast, scripts `mu-*` (Lua) | ✅ | debería ir (Lua puro; rutas con `utils.join_path`) | debería ir (mu-core ya distingue `.venv\Scripts\python.exe`) |
+| uosc, thumbfast, scripts `mu-*` (Lua) | ✅ | debería ir (Lua puro; rutas con `utils.join_path`) | debería ir (mu-core busca `runtime\python.exe` y, como segunda opción, `.venv\Scripts\python.exe`) |
 | mpvd: JSON-RPC y IPC con mpv | ✅ socket Unix | socket Unix (no probado) | named pipes (`mpvd/transport.py`, lazo Proactor) probados con un lazo simulado; sin Windows real |
 | mpvd: arranque desacoplado | ✅ `start_new_session` | igual (no probado) | `DETACHED_PROCESS` + bloqueo con `msvcrt.locking` (no probado) |
 | TV y radio, yt-dlp, descargas | ✅ | debería ir | `yt-dlp.exe` (lo instala y actualiza `install.ps1`/mpvd; no probado) |
