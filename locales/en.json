@@ -655,6 +655,7 @@
   "Lista añadida, pero no se pudo cargar: %s": "List added, but it could not be loaded: %s",
   "Lista añadida: %s (%s canales)": "List added: %s (%s channels)",
   "Lista borrada (queda una copia en la papelera de listas)": "Playlist deleted (a copy stays in the playlist bin)",
+  "Lista de canales al borde izquierdo": "Channel list at the left edge",
   "Lista de reproducción": "Playlist",
   "Lista quitada": "List removed",
   "Lista vacía": "Empty playlist",

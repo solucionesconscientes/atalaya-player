@@ -61,6 +61,7 @@ falta, avisa con la orden para instalarlo. Los subtítulos IA y los modelos se d
 ## 2. Ver la tele y escuchar la radio
 1. `alt+t` → *España TV* / *España radio* (TDTChannels), *Mundo* (iptv-org por país y categoría, **sin canales de España**), *Radio mundial* (Radio Browser).
    - Mientras ves un canal, `alt+shift+t` abre **su lista** (sin pasar por el menú raíz); el canal actual queda marcado y `alt+↑`/`alt+↓` cambia dentro del grupo.
+   - O lleva el ratón al borde izquierdo de la pantalla: sale esa misma lista con el buscador listo (escribe para filtrar; Esc cierra). Solo con TV o radio sonando, una vez por entrada; se desactiva en *Preferencias → Lista de canales al borde izquierdo*.
    *España* sale solo de TDTChannels; de *Mundo* se excluyen los canales españoles y cualquier URL que ya esté en la lista de España, para que no haya dos entradas del mismo canal.
    En *Mundo* y *Radio mundial* tu país sale primero; países y categorías van en español. En *Radio mundial* se quitan solo las copias que ya están en *España · Radio*, no todas las emisoras españolas.
 2. `alt+f` busca un canal por nombre sin acentos; `Tab` sobre un canal: favorito o copiar URL.

@@ -19,12 +19,14 @@ local tr = require('mu.i18n').t
 local N = nav.new()
 
 -- H57 · qué se hace en una franja programada: grabarlo (lo de siempre), ponerlo o las dos. Se recuerda.
-local P = prefs.ns('mu-iptv', { sched_mode = 'record' })
+local P = prefs.ns('mu-iptv', { sched_mode = 'record', borde_izquierdo_lista = true })
 
 local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-iptv-event'
 local MENU = 'mu-iptv'
 local SEARCH_MENU = 'mu-iptv-search'
+-- Lista abierta por el borde izquierdo: el buscador queda a la vista para escribir directamente (uosc lo enfoca solo).
+local EDGE_MENU = { search_style = 'palette' }
 
 local opts = {
   osd_seconds = 3,
@@ -76,6 +78,7 @@ local function publish()
     depth = #state.stack, fallbacks = state.fallbacks, alternatives_left = #state.alternatives,
     epg_hints = state.epg_hints, guide = state.guide or '', schedule_event = state.schedule_event or '',
     tracks = state.tracks or {}, badges = state.badges, search_scope = state.search_scope,
+    borde_izquierdo_lista = P:get('borde_izquierdo_lista') ~= false,
   })
 end
 
@@ -554,6 +557,7 @@ local SOURCE_TITLES = { tdt_tv = 'España · TV', tdt_radio = 'España · Radio'
 
 views.source = function(args)
   local title = args.name or SOURCE_TITLES[args.id] or args.id
+  local extra = args.edge and EDGE_MENU or nil
   if not require_mpvd(title) then return end
   show_loading(title)
   rpc.call('iptv.channels', { source = args.id, compact = true, merge = true, limit = 5000 }, function(err, res)
@@ -573,7 +577,7 @@ views.source = function(args)
         value = { health = args.id }, keep_open = true, actions = {}, separator = true,
       })
       return items
-    end)
+    end, extra)
   end, 60)
 end
 
@@ -706,7 +710,7 @@ views.country = function(args)
     end, 60)
 end
 
-views.radio = function()
+views.radio = function(args)
   if not require_mpvd('Radio mundial') then return end
   show_loading('Radio mundial')
   rpc.call('radio.countries', nil, function(err, rows)
@@ -718,11 +722,11 @@ views.radio = function()
       table.insert(items, { title = ((c.flag or '') ~= '' and (c.flag .. ' ') or '') .. c.name, hint = tostring(c.count),
                             value = { view = 'radio_country', id = c.code, name = c.name }, separator = c.home or nil })
     end
-    show(tr('Radio mundial'), items)
+    show(tr('Radio mundial'), items, args.edge and EDGE_MENU or nil)
   end, 60)
 end
 
-local function radio_list(title, params, scope)
+local function radio_list(title, params, scope, extra)
   show_loading(title)
   rpc.call('radio.stations', params, function(err, rows)
     if err then show(title, uosc.message_items(fail(err, 'radio.stations'), 'error')) return end
@@ -734,14 +738,14 @@ local function radio_list(title, params, scope)
       table.insert(items, it)
     end
     if #items == 0 then items = uosc.message_items(tr('Sin emisoras'), 'info') end
-    show(title, items)
+    show(title, items, extra)
   end, 60)
 end
 
 views.radio_country = function(args)
   local title = args.name or args.id
   radio_list(title, { country = args.id, limit = opts.radio_limit, compact = true },
-             { kind = 'radio_country', id = args.id, name = title })
+             { kind = 'radio_country', id = args.id, name = title }, args.edge and EDGE_MENU or nil)
 end
 
 views.radio_top = function()
@@ -1635,7 +1639,8 @@ end
 
 -- «Cambiar de canal»: la lista de la fuente que estás viendo, sin pasar por el menú raíz. La reproducción sigue
 -- debajo del menú; al elegir, cambia el canal y el menú se cierra. En radio de Radio Browser se abre su país.
-local function open_current_channels()
+-- `edge`: abierta por el borde izquierdo, con el buscador a la vista.
+local function open_current_channels(edge)
   if not uosc.available() then osd(tr('uosc no está cargado')) return end
   local cur = state.current
   if type(cur) ~= 'table' then
@@ -1646,16 +1651,67 @@ local function open_current_channels()
   state.stack = {}
   if cur.source == 'radio_browser' then
     if cur.country and cur.country ~= '' then
-      open_view({ name = 'radio_country', args = { id = cur.country, name = cur.country } })
+      open_view({ name = 'radio_country', args = { id = cur.country, name = cur.country, edge = edge } })
     else
-      open_view({ name = 'radio' })
+      open_view({ name = 'radio', args = { edge = edge } })
     end
   elseif cur.source and cur.source ~= '' then
-    open_view({ name = 'source', args = { id = cur.source, name = SOURCE_TITLES[cur.source] or cur.source } })
+    open_view({ name = 'source', args = { id = cur.source, name = SOURCE_TITLES[cur.source] or cur.source,
+                                          edge = edge } })
   else
     open_root()
   end
 end
+
+-- ---------------------------------------------------------------------------------------------
+-- borde izquierdo: la lista de la fuente que suena, una vez por entrada (ratón; TV y radio)
+
+local EDGE_X, REARM_X, EDGE_COOLDOWN = 8, 40, 0.4
+local edge = { armed = true, seen = nil, closed_at = -1 }
+
+-- mpv entrega las URL file:// como ruta simple; algunas listas de usuario (y las de prueba) apuntan a archivos.
+local function same_path(url, path)
+  if url == path then return true end
+  if url:sub(1, 7) == 'file://' then
+    return path == (url:sub(8):gsub('%%(%x%x)', function(h) return string.char(tonumber(h, 16)) end))
+  end
+  return false
+end
+
+-- Solo si lo que suena es el canal que cargó este script (no un vídeo local abierto después ni un podcast).
+local function channel_on_screen()
+  return type(state.current) == 'table' and state.current_url ~= ''
+    and same_path(state.current_url, mp.get_property('path') or '')
+end
+
+mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
+  -- cerrado (con Esc o como sea): 400 ms de gracia antes de poder reabrir
+  if t == nil and edge.seen ~= nil then edge.closed_at = mp.get_time() end
+  edge.seen = t
+end)
+
+mp.observe_property('mouse-pos', 'native', function(_, m)
+  if type(m) ~= 'table' then return end
+  local x = tonumber(m.x)
+  if not x then return end
+  if x > REARM_X then edge.armed = true end
+  if x > EDGE_X or not edge.armed then return end
+  edge.armed = false      -- una vez por entrada: hasta salir de la franja y pasar de 40 px no vuelve a abrirse
+  if P:get('borde_izquierdo_lista') == false or not uosc.available() or not channel_on_screen() then return end
+  if uosc.open_type() ~= nil then return end           -- ya hay un menú abierto: no lo pisamos
+  -- Los observadores de propiedades corren en otro hilo: puede llegar este evento antes que el cierre. Si uosc ya
+  -- no tiene menú y aquí todavía consta el anterior, el cierre es ahora mismo y la gracia empieza a contar ya.
+  if edge.seen ~= nil then edge.closed_at = mp.get_time() end
+  if mp.get_time() - edge.closed_at < EDGE_COOLDOWN then return end
+  open_current_channels(true)
+end)
+
+mp.register_script_message('borde-izquierdo-toggle', function()
+  local on = P:get('borde_izquierdo_lista') == false
+  P:set('borde_izquierdo_lista', on)
+  publish()
+  osd(tr('Lista de canales al borde izquierdo') .. ': ' .. (on and tr('activado') or tr('desactivado')))
+end)
 
 N:binding('tv-menu', open_root)
 N:binding('tv-channels', open_current_channels)

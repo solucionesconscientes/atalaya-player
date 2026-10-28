@@ -655,6 +655,7 @@
   "Lista añadida, pero no se pudo cargar: %s": "Liste ajoutée, mais impossible de la charger : %s",
   "Lista añadida: %s (%s canales)": "Liste ajoutée : %s (%s chaînes)",
   "Lista borrada (queda una copia en la papelera de listas)": "Liste supprimée (une copie reste dans la corbeille des listes)",
+  "Lista de canales al borde izquierdo": "Liste des chaînes au bord gauche",
   "Lista de reproducción": "Liste de lecture",
   "Lista quitada": "Liste retirée",
   "Lista vacía": "Liste vide",

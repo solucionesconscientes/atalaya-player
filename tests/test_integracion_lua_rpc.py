@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import inspect
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ import pytest
 
 from mpvd.config import Settings
 from mpvd.server import MpvdServer
+from tests.test_mu_iptv import send_event, tv, wait_view  # noqa: F401 - fixture: lista de TV local + mpvd
+from tests.test_nav import press, wait_closed
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "mpv-config"
@@ -231,3 +234,86 @@ def test_los_parametros_que_pasa_lua_existen_en_el_metodo(daemon_methods):
         if unknown:
             wrong.append(f"{path.relative_to(ROOT)}:{line} {name}: {unknown} (acepta {sorted(accepted)})")
     assert not wrong, "parámetros que mpvd no acepta:\n" + "\n".join(wrong)
+
+
+# -- mu-iptv: el borde izquierdo abre la lista del canal que suena ---------------------------------------------------
+
+
+def test_borde_izquierdo_abre_la_lista_del_canal(tv, media_dir):
+    """Ratón al borde izquierdo (x ≤ 8) mientras suena un canal: la lista de su fuente, una vez por entrada.
+    Con x = 500 no aparece; tras cerrarla con Esc no se reabre sola; al volver a entrar (pasando de 40 px), sí."""
+    h, d, _ = tv
+    h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
+
+    # Un canal de la lista local, por el mismo camino que usa el menú (el fixture sirve la M3U por HTTP).
+    h.command("script-binding", "mu_iptv/tv-menu")
+    h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-iptv", timeout=15)
+    send_event(h, {"type": "activate", "index": 2, "value": {"view": "source", "id": "tdt_tv"}})
+    wait_view(h, "source:tdt_tv")
+    chans = {c["name"]: c for c in d.call("iptv.channels", {"source": "tdt_tv", "compact": True})["items"]}
+    send_event(h, {"type": "activate", "index": 1, "value": {"play": chans["Canal Uno"]["id"]}})
+    h.wait_property("path", lambda v: bool(v) and str(v).endswith("video30.mkv"), timeout=20)
+    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and isinstance(v.get("current"), dict)
+                    and v["current"].get("id") == chans["Canal Uno"]["id"], timeout=15)
+    h.wait_property("user-data/uosc/menu/type", lambda v: v is None, timeout=10)
+
+    def menu_type():
+        try:
+            return h.get("user-data/uosc/menu/type")
+        except Exception:  # noqa: BLE001 - sin menú, uosc puede dejar la propiedad sin definir
+            return None
+
+    def mouse(x):
+        h.command("mouse", x, 300)
+
+    # 2 · lejos del borde no aparece nada
+    mouse(500)
+    time.sleep(1.0)
+    assert menu_type() is None
+
+    # 1 · x ≤ 8: sale la lista de la fuente que suena (mismo título y filas que alt+shift+t)
+    mouse(4)
+    h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-iptv", timeout=15)
+    row = h.wait_property("user-data/mu/iptv-menu", lambda v: bool(v) and v.get("title") == "España · TV", timeout=20)
+    assert row["title"] == "España · TV"
+
+    # 3 · Esc la cierra; reentrar en la franja dentro de los 400 ms no la reabre
+    press(h, "ESC")           # espera a que uosc tenga enlazadas las teclas del menú
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and menu_type() is not None:
+        time.sleep(0.01)
+    mouse(500)
+    mouse(4)
+    time.sleep(0.15)
+    assert menu_type() is None
+
+    # ...y con el ratón de vuelta al centro tampoco se reabre sola
+    mouse(500)
+    time.sleep(0.6)
+    assert menu_type() is None
+
+    # 4 · saliendo de la franja (> 40 px) y volviendo a entrar, se abre otra vez
+    mouse(4)
+    h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-iptv", timeout=15)
+
+    # La preferencia lo desactiva (y se vuelve a activar): con TV sonando, el borde ya no abre nada.
+    press(h, "ESC")
+    wait_closed(h)
+    h.command("script-message-to", "mu_iptv", "borde-izquierdo-toggle")
+    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("borde_izquierdo_lista") is False, timeout=10)
+    mouse(500)
+    time.sleep(0.6)
+    mouse(4)
+    time.sleep(0.8)
+    assert menu_type() is None
+    h.command("script-message-to", "mu_iptv", "borde-izquierdo-toggle")
+    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("borde_izquierdo_lista") is True, timeout=10)
+
+    # Un vídeo local no es un canal: el borde no dispara (aunque state.current siga siendo el último canal).
+    h.command("loadfile", str(media_dir / "chapters.mkv"))
+    h.wait_property("path", lambda v: bool(v) and str(v).endswith("chapters.mkv"), timeout=20)
+    mouse(500)
+    time.sleep(0.5)
+    mouse(4)
+    time.sleep(0.8)
+    assert menu_type() is None

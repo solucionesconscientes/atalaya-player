@@ -48,6 +48,7 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 |---|---|
 | `alt+t` | Menú TV y radio (España TV/Radio, Mundo por país, Radio mundial, Favoritos, Recientes, Mis listas) |
 | `alt+shift+t` | **Cambiar de canal sin volver al menú**: abre directamente la lista de la fuente que estás viendo (TV o radio); el canal actual sale marcado con `▶ viendo ahora` |
+| Ratón al borde izquierdo (≤ 8 px) | **La lista de la fuente que suena** (TV o radio), con el buscador listo: escribe para filtrar; se abre una vez por entrada y se cierra con Esc. Se desactiva en Preferencias → *Lista de canales al borde izquierdo* |
 | `alt+f` | Buscar canal o emisora (paleta) |
 | `alt+UP` / `alt+DOWN` | Canal siguiente / anterior dentro del grupo actual |
 | `alt+G` | Guía de programación del canal que estás viendo (grabar un programa desde ella) |

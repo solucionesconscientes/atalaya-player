@@ -617,9 +617,13 @@ views.share_remote = function()
 end
 
 views.prefs = function()
+  local iptv = mp.get_property_native('user-data/mu/iptv')
+  local edge = not (type(iptv) == 'table' and iptv.borde_izquierdo_lista == false)
   show(tr('Preferencias'), {
     toggle('Continuar viendo donde lo dejé', opts.resume, 'history', 'resume'),
-    toggle('Pausar con un clic en el vídeo', opts.click_pause, 'touch_app', 'click_pause', { separator = true }),
+    toggle('Pausar con un clic en el vídeo', opts.click_pause, 'touch_app', 'click_pause'),
+    cmd('Lista de canales al borde izquierdo', edge and 'sí' or 'no', 'border_left',
+        { 'script-message-to', 'mu_iptv', 'borde-izquierdo-toggle' }, { active = edge, separator = true }),
     cmd('Mini reproductor', modes.mini and 'sí' or 'alt+F', 'picture_in_picture_alt',
         { 'script-binding', 'mu_modes/mini-toggle' }, { active = modes.mini }),
     cmd('Modo salón: letra grande y mando', modes.salon and 'sí' or 'no', 'weekend',
