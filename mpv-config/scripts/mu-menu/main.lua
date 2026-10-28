@@ -617,13 +617,9 @@ views.share_remote = function()
 end
 
 views.prefs = function()
-  local iptv = mp.get_property_native('user-data/mu/iptv')
-  local edge = not (type(iptv) == 'table' and iptv.borde_izquierdo_lista == false)
   show(tr('Preferencias'), {
     toggle('Continuar viendo donde lo dejé', opts.resume, 'history', 'resume'),
     toggle('Pausar con un clic en el vídeo', opts.click_pause, 'touch_app', 'click_pause'),
-    cmd('Lista de canales al borde izquierdo', edge and 'sí' or 'no', 'border_left',
-        { 'script-message-to', 'mu_iptv', 'borde-izquierdo-toggle' }, { active = edge, separator = true }),
     cmd('Mini reproductor', modes.mini and 'sí' or 'alt+F', 'picture_in_picture_alt',
         { 'script-binding', 'mu_modes/mini-toggle' }, { active = modes.mini }),
     cmd('Modo salón: letra grande y mando', modes.salon and 'sí' or 'no', 'weekend',
@@ -658,8 +654,8 @@ local HELP = {
   { 'ctrl+b', 'biblioteca: películas y series' },
   { 'alt+t', 'TV y radio' },
   { 'alt+R', '¿qué me he perdido?' },
-  { '⌫ · ←', 'volver atrás en un menú' },
-  { 'Esc', 'cerrar el menú' },
+  { '⌫ · botón atrás', 'cerrar el menú o volver a la lista del canal' },
+  { 'Esc', 'lo mismo que ⌫: nunca cierra el reproductor' },
   { 'q', 'salir' },
 }
 
@@ -773,7 +769,10 @@ local CURATED = {
   { title = tr('Bajar volumen'), cmd = 'add volume -2', key = '9', kw = 'volume down mas bajo' },
   { title = tr('Velocidad +10 %'), cmd = 'multiply speed 1.1', key = ']', kw = 'speed rapido acelerar' },
   { title = tr('Velocidad −10 %'), cmd = 'multiply speed 1/1.1', key = '[', kw = 'speed lento frenar' },
-  { title = tr('Velocidad normal'), cmd = 'set speed 1.0', key = 'BS' },
+  { title = tr('Velocidad normal'), cmd = 'set speed 1.0', key = 'ctrl+BS' },
+  { title = tr('Atrás: cerrar el menú o abrir el panel de canales'), cmd = 'script-binding mu_core/back', key = 'BS',
+    kw = 'atras volver panel canales retroceso esc' },
+  { title = tr('Esc: cerrar el menú (nunca salir)'), cmd = 'script-binding mu_core/back-close', key = 'ESC' },
   { title = tr('Capítulo siguiente'), cmd = 'add chapter 1', key = '!' },
   { title = tr('Capítulo anterior'), cmd = 'add chapter -1', key = '@' },
   { title = tr('Siguiente de la lista'), cmd = 'playlist-next', key = '>', kw = 'next siguiente' },

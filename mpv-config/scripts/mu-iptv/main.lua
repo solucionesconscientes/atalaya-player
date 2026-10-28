@@ -4,7 +4,8 @@
 -- tracks with readable names («Audio y subtítulos del canal», CC / VO / AD in the lists) and «Buscar en esta lista» in
 -- every list (iptv.tracks, iptv.search with a scope; H30).
 -- Script name: mu_iptv. Bindings: tv-menu, tv-search, tv-guide, tv-schedule, tv-tracks, zap-next, zap-prev,
--- record-toggle.
+-- record-toggle. The back key (⌫ and MBTN_BACK) arrives as `mu-back`; Esc arrives as `mu_core/back-close`. With a
+-- menu open they close it; with a channel playing, ⌫ opens its side panel (ADR-136). Neither ever quits.
 local mp = require('mp')
 local msg = require('mp.msg')
 local utils = require('mp.utils')
@@ -19,14 +20,15 @@ local tr = require('mu.i18n').t
 local N = nav.new()
 
 -- H57 · qué se hace en una franja programada: grabarlo (lo de siempre), ponerlo o las dos. Se recuerda.
-local P = prefs.ns('mu-iptv', { sched_mode = 'record', borde_izquierdo_lista = true })
+-- `origins`: por origen (fuente, país de iptv-org, país de radio) el último canal y la última búsqueda, para que
+-- volver al panel devuelva al mismo sitio; `back_hint`: el aviso de ⌫ se enseña una sola vez.
+local P = prefs.ns('mu-iptv', { sched_mode = 'record', origins = {}, last_source = '', back_hint = true })
 
 local SCRIPT = mp.get_script_name()
 local EVENT = 'mu-iptv-event'
 local MENU = 'mu-iptv'
 local SEARCH_MENU = 'mu-iptv-search'
--- Lista abierta por el borde izquierdo: el buscador queda a la vista para escribir directamente (uosc lo enfoca solo).
-local EDGE_MENU = { search_style = 'palette' }
+local SOURCE_TITLES = { tdt_tv = 'España · TV', tdt_radio = 'España · Radio', iptv_org = 'Mundo · TV' }
 
 local opts = {
   osd_seconds = 3,
@@ -65,7 +67,10 @@ local state = {
   tracks = nil,       -- the channel's audio/subtitle tracks named by mpvd: {type, id, label, role, selected, …}
   badges = {},        -- CC / VO / AD of the channel playing
   search_scope = '',  -- «Buscar en esta lista»: which list the palette searches (tests/diagnostics)
+  panel = nil,        -- side panel open: {key, name, items, query, channel, selected}
 }
+
+local back_visible = nil   -- whether the uosc «⌫ Canales» button is on the bar (only while a channel plays)
 
 -- «What is on now» per channel id: {title, expires} (a programme is valid until it ends, at most 10 min) or
 -- {expires} when the guide has nothing for it. Times are epoch seconds (os.time, the same clock as mpvd).
@@ -78,7 +83,9 @@ local function publish()
     depth = #state.stack, fallbacks = state.fallbacks, alternatives_left = #state.alternatives,
     epg_hints = state.epg_hints, guide = state.guide or '', schedule_event = state.schedule_event or '',
     tracks = state.tracks or {}, badges = state.badges, search_scope = state.search_scope,
-    borde_izquierdo_lista = P:get('borde_izquierdo_lista') ~= false,
+    panel = state.panel ~= nil, panel_source = state.panel and state.panel.key or '',
+    panel_selected = state.panel and state.panel.selected or '', panel_query = state.panel and state.panel.query or '',
+    last_source = P:get('last_source'), back_button = back_visible == true,
   })
 end
 
@@ -92,6 +99,36 @@ local function fail(err, what)
   state.last_error = what .. ': ' .. m
   publish()
   return m
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- estado recordado por origen (ADR-136): el último canal y la última búsqueda de cada lista. `origins` es una tabla
+-- de prefs (origen → {name, channel, search}); `last_source` es el último que se puso.
+
+-- Clave del origen de un canal: la fuente de TV, el país de iptv-org o el país de Radio Browser.
+local function origin_key(cur)
+  local source = cur and cur.source or ''
+  if source == 'radio_browser' then
+    return (cur.country and cur.country ~= '') and ('radio:' .. cur.country) or 'radio:top'
+  end
+  if source == 'iptv_org' and cur.country and cur.country ~= '' then return 'country:' .. cur.country end
+  return source
+end
+
+local function origin_for(key)
+  local all = P:get('origins')
+  local one = type(all) == 'table' and all[key]
+  return type(one) == 'table' and one or {}
+end
+
+local function remember_origin(key, fields)
+  if not key or key == '' then return end
+  local all = P:get('origins')
+  if type(all) ~= 'table' then all = {} end
+  local one = type(all[key]) == 'table' and all[key] or {}
+  for k, v in pairs(fields) do one[k] = v end
+  all[key] = one
+  P:set('origins', all)
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -126,6 +163,16 @@ local function apply_play_info(info)
   state.fallbacks = 0
   load_url(info.url, info.options)
   osd((info.channel.kind == 'radio' and '📻 ' or '📺 ') .. info.channel.name)
+  -- ADR-136 · recordar por origen el canal puesto, y decir una sola vez cómo se vuelve a la lista.
+  local key = origin_key(info.channel)
+  remember_origin(key, { channel = info.channel.id })
+  P:set('last_source', key)
+  if P:get('back_hint') then
+    P:set('back_hint', false)
+    local hint = tr('⌫ atrás · Canales en la barra · M menú')
+    -- detrás del nombre del canal, que lo pinta file-loaded
+    mp.add_timeout(1.0, function() mp.osd_message(hint, 3) end)
+  end
 end
 
 -- The list repeats some channels (mirrors, FAST copies): when the preferred URL fails to open, try the next one.
@@ -377,6 +424,50 @@ local function sort_key(text)
   return (tostring(text):gsub('[%z\1-\127\194-\244][\128-\191]*', function(c) return FOLD[c] or c end):lower())
 end
 
+-- ---------------------------------------------------------------------------------------------
+-- panel lateral de canales (ADR-136): la lista del origen que suena, encima del vídeo y con el buscador listo.
+-- Se abre con ⌫, con el botón «atrás» del ratón o con el botón ⌫ de la barra (Esc no lo abre: solo cierra).
+
+-- De dónde salen sus canales y con qué nombre se recuerda (el mismo `origin_key` que el estado recordado).
+local function panel_source(cur)
+  local key = origin_key(cur)
+  local remembered = origin_for(key)
+  if key == 'radio:top' then
+    return { key = key, name = remembered.name or 'Más votadas', method = 'radio.stations',
+             params = { top = 100, compact = true } }
+  end
+  if cur.source == 'radio_browser' then
+    return { key = key, name = remembered.name or cur.group_label or cur.country, method = 'radio.stations',
+             params = { country = cur.country, limit = opts.radio_limit, compact = true } }
+  end
+  if cur.source == 'iptv_org' and cur.country and cur.country ~= '' then
+    return { key = key, name = remembered.name or cur.country, method = 'iptv.channels',
+             params = { source = 'iptv_org', country = cur.country, compact = true, merge = true,
+                        limit = opts.world_limit } }
+  end
+  if cur.source and cur.source ~= '' then
+    return { key = key, name = remembered.name or SOURCE_TITLES[cur.source] or cur.source, method = 'iptv.channels',
+             params = { source = cur.source, compact = true, merge = true, limit = 5000 } }
+  end
+end
+
+-- Filtro del panel: todas las palabras, sin acentos ni mayúsculas (lo mismo que promete «Buscar en esta lista»).
+local function panel_filter(items, query)
+  if (query or '') == '' then return items end
+  local words = {}
+  for w in (query:lower() .. ' '):gmatch('(%S+)%s') do words[#words + 1] = sort_key(w) end
+  local out = {}
+  for _, ch in ipairs(items) do
+    local hay = sort_key((ch.name or '') .. ' ' .. (ch.group_label or ch.category or ch.group or ''))
+    local all = true
+    for _, w in ipairs(words) do
+      if not hay:find(w, 1, true) then all = false; break end
+    end
+    if all then out[#out + 1] = ch end
+  end
+  return out
+end
+
 -- Submenus by `key` (group/category), titled with the Spanish label mpvd sends (`<key>_label`).
 local function grouped_items(channels, key)
   local order, groups = {}, {}
@@ -409,7 +500,8 @@ local function menu_rows(items, depth)
   local rows = {}
   for i, it in ipairs(items) do
     if i > 60 then break end
-    local row = { title = it.title or '', hint = it.hint or '', separator = it.separator or false, value = it.value }
+    local row = { title = it.title or '', hint = it.hint or '', separator = it.separator or false,
+                  active = it.active or false, value = it.value }
     if it.items and depth < 2 then row.items = menu_rows(it.items, depth + 1) end
     table.insert(rows, row)
   end
@@ -418,6 +510,44 @@ end
 
 local function publish_menu(title, items)
   mp.set_property_native('user-data/mu/iptv-menu', { title = title, items = menu_rows(items, 1) })
+end
+
+-- Pinta el panel lateral con `query` (vacía = todos). `opening` lo abre; si no, actualiza el que ya está.
+local function panel_render(query, opening)
+  local p = state.panel
+  if not p then return end
+  p.query = query or ''
+  local shown = #p.items > 0 and panel_filter(p.items, p.query) or {}
+  local function pick(id)
+    for i, ch in ipairs(shown) do if ch.id == id then return i end end
+  end
+  local selected = pick(p.channel) or pick(p.fallback)
+  p.selected = selected and shown[selected].id or ''
+  local rows = {}
+  for i, ch in ipairs(shown) do rows[i] = channel_item(ch) end
+  if #p.items == 0 then
+    rows = uosc.loading_items(tr('Cargando canales…'))
+  elseif #shown == 0 then
+    rows = uosc.message_items(tr('Ningún canal coincide con «%s»'):format(p.query), 'search_off')
+  end
+  local title = tr('Canales · %s'):format(p.name or '')
+  local menu = {
+    type = MENU, title = title, items = rows, callback = { SCRIPT, EVENT },
+    on_close = 'callback', keep_open = false, item_actions = ACTIONS,
+    search_style = 'palette', search_debounce = 0, on_search = 'callback', search_suggestion = p.query,
+    selected_index = selected and #rows > 0 and selected or nil,
+    -- campos propios del parche de uosc (patches/README.md): 40 % del ancho pegado a la izquierda
+    panel_width = 0.4, panel_align = 'left',
+    footnote = tr('Escribe para buscar · Enter cambia de canal · Esc o ⌫ vuelve'),
+  }
+  publish_menu(title, rows)
+  publish()
+  if opening then
+    state.opening = false
+    uosc.open(menu)
+  else
+    uosc.update(menu)
+  end
 end
 
 -- H65 · un menú que se ha cerrado NO se reabre. Cada vista pinta dos veces (las filas de «cargando» al entrar y
@@ -553,11 +683,9 @@ views.root = function()
   show(tr('TV y radio'), items)
 end
 
-local SOURCE_TITLES = { tdt_tv = 'España · TV', tdt_radio = 'España · Radio', iptv_org = 'Mundo · TV' }
-
 views.source = function(args)
   local title = args.name or SOURCE_TITLES[args.id] or args.id
-  local extra = args.edge and EDGE_MENU or nil
+  remember_origin(args.id, { name = title })
   if not require_mpvd(title) then return end
   show_loading(title)
   rpc.call('iptv.channels', { source = args.id, compact = true, merge = true, limit = 5000 }, function(err, res)
@@ -577,7 +705,44 @@ views.source = function(args)
         value = { health = args.id }, keep_open = true, actions = {}, separator = true,
       })
       return items
-    end, extra)
+    end)
+  end, 60)
+end
+
+-- Panel lateral (ADR-136): la lista del origen que suena, encima del vídeo y sin parar nada. Se abre con las teclas
+-- de atrás o el botón ⌫ de la barra. Escribir filtra en el acto; elegir cambia de canal y lo cierra.
+views.panel = function()
+  local cur = type(state.current) == 'table' and state.current or nil
+  if not cur then
+    if uosc.open_type() == MENU then uosc.close(MENU) end
+    return
+  end
+  local src = panel_source(cur)
+  if not src then return end
+  local remembered = origin_for(src.key)
+  state.panel = {
+    key = src.key, name = src.name, items = {}, query = remembered.search or '',
+    channel = state.playing_id or cur.id, fallback = remembered.channel, selected = '',
+  }
+  panel_render(state.panel.query, true)
+  rpc.call(src.method, src.params, function(err, rows)
+    local p = state.panel
+    if not p or p.key ~= src.key then return end   -- cerrado (o cambiado de origen) mientras llegaba
+    if err then
+      state.panel, state.stack, state.view = nil, {}, ''
+      publish()
+      osd(tr('Canales: %s'):format(fail(err, src.method)))
+      if uosc.open_type() == MENU then uosc.close(MENU) end
+      return
+    end
+    if uosc.open_type() ~= MENU and not uosc.asking(MENU) then   -- se cerró con Esc mientras llegaba
+      state.panel, state.stack, state.view = nil, {}, ''
+      publish()
+      return
+    end
+    -- iptv.channels contesta {items = …}; radio.stations, una lista suelta
+    p.items = type(rows) == 'table' and (rows.items or rows) or {}
+    panel_render(p.query, false)
   end, 60)
 end
 
@@ -695,12 +860,14 @@ views.world = function()
 end
 
 views.country = function(args)
-  show_loading(args.name or args.id)
+  local title = args.name or args.id
+  remember_origin('country:' .. args.id, { name = title })
+  show_loading(title)
   rpc.call('iptv.channels', { source = 'iptv_org', country = args.id, compact = true, merge = true,
                               limit = opts.world_limit },
     function(err, res)
-      if err then show(args.name or args.id, uosc.message_items(fail(err, 'iptv.channels'), 'error')) return end
-      show_channels(args.name or args.id, res.items, function()
+      if err then show(title, uosc.message_items(fail(err, 'iptv.channels'), 'error')) return end
+      show_channels(title, res.items, function()
         local items = grouped_items(res.items, 'category')
         if #res.items > 0 then
           table.insert(items, 1, search_row({ kind = 'country', id = args.id, name = args.name or args.id }))
@@ -710,7 +877,7 @@ views.country = function(args)
     end, 60)
 end
 
-views.radio = function(args)
+views.radio = function()
   if not require_mpvd('Radio mundial') then return end
   show_loading('Radio mundial')
   rpc.call('radio.countries', nil, function(err, rows)
@@ -722,11 +889,11 @@ views.radio = function(args)
       table.insert(items, { title = ((c.flag or '') ~= '' and (c.flag .. ' ') or '') .. c.name, hint = tostring(c.count),
                             value = { view = 'radio_country', id = c.code, name = c.name }, separator = c.home or nil })
     end
-    show(tr('Radio mundial'), items, args.edge and EDGE_MENU or nil)
+    show(tr('Radio mundial'), items)
   end, 60)
 end
 
-local function radio_list(title, params, scope, extra)
+local function radio_list(title, params, scope)
   show_loading(title)
   rpc.call('radio.stations', params, function(err, rows)
     if err then show(title, uosc.message_items(fail(err, 'radio.stations'), 'error')) return end
@@ -738,17 +905,19 @@ local function radio_list(title, params, scope, extra)
       table.insert(items, it)
     end
     if #items == 0 then items = uosc.message_items(tr('Sin emisoras'), 'info') end
-    show(title, items, extra)
+    show(title, items)
   end, 60)
 end
 
 views.radio_country = function(args)
   local title = args.name or args.id
+  remember_origin('radio:' .. args.id, { name = title })
   radio_list(title, { country = args.id, limit = opts.radio_limit, compact = true },
-             { kind = 'radio_country', id = args.id, name = title }, args.edge and EDGE_MENU or nil)
+             { kind = 'radio_country', id = args.id, name = title })
 end
 
 views.radio_top = function()
+  remember_origin('radio:top', { name = 'Más votadas' })
   radio_list('Radio · más votadas', { top = 100, compact = true }, { kind = 'radio_top', name = 'Más votadas' })
 end
 
@@ -1478,6 +1647,14 @@ local function copy_channel(channel_id)
   end)
 end
 
+-- El panel se cierra olvidando su navegación: no pasa por `N:leave()` (⌫ en el panel cierra, no vuelve al menú).
+local function close_panel()
+  if not state.panel then return false end
+  state.panel, state.stack, state.view = nil, {}, ''
+  publish()
+  return true
+end
+
 mp.register_script_message(EVENT, function(json)
   local ev = utils.parse_json(json or '') or {}
   local back, handled = nav.classify(ev)
@@ -1561,6 +1738,8 @@ mp.register_script_message(EVENT, function(json)
       elseif ev.action == 'schedule' then
         open_view({ name = 'sched_time', args = { id = v.play, name = v.name } })
       else
+        if state.panel then remember_origin(state.panel.key, { channel = v.play, search = state.panel.query }) end
+        close_panel()
         play(v.play)
         if not ev.keep_open then
           uosc.close(MENU)
@@ -1575,12 +1754,21 @@ mp.register_script_message(EVENT, function(json)
   elseif ev.type == 'search' then
     local top = state.stack[#state.stack]
     if state.view == 'add_list' then add_list_prompt(ev.query or '')
+    elseif top and top.name == 'panel' and state.panel then
+      state.panel.query = ev.query or ''
+      remember_origin(state.panel.key, { search = state.panel.query })
+      if #state.panel.items > 0 then panel_render(state.panel.query, false) end
     elseif top and top.name == 'sched_time' then sched_time_prompt(top.args or {}, ev.query or '')
     elseif top and top.name == 'scoped_search' then run_search(ev.query or '', (top.args or {}).scope or {})
     else run_search(ev.query or '') end
   elseif ev.type == 'paste' then
     if state.view == 'add_list' then add_list(ev.value or '') end
   elseif ev.type == 'back' then
+    if state.panel then
+      close_panel()
+      uosc.close(MENU)
+      return
+    end
     local from = table.remove(state.stack)
     if from and from.name == 'sched_time' then state.force_open = true end  -- leaving the palette
     if #state.stack == 0 then
@@ -1620,6 +1808,7 @@ mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
       msg.info('menu closed (type=' .. tostring(open) .. '): navigation reset from view ' .. state.view)
       state.stack = {}
       state.view = ''
+      state.panel = nil
       publish()
     end
   end)
@@ -1639,8 +1828,7 @@ end
 
 -- «Cambiar de canal»: la lista de la fuente que estás viendo, sin pasar por el menú raíz. La reproducción sigue
 -- debajo del menú; al elegir, cambia el canal y el menú se cierra. En radio de Radio Browser se abre su país.
--- `edge`: abierta por el borde izquierdo, con el buscador a la vista.
-local function open_current_channels(edge)
+local function open_current_channels()
   if not uosc.available() then osd(tr('uosc no está cargado')) return end
   local cur = state.current
   if type(cur) ~= 'table' then
@@ -1651,23 +1839,19 @@ local function open_current_channels(edge)
   state.stack = {}
   if cur.source == 'radio_browser' then
     if cur.country and cur.country ~= '' then
-      open_view({ name = 'radio_country', args = { id = cur.country, name = cur.country, edge = edge } })
+      open_view({ name = 'radio_country', args = { id = cur.country, name = cur.country } })
     else
-      open_view({ name = 'radio', args = { edge = edge } })
+      open_view({ name = 'radio' })
     end
   elseif cur.source and cur.source ~= '' then
-    open_view({ name = 'source', args = { id = cur.source, name = SOURCE_TITLES[cur.source] or cur.source,
-                                          edge = edge } })
+    open_view({ name = 'source', args = { id = cur.source, name = SOURCE_TITLES[cur.source] or cur.source } })
   else
     open_root()
   end
 end
 
 -- ---------------------------------------------------------------------------------------------
--- borde izquierdo: la lista de la fuente que suena, una vez por entrada (ratón; TV y radio)
-
-local EDGE_X, REARM_X, EDGE_COOLDOWN = 8, 40, 0.4
-local edge = { armed = true, seen = nil, closed_at = -1 }
+-- atrás: ⌫ y el botón «atrás» del ratón llegan aquí (input.conf → mu_core/back). Nunca cierran el reproductor.
 
 -- mpv entrega las URL file:// como ruta simple; algunas listas de usuario (y las de prueba) apuntan a archivos.
 local function same_path(url, path)
@@ -1684,33 +1868,20 @@ local function channel_on_screen()
     and same_path(state.current_url, mp.get_property('path') or '')
 end
 
-mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
-  -- cerrado (con Esc o como sea): 400 ms de gracia antes de poder reabrir
-  if t == nil and edge.seen ~= nil then edge.closed_at = mp.get_time() end
-  edge.seen = t
-end)
+-- Panel lateral (ADR-136): la lista del origen que suena, encima del vídeo y sin parar la reproducción.
+local function open_panel()
+  if not uosc.available() or not channel_on_screen() then return end
+  state.stack = {}
+  open_view({ name = 'panel' })
+end
 
-mp.observe_property('mouse-pos', 'native', function(_, m)
-  if type(m) ~= 'table' then return end
-  local x = tonumber(m.x)
-  if not x then return end
-  if x > REARM_X then edge.armed = true end
-  if x > EDGE_X or not edge.armed then return end
-  edge.armed = false      -- una vez por entrada: hasta salir de la franja y pasar de 40 px no vuelve a abrirse
-  if P:get('borde_izquierdo_lista') == false or not uosc.available() or not channel_on_screen() then return end
-  if uosc.open_type() ~= nil then return end           -- ya hay un menú abierto: no lo pisamos
-  -- Los observadores de propiedades corren en otro hilo: puede llegar este evento antes que el cierre. Si uosc ya
-  -- no tiene menú y aquí todavía consta el anterior, el cierre es ahora mismo y la gracia empieza a contar ya.
-  if edge.seen ~= nil then edge.closed_at = mp.get_time() end
-  if mp.get_time() - edge.closed_at < EDGE_COOLDOWN then return end
-  open_current_channels(true)
-end)
-
-mp.register_script_message('borde-izquierdo-toggle', function()
-  local on = P:get('borde_izquierdo_lista') == false
-  P:set('borde_izquierdo_lista', on)
-  publish()
-  osd(tr('Lista de canales al borde izquierdo') .. ': ' .. (on and tr('activado') or tr('desactivado')))
+mp.register_script_message('mu-back', function()
+  -- con un menú (o un panel) abierto, atrás lo cierra; si no hay nada y suena un canal, abre su panel; si no, nada
+  if uosc.open_type() ~= nil or uosc.asking(MENU) or uosc.asking(SEARCH_MENU) then
+    uosc.close()
+    return
+  end
+  open_panel()
 end)
 
 N:binding('tv-menu', open_root)
@@ -1752,16 +1923,28 @@ mp.add_key_binding(nil, 'zap-next', function() zap(1) end)
 mp.add_key_binding(nil, 'zap-prev', function() zap(-1) end)
 mp.add_key_binding(nil, 'record-toggle', record_toggle)
 
-local function set_button()
+-- Dos botones: TV y radio (siempre) y «⌫ Canales», que solo está en la barra mientras suena un canal y hace lo
+-- mismo que la tecla. El de atrás se oculta cuando no hay canal (uosc recoloca el resto).
+local function set_buttons()
   uosc.set_button('mu-tv', {
     icon = 'live_tv', tooltip = 'TV y radio (alt+t)', active = state.current ~= nil and state.current ~= '',
     command = { 'script-binding', SCRIPT .. '/tv-menu' },
   })
+  local visible = channel_on_screen()
+  uosc.set_button('mu-back', {
+    icon = 'arrow_back', tooltip = '⌫ Canales (atrás)', hide = not visible,
+    command = { 'script-binding', 'mu_core/back' },
+  })
+  if visible ~= back_visible then
+    back_visible = visible
+    publish()
+  end
 end
-mp.register_script_message('uosc-version', set_button)
+mp.register_script_message('uosc-version', set_buttons)
 mp.observe_property('user-data/mu/core', 'native', function(_, core)
-  if core and core.uosc then set_button() end
+  if core and core.uosc then set_buttons() end
 end)
+mp.observe_property('path', 'string', function() set_buttons() end)
 
 publish()
 msg.info('mu-iptv loaded')

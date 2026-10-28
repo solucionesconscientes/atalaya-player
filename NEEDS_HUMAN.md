@@ -259,3 +259,21 @@ reanudé yo), así que no hay nada pendiente aquí. Si alguna vez lo ves parado:
   ~155 KB y llegaban 102 B). O sea: para descargar de verdad hace falta cuenta. Ponla en *Biblioteca → Ajustes →
   Usuario / Contraseña de OpenSubtitles*; con ella el menú enseña además el cupo que te queda (200 al día por IP en el
   API antiguo, 100 al día con cuenta gratuita en el nuevo).
+
+## 2026-10-28 · Windows: probar el instalador con el intérprete en `runtime\` (H75, no bloquea)
+El .exe y el .zip ya no llevan `.venv\Scripts\python.exe` (965 ficheros de un CPython completo con nombre de venv y
+sin `pyvenv.cfg`): ahora el intérprete va en `runtime\python.exe` y el instalador cierra por ruta y por nombre antes de
+borrar. Falta verlo en un Windows de verdad:
+1. Con la versión anterior **abierta**, ejecutar `Atalaya-0.1.0-setup.exe`: tiene que cerrarla, sustituir `runtime\`
+   (y borrar el `.venv` viejo si lo hay) y terminar **sin** «Error abriendo archivo para escritura».
+2. Con el programa abierto, ejecutar el instalador otra vez: mismo resultado (cierra y reinstala).
+3. En una instalación nueva, comprobar que existe `%LOCALAPPDATA%\Programs\Atalaya\runtime\python.exe`, que **no** hay
+   `.venv`, y que TV y radio conectan (mpvd arranca con ese Python).
+4. Probar `⌫`, `Esc`, el botón «atrás» del ratón y el botón ⌫ de la barra con TV y radio: ⌫ abre el panel del canal,
+   ⌫/Esc lo cierran sin cambiar de canal y `Esc` no cierra el reproductor.
+Si algo falla, el instalador deja el motivo en `%LOCALAPPDATA%\Atalaya\instalador.log` y el lanzador en
+`lanzador.log`; adjuntar los dos.
+
+## 2026-10-28 · Notion sin conector en la sesión (no bloquea)
+Esta sesión no tenía MCP de Notion, así que el avance de ADR-136/ADR-137 (panel de canales, ⌫/Esc y el intérprete de
+Windows en `runtime\`) no se ha registrado en la Bitácora. Se puede registrar desde una sesión con el conector.

@@ -2045,3 +2045,39 @@
   número que le sirve a quien va a pegarla en una IA.
   **(7) Ni navegador ni APIs ni claves** (decisión de Ser del 15-oct): el texto va y vuelve por el portapapeles. Las
   recomendadas (ChatGPT gratis, Gemini, Duck.ai) se dicen dentro de la app, en «Cómo funciona (4 pasos)», y nada más.
+- ADR-136 · Navegación de TV: ⌫ atrás de verdad, panel lateral de canales y Esc que ya no sale (2026-10-28).
+  **Qué se vio.** Viendo TV o radio no había forma de volver a la lista ni de retroceder: `Esc` heredaba el «salir» de
+  mpv y cerraba la aplicación, no existía tecla de atrás, y la lista se abría al acercar el ratón al borde izquierdo,
+  que al dueño le resultaba molesto.
+  **Decisión.** (1) Se retira el disparo por borde izquierdo con su preferencia, sin código muerto. (2) `⌫` (`BS`) y
+  `MBTN_BACK` son la tecla de atrás: con un menú abierto lo cierran; sin nada abierto, si suena un canal abren su
+  **panel lateral**; si no hay canal, no hacen nada. (3) `Esc` deja de salir: con algo abierto lo cierra y sin nada no
+  hace nada (salir sigue en `q` y en la ✕). Son dos bindings porque `Esc` **no** abre el panel: `mu_core/back` para ⌫
+  y el ratón, `mu_core/back-close` para Esc. (4) El panel es la lista del origen que suena (fuente, país de iptv-org o
+  país de Radio Browser), con el buscador enfocado, el canal actual resaltado y, por origen, la última búsqueda y el
+  último canal recordados en prefs; elegir canal reproduce al instante y cierra. (5) Mientras suena un canal hay un
+  botón ⌫ en la barra (`set-button`, oculto si no hay canal) que hace lo mismo que la tecla. (6) La primera vez que se
+  abre un canal se dice una sola vez «⌫ atrás · Canales en la barra · M menú».
+  **El parche de uosc, y por qué.** La API pública de uosc 5.13.0 no permite ni fijar el ancho de un menú ni pegarlo a
+  la izquierda. Esas dos cosas van en `patches/uosc-5.13.0-panel.patch` (campos `panel_width` y `panel_align`),
+  documentadas en `patches/README.md` y `docs/UOSC_API.md`; `tools/vendor.sh` las reaplica al actualizar uosc y
+  `tests/test_config.py` avisa si desaparecen. Para cerrar con ⌫ **no** hace falta parche: en un palette, uosc ya
+  manda `back` cuando el Retroceso deja la búsqueda vacía; con texto, ⌫ borra (como en cualquier buscador).
+  **Cómo se comprueba.** `tests/test_integracion_lua_rpc.py::test_atras_abre_el_panel_del_canal_y_esc_no_cierra`:
+  canal sonando → borde izquierdo no abre nada → ⌫ abre el panel con el canal resaltado → teclear filtra → ⌫ borra y,
+  vacío, cierra dejando el mismo canal → volver devuelve la misma búsqueda y el mismo resaltado → elegir otro canal
+  cambia la reproducción y cierra → `Esc` sin panel no cierra la aplicación → `Esc` con panel lo cierra → un vídeo
+  local no abre panel. `tests/test_nav.py` sigue comprobando los menús de todos los módulos con ⌫ y Esc.
+- ADR-137 · El intérprete de Windows va en `runtime\`, no dentro de `.venv\Scripts` (2026-10-28).
+  **Qué se vio.** El instalador NSIS se paraba con «Error abriendo archivo para escritura:
+  …\AppData\Local\Programs\Atalaya\.venv\Scripts\python.exe». El paquete llevaba 965 ficheros de un CPython completo en
+  una carpeta llamada `Scripts` y sin `pyvenv.cfg`: no era un venv, era una instalación con la carpeta `bin` renombrada.
+  **Decisión.** El zip y el .exe ponen el intérprete en `runtime\python.exe` (con su `Lib` y sus DLL al lado); el
+  `.pth` de site-packages sube tres niveles (`../../..`). `bin/mpv-uos.ps1` y `mu-core` buscan `runtime\python.exe`
+  primero y mantienen `.venv\Scripts\python.exe` como segunda opción para copias instaladas antes del cambio. El
+  instalador, antes de extraer: `SetOverwrite on`, cierra los procesos por ruta y por nombre (`python.exe`, `mpv.exe`,
+  `Atalaya.exe`) comprobando que ya no quedan, borra `$INSTDIR\runtime` y `$INSTDIR\.venv`, y si algo sigue vivo o no
+  se puede borrar enseña un mensaje en castellano con el proceso o la ruta, en vez del diálogo crudo de NSIS.
+  **Cómo se comprueba.** `tests/test_windows_scripts.py` exige el `runtime` en el .ps1 (y el `.venv` como respaldo
+  detrás), el zip sin ningún fichero bajo `.venv/`, el intérprete en `runtime/`, y el NSIS con el cierre previo, los
+  borrados y los mensajes. Nada de esto se ha ejecutado en un Windows de verdad: sigue en `docs/PLATAFORMAS.md`.

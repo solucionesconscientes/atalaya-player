@@ -21,6 +21,10 @@ Todos los menús de Atalaya Player son uno solo: el título lleva las migas («A
 al menú desde el que se abrió o, si se abrió con su tecla, al menú principal. `Esc` cierra. Con el ratón: clic en **Atrás**
 o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 
+**Fuera de los menús, `⌫` y el botón «atrás» del ratón abren el panel del canal que suena**; si no hay canal, no hacen
+nada. `Esc` cierra lo que esté abierto y, si no hay nada, tampoco hace nada: **ya no cierra el reproductor** (para
+salir: `q` o la ✕ de la ventana).
+
 ## Archivo y reproducción (uosc)
 | Tecla | Acción |
 |---|---|
@@ -47,8 +51,9 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 | Tecla | Acción |
 |---|---|
 | `alt+t` | Menú TV y radio (España TV/Radio, Mundo por país, Radio mundial, Favoritos, Recientes, Mis listas) |
+| `⌫`, botón «atrás» del ratón, botón ⌫ de la barra | **Panel de canales** del origen que suena (TV o radio), encima del vídeo y sin pararlo: 40 % del ancho a la izquierda, buscador listo y el canal actual resaltado. `Esc` o `⌫` lo cierran sin cambiar de canal; elegir otro cambia al instante. Si no suena ningún canal no hacen nada (nunca cierran el reproductor). Teclas de mpv: `BS` (Retroceso) y `MBTN_BACK` |
+| `Esc` `ESC` | Cierra el menú o el panel que esté abierto; con nada abierto no hace nada (nunca cierra el reproductor) |
 | `alt+shift+t` | **Cambiar de canal sin volver al menú**: abre directamente la lista de la fuente que estás viendo (TV o radio); el canal actual sale marcado con `▶ viendo ahora` |
-| Ratón al borde izquierdo (≤ 8 px) | **La lista de la fuente que suena** (TV o radio), con el buscador listo: escribe para filtrar; se abre una vez por entrada y se cierra con Esc. Se desactiva en Preferencias → *Lista de canales al borde izquierdo* |
 | `alt+f` | Buscar canal o emisora (paleta) |
 | `alt+UP` / `alt+DOWN` | Canal siguiente / anterior dentro del grupo actual |
 | `alt+G` | Guía de programación del canal que estás viendo (grabar un programa desde ella) |
@@ -82,9 +87,9 @@ o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 |---|---|
 | `SPACE` | Pausa / reproducir |
 | `←` / `→` | Retroceder / avanzar 5 s · `↑` / `↓` 60 s |
-| `[` / `]` | Velocidad −10 % / +10 % · `BS` velocidad normal |
+| `[` / `]` | Velocidad −10 % / +10 % · `ctrl+BS` velocidad normal |
 | `9` / `0` | Volumen − / + · `m` silenciar |
-| `f` | Pantalla completa · `ESC` salir de pantalla completa |
+| `f` | Pantalla completa (para salir, `f` otra vez; `Esc` ya no cierra el reproductor) |
 | `!` / `@` | Capítulo anterior / siguiente · `<` / `>` elemento anterior / siguiente de la lista |
 | `l` | Repetir el tramo elegido · sin nada elegido, bucle A-B de siempre · `L` repetir archivo |
 | `ctrl+x` | Tramos: marcar «desde aquí» y, al pulsar otra vez, «hasta aquí» |

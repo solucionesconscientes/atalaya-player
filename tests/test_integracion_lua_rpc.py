@@ -236,26 +236,38 @@ def test_los_parametros_que_pasa_lua_existen_en_el_metodo(daemon_methods):
     assert not wrong, "parámetros que mpvd no acepta:\n" + "\n".join(wrong)
 
 
-# -- mu-iptv: el borde izquierdo abre la lista del canal que suena ---------------------------------------------------
+# -- mu-iptv: ⌫ abre el panel del canal que suena; Esc ya no cierra la aplicación (ADR-136) --------------------------
 
 
-def test_borde_izquierdo_abre_la_lista_del_canal(tv, media_dir):
-    """Ratón al borde izquierdo (x ≤ 8) mientras suena un canal: la lista de su fuente, una vez por entrada.
-    Con x = 500 no aparece; tras cerrarla con Esc no se reabre sola; al volver a entrar (pasando de 40 px), sí."""
-    h, d, _ = tv
-    h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
-
-    # Un canal de la lista local, por el mismo camino que usa el menú (el fixture sirve la M3U por HTTP).
+def _play_channel(h, d, channel_name="Canal Uno"):
+    """Abre la lista de España · TV y pone un canal, como lo hace el menú (mismo camino que uosc)."""
     h.command("script-binding", "mu_iptv/tv-menu")
     h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-iptv", timeout=15)
     send_event(h, {"type": "activate", "index": 2, "value": {"view": "source", "id": "tdt_tv"}})
     wait_view(h, "source:tdt_tv")
     chans = {c["name"]: c for c in d.call("iptv.channels", {"source": "tdt_tv", "compact": True})["items"]}
-    send_event(h, {"type": "activate", "index": 1, "value": {"play": chans["Canal Uno"]["id"]}})
-    h.wait_property("path", lambda v: bool(v) and str(v).endswith("video30.mkv"), timeout=20)
+    send_event(h, {"type": "activate", "index": 1, "value": {"play": chans[channel_name]["id"]}})
     h.wait_property("user-data/mu/iptv", lambda v: bool(v) and isinstance(v.get("current"), dict)
-                    and v["current"].get("id") == chans["Canal Uno"]["id"], timeout=15)
+                    and v["current"].get("id") == chans[channel_name]["id"], timeout=20)
     h.wait_property("user-data/uosc/menu/type", lambda v: v is None, timeout=10)
+    return chans
+
+
+def _type_key(h, key):
+    """Teclea en el buscador del panel: uosc enlaza `any_unicode` unos ms después de abrir el menú."""
+    h.wait_property("input-bindings",
+                    lambda v: any(str(b.get("cmd", "")).endswith("script-binding uosc/menu-any_unicode")
+                                  for b in v or []), timeout=10)
+    h.command("keypress", key)
+
+
+def test_atras_abre_el_panel_del_canal_y_esc_no_cierra(tv, media_dir):
+    """⌫ (Backspace) abre el panel lateral del origen que suena, con el canal actual resaltado y el buscador listo;
+    ⌫ lo cierra sin cambiar de canal; elegir otro canal cambia la reproducción; Esc con el panel cerrado no cierra
+    la aplicación. El borde izquierdo ya no dispara nada."""
+    h, d, _ = tv
+    h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
+    chans = _play_channel(h, d)
 
     def menu_type():
         try:
@@ -263,57 +275,96 @@ def test_borde_izquierdo_abre_la_lista_del_canal(tv, media_dir):
         except Exception:  # noqa: BLE001 - sin menú, uosc puede dejar la propiedad sin definir
             return None
 
-    def mouse(x):
-        h.command("mouse", x, 300)
+    # El botón ⌫ de la barra está visible mientras suena un canal (y no antes: lo dice el propio estado).
+    st = h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("back_button") is True, timeout=15)
+    assert st["current"]["name"] == "Canal Uno"
 
-    # 2 · lejos del borde no aparece nada
-    mouse(500)
-    time.sleep(1.0)
+    # El borde izquierdo ya no abre nada: ni de lejos ni pegado al borde.
+    h.command("mouse", 500, 300)
+    time.sleep(0.4)
+    h.command("mouse", 4, 300)
+    time.sleep(0.8)
     assert menu_type() is None
 
-    # 1 · x ≤ 8: sale la lista de la fuente que suena (mismo título y filas que alt+shift+t)
-    mouse(4)
+    # 1 · ⌫ abre el panel del origen que suena, con el canal actual resaltado.
+    h.command("keypress", "BS")
     h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-iptv", timeout=15)
-    row = h.wait_property("user-data/mu/iptv-menu", lambda v: bool(v) and v.get("title") == "España · TV", timeout=20)
-    assert row["title"] == "España · TV"
+    st = h.wait_property("user-data/mu/iptv",
+                         lambda v: bool(v) and v.get("panel") is True
+                         and v.get("panel_selected") == chans["Canal Uno"]["id"], timeout=15)
+    assert st["panel_source"] == "tdt_tv"
+    filas = h.wait_property("user-data/mu/iptv-menu", lambda v: bool(v) and v.get("title") == "Canales · España · TV",
+                            timeout=15)
+    activos = [i["title"] for i in filas["items"] if i.get("active")]
+    assert activos == ["Canal Uno"], activos
 
-    # 3 · Esc la cierra; reentrar en la franja dentro de los 400 ms no la reabre
-    press(h, "ESC")           # espera a que uosc tenga enlazadas las teclas del menú
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline and menu_type() is not None:
-        time.sleep(0.01)
-    mouse(500)
-    mouse(4)
-    time.sleep(0.15)
-    assert menu_type() is None
+    # El buscador está enfocado: se escribe y la lista se filtra sola.
+    _type_key(h, "d")
+    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("panel_query") == "d", timeout=10)
 
-    # ...y con el ratón de vuelta al centro tampoco se reabre sola
-    mouse(500)
+    # 2 · ⌫ borra lo escrito y, al quedarse vacía la búsqueda, uosc cierra el panel (misma tecla): sigue el mismo canal.
+    press(h, "BS")
+    wait_closed(h)
+    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("panel") is False, timeout=10)
+    assert h.get("path").endswith("video30.mkv")
+    assert h.get("user-data/mu/iptv")["current"]["id"] == chans["Canal Uno"]["id"]
+
+    # 3 · abrir otra vez devuelve al mismo sitio (la última búsqueda quedó vacía): ⌫ con la búsqueda vacía lo cierra
+    # y sigue sonando el mismo canal.
+    h.command("keypress", "BS")
+    st = h.wait_property("user-data/mu/iptv",
+                         lambda v: bool(v) and v.get("panel") is True
+                         and v.get("panel_selected") == chans["Canal Uno"]["id"], timeout=15)
+    assert st["panel_query"] == ""
+    press(h, "BS")
+    wait_closed(h)
+    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("panel") is False, timeout=10)
+    assert h.get("path").endswith("video30.mkv")
+
+    # 4 · elegir otro canal cambia la reproducción al instante y cierra el panel.
+    h.command("keypress", "BS")
+    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("panel") is True, timeout=15)
+    send_event(h, {"type": "activate", "index": 1,
+                   "value": {"play": chans["Canal Dos"]["id"], "name": "Canal Dos"}})
+    h.wait_property("path", lambda v: bool(v) and str(v).endswith("chapters.mkv"), timeout=20)
+    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and isinstance(v.get("current"), dict)
+                    and v["current"].get("id") == chans["Canal Dos"]["id"], timeout=20)
+    wait_closed(h)
+    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("panel") is False, timeout=10)
+
+    # 5 · Esc con el panel cerrado NO cierra la aplicación (antes Esc era «salir» de mpv) y no abre nada.
+    h.command("keypress", "ESC")
     time.sleep(0.6)
+    assert h.proc.poll() is None, "Esc ha cerrado el reproductor"
     assert menu_type() is None
 
-    # 4 · saliendo de la franja (> 40 px) y volviendo a entrar, se abre otra vez
-    mouse(4)
-    h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-iptv", timeout=15)
-
-    # La preferencia lo desactiva (y se vuelve a activar): con TV sonando, el borde ya no abre nada.
+    # ...y Esc con el panel abierto lo cierra, dejando el canal que suena.
+    h.command("keypress", "BS")
+    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("panel") is True, timeout=15)
     press(h, "ESC")
     wait_closed(h)
-    h.command("script-message-to", "mu_iptv", "borde-izquierdo-toggle")
-    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("borde_izquierdo_lista") is False, timeout=10)
-    mouse(500)
-    time.sleep(0.6)
-    mouse(4)
-    time.sleep(0.8)
-    assert menu_type() is None
-    h.command("script-message-to", "mu_iptv", "borde-izquierdo-toggle")
-    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("borde_izquierdo_lista") is True, timeout=10)
+    assert h.get("path").endswith("chapters.mkv")
+    assert h.proc.poll() is None
 
-    # Un vídeo local no es un canal: el borde no dispara (aunque state.current siga siendo el último canal).
-    h.command("loadfile", str(media_dir / "chapters.mkv"))
-    h.wait_property("path", lambda v: bool(v) and str(v).endswith("chapters.mkv"), timeout=20)
-    mouse(500)
-    time.sleep(0.5)
-    mouse(4)
-    time.sleep(0.8)
+    # También en radio: el panel es la lista de su origen y se cierra igual.
+    radio = d.call("iptv.channels", {"source": "tdt_radio", "compact": True})["items"][0]
+    h.command("script-message-to", "mu_iptv", "mu-iptv-play", radio["id"])
+    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and isinstance(v.get("current"), dict)
+                    and v["current"].get("id") == radio["id"], timeout=20)
+    h.command("keypress", "BS")
+    st = h.wait_property("user-data/mu/iptv",
+                         lambda v: bool(v) and v.get("panel") is True
+                         and v.get("panel_selected") == radio["id"], timeout=15)
+    assert st["panel_source"] == "tdt_radio"
+    press(h, "ESC")
+    wait_closed(h)
+    assert h.get("user-data/mu/iptv")["current"]["id"] == radio["id"]
+
+    # Un vídeo local no es un canal: ⌫ no abre ningún panel (ni cierra el reproductor).
+    h.command("loadfile", str(media_dir / "voz_es_en.mkv"))
+    h.wait_property("path", lambda v: bool(v) and str(v).endswith("voz_es_en.mkv"), timeout=20)
+    h.command("keypress", "BS")
+    time.sleep(0.6)
     assert menu_type() is None
+    assert h.proc.poll() is None
+    assert h.script_errors() == [], h.script_errors()

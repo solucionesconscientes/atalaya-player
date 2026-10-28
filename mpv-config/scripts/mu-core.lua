@@ -96,9 +96,15 @@ end
 local function python_path()
   if opts.python ~= '' then return opts.python end
   if state.root ~= '' then
-    local candidate = is_windows() and utils.join_path(state.root, '.venv\\Scripts\\python.exe')
-      or utils.join_path(state.root, '.venv/bin/python')
-    if file_exists(candidate) then return candidate end
+    -- Windows package: the interpreter lives in <root>/runtime (the portable zip and the NSIS installer);
+    -- .venv\Scripts is kept for copies installed before that moved (ADR-137).
+    local candidates = is_windows()
+      and { utils.join_path(state.root, 'runtime\\python.exe'),
+            utils.join_path(state.root, '.venv\\Scripts\\python.exe') }
+      or { utils.join_path(state.root, '.venv/bin/python') }
+    for _, candidate in ipairs(candidates) do
+      if file_exists(candidate) then return candidate end
+    end
   end
   return is_windows() and 'python' or 'python3'
 end
@@ -514,6 +520,20 @@ local function quit_asking()
   -- si mpvd no contesta (o no está), no secuestrar la salida
   mp.add_timeout(6, function() if quitting then mp.command('quit') end end)
 end
+
+-- ⌫ / botón «atrás» del ratón (ADR-136): una sola tecla de atrás para todo el reproductor. Nunca cierra la
+-- aplicación; si hay un menú abierto lo cierra y, si suena un canal, abre su panel. Decide mu-iptv, que es quien sabe
+-- qué hay en pantalla y qué lista corresponde.
+mp.add_key_binding(nil, 'back', function()
+  mp.commandv('script-message-to', 'mu_iptv', 'mu-back')
+end)
+
+-- Esc ya no sale de mpv (era su «quit» por defecto). Con algo abierto, lo cierra; sin nada, no hace nada: no abre
+-- el panel (eso es solo ⌫ y el botón «atrás» del ratón) y nunca cierra el reproductor. Salir es `q` o la ✕.
+mp.add_key_binding(nil, 'back-close', function()
+  local t = mp.get_property_native('user-data/uosc/menu/type')
+  if type(t) == 'string' and t ~= '' then mp.commandv('script-message-to', 'uosc', 'close-menu') end
+end)
 
 mp.add_key_binding(nil, 'quit-ask', quit_asking)
 mp.register_script_message('mu-quit-ask', quit_asking)

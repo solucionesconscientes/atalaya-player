@@ -343,6 +343,8 @@ function Menu:update_dimensions()
 
 	for _, menu in ipairs(self.all) do
 		local width = math.max(menu.search and menu.search.max_width or 0, menu.max_width)
+		-- MPV-UOS patch (patches/uosc-5.13.0-panel.patch): a root menu can ask for a fixed share of the window.
+		if menu.is_root and tonumber(menu.panel_width) then width = display.width * tonumber(menu.panel_width) end
 		menu.width = round(clamp(min_width, width, width_available))
 		local title_height = (menu.is_root and menu.title or menu.search) and
 			self.scroll_step + self.separator_size + 1 or 0
@@ -369,6 +371,10 @@ end
 -- Updates element coordinates to match padding box of currently open (sub)menu.
 function Menu:update_coordinates()
 	local ax = round((display.width - self.current.width) / 2 - self.padding) + self.offset_x
+	-- MPV-UOS patch: `panel_align = 'left'` pins the root menu to the left edge (the TV channel panel).
+	if self.current.is_root and self.current.panel_align == 'left' then
+		ax = round(self.item_height / 2) - self.padding + self.offset_x
+	end
 	self:set_coordinates(
 		ax, self.current.top - self.padding,
 		ax + self.current.width + self.padding * 2, self.current.top + self.current.height + self.padding
