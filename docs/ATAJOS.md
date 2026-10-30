@@ -17,11 +17,11 @@ buscador con todas, y `alt+p` la paleta.
 
 ### Moverse por los menús
 Todos los menús de Atalaya Player son uno solo: el título lleva las migas («Atalaya Player › TV y radio › España») y la primera fila es
-**Atrás**. `⌫` (Retroceso) o `←` vuelven un nivel; en la raíz de un módulo (TV, descargas, subtítulos IA, filtros…) vuelven
+**Atrás**. **Retroceso** (la tecla `⌫`) o `←` vuelven un nivel; en la raíz de un módulo (TV, descargas, subtítulos IA, filtros…) vuelven
 al menú desde el que se abrió o, si se abrió con su tecla, al menú principal. `Esc` cierra. Con el ratón: clic en **Atrás**
 o en el menú anterior (a la izquierda), y el botón «atrás» del ratón.
 
-**Fuera de los menús, `⌫` y el botón «atrás» del ratón abren el panel del canal que suena**; si no hay canal, no hacen
+**Fuera de los menús, Retroceso y el botón «atrás» del ratón abren el panel del canal que suena**; si no hay canal, no hacen
 nada. `Esc` cierra lo que esté abierto y, si no hay nada, tampoco hace nada: **ya no cierra el reproductor** (para
 salir: `q` o la ✕ de la ventana).
 
@@ -51,7 +51,7 @@ salir: `q` o la ✕ de la ventana).
 | Tecla | Acción |
 |---|---|
 | `alt+t` | Menú TV y radio (España TV/Radio, Mundo por país, Radio mundial, Favoritos, Recientes, Mis listas) |
-| `⌫`, botón «atrás» del ratón, botón ⌫ de la barra | **Panel de canales** del origen que suena (TV o radio), encima del vídeo y sin pararlo: 40 % del ancho a la izquierda, buscador listo y el canal actual resaltado. `Esc` o `⌫` lo cierran sin cambiar de canal; elegir otro cambia al instante. Si no suena ningún canal no hacen nada (nunca cierran el reproductor). Teclas de mpv: `BS` (Retroceso) y `MBTN_BACK` |
+| `⌫`, botón «atrás» del ratón, botón **«Canales»** de la barra | **Panel de canales** del origen que suena (TV o radio), encima del vídeo y sin pararlo: una columna del **28 % del ancho** pegada a la izquierda, buscador arriba y el canal actual resaltado. `Esc` o Retroceso lo cierran sin cambiar de canal; **elegir otro canal cambia al instante y el panel se queda abierto**, con el resalte en el canal nuevo y la búsqueda y el sitio de la lista como estaban, así que se puede seguir zapeando. Si no suena ningún canal no hacen nada (nunca cierran el reproductor). Teclas de mpv: `BS` (Retroceso) y `MBTN_BACK` |
 | `Esc` `ESC` | Cierra el menú o el panel que esté abierto; con nada abierto no hace nada (nunca cierra el reproductor) |
 | `alt+shift+t` | **Cambiar de canal sin volver al menú**: abre directamente la lista de la fuente que estás viendo (TV o radio); el canal actual sale marcado con `▶ viendo ahora` |
 | `alt+f` | Buscar canal o emisora (paleta) |
@@ -100,7 +100,7 @@ salir: `q` o la ✕ de la ventana).
 | `I` | Estadísticas · `` ` `` consola |
 | `Q` | Salir guardando la posición (`quit-watch-later`) |
 
-Dentro de un menú de uosc: `/` busca, `⌫` vuelve atrás o cierra, `Tab` muestra las acciones del elemento, `ctrl+v` pega.
+Dentro de un menú de uosc: `/` busca, Retroceso (`⌫`) vuelve atrás o cierra, `Tab` muestra las acciones del elemento, `ctrl+v` pega.
 
 ## Subtítulos (mu-subs: pistas, internet y whisper.cpp vía mpvd)
 | Tecla | Acción |

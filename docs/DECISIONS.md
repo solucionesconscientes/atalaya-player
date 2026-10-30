@@ -2081,3 +2081,26 @@
   **Cómo se comprueba.** `tests/test_windows_scripts.py` exige el `runtime` en el .ps1 (y el `.venv` como respaldo
   detrás), el zip sin ningún fichero bajo `.venv/`, el intérprete en `runtime/`, y el NSIS con el cierre previo, los
   borrados y los mensajes. Nada de esto se ha ejecutado en un Windows de verdad: sigue en `docs/PLATAFORMAS.md`.
+- ADR-138 · Panel de canales: columna del 28 %, no se cierra al elegir y el botón se llama «Canales» (2026-10-30).
+  **Qué se vio.** El panel de ADR-136 funcionaba, pero se cerraba cada vez que se elegía un canal: para zapear había
+  que abrirlo, elegir, abrirlo otra vez (Retroceso), elegir… Y ocupaba el 40 % del ancho, más de lo que pide una lista
+  de nombres. Además el botón de la barra se llamaba «⌫ Canales», y ese símbolo se lee como «borrar», no como «lista».
+  **Decisión.** (1) El panel es una **columna fija del 28 %** del ancho de la ventana, pegada a la izquierda y encima
+  del vídeo, con el buscador arriba y el canal actual resaltado. (2) **Elegir un canal ya no lo cierra**: cambia la
+  reproducción al instante, el panel sigue abierto y el resalte pasa a la fila nueva, conservando lo escrito y el sitio
+  de la lista. Se cierra con Retroceso (`⌫`/`MBTN_BACK`), con `Esc` o pulsando otra vez el botón «Canales». Las listas
+  de siempre (menús) siguen cerrándose al elegir, como antes. (3) **Ningún disparador por borde del ratón**: no hay
+  observadores de `mouse-pos` ni franjas de hover — se quitaron en f397278 y no vuelven. (4) El botón de la barra se
+  llama **«Canales»** y lleva icono de lista (`format_list_bulleted`); su id interno sigue siendo `mu-back` porque hace
+  lo mismo que la tecla de atrás y la barra está oculta mientras hay un menú abierto. (5) En los pies de menú, «⌫ atrás»
+  pasa a **«Retroceso: atrás»** en todos los módulos: la tecla se nombra como en el teclado.
+  **Lo que hubo que tocar en uosc.** Al actualizar un menú, uosc **conserva** su `selected_index` (por eso el resalte se
+  quedaba donde estaba), así que el parche `patches/uosc-5.13.0-panel.patch` gana el campo `follow_selection`: cuando
+  es verdad y la vista manda `selected_index`, la selección se mueve sin perder la búsqueda ni el scroll. Es el mismo
+  parche de siempre —`tools/vendor.sh` lo reaplica y `tests/test_config.py` avisa si desaparece— y se regeneró desde el
+  zip cacheado de uosc 5.13.0 para que aplique limpio (`patch -p1` y el fichero queda idéntico).
+  **Cómo se comprueba.** `tests/test_integracion_lua_rpc.py::test_atras_abre_el_panel_del_canal_y_esc_no_cierra`, paso 4:
+  canal sonando → Retroceso abre el panel → escribir filtra → elegir otro canal cambia la reproducción, **el panel sigue
+  abierto**, el resalte y la fila activa son del canal nuevo y se conservan la búsqueda y el sitio de la lista → Retroceso
+  borra lo escrito y, con la búsqueda vacía, cierra sin cambiar de canal. `tests/test_mu_iptv.py` sigue comprobando que
+  las listas de menú se cierran al elegir.

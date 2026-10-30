@@ -28,8 +28,8 @@ falta, avisa con la orden para instalarlo. Los subtítulos IA y los modelos se d
   (Hasta ahora había un segundo menú escondido en `ctrl+m`, con 119 entradas y cuatro cosas repetidas: se retiró, y
   lo que solo estaba allí está ahora aquí.)
 - **Un solo menú**: el título dice dónde estás («Atalaya Player › Subtítulos › Subtítulos del vídeo»); la primera fila, **Atrás**, vuelve un
-  nivel, igual que `⌫` o `←`; `Esc` cierra. Desde la raíz de cualquier módulo (aunque lo abras con su tecla) *Atrás* te lleva al
-  menú principal. Las paletas de búsqueda (`ctrl+u`, `ctrl+f`, `alt+f`) se cierran con `⌫` cuando están vacías.
+  nivel, igual que Retroceso (`⌫`) o `←`; `Esc` cierra. Desde la raíz de cualquier módulo (aunque lo abras con su tecla) *Atrás* te lleva al
+  menú principal. Las paletas de búsqueda (`ctrl+u`, `ctrl+f`, `alt+f`) se cierran con Retroceso cuando están vacías.
 - **Lista de reproducción**: si abres **varios archivos a la vez** (seleccionándolos en el gestor de archivos, o
   `atalaya a.mkv b.mkv c.mp3`), entran todos en una lista y se te **enseña al empezar**, para que veas qué has abierto
   y en qué orden; se quita sola a los 4 segundos. Con `p` vuelves a verla, y los botones ⏮⏭ de la barra aparecen solo
@@ -61,7 +61,7 @@ falta, avisa con la orden para instalarlo. Los subtítulos IA y los modelos se d
 ## 2. Ver la tele y escuchar la radio
 1. `alt+t` → *España TV* / *España radio* (TDTChannels), *Mundo* (iptv-org por país y categoría, **sin canales de España**), *Radio mundial* (Radio Browser).
    - Mientras ves un canal, `alt+shift+t` abre **su lista** (sin pasar por el menú raíz); el canal actual queda marcado y `alt+↑`/`alt+↓` cambia dentro del grupo.
-   - O pulsa `⌫` (Retroceso) o el botón «atrás» del ratón: sale el **panel de canales** de su origen, encima del vídeo y sin parar la reproducción: 40 % del ancho a la izquierda, el buscador listo para escribir, el canal actual resaltado y la misma búsqueda y el mismo canal recordados la próxima vez. `Esc` o `⌫` lo cierran sin cambiar de canal; elegir otro cambia al instante. El botón ⌫ de la barra hace lo mismo. Si no suena ningún canal, `⌫` no hace nada; `Esc` ya no cierra el reproductor (con algo abierto, lo cierra; sin nada, nada).
+   - O pulsa Retroceso (`⌫`) o el botón «atrás» del ratón: sale el **panel de canales** de su origen, encima del vídeo y sin parar la reproducción: una columna del 28 % del ancho a la izquierda, el buscador arriba para escribir, el canal actual resaltado y la misma búsqueda y el mismo canal recordados la próxima vez. `Esc` o Retroceso lo cierran sin cambiar de canal; **elegir otro canal cambia al instante y el panel se queda abierto**, con el resalte en el canal nuevo, así que se puede seguir cambiando sin volver a abrirlo. El botón **«Canales»** de la barra (icono de lista) hace lo mismo que Retroceso: si hay un menú abierto lo cierra, y si estás viendo un canal abre el panel. Si no suena ningún canal, Retroceso no hace nada; `Esc` ya no cierra el reproductor (con algo abierto, lo cierra; sin nada, nada).
    *España* sale solo de TDTChannels; de *Mundo* se excluyen los canales españoles y cualquier URL que ya esté en la lista de España, para que no haya dos entradas del mismo canal.
    En *Mundo* y *Radio mundial* tu país sale primero; países y categorías van en español. En *Radio mundial* se quitan solo las copias que ya están en *España · Radio*, no todas las emisoras españolas.
 2. `alt+f` busca un canal por nombre sin acentos; `Tab` sobre un canal: favorito o copiar URL.

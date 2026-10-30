@@ -1039,3 +1039,14 @@ traducidas. Al acabar G8 van **1.661 por idioma** (3.322 traducciones) y no qued
       `mu-menu` repita un título.
 - [x] E3 Raíz de ocho categorías (lo comprueba el mismo test). Lo que solo sirve para el archivo que se está viendo
       («Continuar viendo», «Resumen e índice») va como fila contextual, no como categoría fija.
+
+## H77 · El panel de canales se queda abierto al cambiar de canal (2026-10-30, decidido por Ser) — ADR-138 · [x]
+- [x] A1 Columna fija del **28 %** del ancho, pegada a la izquierda y encima del vídeo (antes 40 %), con el buscador
+      arriba y el canal actual resaltado.
+- [x] A2 **Elegir un canal no cierra el panel**: cambia al instante, sigue abierto y el resalte pasa a la fila nueva,
+      conservando lo escrito y el sitio de la lista. Se cierra con Retroceso, con `Esc` o con el botón otra vez.
+      Para mover el resalte sin perder nada, el parche de uosc gana el campo `follow_selection` (ADR-138).
+- [x] A3 Sin disparador por borde del ratón: sigue sin haber observadores de `mouse-pos` ni franjas de hover.
+- [x] A4 El botón de la barra pasa a llamarse **«Canales»** con icono de lista (`format_list_bulleted`), y en los pies
+      de menú «⌫ atrás» pasa a «Retroceso: atrás» en los 18 ficheros Lua y en los catálogos `en`/`fr`.
+- [ ] A5 Lo revisa Ser viendo TV en Windows con el `.exe` nuevo (aquí solo se ha medido el ancho con mpv sin ventana).

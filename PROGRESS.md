@@ -1,6 +1,29 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## Resumen para Ser (2026-10-30) · la lista de canales es una columna que no se cierra al cambiar de canal (H77, ADR-138)
+
+Lo que decidiste tras usar TV con el panel de ADR-136: zapear obligaba a abrirlo y cerrarlo una vez por canal, y el
+botón decía «⌫ Canales», que se lee como «borrar».
+
+- **Columna del 28 %** del ancho de la ventana, pegada a la izquierda y encima del vídeo (antes 40 %), con el buscador
+  arriba y el canal actual resaltado.
+- **Elegir un canal ya no cierra el panel**: cambia al instante, el panel sigue abierto y el resalte pasa a la fila
+  nueva, con lo escrito y el sitio de la lista como estaban. Se cierra con Retroceso, con `Esc` o pulsando otra vez el
+  botón. Las listas de los menús de siempre siguen cerrándose al elegir.
+- **Botón «Canales»** en la barra, con icono de lista: es lo que hace mientras ves TV (abrir la lista), y dentro de un
+  menú sigue siendo el de atrás (la barra está oculta mientras hay menú).
+- **«⌫ atrás» pasa a «Retroceso: atrás»** en los pies de menú de los 18 ficheros Lua, con sus entradas renombradas en
+  `locales/en.json` y `locales/fr.json` (52 cadenas en cada uno). No hay `es.json`: el castellano es la clave.
+- **Sin disparador por borde del ratón**, como pediste: no se ha añadido ningún observador de `mouse-pos`.
+- Detrás hay un parche de uosc de tres campos: `panel_width`, `panel_align` y el nuevo `follow_selection`, porque uosc
+  conserva el `selected_index` al actualizar un menú y sin eso el resalte se quedaba en el canal anterior.
+
+**Tests que pasan** (medidos en server1, máquina libre): `test_i18n.py` 44 · `test_nav.py` 16 · `test_mu_chapters.py`
+76 · `test_integracion_lua_rpc.py` 4 · `test_mu_iptv.py` 3 · `test_atajos.py` y `test_config.py` 10.
+**SIGUIENTE PASO**: verlo en Windows con el `.exe` nuevo (aquí se ha probado con mpv sin ventana) y decidir si el 28 %
+se queda así o pide otro número. Commits en `feat/capitulos-ia`, sin push y sin publicar.
+
 ## Resumen para Ser (2026-10-22) · los capítulos tienen su pantalla, la IA contesta en dos bloques y los cajones se trocean (H76)
 
 Lo que pediste después de usar el flujo: que se entienda de un vistazo qué hay y qué se puede hacer, que la IA
