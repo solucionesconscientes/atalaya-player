@@ -233,6 +233,11 @@ function Menu:update(data)
 		local old_menu = self.by_id[menu.id]
 		if old_menu then
 			table_assign_props(menu, old_menu, menu_state_props)
+			-- MPV-UOS patch: an updated root menu can move its selection (the channel panel highlights the
+			-- channel that just started playing) without losing its search or its scroll.
+			if menu.is_root and menu.follow_selection and menu_data.selected_index then
+				menu.selected_index = menu_data.selected_index
+			end
 		else
 			new_menus[#new_menus + 1] = menu
 		end

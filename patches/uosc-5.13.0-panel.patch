@@ -1,8 +1,19 @@
 diff --git a/mpv-config/scripts/uosc/elements/Menu.lua b/mpv-config/scripts/uosc/elements/Menu.lua
-index dc0a7aa..391113e 100644
 --- a/mpv-config/scripts/uosc/elements/Menu.lua
 +++ b/mpv-config/scripts/uosc/elements/Menu.lua
-@@ -343,6 +343,8 @@ function Menu:update_dimensions()
+@@ -233,6 +233,11 @@
+ 		local old_menu = self.by_id[menu.id]
+ 		if old_menu then
+ 			table_assign_props(menu, old_menu, menu_state_props)
++			-- MPV-UOS patch: an updated root menu can move its selection (the channel panel highlights the
++			-- channel that just started playing) without losing its search or its scroll.
++			if menu.is_root and menu.follow_selection and menu_data.selected_index then
++				menu.selected_index = menu_data.selected_index
++			end
+ 		else
+ 			new_menus[#new_menus + 1] = menu
+ 		end
+@@ -343,6 +348,8 @@
  
  	for _, menu in ipairs(self.all) do
  		local width = math.max(menu.search and menu.search.max_width or 0, menu.max_width)
@@ -11,7 +22,7 @@ index dc0a7aa..391113e 100644
  		menu.width = round(clamp(min_width, width, width_available))
  		local title_height = (menu.is_root and menu.title or menu.search) and
  			self.scroll_step + self.separator_size + 1 or 0
-@@ -369,6 +371,10 @@ end
+@@ -369,6 +376,10 @@
  -- Updates element coordinates to match padding box of currently open (sub)menu.
  function Menu:update_coordinates()
  	local ax = round((display.width - self.current.width) / 2 - self.padding) + self.offset_x

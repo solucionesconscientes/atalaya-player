@@ -61,16 +61,18 @@ cual y se ignora. `items` es obligatorio (si no es array, error y no se abre: `m
 | `bind_keys` | array de teclas | Teclas extra que uosc captura y reenvía como evento `key` (p. ej. `{'f1','ctrl+d'}`; `Menu.lua:1201`). |
 | `id` | string | Solo tiene sentido en submenús; la raíz siempre es `{root}` (`Menu.lua:190-194`). |
 
-### 2.1b Campos añadidos por el parche de MPV-UOS (ADR-136)
+### 2.1b Campos añadidos por el parche de MPV-UOS (ADR-136, ADR-138)
 
-La API de 5.13.0 no permite fijar el ancho de un menú, pegarlo a un borde ni cambiar qué hace ⌫ en la búsqueda. Para el
-panel de canales hay un parche mínimo en `patches/uosc-5.13.0-panel.patch` (se reaplica con `tools/vendor.sh`) que
-añade tres campos **solo al menú raíz**; el resto de menús no los usa y se comportan igual que siempre:
+La API de 5.13.0 no permite fijar el ancho de un menú, pegarlo a un borde, cambiar qué hace ⌫ en la búsqueda ni mover la
+selección al actualizar. Para el panel de canales hay un parche mínimo en `patches/uosc-5.13.0-panel.patch` (se reaplica
+con `tools/vendor.sh`) que añade tres campos **solo al menú raíz**; el resto de menús no los usa y se comportan igual que
+siempre:
 
 | Campo | Tipo | Qué hace |
 |---|---|---|
-| `panel_width` | número (0..1) | El ancho de la raíz pasa a ser esa fracción del ancho de la ventana (el panel de canales usa `0.4`). |
+| `panel_width` | número (0..1) | El ancho de la raíz pasa a ser esa fracción del ancho de la ventana (el panel de canales usa `0.28`). |
 | `panel_align` | `'left'` | Pega la raíz al margen izquierdo en vez de centrarla. |
+| `follow_selection` | `true` | En un `update` de un menú ya abierto, lleva el resalte al `selected_index` que manda la vista. Sin él, uosc conserva el del menú anterior (es lo que hace que el panel de canales pueda cambiar de canal sin cerrarse). |
 
 Para cerrar el panel con ⌫ no hace falta parche: en un `palette`, `search_query_backspace` ya manda `back` cuando la
 búsqueda se queda vacía (`Menu.lua:1054-1060`), que es justo lo que pide el panel de canales.

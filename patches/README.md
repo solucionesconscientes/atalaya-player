@@ -6,7 +6,7 @@ componente. Así actualizar uosc no pierde el cambio sin que nadie se entere.
 
 | Parche | Componente | Qué añade | Decisión |
 |---|---|---|---|
-| `uosc-5.13.0-panel.patch` | uosc 5.13.0 (`scripts/uosc/elements/Menu.lua`) | Campos de menú `panel_width` (tanto por uno del ancho) y `panel_align = 'left'` (pegar a la izquierda) | ADR-136 |
+| `uosc-5.13.0-panel.patch` | uosc 5.13.0 (`scripts/uosc/elements/Menu.lua`) | Campos de menú `panel_width` (tanto por uno del ancho), `panel_align = 'left'` (pegar a la izquierda) y `follow_selection` (al actualizar, mover el resalte a `selected_index` sin perder búsqueda ni scroll) | ADR-136, ADR-138 |
 
 Se aplican solos al vendorizar:
 

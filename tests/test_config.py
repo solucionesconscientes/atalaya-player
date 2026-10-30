@@ -81,7 +81,7 @@ def test_el_parche_del_panel_sigue_aplicado(project_root: Path):
     """ADR-136 · el panel de canales necesita dos cosas que la API de uosc no da (ancho fijo y pegado a la
     izquierda). Van en patches/ y tools/vendor.sh las reaplica; este test avisa si al actualizar uosc se perdió."""
     menu = (project_root / "mpv-config" / "scripts" / "uosc" / "elements" / "Menu.lua").read_text(encoding="utf-8")
-    for campo in ("panel_width", "panel_align"):
+    for campo in ("panel_width", "panel_align", "follow_selection"):
         assert campo in menu, f"falta el parche de uosc ({campo})"
     assert (project_root / "patches" / "uosc-5.13.0-panel.patch").is_file()
     vendor = (project_root / "tools" / "vendor.sh").read_text(encoding="utf-8")
