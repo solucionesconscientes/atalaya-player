@@ -70,7 +70,7 @@ local state = {
   panel = nil,        -- side panel open: {key, name, items, query, channel, selected}
 }
 
-local back_visible = nil   -- whether the uosc «Retroceso Canales» button is on the bar (only while a channel plays)
+local back_visible = nil   -- whether the uosc «Canales» button is on the bar (only while a channel plays)
 
 -- «What is on now» per channel id: {title, expires} (a programme is valid until it ends, at most 10 min) or
 -- {expires} when the guide has nothing for it. Times are epoch seconds (os.time, the same clock as mpvd).
@@ -425,8 +425,9 @@ local function sort_key(text)
 end
 
 -- ---------------------------------------------------------------------------------------------
--- panel lateral de canales (ADR-136): la lista del origen que suena, encima del vídeo y con el buscador listo.
--- Se abre con Retroceso, con el botón «atrás» del ratón o con el botón Retroceso de la barra (Esc no lo abre: solo cierra).
+-- panel de canales (ADR-136 y ADR-138): la lista del origen que suena, encima del vídeo y con el buscador listo.
+-- Se abre con Retroceso, con el botón «atrás» del ratón o con el botón «Canales» de la barra (Esc no lo abre: solo
+-- cierra) y es una columna fija del 28 % pegada a la izquierda.
 
 -- De dónde salen sus canales y con qué nombre se recuerda (el mismo `origin_key` que el estado recordado).
 local function panel_source(cur)
@@ -536,9 +537,11 @@ local function panel_render(query, opening)
     on_close = 'callback', keep_open = false, item_actions = ACTIONS,
     search_style = 'palette', search_debounce = 0, on_search = 'callback', search_suggestion = p.query,
     selected_index = selected and #rows > 0 and selected or nil,
-    -- campos propios del parche de uosc (patches/README.md): 40 % del ancho pegado a la izquierda
-    panel_width = 0.4, panel_align = 'left',
-    footnote = tr('Escribe para buscar · Enter cambia de canal · Esc o Retroceso vuelve'),
+    -- Campos propios del parche de uosc (patches/README.md): columna del 28 % pegada a la izquierda (ADR-138) y
+    -- `follow_selection` para que, al cambiar de canal sin cerrar el panel, el resalte se vaya a la fila nueva
+    -- sin perder lo escrito ni el sitio de la lista.
+    panel_width = 0.28, panel_align = 'left', follow_selection = true,
+    footnote = tr('Escribe para buscar · Enter cambia de canal · Esc o Retroceso cierran la lista'),
   }
   publish_menu(title, rows)
   publish()
@@ -548,6 +551,17 @@ local function panel_render(query, opening)
   else
     uosc.update(menu)
   end
+end
+
+-- ADR-138 · el resalte del panel se va al canal que acaba de ponerse, sin cerrarlo. `channel` es lo que busca
+-- `pick()` en la lista, así que basta con apuntarlo y volver a pintar: `follow_selection` (el parche de uosc) lleva
+-- el resalte a esa fila y `update` conserva lo escrito y el sitio de la lista.
+local function highlight_panel_channel(channel_id)
+  local p = state.panel
+  if not p or channel_id == nil or channel_id == '' then return end
+  if state.view ~= 'panel' or not uosc.mine(MENU) then return end
+  p.channel, p.fallback = channel_id, nil
+  panel_render(p.query, false)
 end
 
 -- H65 · un menú que se ha cerrado NO se reabre. Cada vista pinta dos veces (las filas de «cargando» al entrar y
@@ -709,8 +723,9 @@ views.source = function(args)
   end, 60)
 end
 
--- Panel lateral (ADR-136): la lista del origen que suena, encima del vídeo y sin parar nada. Se abre con las teclas
--- de atrás o el botón Retroceso de la barra. Escribir filtra en el acto; elegir cambia de canal y lo cierra.
+-- Panel de canales (ADR-136 y ADR-138): la lista del origen que suena, encima del vídeo y sin parar nada. Se abre
+-- con las teclas de atrás o el botón «Canales» de la barra. Escribir filtra en el acto; elegir cambia de canal y el
+-- panel se queda abierto, con el resalte en el canal nuevo.
 views.panel = function()
   local cur = type(state.current) == 'table' and state.current or nil
   if not cur then
@@ -1738,10 +1753,14 @@ mp.register_script_message(EVENT, function(json)
       elseif ev.action == 'schedule' then
         open_view({ name = 'sched_time', args = { id = v.play, name = v.name } })
       else
+        -- ADR-138 · elegir un canal NO cierra el panel: cambia al instante, se queda abierto y el resalte pasa al
+        -- canal nuevo, con la búsqueda y el sitio de la lista como estaban (se cierra con Retroceso o con el botón
+        -- «Canales», no al elegir). En las listas de siempre, elegir cierra el menú, como hasta ahora.
         if state.panel then remember_origin(state.panel.key, { channel = v.play, search = state.panel.query }) end
-        close_panel()
-        play(v.play)
-        if not ev.keep_open then
+        local in_panel = state.panel ~= nil and state.view == 'panel'
+        if not in_panel then close_panel() end
+        play(v.play, in_panel and function() highlight_panel_channel(v.play) end or nil)
+        if not in_panel and not ev.keep_open then
           uosc.close(MENU)
           uosc.close(SEARCH_MENU)
         end
@@ -1923,8 +1942,8 @@ mp.add_key_binding(nil, 'zap-next', function() zap(1) end)
 mp.add_key_binding(nil, 'zap-prev', function() zap(-1) end)
 mp.add_key_binding(nil, 'record-toggle', record_toggle)
 
--- Dos botones: TV y radio (siempre) y «Retroceso Canales», que solo está en la barra mientras suena un canal y hace lo
--- mismo que la tecla. El de atrás se oculta cuando no hay canal (uosc recoloca el resto).
+-- Dos botones: TV y radio (siempre) y «Canales», que solo está en la barra mientras suena un canal y hace lo
+-- mismo que la tecla de atrás. Se oculta cuando no hay canal (uosc recoloca el resto).
 local function set_buttons()
   uosc.set_button('mu-tv', {
     icon = 'live_tv', tooltip = 'TV y radio (alt+t)', active = state.current ~= nil and state.current ~= '',
@@ -1932,7 +1951,10 @@ local function set_buttons()
   })
   local visible = channel_on_screen()
   uosc.set_button('mu-back', {
-    icon = 'arrow_back', tooltip = 'Retroceso Canales (atrás)', hide = not visible,
+    -- ADR-138 · al ver TV/radio este botón abre la lista de canales, así que se llama «Canales» y lleva icono de
+    -- lista (el ⌫ se leía como «borrar»). Dentro de un menú sigue siendo el de atrás, y la barra está oculta
+    -- mientras hay un menú, así que el nombre no engaña.
+    icon = 'format_list_bulleted', tooltip = 'Canales', hide = not visible,
     command = { 'script-binding', 'mu_core/back' },
   })
   if visible ~= back_visible then

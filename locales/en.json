@@ -485,7 +485,7 @@
   "Escribe para buscar": "Type to search",
   "Escribe para buscar (sin acentos vale)": "Type to search (accents are optional)",
   "Escribe para buscar en esta lista (sin acentos vale)": "Type to search in this list (accents are optional)",
-  "Escribe para buscar · Enter cambia de canal · Esc o Retroceso vuelve": "Type to search · Enter changes channel · Esc or Backspace goes back",
+  "Escribe para buscar · Enter cambia de canal · Esc o Retroceso cierran la lista": "Type to search · Enter changes channel · Esc or Backspace close the list",
   "Escribe un comando, canal, vídeo reciente o algo del diálogo": "Type a command, a channel, a recent video or something that was said",
   "Escribe un mensaje": "Write a message",
   "Escribe un minuto: 2:15, 1:02:15, 135 segundos, o +30 / −30": "Type a time: 2:15, 1:02:15, 135 seconds, or +30 / −30",

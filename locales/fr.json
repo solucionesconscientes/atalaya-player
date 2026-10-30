@@ -485,7 +485,7 @@
   "Escribe para buscar": "Écrivez pour chercher",
   "Escribe para buscar (sin acentos vale)": "Écrivez pour chercher (les accents sont facultatifs)",
   "Escribe para buscar en esta lista (sin acentos vale)": "Écrivez pour chercher dans cette liste (les accents sont facultatifs)",
-  "Escribe para buscar · Enter cambia de canal · Esc o Retroceso vuelve": "Tapez pour chercher · Entrée change de chaîne · Échap ou Retour arrière revient",
+  "Escribe para buscar · Enter cambia de canal · Esc o Retroceso cierran la lista": "Tapez pour chercher · Entrée change de chaîne · Échap ou Retour arrière ferment la liste",
   "Escribe un comando, canal, vídeo reciente o algo del diálogo": "Tapez une commande, une chaîne, une vidéo récente ou une phrase entendue",
   "Escribe un mensaje": "Écrivez un message",
   "Escribe un minuto: 2:15, 1:02:15, 135 segundos, o +30 / −30": "Saisis un instant : 2:15, 1:02:15, 135 secondes, ou +30 / −30",

@@ -262,9 +262,10 @@ def _type_key(h, key):
 
 
 def test_atras_abre_el_panel_del_canal_y_esc_no_cierra(tv, media_dir):
-    """⌫ (Backspace) abre el panel lateral del origen que suena, con el canal actual resaltado y el buscador listo;
-    ⌫ lo cierra sin cambiar de canal; elegir otro canal cambia la reproducción; Esc con el panel cerrado no cierra
-    la aplicación. El borde izquierdo ya no dispara nada."""
+    """⌫ (Backspace) abre el panel de canales del origen que suena, con el canal actual resaltado y el buscador listo;
+    ⌫ lo cierra sin cambiar de canal; elegir otro canal cambia la reproducción y el panel se queda abierto con el
+    resalte en el canal nuevo (ADR-138); Esc con el panel cerrado no cierra la aplicación. El borde izquierdo ya no
+    dispara nada."""
     h, d, _ = tv
     h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
     chans = _play_channel(h, d)
@@ -321,16 +322,30 @@ def test_atras_abre_el_panel_del_canal_y_esc_no_cierra(tv, media_dir):
     h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("panel") is False, timeout=10)
     assert h.get("path").endswith("video30.mkv")
 
-    # 4 · elegir otro canal cambia la reproducción al instante y cierra el panel.
+    # 4 · elegir otro canal cambia la reproducción al instante y el panel SE QUEDA ABIERTO con el resalte en el canal
+    # nuevo (ADR-138): se puede seguir zapeando sin volver a abrirlo, y lo escrito y el sitio de la lista se conservan.
     h.command("keypress", "BS")
     h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("panel") is True, timeout=15)
+    _type_key(h, "d")                       # la búsqueda filtra a «Canal Dos»
+    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("panel_query") == "d", timeout=10)
     send_event(h, {"type": "activate", "index": 1,
                    "value": {"play": chans["Canal Dos"]["id"], "name": "Canal Dos"}})
     h.wait_property("path", lambda v: bool(v) and str(v).endswith("chapters.mkv"), timeout=20)
-    h.wait_property("user-data/mu/iptv", lambda v: bool(v) and isinstance(v.get("current"), dict)
-                    and v["current"].get("id") == chans["Canal Dos"]["id"], timeout=20)
+    st = h.wait_property("user-data/mu/iptv",
+                         lambda v: bool(v) and isinstance(v.get("current"), dict)
+                         and v["current"].get("id") == chans["Canal Dos"]["id"]
+                         and v.get("panel_selected") == chans["Canal Dos"]["id"], timeout=20)
+    assert st["panel"] is True and st["panel_query"] == "d", st        # sigue abierto y con lo escrito intacto
+    assert menu_type() == "mu-iptv", "elegir un canal ha cerrado el panel"
+    filas = h.wait_property("user-data/mu/iptv-menu", lambda v: bool(v) and len(v.get("items") or []) > 0, timeout=10)
+    assert [i["title"] for i in filas["items"] if i.get("active")] == ["Canal Dos"]
+
+    # 4b · y se cierra con Retroceso, no al elegir: al vaciarse la búsqueda uosc manda «atrás» y el panel se cierra
+    # sin cambiar de canal.
+    press(h, "BS")
     wait_closed(h)
     h.wait_property("user-data/mu/iptv", lambda v: bool(v) and v.get("panel") is False, timeout=10)
+    assert h.get("path").endswith("chapters.mkv")      # cerrar no cambia de canal
 
     # 5 · Esc con el panel cerrado NO cierra la aplicación (antes Esc era «salir» de mpv) y no abre nada.
     h.command("keypress", "ESC")
