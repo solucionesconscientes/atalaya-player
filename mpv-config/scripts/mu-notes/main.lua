@@ -76,7 +76,7 @@ local function show(title, items, extra)
   remember(items)
   publish()
   -- H63 · una respuesta tardía NO puede devolverte a una vista de la que acabas de salir: medido en el log, al
-  -- pulsar ⌫ en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
+  -- pulsar Retroceso en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
   -- pila vacía ya no estamos en ninguna vista, así que no se abre nada; y para actualizar vale `mine`, que cuenta
   -- el menú pedido y aún no confirmado (uosc atiende el open y el update en ese orden).
   if uosc.mine(MENU) and not state.force_open then
@@ -136,7 +136,7 @@ views.root = function()
       table.insert(items, { title = tr('Abrir la carpeta de notas'), icon = 'folder_open',
                             value = { open_dir = dirname(files[1].file) } })
     end
-    show(ROOT_TITLE, items, { footnote = tr('Enter abre · ⌫ atrás') })
+    show(ROOT_TITLE, items, { footnote = tr('Enter abre · Retroceso: atrás') })
   end, 15)
 end
 
@@ -178,7 +178,7 @@ views.file = function(args)
       table.insert(items, { title = tr('Exportar a una carpeta (Obsidian)…'), icon = 'drive_folder_upload',
                             hint = dir ~= '' and dir or nil, value = { export = 'folder' } })
     end
-    show(title, items, { footnote = tr('Enter salta al minuto · Tab: editar / borrar · ⌫ atrás') })
+    show(title, items, { footnote = tr('Enter salta al minuto · Tab: editar / borrar · Retroceso: atrás') })
   end, 15)
 end
 
@@ -248,7 +248,7 @@ local function input_menu(query)
     or 'Carpeta de destino'
   return { type = INPUT, title = titulo, items = items,
     callback = { SCRIPT, INPUT_EVENT }, search_style = 'palette', search_debounce = 0, on_search = 'callback',
-    on_close = 'callback', search_suggestion = query, footnote = tr('Enter guarda · ⌫ en vacío vuelve') }
+    on_close = 'callback', search_suggestion = query, footnote = tr('Enter guarda · Retroceso en vacío vuelve') }
 end
 
 local function open_input(mode, text, extra)

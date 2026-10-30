@@ -335,7 +335,7 @@ local function show(title, items, extra)
   remember(items)
   publish()
   -- H63 · una respuesta tardía NO puede devolverte a una vista de la que acabas de salir: medido en el log, al
-  -- pulsar ⌫ en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
+  -- pulsar Retroceso en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
   -- pila vacía ya no estamos en ninguna vista, así que no se abre nada; y para actualizar vale `mine`, que cuenta
   -- el menú pedido y aún no confirmado (uosc atiende el open y el update en ese orden).
   if uosc.mine(MENU) and not state.force_open then
@@ -411,7 +411,7 @@ views.eq = function()
     table.insert(items, { title = e.title, icon = state.eq == e.id and 'radio_button_checked' or 'radio_button_unchecked',
       active = state.eq == e.id, value = { eq = e.id } })
   end
-  show(tr('Ecualizador'), items, { footnote = tr('se recuerda · ⌫ atrás') })
+  show(tr('Ecualizador'), items, { footnote = tr('se recuerda · Retroceso: atrás') })
 end
 
 local function set_eq(id, quiet)

@@ -226,7 +226,7 @@ local function show(title, items, extra)
   remember(items)
   publish()
   -- H63 · una respuesta tardía NO puede devolverte a una vista de la que acabas de salir: medido en el log, al
-  -- pulsar ⌫ en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
+  -- pulsar Retroceso en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
   -- pila vacía ya no estamos en ninguna vista, así que no se abre nada; y para actualizar vale `mine`, que cuenta
   -- el menú pedido y aún no confirmado (uosc atiende el open y el update en ese orden).
   if uosc.mine(MENU) and not state.force_open then
@@ -330,7 +330,7 @@ views.root = function()
     table.insert(items, { title = tr('Carpetas'), hint = scan or tostring(st.folders or 0), icon = 'folder',
                           value = { view = 'folders' } })
     table.insert(items, { title = tr('Ajustes'), icon = 'settings', value = { view = 'settings' } })
-    show(ROOT_TITLE, items, { footnote = tr('Enter abre · Tab: acciones · ⌫ atrás · Esc cierra') })
+    show(ROOT_TITLE, items, { footnote = tr('Enter abre · Tab: acciones · Retroceso: atrás · Esc cierra') })
   end, 15)
 end
 
@@ -371,7 +371,7 @@ views.artist = function(args)
     if err then show(title, uosc.message_items(fail(err, 'music.artist'), 'error')) return end
     local items = group_rows({ artist = args.key }, 'todo')
     for _, a in ipairs(res.albums or {}) do table.insert(items, album_row(a, false)) end
-    show(title, items, { footnote = tr('Enter abre · Tab: acciones · ⌫ atrás') })
+    show(title, items, { footnote = tr('Enter abre · Tab: acciones · Retroceso: atrás') })
   end, 15)
 end
 
@@ -388,7 +388,7 @@ views.albums = function(args)
     if #(rows or {}) == 0 then
       for _, it in ipairs(uosc.message_items(tr('No hay álbumes'), 'album')) do table.insert(items, it) end
     end
-    show(title, items, { footnote = tr('Enter abre · Tab: acciones · ⌫ atrás'), search_style = 'on_demand' })
+    show(title, items, { footnote = tr('Enter abre · Tab: acciones · Retroceso: atrás'), search_style = 'on_demand' })
   end, 15)
 end
 
@@ -424,7 +424,7 @@ views.genres = function()
                             value = { view = 'genre', genre = g.key, title = g.name }, actions = PLAY_ACTIONS })
     end
     if #items == 0 then items = uosc.message_items(tr('Tus pistas no tienen género'), 'category') end
-    show(tr('Géneros'), items, { footnote = tr('Enter abre · Tab: acciones · ⌫ atrás'), search_style = 'on_demand' })
+    show(tr('Géneros'), items, { footnote = tr('Enter abre · Tab: acciones · Retroceso: atrás'), search_style = 'on_demand' })
   end, 15)
 end
 
@@ -449,8 +449,8 @@ local function track_list_view(name, title, method, params, pick, extra_rows, va
       for _, it in ipairs(uosc.message_items(tr('Nada por aquí todavía'), 'music_off')) do table.insert(items, it) end
     end
     if name == 'list' then state.move = { kind = 'list', first = first, name = params.name } end
-    show(title, items, { footnote = name == 'list' and 'Enter reproduce · Ctrl+↑/↓ o Tab: mover, quitar · ⌫ atrás'
-                           or 'Enter reproduce · Tab: a continuación, a la cola, a una lista · ⌫ atrás',
+    show(title, items, { footnote = name == 'list' and 'Enter reproduce · Ctrl+↑/↓ o Tab: mover, quitar · Retroceso: atrás'
+                           or 'Enter reproduce · Tab: a continuación, a la cola, a una lista · Retroceso: atrás',
                          on_move = name == 'list' and 'callback' or nil })
   end, 20)
 end
@@ -483,7 +483,7 @@ views.lists = function()
         if #(smart or {}) > 0 then items[#items].separator = true end
       end
       table.insert(items, { title = tr('Por género…'), icon = 'category', value = { view = 'genres' } })
-      show(tr('Listas'), items, { footnote = tr('Enter abre · Tab: acciones · ⌫ atrás') })
+      show(tr('Listas'), items, { footnote = tr('Enter abre · Tab: acciones · Retroceso: atrás') })
     end, 15)
   end, 15)
 end
@@ -511,7 +511,7 @@ views.sort = function(args)
     { title = tr('Por título'), icon = 'sort_by_alpha', value = { sort = 'title', name = args.name } },
     { title = tr('Por año'), icon = 'event', value = { sort = 'year', name = args.name } },
     { title = tr('Al azar'), icon = 'shuffle', value = { sort = 'shuffle', name = args.name } },
-  }, { footnote = tr('Se guarda en la lista · ⌫ atrás') })
+  }, { footnote = tr('Se guarda en la lista · Retroceso: atrás') })
 end
 
 views.smart = function(args)
@@ -553,7 +553,7 @@ views.queue = function()
       table.insert(items, { title = tr('Guardar la cola como lista…'), icon = 'save', value = { input = 'save_queue' } })
     end
     if n > 0 then table.insert(items, { title = tr('Vaciar la cola'), icon = 'clear_all', value = { clear_queue = true } }) end
-    show(tr('Cola'), items, { footnote = tr('Enter salta a la pista · Ctrl+↑/↓ o Tab: mover, quitar · ⌫ atrás'),
+    show(tr('Cola'), items, { footnote = tr('Enter salta a la pista · Ctrl+↑/↓ o Tab: mover, quitar · Retroceso: atrás'),
                           on_move = 'callback' })
   end
   if #paths > 0 and rpc.connected() then
@@ -587,7 +587,7 @@ views.history = function()
       items[#items].separator = true
       table.insert(items, { title = tr('Borrar el historial'), icon = 'delete', value = { clear_history = true } })
     end
-    show(tr('Historial'), items, { footnote = tr('Solo en tu equipo, sin enviar nada · ⌫ atrás'), search_style = 'on_demand' })
+    show(tr('Historial'), items, { footnote = tr('Solo en tu equipo, sin enviar nada · Retroceso: atrás'), search_style = 'on_demand' })
   end, 15)
 end
 
@@ -615,7 +615,7 @@ views.folders = function()
       table.insert(items, { title = tr('Volver a buscar en todas'), icon = 'refresh', value = { rescan = true },
         hint = state.scanning and string.format('buscando %d %%', math.floor(state.scan_progress * 100)) or nil })
     end
-    show(tr('Carpetas'), items, { footnote = tr('Tab: volver a buscar / quitar (no se borra nada) · ⌫ atrás') })
+    show(tr('Carpetas'), items, { footnote = tr('Tab: volver a buscar / quitar (no se borra nada) · Retroceso: atrás') })
   end, 15)
 end
 
@@ -663,7 +663,7 @@ views.eq = function()
     table.insert(items, { title = tr('Los perfiles vienen de «Sonido e imagen» (mu-av)'), icon = 'info', selectable = false,
                           muted = true })
   end
-  show(tr('Ecualizador'), items, { footnote = tr('Perfiles para auriculares arriba · se recuerda · ⌫ atrás') })
+  show(tr('Ecualizador'), items, { footnote = tr('Perfiles para auriculares arriba · se recuerda · Retroceso: atrás') })
 end
 
 views.pick = function()
@@ -677,7 +677,7 @@ views.pick = function()
                             value = { add_to = l.name } })
     end
     show(tr('Añadir a una lista'), items, { footnote = (state.pick and plural(#state.pick, 'pista', 'pistas') or '') ..
-                                          ' · Enter añade · ⌫ atrás' })
+                                          ' · Enter añade · Retroceso: atrás' })
   end, 15)
 end
 
@@ -710,7 +710,7 @@ local function input_menu(query, items)
   return { type = INPUT, title = INPUT_TITLES[inp.mode] or 'Escribe', items = items,
     callback = { SCRIPT, INPUT_EVENT }, search_style = 'palette', search_debounce = inp.mode == 'search' and 250 or 0,
     on_search = 'callback', on_close = 'callback', search_suggestion = query,
-    footnote = inp.mode == 'search' and 'Enter reproduce o abre · ⌫ en vacío vuelve' or 'Enter guarda · ⌫ en vacío vuelve' }
+    footnote = inp.mode == 'search' and 'Enter reproduce o abre · Retroceso en vacío vuelve' or 'Enter guarda · Retroceso en vacío vuelve' }
 end
 
 local function open_input(mode, text, extra)

@@ -201,7 +201,7 @@ local function show(title, items, extra)
   remember(items)
   publish()
   -- H63 · una respuesta tardía NO puede devolverte a una vista de la que acabas de salir: medido en el log, al
-  -- pulsar ⌫ en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
+  -- pulsar Retroceso en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
   -- pila vacía ya no estamos en ninguna vista, así que no se abre nada; y para actualizar vale `mine`, que cuenta
   -- el menú pedido y aún no confirmado (uosc atiende el open y el update en ese orden).
   if uosc.mine(MENU) and not state.force_open then
@@ -313,7 +313,7 @@ views.root = function()
                           value = { choose_dir = true } }
     items[#items + 1] = { title = tr('Usar la tarjeta gráfica'), icon = 'memory', hint = hw_hint(),
                           value = { toggle_hw = true } }
-    show(ROOT_TITLE, items, { footnote = tr('Enter elige · ⌫ atrás · Esc cierra') })
+    show(ROOT_TITLE, items, { footnote = tr('Enter elige · Retroceso: atrás · Esc cierra') })
   end)
 end
 
@@ -326,7 +326,7 @@ views.folder = function(args)
       it.value.folder = true
       items[#items + 1] = it
     end
-    show(tr('Carpeta %s'):format(basename(args.folder)), items, { footnote = tr('Cada archivo es una tarea · ⌫ atrás') })
+    show(tr('Carpeta %s'):format(basename(args.folder)), items, { footnote = tr('Cada archivo es una tarea · Retroceso: atrás') })
   end)
 end
 
@@ -445,7 +445,7 @@ local function tasks_items()
   return items
 end
 
-local TASKS_FOOT = 'Tab: cancelar · repetir · quitar · abrir carpeta · Enter: detalles · ⌫ atrás'
+local TASKS_FOOT = 'Tab: cancelar · repetir · quitar · abrir carpeta · Enter: detalles · Retroceso: atrás'
 
 views.tasks = function()
   if not require_mpvd(TASKS_TITLE) then return end
@@ -577,7 +577,7 @@ local function input_menu(query)
   end
   return { type = INPUT, title = INPUT_TITLES[mode], items = items, callback = { SCRIPT, INPUT_EVENT },
     search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-    search_suggestion = query, footnote = tr('Enter elige · ⌫ en vacío vuelve') }
+    search_suggestion = query, footnote = tr('Enter elige · Retroceso en vacío vuelve') }
 end
 
 local function open_input(mode, text)

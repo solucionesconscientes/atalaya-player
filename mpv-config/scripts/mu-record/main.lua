@@ -413,7 +413,7 @@ local function show(title, items, extra)
   remember(items)
   publish()
   -- H63 · una respuesta tardía NO puede devolverte a una vista de la que acabas de salir: medido en el log, al
-  -- pulsar ⌫ en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
+  -- pulsar Retroceso en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
   -- pila vacía ya no estamos en ninguna vista, así que no se abre nada; y para actualizar vale `mine`, que cuenta
   -- el menú pedido y aún no confirmado (uosc atiende el open y el update en ese orden).
   if uosc.mine(MENU) and not state.force_open then
@@ -492,7 +492,7 @@ views.root = function()
     table.insert(items, { title = string.format('Guardando %d…', busy), icon = 'hourglass_top', selectable = false,
                           muted = true })
   end
-  show(ROOT_TITLE, items, { footnote = tr('Enter elige · ⌫ atrás · Esc cierra') })
+  show(ROOT_TITLE, items, { footnote = tr('Enter elige · Retroceso: atrás · Esc cierra') })
 end
 
 -- H43/B1 · el envase, con lo que de verdad se puede elegir y lo que pasa si no cabe
@@ -544,7 +544,7 @@ local function input_menu(query)
     or { { title = tr('Escribe o pega la carpeta (vacío = predeterminada)'), icon = 'edit', value = { save = '' } } }
   return { type = INPUT, title = tr('Carpeta de grabaciones'), items = items, callback = { SCRIPT, INPUT_EVENT },
     search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-    search_suggestion = query, footnote = tr('Enter guarda · ⌫ en vacío vuelve') }
+    search_suggestion = query, footnote = tr('Enter guarda · Retroceso en vacío vuelve') }
 end
 
 mp.register_script_message(INPUT_EVENT, function(json)

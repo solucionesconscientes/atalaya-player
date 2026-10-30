@@ -1,8 +1,8 @@
 -- Shared menu navigation for the mu-* scripts (H15, ADR-041): breadcrumbs in the menu title, an "Atrás" first row,
--- ←/⌫ go back one level, and leaving the root of a module returns to whoever opened it (the main menu by default).
+-- ←/Retroceso go back one level, and leaving the root of a module returns to whoever opened it (the main menu by default).
 -- Every mpv script runs in its own Lua state, so the navigation stack is shared by hand-off: the opener sends
 -- `script-message-to <script> mu-nav-open <entry> <json {crumbs, script, view}>` and the module remembers that parent
--- until the user leaves it. Verified against uosc 5.13: the title is only drawn on a root menu; ⌫ (and the mouse back
+-- until the user leaves it. Verified against uosc 5.13: the title is only drawn on a root menu; Retroceso (and the mouse back
 -- button) at a root send {type:'back'}; ← at a root without a search arrives as {type:'key', id:'left'};
 -- `script-binding uosc/menu-back` goes to the parent submenu or, at a root, sends 'back'.
 local mp = require('mp')
@@ -36,13 +36,13 @@ function M.join(crumbs)
 end
 
 function M.back_item()
-  return { title = 'Atrás', icon = 'arrow_back', hint = '⌫', value = { nav = 'back' }, keep_open = true }
+  return { title = 'Atrás', icon = 'arrow_back', hint = 'Retroceso', value = { nav = 'back' }, keep_open = true }
 end
 
 local function is_back_value(v) return type(v) == 'table' and v.nav == 'back' end
 
 -- Adds the back row on top of a root menu and keeps the keyboard selection where it was (the first active or
--- selectable item, one row lower). Palettes are left alone: ⌫ on an empty query already goes back.
+-- selectable item, one row lower). Palettes are left alone: Retroceso on an empty query already goes back.
 function M.decorate(menu)
   if menu.search_style == 'palette' then return menu end
   local items = menu.items or {}

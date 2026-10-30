@@ -299,7 +299,7 @@ local function note_menu(query)
   return { type = NOTE_MENU, title = tr('Nota en %s'):format(fmt_time(mp.get_property_number('time-pos') or 0)),
            items = items,
     callback = { SCRIPT, NOTE_EVENT }, search_style = 'palette', search_debounce = 100, on_search = 'callback',
-    search_suggestion = note_query, footnote = tr('Enter guarda con enlace de tiempo · ⌫ cierra') }
+    search_suggestion = note_query, footnote = tr('Enter guarda con enlace de tiempo · Retroceso cierra') }
 end
 
 local function open_note_menu()

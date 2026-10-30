@@ -521,7 +521,7 @@ local function quit_asking()
   mp.add_timeout(6, function() if quitting then mp.command('quit') end end)
 end
 
--- ⌫ / botón «atrás» del ratón (ADR-136): una sola tecla de atrás para todo el reproductor. Nunca cierra la
+-- Retroceso / botón «atrás» del ratón (ADR-136): una sola tecla de atrás para todo el reproductor. Nunca cierra la
 -- aplicación; si hay un menú abierto lo cierra y, si suena un canal, abre su panel. Decide mu-iptv, que es quien sabe
 -- qué hay en pantalla y qué lista corresponde.
 mp.add_key_binding(nil, 'back', function()
@@ -529,7 +529,7 @@ mp.add_key_binding(nil, 'back', function()
 end)
 
 -- Esc ya no sale de mpv (era su «quit» por defecto). Con algo abierto, lo cierra; sin nada, no hace nada: no abre
--- el panel (eso es solo ⌫ y el botón «atrás» del ratón) y nunca cierra el reproductor. Salir es `q` o la ✕.
+-- el panel (eso es solo Retroceso y el botón «atrás» del ratón) y nunca cierra el reproductor. Salir es `q` o la ✕.
 mp.add_key_binding(nil, 'back-close', function()
   local t = mp.get_property_native('user-data/uosc/menu/type')
   if type(t) == 'string' and t ~= '' then mp.commandv('script-message-to', 'uosc', 'close-menu') end

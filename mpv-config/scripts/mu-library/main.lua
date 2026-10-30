@@ -141,7 +141,7 @@ local function show(title, items, extra)
   remember(items)
   publish()
   -- H63 · una respuesta tardía NO puede devolverte a una vista de la que acabas de salir: medido en el log, al
-  -- pulsar ⌫ en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
+  -- pulsar Retroceso en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
   -- pila vacía ya no estamos en ninguna vista, así que no se abre nada; y para actualizar vale `mine`, que cuenta
   -- el menú pedido y aún no confirmado (uosc atiende el open y el update en ese orden).
   if uosc.mine(MENU) and not state.force_open then
@@ -222,7 +222,7 @@ views.root = function()
       table.insert(items, { title = tr('Carpetas'), hint = scan or tostring(st.folders or 0), icon = 'folder',
                             value = { view = 'folders' } })
       table.insert(items, { title = tr('Ajustes'), icon = 'settings', value = { view = 'settings' } })
-      show(ROOT_TITLE, items, { footnote = tr('Enter abre · ⌫ atrás · Esc cierra') })
+      show(ROOT_TITLE, items, { footnote = tr('Enter abre · Retroceso: atrás · Esc cierra') })
     end)
   end, 15)
 end
@@ -262,7 +262,7 @@ views.explore = function()
                             value = { view = 'browse', path = pl.path } }
     end
     if #items == 0 then items = uosc.message_items(tr('No encuentro ninguna carpeta por donde empezar'), 'info') end
-    show(title, items, { footnote = tr('Enter entra en la carpeta · ⌫ atrás') })
+    show(title, items, { footnote = tr('Enter entra en la carpeta · Retroceso: atrás') })
   end, 15)
 end
 
@@ -299,7 +299,7 @@ views.browse = function(args)
       items[#items + 1] = { title = tr('Hay más de lo que caben en la lista'), icon = 'info', selectable = false,
                             muted = true, hint = tr('entra en una subcarpeta') }
     end
-    show(title, items, { footnote = res.path .. ' · Enter abre · ⌫ atrás' })
+    show(title, items, { footnote = res.path .. ' · Enter abre · Retroceso: atrás' })
   end, 20)
 end
 
@@ -318,7 +318,7 @@ views.movies = function()
     local items = {}
     for _, m in ipairs(rows or {}) do table.insert(items, play_item(m, m.label)) end
     if #items == 0 then items = uosc.message_items(tr('No hay películas en tus carpetas'), 'movie') end
-    show(tr('Películas'), items, { footnote = tr('Enter reproduce · ⌫ atrás'), search_style = 'on_demand' })
+    show(tr('Películas'), items, { footnote = tr('Enter reproduce · Retroceso: atrás'), search_style = 'on_demand' })
   end, 15)
 end
 
@@ -337,7 +337,7 @@ views.shows = function()
                             value = { view = 'show', key = s.key, title = s.title } })
     end
     if #items == 0 then items = uosc.message_items(tr('No hay series en tus carpetas'), 'live_tv') end
-    show(tr('Series'), items, { footnote = tr('Enter abre · ⌫ atrás'), search_style = 'on_demand' })
+    show(tr('Series'), items, { footnote = tr('Enter abre · Retroceso: atrás'), search_style = 'on_demand' })
   end, 15)
 end
 
@@ -354,7 +354,7 @@ views.show = function(args)
       table.insert(items, { title = s.label, hint = hint, icon = 'folder',
                             value = { view = 'season', key = args.key, season = s.season, title = s.label } })
     end
-    show(title, items, { footnote = tr('Enter abre · ⌫ atrás') })
+    show(title, items, { footnote = tr('Enter abre · Retroceso: atrás') })
   end, 15)
 end
 
@@ -370,7 +370,7 @@ views.season = function(args)
       table.insert(items, play_item(e))
       if not sel and not e.finished then sel = i end
     end
-    show(title, items, { footnote = tr('Enter reproduce · ⌫ atrás'), selected_index = sel })
+    show(title, items, { footnote = tr('Enter reproduce · Retroceso: atrás'), selected_index = sel })
   end, 15)
 end
 
@@ -401,7 +401,7 @@ views.folders = function()
       table.insert(items, { title = tr('Reescanear todo'), icon = 'refresh', value = { rescan = true },
         hint = state.scanning and string.format('escaneando %d %%', math.floor(state.scan_progress * 100)) or nil })
     end
-    show(tr('Carpetas'), items, { footnote = tr('Enter: Reescanear / Quitar (Tab) · ⌫ atrás') })
+    show(tr('Carpetas'), items, { footnote = tr('Enter: Reescanear / Quitar (Tab) · Retroceso: atrás') })
   end, 15)
 end
 
@@ -494,7 +494,7 @@ views.settings = function()
       { title = tr('Resincronizar con la voz'), hint = RESYNC_LABEL[s.osub_resync] or s.osub_resync, icon = 'sync',
         value = { set = 'osub_resync', to = RESYNC_NEXT[s.osub_resync] or 'auto' } },
     }) do items[#items + 1] = it end
-    show(tr('Ajustes'), items, { footnote = tr('Las claves se guardan solo en tu equipo · ⌫ atrás') })
+    show(tr('Ajustes'), items, { footnote = tr('Las claves se guardan solo en tu equipo · Retroceso: atrás') })
     if s.has_osub_key and state.quota == nil then ask_quota() end
   end, 15)
 end
@@ -648,7 +648,7 @@ local function input_menu(query, items)
   return { type = INPUT, title = INPUT_TITLES[inp.mode] or 'Escribe', items = items,
     callback = { SCRIPT, INPUT_EVENT }, search_style = 'palette', search_debounce = inp.mode == 'search' and 250 or 0,
     on_search = 'callback', on_close = 'callback', search_suggestion = inp.mode == 'osub_password' and '' or query,
-    footnote = inp.mode == 'search' and 'Enter reproduce · ⌫ en vacío vuelve' or 'Enter guarda · ⌫ en vacío vuelve' }
+    footnote = inp.mode == 'search' and 'Enter reproduce · Retroceso en vacío vuelve' or 'Enter guarda · Retroceso en vacío vuelve' }
 end
 
 local function open_input(mode, text)

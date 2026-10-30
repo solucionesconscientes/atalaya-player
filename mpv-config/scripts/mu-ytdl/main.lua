@@ -457,7 +457,7 @@ local function show(title, items, extra)
   remember(items)
   publish()
   -- H63 · una respuesta tardía NO puede devolverte a una vista de la que acabas de salir: medido en el log, al
-  -- pulsar ⌫ en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
+  -- pulsar Retroceso en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
   -- pila vacía ya no estamos en ninguna vista, así que no se abre nada; y para actualizar vale `mine`, que cuenta
   -- el menú pedido y aún no confirmado (uosc atiende el open y el update en ese orden).
   if uosc.mine(MENU) and not state.force_open then
@@ -530,7 +530,7 @@ views.root = function()
   local n = count_active()
   table.insert(items, { title = tr('Descargas'), hint = n > 0 and (tostring(n) .. ' activas') or nil, icon = 'downloading',
                         value = { view = 'downloads' } })
-  -- H20: conversions and the unified tasks panel live in mu-convert (opened as a child: ⌫ comes back here)
+  -- H20: conversions and the unified tasks panel live in mu-convert (opened as a child: Retroceso comes back here)
   table.insert(items, { title = tr('Convertir…'), hint = tr('MP4, más pequeño, solo audio, GIF'), icon = 'transform',
                         value = { child = 'convert-menu' } })
   table.insert(items, { title = tr('Tareas'), hint = tr('descargas y conversiones'), icon = 'pending_actions',
@@ -599,7 +599,7 @@ views.quality = function()
     local items = quality_items(info)
     if #items == 0 then items = uosc.message_items(tr('yt-dlp no devolvió formatos'), 'info') end
     show(tr('Calidad · %s'):format(info.title or ''), items, {
-      footnote = tr('Enter cambia en caliente · Tab descarga ese formato · / busca · ⌫ atrás'),
+      footnote = tr('Enter cambia en caliente · Tab descarga ese formato · / busca · Retroceso: atrás'),
     })
   end)
 end
@@ -726,7 +726,7 @@ views.download = function(args)
     }
     for i, it in ipairs(subs) do table.insert(items, 2 + i, it) end
     show(tr('Descargar · %s'):format(target_title or ''), items, {
-      footnote = tr('Enter descarga con el preset · Opciones: Enter alterna · ⌫ atrás'),
+      footnote = tr('Enter descarga con el preset · Opciones: Enter alterna · Retroceso: atrás'),
     })
   end)
 end
@@ -821,7 +821,7 @@ views.downloads = function()
     merge_list(rows)
     publish()
     show(tr('Descargas'), downloads_items(),
-         { footnote = tr('Tab: cancelar / repetir / quitar · Enter muestra detalles · ⌫ atrás') })
+         { footnote = tr('Tab: cancelar / repetir / quitar · Enter muestra detalles · Retroceso: atrás') })
   end)
 end
 
@@ -835,7 +835,7 @@ local function refresh_panel()
       local items = downloads_items()
       remember(items)
       publish()
-      uosc.update(base_menu('Descargas', items, { footnote = tr('Tab: cancelar / repetir / quitar · ⌫ atrás') }))
+      uosc.update(base_menu('Descargas', items, { footnote = tr('Tab: cancelar / repetir / quitar · Retroceso: atrás') }))
     end
   end)
 end
@@ -1019,7 +1019,7 @@ local function url_menu(items, extra)
   local menu = {
     type = URL_MENU, title = tr('Pega o escribe una URL y pulsa Enter'), items = items, callback = { SCRIPT, URL_EVENT },
     search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-    footnote = tr('Enter abre · Tab: añadir a la lista o descargar · ctrl+v pega · ⌫ atrás'),
+    footnote = tr('Enter abre · Tab: añadir a la lista o descargar · ctrl+v pega · Retroceso: atrás'),
   }
   for k, v in pairs(extra or {}) do menu[k] = v end
   return menu
@@ -1255,7 +1255,7 @@ local function gate_menu(items, extra)
   local menu = {
     type = GATE_MENU, title = GATE_TITLE, items = items, callback = { SCRIPT, GATE_EVENT },
     search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-    footnote = tr('ctrl+v pega · un enlace, varios, una lista, un canal, un archivo · vacío usa el portapapeles · ⌫ atrás'),
+    footnote = tr('ctrl+v pega · un enlace, varios, una lista, un canal, un archivo · vacío usa el portapapeles · Retroceso: atrás'),
   }
   for k, v in pairs(extra or {}) do menu[k] = v end
   return menu
@@ -1306,7 +1306,7 @@ local function show_what(what, status)
   else
     items[#items + 1] = { title = tr('Descargar'), hint = cuenta, icon = 'download', value = { gate_download = true } }
   end
-  show(tr('¿Reproducir o descargar?'), items, { footnote = tr('Enter elige · ⌫ vuelve a la caja con el texto puesto') })
+  show(tr('¿Reproducir o descargar?'), items, { footnote = tr('Enter elige · Retroceso vuelve a la caja con el texto puesto') })
 end
 
 views.what = function(args)
@@ -1421,7 +1421,7 @@ views.picklist = function(args)
       }
     end
     local titulo = pk.source == 'url' and ('Elegir · ' .. ellipsize(pk.title or '', 46)) or 'Elegir qué bajar'
-    show(titulo, items, { footnote = tr('Enter marca / desmarca · la primera fila cambia el formato de todos · ⌫ atrás') })
+    show(titulo, items, { footnote = tr('Enter marca / desmarca · la primera fila cambia el formato de todos · Retroceso: atrás') })
   end)
 end
 
@@ -1528,7 +1528,7 @@ views.dl_settings = function()
         active = (st.cookies_browser or '') ~= '', icon = 'cookie', value = { dlset = 'cookies_browser' }, separator = true },
       { title = tr('Solo para lo que ya puedes ver con tu cuenta; nunca contenido con DRM'), icon = 'info',
         selectable = false, muted = true },
-    }, { footnote = tr('Enter cambia · se aplica a las descargas nuevas y a lo próximo que abras · ⌫ atrás') })
+    }, { footnote = tr('Enter cambia · se aplica a las descargas nuevas y a lo próximo que abras · Retroceso: atrás') })
   end, 15)
 end
 
@@ -1582,7 +1582,7 @@ local function search_menu(items, extra)
     type = SEARCH_MENU, title = tr('Buscar en YouTube'), items = items, callback = { SCRIPT, SEARCH_EVENT },
     search_style = 'palette', search_debounce = 'submit', on_search = 'callback', on_close = 'callback',
     item_actions = ITEM_ACTIONS,
-    footnote = tr('Enter busca / reproduce · Tab: añadir a la lista o descargar · ⌫ atrás'),
+    footnote = tr('Enter busca / reproduce · Tab: añadir a la lista o descargar · Retroceso: atrás'),
   }
   for k, v in pairs(extra or {}) do menu[k] = v end
   return menu
@@ -1723,7 +1723,7 @@ local function on_event(source, json)
       osd(tr('Entrando en la sala…'))
       mp.commandv('script-message-to', 'mu_share', 'mu-share-join', v.gate.url)
     elseif v.gate then
-      -- A2 · de la caja a la única pregunta. La caja se queda debajo en la pila: ⌫ vuelve a ella con el texto puesto.
+      -- A2 · de la caja a la única pregunta. La caja se queda debajo en la pila: Retroceso vuelve a ella con el texto puesto.
       open_view({ name = 'what', args = { what = v.gate } })
     elseif v.gate_play then
       gate_play()
@@ -1797,7 +1797,7 @@ local function on_event(source, json)
   elseif ev.type == 'back' then
     table.remove(state.stack)
     if #state.stack == 0 then
-      -- palettes (open URL, YouTube search) close: ⌫ there is mostly "delete text"; menus return to their opener
+      -- palettes (open URL, YouTube search) close: Retroceso there is mostly "delete text"; menus return to their opener
       if source ~= MENU or not N:leave() then close_menus() end
     else
       reopen_current()

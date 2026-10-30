@@ -793,7 +793,7 @@ local function input_menu(query)
   end
   return { type = INPUT, title = INPUT_TITLES[mode], items = items, callback = { SCRIPT, INPUT_EVENT },
     search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-    search_suggestion = query, footnote = tr('Enter elige · ⌫ en vacío vuelve') }
+    search_suggestion = query, footnote = tr('Enter elige · Retroceso en vacío vuelve') }
 end
 
 local function open_input(mode)

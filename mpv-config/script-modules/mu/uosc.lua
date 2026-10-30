@@ -17,7 +17,7 @@ end
 -- pero con el equipo ocupado se han medido 27 ms. Cada módulo tiene un vigilante que, 0,2 s después de que el menú
 -- abierto deje de ser el suyo, da por cerrada su navegación y la olvida — y ese vigilante se arma cuando aparece el
 -- menú del módulo PADRE, así que puede dispararse justo dentro de ese hueco: el menú sale bien en pantalla y el
--- módulo ya se ha olvidado de dónde estaba (⌫ salta de nivel, lo que cargaba no aparece, los paneles se paran).
+-- módulo ya se ha olvidado de dónde estaba (Retroceso salta de nivel, lo que cargaba no aparece, los paneles se paran).
 -- Así que se apunta qué menú se ha pedido y cuándo, y el vigilante pregunta antes de olvidar nada.
 local asked = { type = nil, at = -1 }
 

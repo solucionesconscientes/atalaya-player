@@ -272,7 +272,7 @@ local function show(title, items, extra)
   remember(items)
   publish()
   -- H63 · una respuesta tardía NO puede devolverte a una vista de la que acabas de salir: medido en el log, al
-  -- pulsar ⌫ en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
+  -- pulsar Retroceso en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
   -- pila vacía ya no estamos en ninguna vista, así que no se abre nada; y para actualizar vale `mine`, que cuenta
   -- el menú pedido y aún no confirmado (uosc atiende el open y el update en ese orden).
   if uosc.mine(MENU) and not state.force_open then
@@ -427,7 +427,7 @@ end
 
 views.root = function()
   local items = root_items()
-  show(brand.name, items, { footnote = tr('Enter abre · ⌫ o ← atrás · Esc cierra · ? ayuda') })
+  show(brand.name, items, { footnote = tr('Enter abre · Retroceso o ←: atrás · Esc cierra · ? ayuda') })
   with_recents(opts.recents_in_root, true, function(_, rows)
     if not still('root') or #rows == 0 then return end
     local list = {}
@@ -435,7 +435,7 @@ views.root = function()
     table.insert(list, { title = tr('Todos los recientes…'), icon = 'history', value = { view = 'recents' } })
     table.insert(items, 1, { title = tr('Continuar viendo'), hint = tostring(#rows), icon = 'history', items = list,
                              separator = true })
-    show(brand.name, items, { footnote = tr('Enter abre · ⌫ o ← atrás · Esc cierra · ? ayuda') })
+    show(brand.name, items, { footnote = tr('Enter abre · Retroceso o ←: atrás · Esc cierra · ? ayuda') })
   end)
 end
 
@@ -654,8 +654,8 @@ local HELP = {
   { 'ctrl+b', 'biblioteca: películas y series' },
   { 'alt+t', 'TV y radio' },
   { 'alt+R', '¿qué me he perdido?' },
-  { '⌫ · botón atrás', 'cerrar el menú o volver a la lista del canal' },
-  { 'Esc', 'lo mismo que ⌫: nunca cierra el reproductor' },
+  { 'Retroceso · botón atrás', 'cerrar el menú o volver a la lista del canal' },
+  { 'Esc', 'lo mismo que Retroceso: nunca cierra el reproductor' },
   { 'q', 'salir' },
 }
 
@@ -692,7 +692,7 @@ views.recents = function()
     if #items == 0 then items = uosc.message_items('Todavía no has visto nada con ' .. brand.name, 'history')
     else table.insert(items, { title = tr('Borrar historial'), icon = 'delete_sweep', value = { clear = true }, separator = true,
                                actions = {} }) end
-    show(tr('Recientes'), items, { footnote = tr('Enter continúa · Tab olvida · ⌫ atrás') })
+    show(tr('Recientes'), items, { footnote = tr('Enter continúa · Tab olvida · Retroceso: atrás') })
   end)
 end
 
@@ -1011,7 +1011,7 @@ local function goto_menu(query)
   end
   return { type = GOTO, title = tr('Ir a un minuto'), items = items, callback = { SCRIPT, EVENT },
            search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-           search_suggestion = query, footnote = tr('Enter salta · ⌫ en vacío cierra') }
+           search_suggestion = query, footnote = tr('Enter salta · Retroceso en vacío cierra') }
 end
 
 local function palette_menu(items, query)
@@ -1019,7 +1019,7 @@ local function palette_menu(items, query)
     type = PALETTE, title = tr('Escribe un comando, canal, vídeo reciente o algo del diálogo'), items = items,
     callback = { SCRIPT, EVENT },
     search_style = 'palette', search_debounce = 150, on_search = 'callback', on_close = 'callback',
-    search_suggestion = query, footnote = tr('Enter ejecuta / reproduce · ⌫ cierra'),
+    search_suggestion = query, footnote = tr('Enter ejecuta / reproduce · Retroceso cierra'),
   }
 end
 
@@ -1340,7 +1340,7 @@ mp.observe_property('user-data/uosc/menu/type', 'native', function(_, t)
   -- después no debe volver a pintar lo que se acaba de cerrar), pero la PILA espera los 0,2 s de siempre.
   -- Cuando uosc sustituye un menú por otro —volver de un módulo al nuestro— destruye el viejo ANTES de crear el
   -- nuevo, y con la máquina cargada ese `nil` intermedio sí se observa: borrar la pila ahí dejaba el menú abierto
-  -- sin camino de vuelta y el siguiente ⌫ lo cerraba todo en vez de subir un nivel.
+  -- sin camino de vuelta y el siguiente Retroceso lo cerraba todo en vez de subir un nivel.
   if t == nil or t == '' then closing = true end
   reset_timer = mp.add_timeout(0.2, function()
     reset_timer = nil
@@ -1414,7 +1414,7 @@ mp.add_key_binding(nil, 'goto', open_goto)
 mp.add_key_binding(nil, 'recents', function() open_under_root('recents') end)
 mp.add_key_binding(nil, 'help', function() open_under_root('help') end)
 -- H76 · la pantalla de capítulos (saltar, crear con IA, quitar) ya no cuelga de Subtítulos: se abre desde la paleta
--- (alt+p → «Capítulos de este vídeo…») y desde esta binding, con la raíz debajo para que ⌫ tenga dónde volver.
+-- (alt+p → «Capítulos de este vídeo…») y desde esta binding, con la raíz debajo para que Retroceso tenga dónde volver.
 mp.add_key_binding(nil, 'chapters', function() open_under_root('chapters') end)
 -- the ● button and «Grabar» belong to mu-record (H18); kept for old bindings
 mp.add_key_binding(nil, 'record', function() mp.commandv('script-binding', 'mu_record/record-menu') end)

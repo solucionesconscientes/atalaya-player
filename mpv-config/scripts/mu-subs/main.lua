@@ -1149,7 +1149,7 @@ local function show(title, items, extra)
   remember(items)
   publish()
   -- H63 · una respuesta tardía NO puede devolverte a una vista de la que acabas de salir: medido en el log, al
-  -- pulsar ⌫ en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
+  -- pulsar Retroceso en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
   -- pila vacía ya no estamos en ninguna vista, así que no se abre nada; y para actualizar vale `mine`, que cuenta
   -- el menú pedido y aún no confirmado (uosc atiende el open y el update en ese orden).
   if uosc.mine(MENU) and not state.force_open then
@@ -1307,7 +1307,7 @@ views.find = function()
   rpc.call('subs.find', { path = path }, function(err, res)
     if state.view ~= 'find' then return end
     if err then show(title, uosc.message_items(fail(err, 'subs.find'), 'error')); return end
-    show(title, find_items(res), { footnote = tr('Enter baja la pista y la pone · ⌫ atrás') })
+    show(title, find_items(res), { footnote = tr('Enter baja la pista y la pone · Retroceso: atrás') })
   end, 90)
 end
 
@@ -1502,7 +1502,7 @@ views.web = function()
         value = { web = { lang = orig.lang, kind = orig.kind }, web_translate = target } })
       items[2].separator = true
     end
-    show(tr('Subtítulos de la web'), items, { footnote = tr('Enter añade la pista · luego alt+S la guarda en SRT · ⌫ atrás') })
+    show(tr('Subtítulos de la web'), items, { footnote = tr('Enter añade la pista · luego alt+S la guarda en SRT · Retroceso: atrás') })
   end, 90)
 end
 

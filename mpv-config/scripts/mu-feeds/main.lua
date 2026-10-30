@@ -327,7 +327,7 @@ local function show(title, items, extra)
   remember(items)
   publish()
   -- H63 · una respuesta tardía NO puede devolverte a una vista de la que acabas de salir: medido en el log, al
-  -- pulsar ⌫ en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
+  -- pulsar Retroceso en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
   -- pila vacía ya no estamos en ninguna vista, así que no se abre nada; y para actualizar vale `mine`, que cuenta
   -- el menú pedido y aún no confirmado (uosc atiende el open y el update en ese orden).
   if uosc.mine(MENU) and not state.force_open then
@@ -438,7 +438,7 @@ views.root = {
                           value = { view = 'settings' } }
     local st = state_text()
     if st then items[#items + 1] = { title = st, icon = 'schedule', muted = true, selectable = false } end
-    show(ROOT_TITLE, items, { footnote = tr('Enter abre · Tab: comprobar, pausar, borrar · ⌫ atrás') })
+    show(ROOT_TITLE, items, { footnote = tr('Enter abre · Tab: comprobar, pausar, borrar · Retroceso: atrás') })
   end,
 }
 
@@ -470,7 +470,7 @@ views.sub = {
                           hint = s.paused and 'ahora en pausa' or nil,
                           value = { pause = s.id, paused = not s.paused }, keep_open = true, separator = true }
     items[#items + 1] = { title = tr('Borrar la suscripción'), icon = 'delete', value = { view = 'remove', id = s.id } }
-    show(s.title, items, { footnote = tr('Enter elige · ⌫ atrás · Esc cierra') })
+    show(s.title, items, { footnote = tr('Enter elige · Retroceso: atrás · Esc cierra') })
   end,
 }
 
@@ -529,7 +529,7 @@ views.rules = {
     items[#items].separator = true
     items[#items + 1] = { title = tr('Aplicar ya «conservar» y «borrar lo visto»'), icon = 'cleaning_services',
                           value = { apply = s.id }, keep_open = true }
-    show(tr('Reglas'), items, { footnote = tr('Enter cambia · se guarda al momento · ⌫ atrás') })
+    show(tr('Reglas'), items, { footnote = tr('Enter cambia · se guarda al momento · Retroceso: atrás') })
   end,
 }
 
@@ -714,7 +714,7 @@ views.add = {
         items[#items + 1] = { title = e.title or e.url or '?', icon = 'movie', muted = true, selectable = false }
       end
     end
-    show(tr('Añadir suscripción'), items, { footnote = tr('Enter elige · ⌫ atrás') })
+    show(tr('Añadir suscripción'), items, { footnote = tr('Enter elige · Retroceso: atrás') })
   end,
 }
 
@@ -756,7 +756,7 @@ views.settings = {
       items[#items].separator = true
       items[#items + 1] = { title = sx, icon = 'info', muted = true, selectable = false }
     end
-    show(tr('Ajustes de suscripciones'), items, { footnote = tr('Enter cambia · se guarda al momento · ⌫ atrás') })
+    show(tr('Ajustes de suscripciones'), items, { footnote = tr('Enter cambia · se guarda al momento · Retroceso: atrás') })
   end,
 }
 
@@ -783,7 +783,7 @@ views.chain_global = {
     table.remove(items, 1)   -- the «Tras descargar» heading is this view's title
     items[#items + 1] = { title = tr('Cuenta para las suscripciones sin cambios propios'), icon = 'info', muted = true,
                           selectable = false }
-    show(tr('Tras descargar'), items, { footnote = tr('Enter cambia · se guarda al momento · ⌫ atrás') })
+    show(tr('Tras descargar'), items, { footnote = tr('Enter cambia · se guarda al momento · Retroceso: atrás') })
   end,
 }
 
@@ -976,7 +976,7 @@ local function input_menu(query)
   end
   return { type = INPUT, title = INPUT_TITLES[mode], items = items, callback = { SCRIPT, INPUT_EVENT },
     search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-    search_suggestion = query, footnote = tr('Enter elige · ⌫ en vacío vuelve') }
+    search_suggestion = query, footnote = tr('Enter elige · Retroceso en vacío vuelve') }
 end
 
 local function open_input(mode, text, extra)

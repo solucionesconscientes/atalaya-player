@@ -435,7 +435,7 @@ local function show(title, items, extra)
   remember(items)
   publish()
   -- H63 · una respuesta tardía NO puede devolverte a una vista de la que acabas de salir: medido en el log, al
-  -- pulsar ⌫ en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
+  -- pulsar Retroceso en la biblioteca se llegaba al menú principal y 40 ms después la biblioteca se reabría encima. Con la
   -- pila vacía ya no estamos en ninguna vista, así que no se abre nada; y para actualizar vale `mine`, que cuenta
   -- el menú pedido y aún no confirmado (uosc atiende el open y el update en ese orden).
   if uosc.mine(MENU) and not state.force_open then
@@ -512,7 +512,7 @@ views.root = function()
                             value = { mark = true, folder = true } })
     end
   end
-  show(ROOT_TITLE, items, { footnote = tr('Enter elige · ⌫ atrás') })
+  show(ROOT_TITLE, items, { footnote = tr('Enter elige · Retroceso: atrás') })
 end
 
 views.chapters = function()
@@ -532,7 +532,7 @@ views.chapters = function()
     end
   end
   if #items == 0 then items = uosc.message_items(tr('Este archivo no tiene capítulos'), 'info') end
-  show(title, items, { footnote = tr('Enter salta · ⌫ atrás') })
+  show(title, items, { footnote = tr('Enter salta · Retroceso: atrás') })
 end
 
 views.bookmarks = function()
@@ -551,7 +551,7 @@ views.bookmarks = function()
   if #items == 1 then
     table.insert(items, { title = tr('Todavía no hay marcadores'), icon = 'info', selectable = false, muted = true })
   end
-  show(title, items, { footnote = tr('Enter salta · Tab: borrar · ⌫ atrás') })
+  show(title, items, { footnote = tr('Enter salta · Tab: borrar · Retroceso: atrás') })
 end
 
 views.speed = function()
@@ -597,7 +597,7 @@ views.list = function()
     if #items == 0 then
       items = uosc.message_items(tr('Aún no hay libros: abre un audiolibro o un podcast'), 'info')
     end
-    show(title, items, { footnote = tr('Enter sigue escuchando · Tab: olvidar · ⌫ atrás') })
+    show(title, items, { footnote = tr('Enter sigue escuchando · Tab: olvidar · Retroceso: atrás') })
   end, 15)
 end
 
@@ -615,7 +615,7 @@ local function input_menu(query)
   table.insert(items, { title = tr('Guardar sin nota'), icon = 'bookmark_add', value = { save = '' } })
   return { type = INPUT, title = tr('Nota del marcador'), items = items, callback = { SCRIPT, INPUT_EVENT },
            search_style = 'palette', search_debounce = 0, on_search = 'callback', on_close = 'callback',
-           search_suggestion = query, footnote = tr('Escribe una nota (opcional) · Enter guarda · ⌫ en vacío vuelve') }
+           search_suggestion = query, footnote = tr('Escribe una nota (opcional) · Enter guarda · Retroceso en vacío vuelve') }
 end
 
 local function close_input(back)

@@ -4,8 +4,8 @@
 -- tracks with readable names («Audio y subtítulos del canal», CC / VO / AD in the lists) and «Buscar en esta lista» in
 -- every list (iptv.tracks, iptv.search with a scope; H30).
 -- Script name: mu_iptv. Bindings: tv-menu, tv-search, tv-guide, tv-schedule, tv-tracks, zap-next, zap-prev,
--- record-toggle. The back key (⌫ and MBTN_BACK) arrives as `mu-back`; Esc arrives as `mu_core/back-close`. With a
--- menu open they close it; with a channel playing, ⌫ opens its side panel (ADR-136). Neither ever quits.
+-- record-toggle. The back key (Retroceso and MBTN_BACK) arrives as `mu-back`; Esc arrives as `mu_core/back-close`. With a
+-- menu open they close it; with a channel playing, Retroceso opens its side panel (ADR-136). Neither ever quits.
 local mp = require('mp')
 local msg = require('mp.msg')
 local utils = require('mp.utils')
@@ -21,7 +21,7 @@ local N = nav.new()
 
 -- H57 · qué se hace en una franja programada: grabarlo (lo de siempre), ponerlo o las dos. Se recuerda.
 -- `origins`: por origen (fuente, país de iptv-org, país de radio) el último canal y la última búsqueda, para que
--- volver al panel devuelva al mismo sitio; `back_hint`: el aviso de ⌫ se enseña una sola vez.
+-- volver al panel devuelva al mismo sitio; `back_hint`: el aviso de Retroceso se enseña una sola vez.
 local P = prefs.ns('mu-iptv', { sched_mode = 'record', origins = {}, last_source = '', back_hint = true })
 
 local SCRIPT = mp.get_script_name()
@@ -70,7 +70,7 @@ local state = {
   panel = nil,        -- side panel open: {key, name, items, query, channel, selected}
 }
 
-local back_visible = nil   -- whether the uosc «⌫ Canales» button is on the bar (only while a channel plays)
+local back_visible = nil   -- whether the uosc «Retroceso Canales» button is on the bar (only while a channel plays)
 
 -- «What is on now» per channel id: {title, expires} (a programme is valid until it ends, at most 10 min) or
 -- {expires} when the guide has nothing for it. Times are epoch seconds (os.time, the same clock as mpvd).
@@ -169,7 +169,7 @@ local function apply_play_info(info)
   P:set('last_source', key)
   if P:get('back_hint') then
     P:set('back_hint', false)
-    local hint = tr('⌫ atrás · Canales en la barra · M menú')
+    local hint = tr('Retroceso: atrás · Canales en la barra · M menú')
     -- detrás del nombre del canal, que lo pinta file-loaded
     mp.add_timeout(1.0, function() mp.osd_message(hint, 3) end)
   end
@@ -426,7 +426,7 @@ end
 
 -- ---------------------------------------------------------------------------------------------
 -- panel lateral de canales (ADR-136): la lista del origen que suena, encima del vídeo y con el buscador listo.
--- Se abre con ⌫, con el botón «atrás» del ratón o con el botón ⌫ de la barra (Esc no lo abre: solo cierra).
+-- Se abre con Retroceso, con el botón «atrás» del ratón o con el botón Retroceso de la barra (Esc no lo abre: solo cierra).
 
 -- De dónde salen sus canales y con qué nombre se recuerda (el mismo `origin_key` que el estado recordado).
 local function panel_source(cur)
@@ -489,7 +489,7 @@ local function base_menu(title, items, extra)
   local menu = {
     type = MENU, title = title, items = items, callback = { SCRIPT, EVENT },
     on_close = 'callback', keep_open = false, item_actions = ACTIONS, search_submenus = true,
-    footnote = tr('Enter reproduce · Tab acciones (★ favorito, guía, grabar, copiar URL) · / busca · ⌫ atrás'),
+    footnote = tr('Enter reproduce · Tab acciones (★ favorito, guía, grabar, copiar URL) · / busca · Retroceso: atrás'),
   }
   for k, v in pairs(extra or {}) do menu[k] = v end
   return N:frame(menu, state.stack)
@@ -538,7 +538,7 @@ local function panel_render(query, opening)
     selected_index = selected and #rows > 0 and selected or nil,
     -- campos propios del parche de uosc (patches/README.md): 40 % del ancho pegado a la izquierda
     panel_width = 0.4, panel_align = 'left',
-    footnote = tr('Escribe para buscar · Enter cambia de canal · Esc o ⌫ vuelve'),
+    footnote = tr('Escribe para buscar · Enter cambia de canal · Esc o Retroceso vuelve'),
   }
   publish_menu(title, rows)
   publish()
@@ -710,7 +710,7 @@ views.source = function(args)
 end
 
 -- Panel lateral (ADR-136): la lista del origen que suena, encima del vídeo y sin parar nada. Se abre con las teclas
--- de atrás o el botón ⌫ de la barra. Escribir filtra en el acto; elegir cambia de canal y lo cierra.
+-- de atrás o el botón Retroceso de la barra. Escribir filtra en el acto; elegir cambia de canal y lo cierra.
 views.panel = function()
   local cur = type(state.current) == 'table' and state.current or nil
   if not cur then
@@ -816,7 +816,7 @@ views.add_list = function()
     items = uosc.message_items(tr('La lista se descarga y queda en «Mis listas»'), 'playlist_add'),
     callback = { SCRIPT, EVENT }, search_style = 'palette', search_debounce = 200,
     on_search = 'callback', on_paste = 'callback', on_close = 'callback',
-    footnote = tr('Enter añade · ⌫ atrás'),
+    footnote = tr('Enter añade · Retroceso: atrás'),
   })
 end
 
@@ -831,7 +831,7 @@ local function add_list_prompt(query)
     type = MENU, title = tr('Pega (ctrl+v) o escribe la URL de la lista M3U y pulsa Enter'), items = items,
     callback = { SCRIPT, EVENT }, search_style = 'palette', search_debounce = 200,
     on_search = 'callback', on_paste = 'callback', on_close = 'callback', search_suggestion = query,
-    footnote = tr('Enter añade · ⌫ atrás'),
+    footnote = tr('Enter añade · Retroceso: atrás'),
   })
 end
 
@@ -1013,7 +1013,7 @@ views.tracks = function()
     if #subs == 0 then
       table.insert(items, { title = tr('Este canal no trae subtítulos'), icon = 'info', selectable = false, muted = true })
     end
-    show(title, items, { footnote = tr('Pistas del propio canal (sin traducción en directo) · Enter elige · ⌫ atrás') })
+    show(title, items, { footnote = tr('Pistas del propio canal (sin traducción en directo) · Enter elige · Retroceso: atrás') })
   end)
 end
 
@@ -1154,7 +1154,7 @@ views.guide = function(args, tries)
                             id = 'prog:' .. tostring(p.start),
                             bold = p.now or nil, icon = p.now and 'play_arrow' or nil })
     end
-    show(title, items, { footnote = tr('Enter abre el programa (grabar, ver) · ⌫ atrás') })
+    show(title, items, { footnote = tr('Enter abre el programa (grabar, ver) · Retroceso: atrás') })
   end, 30)
 end
 
@@ -1344,7 +1344,7 @@ views.sched_lists = function()
     if #items == 0 then
       items = uosc.message_items(tr('No hay listas guardadas todavía: se crean en Música › Listas'), 'info')
     end
-    show(title, items, { footnote = tr('La lista se repite hasta que acabe la franja · ⌫ atrás') })
+    show(title, items, { footnote = tr('La lista se repite hasta que acabe la franja · Retroceso: atrás') })
   end)
 end
 
@@ -1395,7 +1395,7 @@ views.sched_places = function()
                             value = { view = 'sched_browse', path = pl.path } }
     end
     if #items == 0 then items = uosc.message_items(tr('No encuentro ninguna carpeta por donde empezar'), 'info') end
-    show(title, items, { footnote = tr('Enter entra en la carpeta · ⌫ atrás') })
+    show(title, items, { footnote = tr('Enter entra en la carpeta · Retroceso: atrás') })
   end, 15)
 end
 
@@ -1430,7 +1430,7 @@ views.sched_browse = function(args)
       end
     end
     show(res.name ~= '' and res.name or res.path, items,
-         { footnote = tr('Enter programa ese archivo · Tab lo añade a la selección · ⌫ atrás') })
+         { footnote = tr('Enter programa ese archivo · Tab lo añade a la selección · Retroceso: atrás') })
   end, 20)
 end
 
@@ -1450,7 +1450,7 @@ local function sched_time_menu(args, items, query)
     type = MENU, title = sched_time_title(args),
     items = items, callback = { SCRIPT, EVENT }, search_style = 'palette', search_debounce = 250,
     on_search = 'callback', on_close = 'callback', search_suggestion = query,
-    footnote = tr('También «mañana 9:00 1h30» · Enter programa · ⌫ atrás'),
+    footnote = tr('También «mañana 9:00 1h30» · Enter programa · Retroceso: atrás'),
   }
 end
 
@@ -1535,7 +1535,7 @@ local function search_menu(items, query, scope)
     items = items, callback = { SCRIPT, EVENT },
     search_style = 'palette', search_debounce = 300, on_search = 'callback', on_close = 'callback',
     item_actions = ACTIONS, search_suggestion = query,
-    footnote = scope and 'Solo los canales de esta lista · Tab acciones · ⌫ vuelve a la lista'
+    footnote = scope and 'Solo los canales de esta lista · Tab acciones · Retroceso vuelve a la lista'
       or 'Busca en España, iptv-org y Radio Browser · Tab acciones',
   }
 end
@@ -1647,7 +1647,7 @@ local function copy_channel(channel_id)
   end)
 end
 
--- El panel se cierra olvidando su navegación: no pasa por `N:leave()` (⌫ en el panel cierra, no vuelve al menú).
+-- El panel se cierra olvidando su navegación: no pasa por `N:leave()` (Retroceso en el panel cierra, no vuelve al menú).
 local function close_panel()
   if not state.panel then return false end
   state.panel, state.stack, state.view = nil, {}, ''
@@ -1772,7 +1772,7 @@ mp.register_script_message(EVENT, function(json)
     local from = table.remove(state.stack)
     if from and from.name == 'sched_time' then state.force_open = true end  -- leaving the palette
     if #state.stack == 0 then
-      -- the search palette closes (⌫ there is mostly "delete text"); menus return to their opener
+      -- the search palette closes (Retroceso there is mostly "delete text"); menus return to their opener
       if (from and from.name == 'search') or not N:leave() then uosc.close(MENU); uosc.close(SEARCH_MENU) end
     else
       reopen_current()
@@ -1851,7 +1851,7 @@ local function open_current_channels()
 end
 
 -- ---------------------------------------------------------------------------------------------
--- atrás: ⌫ y el botón «atrás» del ratón llegan aquí (input.conf → mu_core/back). Nunca cierran el reproductor.
+-- atrás: Retroceso y el botón «atrás» del ratón llegan aquí (input.conf → mu_core/back). Nunca cierran el reproductor.
 
 -- mpv entrega las URL file:// como ruta simple; algunas listas de usuario (y las de prueba) apuntan a archivos.
 local function same_path(url, path)
@@ -1923,7 +1923,7 @@ mp.add_key_binding(nil, 'zap-next', function() zap(1) end)
 mp.add_key_binding(nil, 'zap-prev', function() zap(-1) end)
 mp.add_key_binding(nil, 'record-toggle', record_toggle)
 
--- Dos botones: TV y radio (siempre) y «⌫ Canales», que solo está en la barra mientras suena un canal y hace lo
+-- Dos botones: TV y radio (siempre) y «Retroceso Canales», que solo está en la barra mientras suena un canal y hace lo
 -- mismo que la tecla. El de atrás se oculta cuando no hay canal (uosc recoloca el resto).
 local function set_buttons()
   uosc.set_button('mu-tv', {
@@ -1932,7 +1932,7 @@ local function set_buttons()
   })
   local visible = channel_on_screen()
   uosc.set_button('mu-back', {
-    icon = 'arrow_back', tooltip = '⌫ Canales (atrás)', hide = not visible,
+    icon = 'arrow_back', tooltip = 'Retroceso Canales (atrás)', hide = not visible,
     command = { 'script-binding', 'mu_core/back' },
   })
   if visible ~= back_visible then
