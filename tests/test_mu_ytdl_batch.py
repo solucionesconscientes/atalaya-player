@@ -166,18 +166,18 @@ def test_subtitles_options_and_subtitles_only(ytdl_mpv):
     h.command("loadfile", URL)
     h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("active") is True, timeout=40)
     h.command("script-binding", "mu_ytdl/ytdl-download")
-    st = ytdl_state(h, lambda v: v.get("view") == "download" and "Solo subtítulos (SRT)" in titles(v))
-    opts = next(i for i in st["items"] if i["title"] == "Opciones")
+    # F3: «Solo subtítulos (SRT)» vive dentro de Opciones… → Otras descargas…; aquí se prueba el comportamiento de
+    # la descarga (que es lo que importa) y se comprueba que la fila de ajustes sigue teniendo submenú.
+    st = ytdl_state(h, lambda v: v.get("view") == "download" and any(i["title"] == "Opciones…" for i in v.get("items", [])))
+    opts = next(i for i in st["items"] if i["title"] == "Opciones…")
     assert opts["submenu"] > 0
     for expected in ("dentro del vídeo", "archivo SRT aparte"):
         send_event(h, {"type": "activate", "index": 1, "value": {"opt": "subtitles"}})
         h.wait_property("user-data/mu/ytdl", lambda v, e=expected: bool(v) and v.get("view") == "download", timeout=10)
     send_event(h, {"type": "activate", "index": 1, "value": {"opt": "sub_langs"}})   # → solo el original
     send_event(h, {"type": "activate", "index": 1, "value": {"opt": "sub_langs"}})   # → español
-    st = ytdl_state(h, lambda v: v.get("view") == "download" and any(
-        i["title"] == "Solo subtítulos (SRT)" and i["hint"] == "español" for i in v.get("items", [])))
-    item = next(i for i in st["items"] if i["title"] == "Solo subtítulos (SRT)")
-    send_event(h, {"type": "activate", "index": 3, "value": item["value"]})
+    st = ytdl_state(h, lambda v: v.get("view") == "download")
+    send_event(h, {"type": "activate", "index": 1, "value": {"preset": "subs_only"}})
     a = argv_for(arglog, URL)
     assert "--skip-download" in a and a[a.index("--sub-langs") + 1] == "es.*" and "-f" not in a
     d.wait(lambda: any(r["status"] == "done" and r["outputs"] and all(o.endswith(".es.srt") for o in r["outputs"])

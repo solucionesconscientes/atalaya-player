@@ -10,14 +10,20 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from mpvd.convert.presets import CRF as CRF_VIDEO, available_encoders
 from mpvd.i18n import t
-from mpvd.ytdl import chapters, policy, sections
+from mpvd.ytdl import chapters, policy, sections, transcode
 
 CONTAINERS = ("mp4", "mkv", "webm")
-AUDIO_FORMATS = ("mp3", "opus", "m4a", "flac", "wav")
+AUDIO_FORMATS = ("mp3", "opus", "m4a", "flac", "wav")   # los de yt-dlp (--audio-format); ALAC va por transcode
 AUDIO_BITRATES = (96, 128, 160, 192, 256, 320)
 SPONSORBLOCK_MODES = ("none", "mark", "remove")
 KINDS = ("video", "exact", "audio_original", "audio_convert")
+# Vocabulario de la conversión explícita (F3). Los nombres son los de `transcode`, que es quien los ejecuta.
+CANALES = ("conservar", "estereo", "mono")
+LOUDNESS = ("ninguna", "-18", "-14")
+FPS = (None, 24, 25, 30, 50, 60)
+KBPS_POR_DEFECTO = {"opus": 96, "aac": 128, "mp3": 192}          # lo que se propone al elegir el códec
 
 # Perfiles de la política única (mpvd/ytdl/policy.py). La expresión de formato sólo tiene que cubrir el caso sin
 # ``-J``: cuando la app tiene el análisis del origen, lo que viaja son los dos ``format_id`` que elige ``policy.plan``
@@ -94,6 +100,18 @@ class DownloadSpec:
     audio_format: str = "mp3"           # audio_convert: mp3 | opus | m4a | flac | wav
     audio_bitrate: int | None = 192     # audio_convert (lossy): constant bitrate in kbps; None = VBR
     audio_vbr: int = 0                  # audio_convert with audio_bitrate=None: 0 (best) … 10
+    # --- conversión explícita (F3). Con cualquiera de estos puestos la descarga NO recodifica: baja la pista del
+    # origen tal cual y `mpvd.ytdl.transcode.convertir()` hace el trabajo y lo comprueba con ffprobe. No es el
+    # camino por defecto: solo existe cuando el usuario lo elige en «Convertir al bajar…».
+    vcod_destino: str | None = None     # h264 | hevc | vp9 | av1
+    acod_destino: str | None = None     # opus | aac | alac | mp3 | flac | wav
+    crf: int | None = None              # calidad constante del vídeo (None = la de la familia destino)
+    video_bitrate: int | None = None    # kbps; si está, manda sobre el CRF y permite dos pasadas
+    fps: int | None = None              # None = conservar; 24 | 25 | 30 | 50 | 60
+    two_pass: bool = False              # dos pasadas (solo con video_bitrate)
+    hardware: bool = False              # codificar en la tarjeta gráfica, si esta máquina puede
+    audio_canales: str = "conservar"    # conservar | estereo | mono
+    loudness: str = "ninguna"           # ninguna | -18 (voz) | -14 (música)
     subtitles: bool = False
     sub_langs: str = DEFAULT_SUB_LANGS
     subs_mode: str = "embed"            # embed | file (.srt next to the video) | only (just the .srt)
@@ -154,6 +172,24 @@ class DownloadSpec:
             sections.parsear(self.sections, float(self.sections_margin))
         if self.chapters_mode not in chapters.MODOS:
             raise ValueError(f"chapters_mode must be one of {chapters.MODOS}")
+        if self.vcod_destino is not None and self.vcod_destino not in policy.VIDEO_DESTINO:
+            raise ValueError(f"vcod_destino must be one of {policy.VIDEO_DESTINO}")
+        if self.acod_destino is not None and self.acod_destino not in policy.AUDIO_DESTINO:
+            raise ValueError(f"acod_destino must be one of {policy.AUDIO_DESTINO}")
+        if self.crf is not None and not (0 <= int(self.crf) <= 63):
+            raise ValueError("crf must be 0..63")
+        if self.video_bitrate is not None and not (50 <= int(self.video_bitrate) <= 50000):
+            raise ValueError("video_bitrate out of range (50–50000 kbps)")
+        if self.fps is not None and int(self.fps) not in [f for f in FPS if f]:
+            raise ValueError(f"fps must be one of {[f for f in FPS if f]}")
+        if self.two_pass and not self.video_bitrate:
+            raise ValueError(t("las dos pasadas necesitan un bitrate fijo: con CRF no hay nada que repartir"))
+        if self.hardware and (self.vcod_destino or "") not in ("h264", "hevc"):
+            raise ValueError(t("solo H.264 y H.265 se codifican en la tarjeta gráfica"))
+        if self.audio_canales not in CANALES:
+            raise ValueError(f"audio_canales must be one of {CANALES}")
+        if self.loudness not in LOUDNESS:
+            raise ValueError(f"loudness must be one of {LOUDNESS}")
         if isinstance(self.chapters, str) and not self.chapters.strip():
             raise ValueError(t("no has elegido ningún capítulo"))
         if isinstance(self.chapters, (list, tuple)) and not self.chapters:
@@ -162,6 +198,18 @@ class DownloadSpec:
     @property
     def is_audio(self) -> bool:
         return self.kind in ("audio_original", "audio_convert")
+
+    @property
+    def convertir(self) -> bool:
+        """¿Este trabajo convierte lo que baja? Solo si se ha dicho a qué códec (nunca por defecto)."""
+        return bool(self.vcod_destino or self.acod_destino)
+
+    @property
+    def destino(self) -> dict[str, Any] | None:
+        """Lo que necesita ``policy.plan`` para la conversión: los códecs y la altura pedida."""
+        if not self.convertir:
+            return None
+        return {"vcod": self.vcod_destino, "acod": self.acod_destino, "altura": self.height}
 
     def format_expression(self) -> str:
         if self.kind == "exact":
@@ -182,6 +230,8 @@ class DownloadSpec:
         return "ba/b"  # audio: best audio-only, else best anything (-x extracts the audio)
 
     def describe(self) -> str:
+        if self.convertir:
+            return f"{_descripcion_conversion(self)} → {policy.contenedor_conversion(self.vcod_destino, self.acod_destino)}"
         if self.kind == "exact":
             return f"formato {self.format} → {self.container}"
         if self.perfil == "opus_origen":
@@ -205,6 +255,159 @@ class DownloadSpec:
 
 
 SECTIONS_RE = re.compile(r"^\*\d+(\.\d+)?-(\d+(\.\d+)?|inf)$")
+
+
+# ------------------------------------------------------------------ conversión explícita (F3)
+
+def _kbps_sin_perdida(codec: str, pista: dict[str, Any] | None) -> int:
+    """Bitrate que se puede esperar de WAV/FLAC/ALAC: sale de la frecuencia y los canales del origen."""
+    pista = pista or {}
+    asr = int(pista.get("asr") or 0) or 44100
+    canales = int(pista.get("canales") or 0) or 2
+    pcm = asr * canales * 16 / 1000.0                 # WAV: 16 bits por muestra
+    factor = {"wav": 1.0, "flac": 0.6, "alac": 0.65}.get(codec, 0.6)
+    return max(64, int(pcm * factor))
+
+
+def _descripcion_conversion(spec: DownloadSpec) -> str:
+    """Una línea con lo que se va a crear: «H.265 CRF 28 · 720p 30 fps · AAC 128k»."""
+    partes: list[str] = []
+    if spec.vcod_destino:
+        nombre = policy.NOMBRE_CODEC.get(spec.vcod_destino, spec.vcod_destino.upper())
+        calidad = (f"{int(spec.video_bitrate)} kbps" if spec.video_bitrate
+                   else f"CRF {int(spec.crf) if spec.crf is not None else CRF_VIDEO[spec.vcod_destino]['normal']}")
+        partes.append(f"{nombre} {calidad}")
+        if spec.two_pass:
+            partes.append(t("2 pasadas"))
+        if spec.hardware:
+            partes.append(t("por la tarjeta gráfica"))
+        if spec.height:
+            partes.append(f"{int(spec.height)}p")
+        if spec.fps:
+            partes.append(f"{int(spec.fps)} fps")
+    audio = spec.acod_destino or ("aac" if spec.vcod_destino in ("h264", "hevc") else "opus")
+    nombre_a = policy.NOMBRE_CODEC.get(audio, audio.upper())
+    if audio in ("flac", "wav", "alac"):
+        partes.append(nombre_a)
+    else:
+        partes.append(f"{nombre_a} {int(spec.audio_bitrate or KBPS_POR_DEFECTO.get(audio, 128))}k")
+    if spec.audio_canales == "mono":
+        partes.append(t("mono"))
+    elif spec.audio_canales == "estereo":
+        partes.append(t("estéreo"))
+    if spec.loudness != "ninguna":
+        partes.append(f"{spec.loudness} LUFS")
+    return " · ".join(partes)
+
+
+def estimar(spec: DownloadSpec, info: dict[str, Any]) -> dict[str, Any]:
+    """Cuánto va a ocupar y cuánto va a tardar, **antes** de empezar. Es una estimación y se dice.
+
+    ``bytes`` es el tamaño del resultado; ``bytes_origen`` lo que hay que descargar para conseguirlo (en una copia
+    son el mismo). Para vídeo con CRF se estima con píxeles × fotogramas × un factor por códec y calidad (la tabla
+    de ``transcode.BPP``); con bitrate fijo, el bitrate mandado. La duración del trabajo sale de la duración del
+    vídeo por un factor de codificación, más lo que tarda la descarga a una tasa razonable.
+    """
+    info = info or {}
+    dur = float(info.get("duration") or info.get("duracion") or 0.0) or 0.0
+    p = policy.pistas(info)
+    if not spec.convertir:
+        plan = policy.plan(info, spec.perfil or "video_720", spec.video_id, spec.audio_id)
+        bytes_ = int(plan.bytes_estimados or 0)
+        return {"bytes": bytes_, "bytes_origen": bytes_, "kbps": int(bytes_ * 8 / 1000 / dur) if dur and bytes_ else 0,
+                "segundos": transcode.redondear_segundos(transcode.segundos_descarga(bytes_)),
+                "descripcion": plan.nota, "contenedor": plan.contenedor, "recodificar": False}
+
+    plan = policy.plan(info, "convertir", spec.video_id, spec.audio_id, destino=spec.destino)
+    origen_v = next((r for r in p["video"] if str(r["id"]) == str(plan.video_id)), {})
+    origen_a = next((r for r in p["audio"] if str(r["id"]) == str(plan.audio_id)), {})
+    audio = spec.acod_destino or ("aac" if spec.vcod_destino in ("h264", "hevc") else "opus")
+    if audio in ("flac", "wav", "alac"):
+        kbps_a = _kbps_sin_perdida(audio, origen_a)
+    else:
+        kbps_a = int(spec.audio_bitrate or KBPS_POR_DEFECTO.get(audio, 128))
+
+    if spec.vcod_destino:
+        alto = int(origen_v.get("altura") or 0)
+        ancho = int(origen_v.get("ancho") or 0) or (int(alto * 16 / 9) if alto else 1280)
+        alto = alto or 720
+        if spec.height and spec.height < alto:                 # se reduce de tamaño
+            ancho, alto = max(2, int(round(ancho * spec.height / alto / 2)) * 2), int(spec.height)
+        fps = float(spec.fps or origen_v.get("fps") or 25.0)
+        kbps_v = transcode.kbps_video(spec.vcod_destino, ancho, alto, fps, spec.crf, spec.video_bitrate)
+        kbps = kbps_v + kbps_a
+        segundos = transcode.segundos_codifica(spec.vcod_destino, ancho, alto, dur, spec.two_pass)
+    else:
+        kbps = kbps_a
+        segundos = transcode.segundos_codifica(None, 0, 0, dur)
+
+    bytes_origen = int(plan.bytes_estimados or 0)
+    bytes_ = int(kbps * 1000 / 8 * dur) if dur else bytes_origen
+    return {"bytes": bytes_, "bytes_origen": bytes_origen, "kbps": int(kbps),
+            "segundos": transcode.redondear_segundos(segundos + transcode.segundos_descarga(bytes_origen)),
+            "descripcion": _descripcion_conversion(spec), "contenedor": plan.contenedor, "recodificar": True,
+            "nota": plan.nota}
+
+
+def catalogo(hw: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Lo que este equipo puede convertir, para la pantalla «Convertir al bajar…».
+
+    Solo se ofrecen los códec cuya **codificadora existe** en este ffmpeg (``available_encoders``): ofrecer AV1 sin
+    SVT-AV1 o ALAC sin ALAC es prometer un fichero que luego no sale. Sin etiquetas: los nombres visibles los pone el
+    menú, que es quien traduce.
+    """
+    encs = available_encoders()
+    audio: list[dict[str, Any]] = []
+    for cod in policy.AUDIO_DESTINO:
+        nombre = transcode.ENC_AUDIO.get(cod)
+        if nombre and nombre not in encs:
+            continue
+        audio.append({"id": cod, "bitrates": list(policy.CADA_CODEC_AUDIO.get(cod, ())),
+                      "contenedor": policy.CONTENEDOR_DESTINO_AUDIO.get(cod, "mkv"),
+                      "sin_perdida": cod in transcode.SIN_PERDIDA})
+    hw_codecs = list((hw or {}).get("codecs") or []) if (hw or {}).get("available") else []
+    video: list[dict[str, Any]] = []
+    for cod in policy.VIDEO_DESTINO:
+        nombre = transcode.ENC_VIDEO.get(cod)
+        if nombre not in encs:
+            continue
+        video.append({"id": cod, "crf": dict(CRF_VIDEO.get(cod, {})),
+                      "contenedor": policy.contenedor_conversion(cod, "aac"),
+                      "hardware": cod in hw_codecs})
+    return {"audio": audio, "video": video, "canales": list(CANALES), "loudness": list(LOUDNESS),
+            "resoluciones": list(transcode.RESOLUCIONES), "fps": [f for f in FPS if f],
+            "hardware": {"disponible": bool(hw_codecs), "codecs": hw_codecs}}
+
+
+def spec_conversion(url: str, *, acod: str | None = None, vcod: str | None = None, altura: int | None = None,
+                    audio_bitrate: int | None = None, crf: int | None = None, video_bitrate: int | None = None,
+                    fps: int | None = None, two_pass: bool = False, hardware: bool = False,
+                    audio_canales: str = "conservar", loudness: str = "ninguna",
+                    options: dict[str, Any] | None = None) -> DownloadSpec:
+    """El spec de una conversión explícita: baja el original tal cual y lo convierte después.
+
+    ``kind`` es ``video`` si hay códec de vídeo y ``audio_original`` si solo hay audio: lo que decide es qué hay que
+    bajarse del origen, no lo que se va a crear.
+    """
+    opciones = dict(options or {})
+    d: dict[str, Any] = {"url": url, "kind": "video" if vcod else "audio_original",
+                         "vcod_destino": vcod, "acod_destino": acod, "audio_canales": audio_canales,
+                         "loudness": loudness, "two_pass": bool(two_pass), "hardware": bool(hardware),
+                         # None = el de por defecto del códec (KBPS_POR_DEFECTO): 192 solo era del MP3 de siempre
+                         "audio_bitrate": int(audio_bitrate) if audio_bitrate else None}
+    if altura:
+        d["height"] = int(altura)
+    if crf is not None:
+        d["crf"] = int(crf)
+    if video_bitrate:
+        d["video_bitrate"] = int(video_bitrate)
+    if fps:
+        d["fps"] = int(fps)
+    for k, v in opciones.items():
+        if k in DownloadSpec.__dataclass_fields__ and k not in d:
+            d[k] = v
+    d["extra"] = {"preset": "convertir", "catalogo": True}
+    return DownloadSpec.from_dict(d)
 
 
 def seleccion_capitulos(spec: DownloadSpec) -> list[dict[str, Any]] | None:
@@ -309,7 +512,10 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
         args += ["-f", expresion]
     orden = ""
     if not only_subs and not explicito:
-        if perfil:
+        if spec.convertir:
+            # se recodifica de todos modos: interesa la resolución más alta, no el códec que este equipo decodifica
+            orden = "res"
+        elif perfil:
             orden = POLICY_SORT.get(perfil, "")
         elif spec.kind == "video" and FORMAT_SORT[spec.container]:
             orden = FORMAT_SORT[spec.container].format(vcodec=vcodec)
@@ -330,6 +536,10 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
                 else:
                     args += ["--audio-quality", str(int(spec.audio_vbr))]
         # audio sin --audio-format: FFmpegExtractAudio «best» copia el códec de origen (Opus sigue siendo Opus)
+    elif spec.convertir:
+        # el intermedio va en MKV, que admite cualquier códec: la conversión la hace `transcode` después, sobre el
+        # fichero tal y como lo sirve el origen (nada de --recode-video ni --audio-format, que se saltarían el trabajo)
+        args += ["--merge-output-format", "mkv"]
     else:
         args += ["--merge-output-format", MERGE_PREFERENCES[spec.container]]
         if REMUX_RULES[spec.container]:

@@ -31,9 +31,11 @@ def test_las_dos_pantallas_nuevas_se_abren_desde_descargar_y_dicen_lo_que_hay(yt
     # 1. las dos vistas cuelgan de «Descargar»: sin eso solo llegarían por una tecla que nadie se sabe
     h.command("script-binding", "mu_ytdl/ytdl-download")
     st = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("view") == "download"
-                         and "Capítulos…" in [i["title"] for i in v.get("items", [])], timeout=40)
+                         and "Recortar…" in [i["title"] for i in v.get("items", [])], timeout=40)
     titulos = _titulos(st)
-    assert "Capítulos…" in titulos and "Fragmentos de tiempo…" in titulos
+    recortar = next(i for i in st["items"] if i["title"] == "Recortar…")
+    assert recortar["submenu"] == 2, "Capítulos y Fragmentos van juntos, en «Recortar…»"
+    assert "Capítulos…" not in titulos, "F3: dejan de competir con las descargas grandes"
 
     # 2. capítulos: el vídeo de prueba no trae ninguno, así que la pantalla lo dice y ofrece lo que sí se puede hacer
     send_event(h, {"type": "activate", "index": 0, "value": {"view": "chapters"}})

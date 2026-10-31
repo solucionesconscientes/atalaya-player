@@ -5,6 +5,7 @@ change, download presets, live downloads panel fed by mpvd push events."""
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -130,17 +131,24 @@ def test_hook_path_switch_quality_download_and_panel(ytdl_mpv, media_dir):
     h.wait_property("user-data/uosc/menu/type", lambda v: not v, timeout=10)
     h.command("script-binding", "mu_ytdl/ytdl-download")
     wait_view(h, "download")
+    # la vista pinta primero «mirando qué hay…» y la ficha real llega con la respuesta de ytdl.plan
     st = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("view") == "download"
-                         and any(i["title"] == "Opciones" for i in v.get("items", [])), timeout=30)
-    # H31: «Vídeo» y sus presets llevan la etiqueta de decodificación, como en «Calidad»
-    head = [(i["title"], i["hint"]) for i in st["items"]][:2]
-    assert head[0][0] == "Vídeo" and head[0][1].startswith("mp4 · ")
-    assert "fluido en tu equipo" in head[0][1] or "exigente" in head[0][1]
-    assert head[1] == ("Audio", "10")   # el Opus del origen se suma a los presets de audio (los «convertir» siguen ahí)
-    send_event(h, {"type": "activate", "index": 1, "value": {"opt": "container"}})  # mp4 → mkv, menu stays open
-    h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and any(i["title"] == "Vídeo"
-                                                                   and str(i["hint"]).startswith("mkv")
-                                                                     for i in v.get("items", [])), timeout=15)
+                         and any(i["title"] == "Opciones…" for i in v.get("items", []))
+                         and all("mirando" not in str(i.get("hint")) for i in v.get("items", [])[:3]),
+                         timeout=40)
+    # F3: las tres descargas grandes con su ficha debajo (formato, contenedor, ~MB, ~tiempo), que sale de ytdl.plan
+    head = [(i["title"], i["hint"]) for i in st["items"]][:3]
+    assert head[0][0] == "Opus del origen" and "Opus" in head[0][1]
+    assert head[1][0] == "Vídeo 720p VP9 + Opus"
+    st = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("view") == "download"
+                         and any(i["title"] == "Vídeo 720p VP9 + Opus" and "~" in str(i.get("hint"))
+                                 and "MKV" in str(i.get("hint")) for i in v.get("items", [])), timeout=40)
+    ficha = next(i["hint"] for i in st["items"] if i["title"] == "Vídeo 720p VP9 + Opus")
+    # la ficha lleva la estimación con «~» y una unidad de tamaño; el vídeo de prueba es diminuto, así que puede
+    # salir en KB: lo que se comprueba es que hay cifra y unidad, no que quepa en MB
+    assert "~" in ficha and re.search(r"~\s*\d+(\s*[.,]\s*\d+)?\s*(KB|MB|GB)", ficha), ficha
+    # mp4 → mkv: el efecto se comprueba donde importa, en el spec del trabajo que se encola más abajo
+    send_event(h, {"type": "activate", "index": 1, "value": {"opt": "container"}})
     send_event(h, {"type": "activate", "index": 1, "value": {"preset": "audio_mp3_128"}})
     ev = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and isinstance(v.get("last_event"), dict)
                          and v["last_event"].get("status") == "done", timeout=60)

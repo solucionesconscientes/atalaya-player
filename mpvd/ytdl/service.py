@@ -33,7 +33,8 @@ from mpvd.ytdl.binary import (
     nightly_path,
     vendor_path,
 )
-from mpvd.ytdl import chapters, policy, sections, sites
+from mpvd.ytdl import chapters, policy, sections, sites, transcode
+from mpvd.convert import hw as hwencode
 from mpvd.ytdl.downloads import BROWSERS, FINAL, DownloadItem, DownloadManager, valid_browser
 from mpvd.ytdl.presets import (
     preset_rows,
@@ -46,6 +47,9 @@ from mpvd.ytdl.presets import (
     PRESETS,
     SPONSORBLOCK_MODES,
     DownloadSpec,
+    catalogo,
+    estimar,
+    spec_conversion,
     spec_from_preset,
 )
 
@@ -91,6 +95,7 @@ class YtdlService:
         self._auto_task: asyncio.Task[None] | None = None
         self.last_update_check: dict[str, Any] = {}
         self.downloads.final_hooks.append(self._unir_trozos_al_terminar)
+        self.downloads.final_hooks.append(self._convertir_al_terminar)
 
     # -- binary -------------------------------------------------------------------------------
 
@@ -343,6 +348,111 @@ class YtdlService:
                 "bytes": bytes_est, "union": len(rangos) > 1,
                 "aviso": sections.precision(cod.get(plan.video_id or "", ""), cod.get(plan.audio_id or "", ""))}
 
+    # -- fichas y pistas del origen (F3) --------------------------------------------------------
+
+    async def plan_of(self, url: str, perfil: str = "video_720", video_id: str | None = None,
+                      audio_id: str | None = None, destino: dict[str, Any] | None = None,
+                      seed: str | None = None) -> dict[str, Any]:
+        """La ficha previa: qué pistas, en qué contenedor, cuánto ocupa y cuánto tarda.
+
+        ``destino`` (solo con el perfil «convertir») dice a qué se convierte: ``{"vcod": "hevc", "acod": "aac",
+        "altura": 720, "crf": 28, "audio_bitrate": 128, "fps": None, "two_pass": False, "hardware": False,
+        "audio_canales": "conservar", "loudness": "ninguna"}``. El tamaño del resultado lo estima
+        ``presets.estimar`` y se dice que es una estimación; lo que se descarga son las pistas del origen.
+        """
+        if perfil not in policy.PERFILES:
+            raise RpcError(INVALID_PARAMS, f"perfil de descarga desconocido: {perfil}")
+        datos = await self.raw_info(url, seed=seed)
+        destino = destino if isinstance(destino, dict) and perfil == "convertir" else None
+        # la política primero: es la que rechaza con el motivo en castellano (pareja imposible, códec fuera del catálogo)
+        d = policy.plan(datos, perfil, video_id, audio_id,
+                        destino={"vcod": destino.get("vcod"), "acod": destino.get("acod"),
+                                 "altura": destino.get("altura")} if destino else None)
+        if destino:
+            spec = spec_conversion(url, acod=destino.get("acod"), vcod=destino.get("vcod"),
+                                   altura=destino.get("altura"), audio_bitrate=destino.get("audio_bitrate"),
+                                   crf=destino.get("crf"), video_bitrate=destino.get("video_bitrate"),
+                                   fps=destino.get("fps"), two_pass=bool(destino.get("two_pass")),
+                                   hardware=bool(destino.get("hardware")),
+                                   audio_canales=str(destino.get("audio_canales") or "conservar"),
+                                   loudness=str(destino.get("loudness") or "ninguna"))
+        else:
+            spec = DownloadSpec(url=url, perfil=perfil, video_id=video_id, audio_id=audio_id,
+                                kind="audio_original" if perfil == "opus_origen" else "video")
+        est = estimar(spec, datos)
+        return {**d.to_dict(), "url": url, "perfil": perfil,
+                "duration": float(datos.get("duration") or 0.0) or None,
+                "bytes": est.get("bytes"), "bytes_origen": est.get("bytes_origen"),
+                "segundos": est.get("segundos"), "kbps": est.get("kbps"),
+                "descripcion": est.get("descripcion"), "recodificar": bool(d.recodificar)}
+
+    async def tracks_of(self, url: str, seed: str | None = None) -> dict[str, Any]:
+        """Las pistas reales del origen, con lo que hace falta para elegir: códec, altura, fps, kbps, bytes, idioma.
+
+        ``auto`` es la pareja que elegiría la política (VP9 ≤720p + el Opus del origen): la vista la marca «Todo a
+        Auto» y así la primera pantalla ya dice qué saldría sin tocar nada.
+        """
+        datos = await self.raw_info(url, seed=seed)
+        p = policy.pistas(datos)
+        out: dict[str, Any] = {"url": url, "title": datos.get("title") or "",
+                               "duration": float(datos.get("duration") or 0.0),
+                               "video": p["video"], "audio": p["audio"],
+                               "counts": {"video": len(p["video"]), "audio": len(p["audio"])}, "auto": None}
+        try:
+            out["auto"] = policy.plan(datos, "video_720").to_dict()
+        except ValueError as exc:            # sin pistas separadas: la vista lo dice, no se inventa una pareja
+            out["motivo"] = str(exc)
+        return out
+
+    # -- convertir al terminar (F3) -------------------------------------------------------------
+
+    def _convertir_al_terminar(self, item: DownloadItem) -> None:
+        """La conversión explícita se hace **después** de descargar y en una tarea aparte.
+
+        La descarga baja la pista del origen tal cual (sin ``--recode-video`` ni ``--audio-format``): así el original
+        existe si algo falla, y el trabajo de ffmpeg puede tardar sin bloquear la cola.
+        """
+        if item.status != "done" or not item.spec.convertir:
+            return
+        ficheros = [p for p in item.outputs if p and Path(p).is_file()]
+        if not ficheros:
+            return
+        try:
+            bucle = asyncio.get_running_loop()
+        except RuntimeError:                      # sin bucle (llamada desde un hilo de pruebas): no se convierte
+            return
+        bucle.create_task(self._convertir(item, ficheros[0]), name="ytdl-convertir")
+
+    async def _convertir(self, item: DownloadItem, origen: str) -> None:
+        spec = item.spec
+        dispositivo = None
+        if spec.hardware:
+            caps = await asyncio.to_thread(hwencode.detect)
+            if caps.get("available") and spec.vcod_destino in (caps.get("codecs") or []):
+                dispositivo = caps.get("device")
+        ajustes: dict[str, Any] = {
+            "vcodec": spec.vcod_destino, "acodec": spec.acod_destino, "crf": spec.crf,
+            "video_bitrate": spec.video_bitrate, "audio_kbps": spec.audio_bitrate,
+            "altura": spec.height, "fps": spec.fps, "two_pass": spec.two_pass, "hardware": dispositivo,
+            "canales": spec.audio_canales, "loudness": spec.loudness,
+        }
+        item.stage, item.message = "convert", t("convirtiendo a %s…") % (
+            policy.NOMBRE_CODEC.get(spec.vcod_destino or spec.acod_destino or "", "?"))
+        self.downloads.changed(item)
+        res = await asyncio.to_thread(transcode.convertir, Path(origen), Path(origen).with_suffix(""), **ajustes)
+        if res.ok:
+            item.outputs = [res.salida] + [p for p in item.outputs if p != origen]
+            if Path(origen) != Path(res.salida):
+                Path(origen).unlink(missing_ok=True)     # el original no se queda: era el paso intermedio
+            item.message = t("listo: %s %s") % (res.contenedor.upper(), transcode.formato_bytes(res.bytes))
+            if res.avisos:
+                item.message += " · " + " · ".join(res.avisos)
+        else:
+            item.message = t("descargado, pero no se pudo convertir: %s") % res.error
+            log.warning("ytdl: no se pudo convertir %s: %s", item.id, res.error)
+        item.post = {**(item.post or {}), "conversion": res.to_dict()}
+        self.downloads.changed(item)
+
     async def resolve_chapters(self, spec: DownloadSpec) -> None:
         """``"3-5"`` o ``[3, 5]`` → las filas del capítulo, para que la orden lleve rangos y no una suposición.
 
@@ -558,6 +668,26 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
         except ValueError as exc:
             raise RpcError(INVALID_PARAMS, str(exc)) from None
 
+    @d.method("ytdl.plan")
+    async def ytdl_plan(ctx: RpcContext, url: str, perfil: str = "video_720", video_id: str | None = None,
+                        audio_id: str | None = None, destino: dict[str, Any] | None = None,
+                        seed: str | None = None) -> dict[str, Any]:
+        """La ficha previa de una descarga: pistas, contenedor, tamaño y tiempo aproximados, **antes** de empezar.
+
+        Con ``perfil`` «pistas» y sus dos ids se comprueba la pareja (contenedor y motivo si no cabe); con
+        «convertir» y ``destino`` se dice a qué códec se convierte y cuánto va a ocupar el resultado.
+        """
+        try:
+            return await service.plan_of(url, perfil=perfil, video_id=video_id, audio_id=audio_id,
+                                         destino=destino, seed=seed)
+        except ValueError as exc:                    # pareja imposible, pista que ya no está, perfil raro
+            raise RpcError(INVALID_PARAMS, str(exc)) from None
+
+    @d.method("ytdl.pistas")
+    async def ytdl_pistas(ctx: RpcContext, url: str, seed: str | None = None) -> dict[str, Any]:
+        """Las pistas reales del origen (códec, altura, fps, kbps, bytes, idioma) y la pareja automática."""
+        return await service.tracks_of(url, seed=seed)
+
     @d.method("ytdl.hw")
     async def hw(ctx: RpcContext) -> dict[str, Any]:
         """Video codecs this machine decodes in hardware (vainfo on Linux), the ``-S vcodec`` limit used for
@@ -586,10 +716,12 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
 
     @d.method("ytdl.presets")
     async def presets(ctx: RpcContext) -> dict[str, Any]:
-        """Download presets and the option vocabularies for the menu."""
+        """Download presets and the option vocabularies for the menu (and the explicit conversion catalogue)."""
+        hw = await asyncio.to_thread(hwencode.detect)
         return {"presets": preset_rows(), "containers": list(CONTAINERS), "audio_formats": list(AUDIO_FORMATS),
                 "sub_langs": sub_lang_rows(),
                 "audio_bitrates": list(AUDIO_BITRATES), "sponsorblock": list(SPONSORBLOCK_MODES),
+                "catalogo": catalogo(hw),
                 "settings": service.downloads.settings.to_dict()}
 
     @d.method("ytdl.download")

@@ -93,6 +93,9 @@ local state = {
   pick = nil,            -- H37/D2: {entries, sel, fmt, srt, common, common_srt, source, url, title}
   chap = nil,            -- F2: {url, title, rows, sel} capítulos del vídeo y cuáles están marcados
   frag = nil,            -- F2: {url, rangos, join, aviso, bytes, total} fragmentos de tiempo elegidos
+  plan = nil,            -- F3: {url, rows = {perfil → ficha}, pistas} las fichas previas de «Descargar»
+  picks = nil,           -- F3: {url, tracks, video, audio, plan, motivo} pistas elegidas a mano
+  conv = nil,            -- F3: {url, cat, acod, vcod, ...} catálogo de conversión explícito
 }
 
 local set_button_state -- defined with the bindings below
@@ -692,6 +695,71 @@ local function toggle_option(name)
   end
 end
 
+-- H31 · la misma etiqueta que en «Calidad»: si este equipo decodifica algún códec en la tarjeta, lo que se baje con
+-- ese códec «se ve fluido»; si no se sabe, se decodifica en el procesador.
+local function hw_hint()
+  if #hw.names > 0 then return hw.names[1] .. ' · ' .. tr('fluido en tu equipo') end
+  return tr('exigente (por procesador)')
+end
+
+-- F3 · la ficha de cada acción. Sale de mpvd (`ytdl.plan`), que es quien sabe qué pistas hay, en qué contenedor
+-- caben y cuánto ocupan: la pantalla no calcula tamaños por su cuenta. «~» delante de todo: es una estimación.
+local ACCIONES = {
+  { perfil = 'opus_origen', preset = 'audio_opus_origen', titulo = 'Opus del origen', icono = 'audiotrack' },
+  { perfil = 'video_720', preset = 'video_720', titulo = 'Vídeo 720p VP9 + Opus', icono = 'movie' },
+  { perfil = 'compatible', preset = 'compatible', titulo = 'Compatible: H.264 + AAC', icono = 'devices' },
+}
+
+local function peso(bytes)
+  local n = tonumber(bytes)
+  if not n or n <= 0 then return nil end
+  if n >= 1e9 then return string.format('%.1f GB', n / 1e9) end
+  if n >= 1e7 then return string.format('%.0f MB', n / 1e6) end
+  if n >= 1e6 then return string.format('%.1f MB', n / 1e6) end
+  return string.format('%.0f KB', n / 1e3)
+end
+
+local function espera(sec)
+  local n = tonumber(sec) or 0
+  if n >= 3600 then return tr('%d h %d min'):format(math.floor(n / 3600), math.floor((n % 3600) / 60)) end
+  if n >= 90 then return tr('%d min'):format(math.floor(n / 60 + 0.5)) end
+  return tr('%d s'):format(math.max(1, math.floor(n + 0.5)))
+end
+
+-- «VP9 720p + Opus 64k → MKV · ~117 MB · ~47 s». El texto lo pone mpvd (nota del plan o descripción de la
+-- conversión); aquí solo se le añaden el tamaño y el tiempo.
+local function ficha(res)
+  if type(res) ~= 'table' then return nil end
+  local texto = res.descripcion or res.nota
+  if not texto or texto == '' then return nil end
+  local p, t = peso(res.bytes), res.segundos and espera(res.segundos) or nil
+  if p and t then return tr('%s · ~%s · ~%s'):format(texto, p, t) end
+  if p then return tr('%s · ~%s'):format(texto, p) end
+  return texto
+end
+
+-- Las fichas se piden una vez por URL y se van pintando según llegan (cada respuesta vuelve a pintar la pantalla).
+local function pedir_fichas(url)
+  if state.plan and state.plan.url == url then return end
+  state.plan = { url = url, rows = {} }
+  for _, a in ipairs(ACCIONES) do
+    rpc.call('ytdl.plan', { url = url, perfil = a.perfil, seed = state.seed }, function(err, res)
+      if state.view ~= 'download' and state.view ~= 'tracks' then return end
+      if state.plan and state.plan.url == url then
+        state.plan.rows[a.perfil] = err and { error = fail(err, 'ytdl.plan') } or res
+        reopen_current()
+      end
+    end, 90)
+  end
+  rpc.call('ytdl.pistas', { url = url, seed = state.seed }, function(err, res)
+    if state.view ~= 'download' then return end
+    if state.plan and state.plan.url == url then
+      state.plan.pistas = err and { error = fail(err, 'ytdl.pistas') } or res
+      reopen_current()
+    end
+  end, 90)
+end
+
 -- args.url/args.title: download something other than the current file (a YouTube search result).
 views.download = function(args)
   local target = args.url
@@ -700,39 +768,65 @@ views.download = function(args)
     return
   end
   local target_title = target and (args.title or target) or state.title
+  local url = target or state.url
   if not require_mpvd('Descargar') then return end
   show(tr('Descargar'), uosc.loading_items())
   with_presets(function(err, res)
     if err then show(tr('Descargar'), uosc.message_items(fail(err, 'ytdl.presets'), 'error')) return end
+    pedir_fichas(url)
     local o = state.dl_options
-    -- H31: the same label as in «Calidad». The download asks for the codec this machine decodes in hardware, so if we
-    -- know of any, what comes down plays «fluido en tu equipo»; if we know of none, it will be decoded by the processor.
-    local hw_hint = #hw.names > 0 and (hw.names[1] .. ' · fluido en tu equipo') or 'exigente (por procesador)'
-    local video, audio, subs = {}, {}, {}
-    for _, p in ipairs(res.presets or {}) do
-      local it = { title = p.title, icon = (p.group == 'audio' or p.group == 'convertir') and 'audiotrack' or 'movie',
-                   value = { preset = p.id, url = target, title = target and target_title or nil } }
-      if p.group == 'video' then it.hint = hw_hint end
-      if p.group == 'audio' or p.group == 'convertir' then table.insert(audio, it)
-      elseif p.group == 'subs' then
-        it.icon, it.hint = tr('subtitles'), sub_langs_label(o.sub_langs)
-        table.insert(subs, it)
-      else table.insert(video, it) end
+    local planes = (state.plan and state.plan.url == url) and state.plan.rows or {}
+    local items = {}
+    -- Las tres descargas de siempre, con su ficha debajo: qué se pide, en qué contenedor y cuánto ocupa y tarda.
+    for _, a in ipairs(ACCIONES) do
+      local plan = planes[a.perfil]
+      local it = { title = tr(a.titulo), icon = a.icono,
+                   hint = plan and (plan.error or ficha(plan)) or tr('mirando qué hay…'),
+                   value = { preset = a.preset, url = target, title = target and target_title or nil } }
+      if plan and plan.error then it.muted, it.icon = true, 'info' end
+      if plan and plan.video_id and plan.audio_id and not plan.error then
+        -- la descarga pide exactamente las pistas de la ficha, no una expresión que yt-dlp vuelva a decidir
+        it.value.elegidas = { video = plan.video_id, audio = plan.audio_id }
+      end
+      table.insert(items, it)
     end
-    local items = {
-      { title = tr('Vídeo'), hint = o.container .. ' · ' .. hw_hint, items = video },
-      { title = tr('Audio'), hint = tostring(#audio), items = audio },
-      { title = tr('Opciones'),
-        hint = (o.subtitles and 'subs ' or '') .. (o.sponsorblock ~= 'none' and 'SB ' or '') .. o.container,
-        items = options_items(o) },
-    }
-    for i, it in ipairs(subs) do table.insert(items, 2 + i, it) end
-    -- F2: los capítulos y los fragmentos cuelgan de aquí (donde se busca qué bajar) y no solo de una tecla
-    table.insert(items, { title = tr('Capítulos…'), icon = 'bookmarks', value = { view = 'chapters', url = target } })
-    table.insert(items, { title = tr('Fragmentos de tiempo…'), icon = 'content_cut',
-                          value = { view = 'fragments', url = target } })
+    local pistas = (state.plan and state.plan.url == url) and state.plan.pistas or nil
+    local ficha_pistas = pistas and not pistas.error
+        and tr('%d de vídeo · %d de audio · se copian tal cual'):format(pistas.counts.video, pistas.counts.audio)
+        or (pistas and pistas.error) or tr('dos listas: vídeo y audio')
+    table.insert(items, { title = tr('Elegir pistas del origen…'), hint = ficha_pistas, icon = 'checklist',
+                          value = { view = 'tracks', url = target, title = target and target_title or nil } })
+    -- Convertir es otra tarea (y otro fichero): pantalla aparte, con su catálogo y su estimación.
+    table.insert(items, { title = tr('Convertir al bajar…'), hint = tr('MP3, FLAC, H.265… · con estimación'),
+                          icon = 'transform', value = { view = 'convert', url = target,
+                                                        title = target and target_title or nil } })
+    -- F2 · lo de bajar solo una parte va junto, que es la misma tarea, y no en dos filas que compiten con las de arriba
+    table.insert(items, { title = tr('Recortar…'), icon = 'content_cut', items = {
+      { title = tr('Capítulos…'), icon = 'bookmarks', value = { view = 'chapters', url = target } },
+      { title = tr('Fragmentos de tiempo…'), icon = 'content_cut', value = { view = 'fragments', url = target } },
+    } })
+    local otras = {}
+    for _, p in ipairs(res.presets or {}) do
+      if p.group ~= 'video' or (p.id ~= 'video_720' and p.id ~= 'compatible' and p.id ~= 'pistas') then
+        if p.id ~= 'audio_opus_origen' then
+          local it = { title = p.title, icon = (p.group == 'audio' or p.group == 'convertir') and 'audiotrack' or 'movie',
+                       value = { preset = p.id, url = target, title = target and target_title or nil } }
+          if p.group == 'video' then it.hint = hw_hint() end
+          if p.group == 'subs' then it.icon, it.hint = tr('subtitles'), sub_langs_label(o.sub_langs) end
+          table.insert(otras, it)
+        end
+      end
+    end
+    table.insert(items, { title = tr('Opciones…'), icon = 'tune',
+                          hint = (o.subtitles and 'subs ' or '') .. (o.sponsorblock ~= 'none' and 'SB ' or '') .. o.container,
+                          items = (function()
+                            local filas = options_items(o)
+                            table.insert(filas, { title = tr('Otras descargas…'), icon = 'download_for_offline',
+                                                  hint = tostring(#otras), items = otras, separator = true })
+                            return filas
+                          end)() })
     show(tr('Descargar · %s'):format(target_title or ''), items, {
-      footnote = tr('Enter descarga con el preset · Opciones: Enter alterna · Retroceso: atrás'),
+      footnote = tr('Enter descarga con la ficha que ves · Retroceso: atrás'),
     })
   end)
 end
@@ -746,6 +840,13 @@ local function start_download(params)
     subs_mode = state.dl_options.subs_mode, sub_langs = state.dl_options.sub_langs,
     sponsorblock = state.dl_options.sponsorblock, playlist = state.dl_options.playlist,
   } or nil
+  if params.elegidas then
+    -- F3: las dos pistas exactas de la ficha (o de «Pistas del origen»), para que se baje lo que se ha prometido
+    params.options = params.options or {}
+    params.options.video_id = params.elegidas.video
+    params.options.audio_id = params.elegidas.audio
+    params.elegidas = nil
+  end
   for _, k in ipairs({ 'container', 'playlist', 'playlist_items' }) do  -- with a preset only `options` count
     if params[k] ~= nil then
       params.options = params.options or {}
@@ -1235,6 +1336,340 @@ views.frag_edit = function(args)
   }
   show(tr('Fragmento · %s'):format(titulo), items,
        { footnote = tr('Enter ajusta 5 s · los cambios se ven en la lista de fragmentos · Retroceso: atrás') })
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- F3 · «Pistas del origen»: las dos listas de verdad (vídeo y audio) con su marca y la pareja resultante.
+--
+-- La pantalla no decide qué pareja cabe: se lo pregunta a `ytdl.plan` cada vez que cambia la elección, y si no se
+-- puede copiar en un contenedor honesto, mpvd contesta con el motivo y la fila de descargar queda apagada. «Todo a
+-- Auto» vuelve a la pareja de la política (VP9 ≤720p + el Opus del origen), que es la misma que enseña «Descargar».
+
+local function pista_v_titulo(r)
+  local t = r.codec or ''
+  if tonumber(r.altura) and r.altura > 0 then t = string.format('%s · %dp', t, r.altura) end
+  return t
+end
+
+local function pista_v_hint(r)
+  local out = {}
+  if tonumber(r.fps) and r.fps > 0 then out[#out + 1] = string.format('%d fps', r.fps) end
+  if tonumber(r.kbps) and r.kbps > 0 then out[#out + 1] = string.format('%d kbps', r.kbps) end
+  local p = peso(r.bytes)
+  if p then out[#out + 1] = p end
+  if r.con_audio then out[#out + 1] = tr('con el audio dentro') end
+  return table.concat(out, ' · ')
+end
+
+local function pista_a_titulo(r)
+  local t = r.codec or ''
+  if tonumber(r.kbps) and r.kbps > 0 then t = string.format('%s %dk', t, r.kbps) end
+  return t
+end
+
+local function pista_a_hint(r)
+  local out = {}
+  if tonumber(r.canales) and r.canales == 1 then out[#out + 1] = tr('mono')
+  elseif tonumber(r.canales) and r.canales >= 2 then out[#out + 1] = tr('estéreo') end
+  if r.idioma and r.idioma ~= '' then out[#out + 1] = r.idioma end
+  local p = peso(r.bytes)
+  if p then out[#out + 1] = p end
+  return table.concat(out, ' · ')
+end
+
+-- La pareja elegida se comprueba en mpvd: contenedor y motivo salen de la misma verdad que después descarga.
+local function comprobar_pareja()
+  local p = state.picks
+  if not p then return end
+  if not p.video and not p.audio then
+    p.plan, p.motivo = nil, nil
+    reopen_current()
+    return
+  end
+  if state.view ~= 'tracks' then return end
+  rpc.call('ytdl.plan', { url = p.url, perfil = 'pistas', video_id = p.video, audio_id = p.audio },
+    function(err, res)
+      if state.view ~= 'tracks' or state.picks ~= p then return end
+      if err then p.plan, p.motivo = nil, fail(err, 'ytdl.plan')
+      else p.plan, p.motivo = res, nil end
+      reopen_current()
+    end, 60)
+end
+
+local function descargar_pistas()
+  local p = state.picks
+  if not p or not p.plan then osd(tr('Esa pareja de pistas no se puede copiar')) return end
+  local o = state.dl_options or {}
+  local spec = {
+    url = p.url, title = state.title, kind = p.video and 'video' or 'audio_original', perfil = 'pistas',
+    video_id = p.video, audio_id = p.audio, container = p.plan.contenedor,
+    subtitles = (p.video ~= nil) and (o.subtitles ~= false) or false, subs_mode = o.subs_mode or 'file',
+    sub_langs = o.sub_langs, chapters = false, thumbnail = o.thumbnail == true,
+    metadata = o.metadata ~= false, sponsorblock = o.sponsorblock or 'none', playlist = false,
+  }
+  submit_raw(spec, tr('pistas del origen'))
+end
+
+views.tracks = function(args)
+  local url = args.url or state.url
+  if not url or url == '' then
+    show(tr('Pistas del origen'), uosc.message_items(tr('Abre una URL de yt-dlp primero'), 'info'))
+    return
+  end
+  if not require_mpvd('Pistas del origen') then return end
+  if not state.picks or state.picks.url ~= url then
+    state.picks = { url = url, tracks = nil, video = nil, audio = nil, plan = nil, motivo = nil }
+    show(tr('Pistas del origen'), uosc.loading_items(tr('Mirando qué pistas trae…')))
+    rpc.call('ytdl.pistas', { url = url, seed = state.seed }, function(err, res)
+      if state.view ~= 'tracks' or not state.picks or state.picks.url ~= url then return end
+      if err then show(tr('Pistas del origen'), uosc.message_items(fail(err, 'ytdl.pistas'), 'error')) return end
+      state.picks.tracks = res
+      if res.auto and res.auto.video_id then
+        state.picks.video, state.picks.audio = res.auto.video_id, res.auto.audio_id
+      end
+      reopen_current()
+      comprobar_pareja()
+    end, 90)
+    return
+  end
+  local p = state.picks
+  local datos = p.tracks
+  if not datos then return end
+  local titulo = tr('Pistas del origen · %s'):format(ellipsize(datos.title ~= '' and datos.title or (args.title or url), 40))
+  if #datos.video == 0 and #datos.audio == 0 then
+    -- estado vacío explícito: se dice por qué y se ofrece lo que sí se puede hacer
+    show(titulo, {
+      { title = datos.motivo or tr('Este enlace no ofrece pistas separadas'), icon = 'info', selectable = false,
+        muted = true, align = 'center' },
+      { title = tr('Descargar el vídeo entero'), icon = 'download', value = { preset = 'video_720', url = url },
+        separator = true },
+      { title = tr('Volver a «Descargar»'), icon = 'arrow_back', value = { view = 'download', url = url } },
+    })
+    return
+  end
+  local auto = datos.auto
+  local es_auto = auto and p.video == auto.video_id and p.audio == auto.audio_id
+  local vrows, arows = {}, {}
+  for _, r in ipairs(datos.video) do
+    vrows[#vrows + 1] = { title = pista_v_titulo(r), hint = pista_v_hint(r),
+                          icon = p.video == r.id and 'check_box' or 'check_box_outline_blank',
+                          value = { pick_video = r.id }, keep_open = true }
+  end
+  for _, r in ipairs(datos.audio) do
+    arows[#arows + 1] = { title = pista_a_titulo(r), hint = pista_a_hint(r),
+                          icon = p.audio == r.id and 'check_box' or 'check_box_outline_blank',
+                          value = { pick_audio = r.id }, keep_open = true }
+  end
+  local items = {
+    { title = tr('Todo a Auto'), hint = es_auto and '✓' or nil, icon = 'auto_awesome',
+      value = { pick_auto = true }, keep_open = true },
+    { title = tr('Vídeo'), hint = p.video and tostring(p.video) or tr('sin vídeo'), icon = 'movie', items = vrows },
+    { title = tr('Audio'), hint = p.audio or tr('sin audio'), icon = 'audiotrack', items = arows },
+  }
+  local ficha_pareja = p.motivo or (p.plan and ficha(p.plan)) or tr('eligiendo…')
+  items[#items + 1] = { title = tr('Descargar con estas pistas'), hint = ficha_pareja, icon = 'download',
+                        muted = (p.plan == nil), value = { pick_down = true }, separator = true }
+  if p.motivo then
+    items[#items + 1] = { title = p.motivo, icon = 'error', selectable = false, muted = true }
+  end
+  show(titulo, items, { footnote = tr('Enter elige una pista y comprueba la pareja · Retroceso: atrás') })
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- F3 · «Convertir al bajar»: el catálogo explícito (solo lo que este ffmpeg sabe codificar, lo dice mpvd) con su
+-- estimación delante. Nada de esto es el camino por defecto: quien no entra aquí, baja el original sin tocar.
+
+local CODECS_AUDIO = {
+  { id = 'opus', nombre = tr('Opus'), pista = tr('el más pequeño') },
+  { id = 'aac', nombre = tr('AAC (M4A)'), pista = tr('móviles y Apple') },
+  { id = 'alac', nombre = tr('ALAC (sin pérdida)'), pista = tr('para Apple, sin perder nada') },
+  { id = 'mp3', nombre = tr('MP3'), pista = tr('el más compatible') },
+  { id = 'flac', nombre = tr('FLAC (sin pérdida)'), pista = tr('sin perder nada') },
+  { id = 'wav', nombre = tr('WAV (sin comprimir)'), pista = tr('para editar el audio') },
+}
+local CODECS_VIDEO = {
+  { id = 'h264', nombre = tr('H.264'), pista = tr('se abre en cualquier sitio') },
+  { id = 'hevc', nombre = tr('H.265'), pista = tr('ocupa la mitad · tarda más') },
+  { id = 'vp9', nombre = tr('VP9'), pista = tr('para la web') },
+  { id = 'av1', nombre = tr('AV1'), pista = tr('el que menos ocupa · tarda mucho') },
+}
+local CANALES_TXT = { conservar = tr('conservar los del origen'), estereo = tr('estéreo'), mono = tr('mono') }
+local LOUDNESS_TXT = { ['ninguna'] = tr('ninguna'), ['-18'] = tr('igualar a -18 LUFS (voz)'),
+                       ['-14'] = tr('igualar a -14 LUFS (música)') }
+local CALIDADES_CRF = { { id = 'high', nombre = tr('alta (mejor imagen)') },
+                        { id = 'normal', nombre = tr('normal') },
+                        { id = 'small', nombre = tr('pequeña (ocupa menos)') } }
+
+local function conv_catalogo()
+  local cat = state.presets and state.presets.catalogo
+  return cat or { audio = {}, video = {}, canales = {}, loudness = {}, resoluciones = {}, fps = {} }
+end
+
+local function conv_ficha()
+  local cv = state.conv
+  if not cv then return nil end
+  if cv.motivo then return cv.motivo end
+  return cv.plan and ficha(cv.plan) or nil
+end
+
+local function conv_calcular()
+  local cv = state.conv
+  if not cv or not cv.acod and not cv.vcod then return end
+  local destino = {
+    acod = cv.acod, vcod = cv.vcod, altura = cv.vcod and cv.altura or nil,
+    audio_bitrate = cv.kbps, crf = cv.vcod and cv.crf or nil, video_bitrate = cv.vcod and cv.vbitrate or nil,
+    fps = cv.vcod and cv.fps or nil, two_pass = cv.vcod and cv.dos_pasadas or false,
+    hardware = cv.vcod and cv.hardware or false, audio_canales = cv.canales, loudness = cv.loudness,
+  }
+  rpc.call('ytdl.plan', { url = cv.url, perfil = 'convertir', destino = destino }, function(err, res)
+    if state.view ~= 'convert' or state.conv ~= cv then return end
+    if err then cv.plan, cv.motivo = nil, fail(err, 'ytdl.plan')
+    else cv.plan, cv.motivo = res, nil end
+    reopen_current()
+  end, 60)
+end
+
+local function conv_descargar()
+  local cv = state.conv
+  if not cv or not cv.plan then osd(tr('Elige a qué convertir primero')) return end
+  local o = state.dl_options or {}
+  local spec = {
+    url = cv.url, title = state.title, kind = cv.vcod and 'video' or 'audio_original',
+    vcod_destino = cv.vcod, acod_destino = cv.acod, audio_bitrate = cv.kbps,
+    crf = cv.vcod and cv.crf or nil, video_bitrate = cv.vcod and cv.vbitrate or nil,
+    height = cv.vcod and cv.altura or nil, fps = cv.vcod and cv.fps or nil,
+    two_pass = cv.vcod and cv.dos_pasadas or false, hardware = cv.vcod and cv.hardware or false,
+    audio_canales = cv.canales, loudness = cv.loudness,
+    container = 'mkv', subtitles = false, chapters = false, metadata = o.metadata ~= false,
+    sponsorblock = o.sponsorblock or 'none', playlist = false,
+  }
+  submit_raw(spec, tr('convertido a %s'):format(cv.vcod and cv.vcod:upper() or cv.acod:upper()))
+end
+
+views.convert = function(args)
+  local url = args.url or state.url
+  if not url or url == '' then
+    show(tr('Convertir al bajar'), uosc.message_items(tr('Abre una URL de yt-dlp primero'), 'info'))
+    return
+  end
+  if not require_mpvd('Convertir al bajar') then return end
+  if not state.presets or not state.presets.catalogo then
+    show(tr('Convertir al bajar'), uosc.loading_items())
+    with_presets(function(err)
+      if err then show(tr('Convertir al bajar'), uosc.message_items(fail(err, 'ytdl.presets'), 'error')) return end
+      reopen_current()
+    end)
+    return
+  end
+  local cat = conv_catalogo()
+  if not state.conv or state.conv.url ~= url then
+    state.conv = { url = url, cat = cat, acod = 'mp3', vcod = nil, kbps = 192, canales = 'conservar',
+                   loudness = 'ninguna', crf = 23, altura = 720, fps = nil, dos_pasadas = false, hardware = false }
+    conv_calcular()
+  end
+  local cv = state.conv
+  cv.cat = cat
+  local audio_rows, video_rows = {}, {
+    { title = tr('Sin vídeo (solo audio)'), icon = 'audiotrack', value = { conv_vcod = '' }, keep_open = true },
+  }
+  for _, c in ipairs(cat.audio or {}) do
+    local o
+    for _, d in ipairs(CODECS_AUDIO) do if d.id == c.id then o = d end end
+    audio_rows[#audio_rows + 1] = {
+      title = o and o.nombre or c.id, hint = o and o.pista or nil,
+      icon = cv.acod == c.id and 'check_box' or 'check_box_outline_blank',
+      value = { conv_acod = c.id }, keep_open = true,
+    }
+  end
+  for _, c in ipairs(cat.video or {}) do
+    local o
+    for _, d in ipairs(CODECS_VIDEO) do if d.id == c.id then o = d end end
+    video_rows[#video_rows + 1] = {
+      title = o and o.nombre or c.id, hint = o and o.pista or nil,
+      icon = cv.vcod == c.id and 'check_box' or 'check_box_outline_blank',
+      value = { conv_vcod = c.id }, keep_open = true,
+    }
+  end
+  -- calidad: bitrates del códec de audio, o CRF / bitrate fijo del de vídeo
+  local calidad = {}
+  if cv.vcod then
+    for _, c in ipairs(CALIDADES_CRF) do
+      local crf = (cv.cat.video and (function()
+        for _, v in ipairs(cv.cat.video) do if v.id == cv.vcod then return v.crf end end
+      end)() or {})[c.id]
+      calidad[#calidad + 1] = { title = c.nombre, hint = crf and ('CRF ' .. tostring(crf)) or nil,
+                                icon = cv.vbitrate == nil and cv.crf == crf and 'check_box' or 'check_box_outline_blank',
+                                value = { conv_crf = crf }, keep_open = true }
+    end
+    for _, v in ipairs({ 1000, 2000, 4000 }) do
+      calidad[#calidad + 1] = { title = tr('%d kbps fijos'):format(v),
+                                icon = cv.vbitrate == v and 'check_box' or 'check_box_outline_blank',
+                                value = { conv_vbitrate = v }, keep_open = true }
+    end
+  else
+    local cod = next(cv.cat.audio or {}, nil)
+    for _, c in ipairs(cv.cat.audio or {}) do if c.id == cv.acod then cod = c end end
+    local kbps = (cod and cod.bitrates) or {}
+    if #kbps == 0 then
+      calidad[1] = { title = tr('Sin pérdida: no hay bitrate que elegir'), icon = 'info', selectable = false, muted = true }
+    end
+    for _, v in ipairs(kbps) do
+      calidad[#calidad + 1] = { title = tr('%d kbps'):format(v),
+                                icon = cv.kbps == v and 'check_box' or 'check_box_outline_blank',
+                                value = { conv_kbps = v }, keep_open = true }
+    end
+  end
+  local tamano = {}
+  for _, h in ipairs({ 0, 1080, 720, 480 }) do
+    tamano[#tamano + 1] = { title = h == 0 and tr('conservar el tamaño') or tr('%dp'):format(h),
+                            icon = ((cv.altura or 0) == h) and 'check_box' or 'check_box_outline_blank',
+                            value = { conv_altura = h }, keep_open = true }
+  end
+  for _, f in ipairs({ 0, 60, 30 }) do
+    tamano[#tamano + 1] = { title = f == 0 and tr('conservar los fps') or tr('%d fps'):format(f),
+                            icon = ((cv.fps or 0) == f) and 'check_box' or 'check_box_outline_blank',
+                            value = { conv_fps = f }, keep_open = true }
+  end
+  tamano[#tamano + 1] = { title = tr('Dos pasadas (mejor reparto del bitrate)'), active = cv.dos_pasadas,
+                          hint = cv.vbitrate and nil or tr('necesita bitrate fijo'), muted = cv.vbitrate == nil,
+                          icon = 'sync', value = { conv_dos_pasadas = true }, keep_open = true }
+  tamano[#tamano + 1] = { title = tr('Codificar con la tarjeta gráfica'), active = cv.hardware,
+                          hint = (cv.cat.hardware and cv.cat.hardware.disponible) and nil or tr('este equipo no puede'),
+                          muted = not (cv.cat.hardware and cv.cat.hardware.disponible),
+                          icon = 'memory', value = { conv_hardware = true }, keep_open = true }
+  local items = {
+    { title = tr('Audio'), hint = nil, icon = 'audiotrack', items = audio_rows },
+    { title = tr('Vídeo'), hint = cv.vcod and cv.vcod:upper() or tr('no'), icon = 'movie', items = video_rows },
+    { title = tr('Calidad'), icon = 'high_quality', items = calidad },
+    { title = tr('Tamaño y fps'), hint = cv.vcod and nil or tr('solo con vídeo'), muted = cv.vcod == nil,
+      selectable = cv.vcod ~= nil, icon = 'aspect_ratio', items = cv.vcod and tamano or nil },
+    { title = tr('Canales y volumen'), icon = 'volume_up', items = (function()
+        local filas = {}
+        for _, c in ipairs({ 'conservar', 'estereo', 'mono' }) do
+          filas[#filas + 1] = { title = CANALES_TXT[c] or c, icon = cv.canales == c and 'check_box' or 'check_box_outline_blank',
+                                value = { conv_canales = c }, keep_open = true }
+        end
+        for _, l in ipairs({ 'ninguna', '-18', '-14' }) do
+          filas[#filas + 1] = { title = LOUDNESS_TXT[l] or l, icon = cv.loudness == l and 'check_box' or 'check_box_outline_blank',
+                                value = { conv_loudness = l }, keep_open = true }
+        end
+        return filas
+      end)() },
+    { title = conv_ficha() or tr('estimando…'), icon = cv.motivo and 'error' or 'info', selectable = false,
+      muted = true, separator = true },
+    { title = tr('Descargar convertido'), hint = cv.plan and peso(cv.plan.bytes) or nil, icon = 'download',
+      muted = cv.plan == nil, value = { conv_down = true } },
+  }
+  if cv.vcod then
+    items[3].hint = cv.vbitrate and tr('%d kbps'):format(cv.vbitrate) or ('CRF ' .. tostring(cv.crf))
+  else
+    items[3].hint = cv.kbps and tr('%d kbps'):format(cv.kbps) or nil
+  end
+  if cv.acod then
+    for _, d in ipairs(CODECS_AUDIO) do if d.id == cv.acod then items[1].hint = d.nombre end end
+  end
+  show(tr('Convertir al bajar · %s'):format(ellipsize(args.title or state.title or url, 40)), items,
+       { footnote = tr('Se baja el original y se convierte después: el ~ es una estimación · Retroceso: atrás') })
 end
 
 local function load_url(url, append, title)
@@ -1990,6 +2425,79 @@ local function on_event(source, json)
       reopen_current()
     elseif v.frag_down then
       descargar_fragmentos()
+    elseif v.pick_video or v.pick_audio then
+      local p = state.picks
+      if p then
+        if v.pick_video then p.video = v.pick_video end
+        if v.pick_audio then p.audio = v.pick_audio end
+        reopen_current()
+        comprobar_pareja()
+      end
+    elseif v.pick_auto then
+      local p = state.picks
+      if p and p.tracks and p.tracks.auto then
+        p.video, p.audio = p.tracks.auto.video_id, p.tracks.auto.audio_id
+        reopen_current()
+        comprobar_pareja()
+      end
+    elseif v.pick_down then
+      descargar_pistas()
+    elseif v.conv_acod then
+      local cv = state.conv
+      if cv then
+        cv.acod, cv.vcod, cv.vbitrate, cv.dos_pasadas = v.conv_acod, nil, nil, false
+        cv.kbps = (function()
+          for _, c in ipairs(cv.cat.audio or {}) do
+            if c.id == v.conv_acod and c.bitrates and #c.bitrates > 0 then return c.bitrates[3] or c.bitrates[#c.bitrates] end
+          end
+        end)()
+        reopen_current()
+        conv_calcular()
+      end
+    elseif v.conv_vcod then
+      local cv = state.conv
+      if cv then
+        cv.vcod = (v.conv_vcod ~= '' and v.conv_vcod) or nil
+        cv.vbitrate, cv.dos_pasadas = nil, false
+        cv.crf = (function()
+          if not cv.vcod then return nil end
+          for _, c in ipairs(cv.cat.video or {}) do
+            if c.id == cv.vcod then return (c.crf or {}).normal end
+          end
+        end)()
+        if cv.vcod and not cv.acod then cv.acod = 'aac' end
+        reopen_current()
+        conv_calcular()
+      end
+    elseif v.conv_crf then
+      local cv = state.conv
+      if cv then cv.vbitrate, cv.crf = nil, v.conv_crf; reopen_current(); conv_calcular() end
+    elseif v.conv_vbitrate then
+      local cv = state.conv
+      if cv then cv.vbitrate = v.conv_vbitrate; reopen_current(); conv_calcular() end
+    elseif v.conv_kbps then
+      local cv = state.conv
+      if cv then cv.kbps = v.conv_kbps; reopen_current(); conv_calcular() end
+    elseif v.conv_altura then
+      local cv = state.conv
+      if cv then cv.altura = v.conv_altura; reopen_current(); conv_calcular() end
+    elseif v.conv_fps then
+      local cv = state.conv
+      if cv then cv.fps = v.conv_fps > 0 and v.conv_fps or nil; reopen_current(); conv_calcular() end
+    elseif v.conv_dos_pasadas then
+      local cv = state.conv
+      if cv and cv.vbitrate then cv.dos_pasadas = not cv.dos_pasadas; reopen_current(); conv_calcular() end
+    elseif v.conv_hardware then
+      local cv = state.conv
+      if cv then cv.hardware = not cv.hardware; reopen_current(); conv_calcular() end
+    elseif v.conv_canales then
+      local cv = state.conv
+      if cv then cv.canales = v.conv_canales; reopen_current(); conv_calcular() end
+    elseif v.conv_loudness then
+      local cv = state.conv
+      if cv then cv.loudness = v.conv_loudness; reopen_current(); conv_calcular() end
+    elseif v.conv_down then
+      conv_descargar()
     elseif v.opt then
       toggle_option(v.opt)
       local remembered = {}

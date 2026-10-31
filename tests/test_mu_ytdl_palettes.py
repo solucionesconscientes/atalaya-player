@@ -236,17 +236,21 @@ def test_youtube_search_palette(pal_mpv):
     assert h.get("user-data/uosc/menu/type") == "mu-ytdl-search"
     search_event(h, {"type": "activate", "index": 3, "action": "download", "value": c_item})
     menu_type(h, "mu-ytdl")
-    v = st(h, lambda v: v.get("view") == "download" and any(i["title"] == "Opciones" for i in v.get("items", [])))
-    assert [i["title"] for i in v["items"]] == ["Vídeo", "Audio", "Solo subtítulos (SRT)", "Opciones",
-                                                "Capítulos…", "Fragmentos de tiempo…"]
-    # back to the same results without searching again
-    n = len(argv_lines(arglog))
+    v = st(h, lambda v: v.get("view") == "download" and any(i["title"] == "Opciones…" for i in v.get("items", [])))
+    # F3: las tres descargas grandes, la elección de pistas, la conversión y lo de recortar; los ajustes al final
+    assert [i["title"] for i in v["items"]] == ["Opus del origen", "Vídeo 720p VP9 + Opus",
+                                                "Compatible: H.264 + AAC", "Elegir pistas del origen…",
+                                                "Convertir al bajar…", "Recortar…", "Opciones…"]
+    assert v["items"][5]["submenu"] == 2, "Capítulos y Fragmentos cuelgan de «Recortar…»"
+    # back to the same results without searching again (se cuentan las búsquedas, no las `--version` de sondeo)
+    n = len([a for a in argv_lines(arglog) if a and a[-1].startswith("ytsearch")])
     send(h, "mu-ytdl-event", {"type": "back"})
     menu_type(h, "mu-ytdl-search")
     v = st(h, lambda v: v.get("view") == "yt_search" and v.get("search_status") == "done")
-    assert v["search_query"] == "fake birds" and titles(v)[0] == "Fake Result A" and len(argv_lines(arglog)) == n
+    assert v["search_query"] == "fake birds" and titles(v)[0] == "Fake Result A"
+    assert len([a for a in argv_lines(arglog) if a and a[-1].startswith("ytsearch")]) == n
     search_event(h, {"type": "activate", "index": 3, "action": "download", "value": c_item})
-    st(h, lambda v: v.get("view") == "download" and any(i["title"] == "Opciones" for i in v.get("items", [])))
+    st(h, lambda v: v.get("view") == "download" and any(i["title"] == "Opciones…" for i in v.get("items", [])))
     send(h, "mu-ytdl-event", {"type": "activate", "index": 2, "value": {
         "preset": "audio_mp3_128", "url": "https://fake.test/c", "title": "Fake Result C"}})
     d.wait(lambda: any(r["url"] == "https://fake.test/c" and r["status"] == "done"

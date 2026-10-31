@@ -25,6 +25,35 @@ VIDEO_720 = 720          # altura del perfil por defecto
 COMPATIBLE_MAX = 1080    # altura máxima de «compatible»: por encima, ni el origen suele ofrecer H.264
 AAC_OBJETIVO = 140       # kbps del AAC que se pide en «compatible» (el 140 de YouTube)
 
+# Conversión explícita (F3): las familias a las que se puede convertir y el contenedor de cada resultado. No es el
+# camino por defecto: solo se usa cuando el spec lo pide, con su nombre y su estimación delante.
+AUDIO_DESTINO: tuple[str, ...] = ("opus", "aac", "alac", "mp3", "flac", "wav")
+VIDEO_DESTINO: tuple[str, ...] = ("h264", "hevc", "vp9", "av1")
+CADA_CODEC_AUDIO = {"opus": (32, 48, 64, 96, 128, 160), "aac": (96, 128, 192, 256), "mp3": (128, 192, 256, 320),
+                    "flac": (), "wav": (), "alac": ()}      # kbps ofrecidos; sin pérdida, ninguno
+CONTENEDOR_DESTINO_AUDIO = {"opus": "opus", "aac": "m4a", "alac": "m4a", "mp3": "mp3", "flac": "flac", "wav": "wav"}
+NOMBRE_CODEC = {"h264": "H.264", "hevc": "H.265", "vp9": "VP9", "av1": "AV1", "opus": "Opus", "aac": "AAC",
+                "alac": "ALAC (sin pérdida)", "mp3": "MP3", "flac": "FLAC (sin pérdida)", "wav": "WAV (sin comprimir)"}
+
+
+def contenedor_conversion(vcodec: str | None, acodec: str | None) -> str:
+    """La extensión honesta del resultado: la que el códec admite, sin disfrazarlo.
+
+    Solo audio → la del códec (``.opus``, ``.m4a``, ``.mp3``…). Con vídeo → MP4 para H.264/H.265 con AAC, WebM para
+    VP9/AV1 con Opus, y MKV para cualquier otra pareja (MKV lo admite todo, así que nunca se rechaza una conversión).
+    """
+    v = _familia_video(vcodec) if vcodec else ""
+    a = _familia_audio(acodec) if acodec else ""
+    if not v:
+        return CONTENEDOR_DESTINO_AUDIO.get(a or (acodec or "").lower(), "mkv")
+    if not a:                                        # el audio que acompaña lo pone el contenedor destino
+        a = "aac" if v in ("h264", "hevc") else "opus"
+    if v in ("h264", "hevc") and a in ("aac", "mp3"):
+        return "mp4"
+    if v in ("vp9", "av1") and a in ("opus", "vorbis"):
+        return "webm"
+    return "mkv"
+
 # Familias de códec. Se comparan sin puntos ni guiones: «mp4a.40.2» → «mp4a402», «h.264» → «h264».
 VP9 = ("vp9", "vp09")
 H264 = ("avc1", "avc3", "h264")
@@ -115,12 +144,13 @@ def _norm(f: dict[str, Any]) -> dict[str, Any]:
         "id": str(f.get("format_id") or f.get("id") or ""),
         "vcod": str(vcod or "none"), "acod": str(acod or "none"),
         "vfam": _familia_video(vcod), "afam": _familia_audio(acod),
-        "altura": _int(f.get("height")), "fps": _num(f.get("fps")),
+        "altura": _int(f.get("height")), "ancho": _int(f.get("width")), "fps": _num(f.get("fps")),
         "tbr": _num(f.get("tbr")), "abr": _num(f.get("abr")),
         "bytes": _int(f.get("filesize")) or _int(f.get("filesize_approx")),
         "idioma": str(f.get("language") or f.get("idioma") or ""),
         "ext": str(f.get("ext") or ""),
         "canales": _int(f.get("audio_channels") or f.get("channels")),
+        "asr": _int(f.get("asr")),
         "drm": bool(f.get("has_drm")),
         "protocolo": str(f.get("protocol") or ""),
         "storyboard": str(f.get("protocol") or "") == "mhtml" or _plano(vcod) == "images",
@@ -221,10 +251,11 @@ def pistas(info: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     aud = sorted(_audios(info), key=lambda f: ({"opus": 0, "aac": 1}.get(f["afam"], 9), -_kbps(f), f["idioma"]))
     return {
         "video": [{"id": f["id"], "codec": NOMBRE.get(f["vfam"], f["vfam"]), "familia": f["vfam"],
-                   "altura": f["altura"], "fps": int(f["fps"]), "kbps": int(f["tbr"]), "bytes": f["bytes"],
-                   "idioma": f["idioma"], "ext": f["ext"], "con_audio": bool(f["afam"])} for f in vid],
+                   "altura": f["altura"], "ancho": f["ancho"], "fps": int(f["fps"]), "kbps": int(f["tbr"]),
+                   "bytes": f["bytes"], "idioma": f["idioma"], "ext": f["ext"],
+                   "con_audio": bool(f["afam"])} for f in vid],
         "audio": [{"id": f["id"], "codec": NOMBRE.get(f["afam"], f["afam"]), "familia": f["afam"],
-                   "kbps": _kbps(f), "canales": f["canales"], "bytes": f["bytes"],
+                   "kbps": _kbps(f), "canales": f["canales"], "asr": f["asr"], "bytes": f["bytes"],
                    "idioma": f["idioma"], "ext": f["ext"]} for f in aud],
     }
 
@@ -352,13 +383,78 @@ def _completa(f: dict[str, Any], tipo: str) -> Decision:
 
 # ------------------------------------------------------------------ el plan
 
+# Calidad de la fuente de audio para recodificar: primero lo que no pierde, y entre lo que pierde, el códec que
+# mejor suena a igual bitrate (Opus > Vorbis > AAC > MP3). Recodificar de AAC a AAC es perder dos veces.
+ORDEN_AUDIO_FUENTE = {"flac": 0, "alac": 0, "wav": 0, "opus": 1, "vorbis": 2, "aac": 3, "mp3": 4}
+
+
+def _audio_para_recodificar(audios: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """La pista de audio que conviene convertir: sin pérdida si la hay, luego la de mejor códec y más bitrate."""
+    if not audios:
+        return None
+    return sorted(audios, key=lambda f: (ORDEN_AUDIO_FUENTE.get(f["afam"], 5), -_kbps(f), -f["canales"]))[0]
+
+
+def _plan_conversion(info: dict[str, Any], destino: dict[str, Any], audios: list[dict[str, Any]],
+                     duracion: float) -> Decision:
+    """La conversión explícita: qué pista del origen se baja para convertirla y en qué se va a convertir.
+
+    ``bytes_estimados`` es lo que se **descarga** (la pista del origen); el tamaño del resultado lo calcula
+    ``presets.estimar``. Nunca se recodifica en el mismo paso que la descarga: baja el original tal cual y después
+    ``transcode.convertir`` lo comprueba con ffprobe.
+    """
+    vcod = str(destino.get("vcod") or "").lower() or None
+    acod = str(destino.get("acod") or "").lower() or None
+    altura = _int(destino.get("altura")) or None
+    if vcod and vcod not in VIDEO_DESTINO:
+        raise ValueError(f"no se puede convertir a {vcod}: los códecs de vídeo del catálogo son "
+                         f"{', '.join(NOMBRE_CODEC[c] for c in VIDEO_DESTINO)}")
+    if acod and acod not in AUDIO_DESTINO:
+        raise ValueError(f"no se puede convertir a {acod}: los códecs de audio del catálogo son "
+                         f"{', '.join(NOMBRE_CODEC[c] for c in AUDIO_DESTINO)}")
+    if not vcod and not acod:
+        raise ValueError("la conversión necesita decir a qué códec: audio, vídeo, o los dos")
+    if not acod:                                     # el audio que acompaña al vídeo lo pone el contenedor
+        acod = "aac" if vcod in ("h264", "hevc") else "opus"
+    contenedor = contenedor_conversion(vcod, acod)
+
+    if not vcod:                                     # solo audio
+        a = _audio_para_recodificar(audios)
+        if a is None:
+            raise ValueError("este enlace no ofrece ninguna pista de audio que convertir")
+        nota = (f"{NOMBRE_CODEC[acod]} a partir de {NOMBRE_CODEC.get(a['afam'], a['afam'])} "
+                f"{_kbps(a)}k del origen → {contenedor.upper()} · se recodifica")
+        return Decision(None, a["id"], contenedor, True, nota, _bytes(a, duracion) or None)
+
+    # el códec del origen da igual (se va a recodificar): se baja la resolución pedida, que es lo que ahorra datos
+    v = _mejor_video(_separadas(info), ("vp9", "h264", "av1", "hevc", "otro"), altura)
+    if v is None:
+        completa = _mejor_video(_combinadas(info), ("vp9", "h264", "av1", "hevc", "otro"), altura)
+        if completa is None:
+            raise ValueError("este enlace no ofrece ninguna pista de vídeo que convertir")
+        v = completa
+    a = _audio_para_recodificar(audios) if v["afam"] == "" else None
+    nota = (f"{NOMBRE_CODEC[vcod]} + {NOMBRE_CODEC[acod]} a partir de {_nota_video(v)} → "
+            f"{contenedor.upper()} · se recodifica")
+    if v["altura"] and altura and v["altura"] > altura:
+        nota += f" · se baja a {altura}p"
+    if v["afam"]:
+        nota += " · el audio viaja dentro del vídeo"
+    return Decision(v["id"], a["id"] if a else None, contenedor, True, nota,
+                    (_bytes(v, duracion) + _bytes(a, duracion)) or None)
+
+
 def plan(info: dict[str, Any], perfil: str, video_id: str | None = None,
-         audio_id: str | None = None) -> Decision:
+         audio_id: str | None = None, destino: dict[str, Any] | None = None) -> Decision:
     """El plan de descarga: qué dos pistas y en qué contenedor, sin recodificar salvo ``convertir``.
 
     ``video_id``/``audio_id`` mandan sobre el perfil (es lo que el usuario marcó a mano en «Pistas del
     origen»). Si la pareja no cabe en ningún contenedor honesto, se lanza ``ValueError`` con el motivo: no se
     cambia el contenedor ni el códec en silencio.
+
+    ``destino`` solo tiene sentido con el perfil ``convertir``: ``{"vcod": "hevc", "acod": "aac", "altura": 720}``.
+    Lo que se convierte **después** de bajar (``mpvd/ytdl/transcode.py``); sin él, ``convertir`` se queda como
+    estaba (pistas del origen, recodificar a MKV) y la decisión fina la pone el catálogo del spec.
     """
     if perfil not in PERFILES:
         raise ValueError(f"perfil de descarga desconocido: {perfil}")
@@ -423,7 +519,9 @@ def plan(info: dict[str, Any], perfil: str, video_id: str | None = None,
              or _mejor_video(_separadas(info), ("hevc", "vp9", "av1", "otro"), COMPATIBLE_MAX))
         a = _aac_cerca(audios) or _mejor_opus(audios, musica) or _audio_general(audios, musica)
         pedido, aac_obj = "mp4", True
-    else:                                          # convertir: la conversión la hace la fase siguiente
+    else:                                          # convertir: la conversión va después de bajar
+        if destino:
+            return _plan_conversion(info, destino, audios, duracion)
         v = _mejor_video(_separadas(info), ("vp9", "h264", "av1", "hevc", "otro"), None)
         a = _mejor_opus(audios, musica) or _audio_general(audios, musica)
         pedido, aac_obj = "mkv", False
