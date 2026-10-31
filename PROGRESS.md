@@ -1,6 +1,35 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## Resumen para Ser (2026-11-01, madrugada) · descargas que se siguen solas: suscripciones, índice y cola (YTDL F4, `5d926b6`)
+
+Con esto quedan cerradas las cuatro fases de la política de descargas. Lo que trae la F4, en palabras de uso:
+
+- **Suscripciones**: sigues un canal de YouTube (o un RSS) y el reproductor mira su feed cada 30 min, 6 h o 24 h
+  según lo que elijas. Solo encola lo que no tienes: hay un índice en `<carpeta>/.atalaya/index.db` que recuerda qué
+  se bajó y con qué perfil, así que «comprobar ahora» no vuelve a bajar lo mismo.
+- **Reglas por canal**: perfil de calidad, carpeta, duración mínima y máxima, filtro por título, ventana de horas (para
+  que baje de noche) y tope por sondeo, para que un canal con veinte vídeos nuevos no te llene el disco de golpe.
+- **Cola con pausa**: «Pausar la cola» detiene lo que está en marcha y lo deja listo para reanudar donde se quedó;
+  al reanudar, yt-dlp continúa el `.part` en vez de empezar de cero. Los trabajos de suscripción van con prioridad
+  baja: lo que pides tú pasa delante.
+- **Guardas**: tope de 50 elementos por lista, comprobación de espacio (estimado × 1,2 + 2 GB), verificación del
+  fichero con ffprobe y 10 s de decodificación antes de darlo por bueno, con **un** reintento, y un informe al final
+  («2 bien, 1 mal» con el motivo del que falló, no un «terminó»).
+
+**El fallo que se arregló al cerrar la fase**: pausar y reanudar en el mismo instante dejaba un trabajo en «cancelada»
+de forma intermitente. La guarda comparaba el número de intento, que la reanudación baja y el arranque sube, así que
+volvía al mismo valor y la cancelación vieja mataba el intento nuevo; ahora se compara un contador de turno que solo
+sube. Ocho repeticiones del test, ocho en verde.
+
+**Tests**: índice 12 · suscripciones 17 · guardas 13 · i18n 48. Batería completa: 1.311 tests, 23 fallos, **todos de
+la línea base ajena** (ASR real, share, IPTV, instalación, letras, subtítulos, panel de descargas, `smoke_mpv`),
+ninguno en ytdl, mu_ytdl, i18n ni feeds.
+
+**SIGUIENTE PASO**: el menú raíz de descargas ya tiene 8 filas (10 con una URL abierta) y la regla del proyecto es 7:
+hay que agrupar antes de la próxima versión. Commits en `feat/ytdl-politicas` (F1 `b3ae44d`, F2 `a019e7e`, F3 `fe2a690`,
+F4 `5d926b6`), sin push.
+
 ## Resumen para Ser (2026-10-30) · la lista de canales es una columna que no se cierra al cambiar de canal (H77, ADR-138)
 
 Lo que decidiste tras usar TV con el panel de ADR-136: zapear obligaba a abrirlo y cerrarlo una vez por canal, y el
