@@ -136,7 +136,7 @@ def test_hook_path_switch_quality_download_and_panel(ytdl_mpv, media_dir):
     head = [(i["title"], i["hint"]) for i in st["items"]][:2]
     assert head[0][0] == "Vídeo" and head[0][1].startswith("mp4 · ")
     assert "fluido en tu equipo" in head[0][1] or "exigente" in head[0][1]
-    assert head[1] == ("Audio", "9")
+    assert head[1] == ("Audio", "10")   # el Opus del origen se suma a los presets de audio (los «convertir» siguen ahí)
     send_event(h, {"type": "activate", "index": 1, "value": {"opt": "container"}})  # mp4 → mkv, menu stays open
     h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and any(i["title"] == "Vídeo"
                                                                    and str(i["hint"]).startswith("mkv")

@@ -106,9 +106,13 @@ def test_presets_build_and_describe():
         argv = build_args(spec, "/tmp/out")
         assert argv[-1] == URL and spec.describe()
         assert spec.extra["preset"] == p["id"]
-        if p["group"] == "video":
+        if p["group"] == "video" and p["id"] != "compatible":
+            # la opción del menú manda sobre el preset; «compatible» es la excepción a propósito: promete MP4 y no
+            # se le puede cambiar el contenedor desde las opciones (perdería el sentido del perfil)
             assert argv[argv.index("--merge-output-format") + 1] == "mkv"  # option applied
             assert argv[argv.index("--remux-video") + 1] == "mkv"
+        if p["id"] == "compatible":
+            assert argv[argv.index("--merge-output-format") + 1] == "mp4"
     s = spec_from_preset("audio_mp3_128", URL, {"audio_format": "flac", "audio_bitrate": 320})
     assert s.audio_format == "mp3" and s.audio_bitrate == 128  # preset fields win over options
     with pytest.raises(KeyError):

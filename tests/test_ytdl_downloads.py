@@ -146,7 +146,10 @@ def test_status_info_cache_and_presets(ytdl_env):
         assert "Unsupported URL" in str(exc.value)
 
         presets = await c.call("ytdl.presets")
-        assert [p["id"] for p in presets["presets"]][:2] == ["video_best", "video_1080"]
+        ids = [p["id"] for p in presets["presets"]]
+        # la política única va delante; los ids de siempre siguen ahí (prefs.json y mu-feeds los nombran)
+        assert ids[:4] == ["audio_opus_origen", "video_720", "compatible", "pistas"]
+        assert {"video_best", "video_1080", "audio_original", "audio_mp3_128", "subs_only"} <= set(ids)
         assert presets["containers"] == ["mp4", "mkv", "webm"] and 128 in presets["audio_bitrates"]
 
     with_server(tmp_path, fn)

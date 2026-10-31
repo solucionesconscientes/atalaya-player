@@ -708,10 +708,10 @@ views.download = function(args)
     local hw_hint = #hw.names > 0 and (hw.names[1] .. ' · fluido en tu equipo') or 'exigente (por procesador)'
     local video, audio, subs = {}, {}, {}
     for _, p in ipairs(res.presets or {}) do
-      local it = { title = p.title, icon = p.group == 'audio' and 'audiotrack' or 'movie',
+      local it = { title = p.title, icon = (p.group == 'audio' or p.group == 'convertir') and 'audiotrack' or 'movie',
                    value = { preset = p.id, url = target, title = target and target_title or nil } }
       if p.group == 'video' then it.hint = hw_hint end
-      if p.group == 'audio' then table.insert(audio, it)
+      if p.group == 'audio' or p.group == 'convertir' then table.insert(audio, it)
       elseif p.group == 'subs' then
         it.icon, it.hint = tr('subtitles'), sub_langs_label(o.sub_langs)
         table.insert(subs, it)
@@ -1440,7 +1440,8 @@ views.pickfmt = function(args)
     end
     for _, pr in ipairs((state.presets and state.presets.presets) or {}) do
       if pr.group ~= 'subs' then
-        items[#items + 1] = { title = pr.title, icon = pr.group == 'audio' and 'audiotrack' or 'movie',
+        items[#items + 1] = { title = pr.title,
+                              icon = (pr.group == 'audio' or pr.group == 'convertir') and 'audiotrack' or 'movie',
                               active = actual == pr.id,
                               value = { pick_choose = { target = target, preset = pr.id } } }
       end

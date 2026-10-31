@@ -11,12 +11,36 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from mpvd.i18n import t
+from mpvd.ytdl import policy
 
 CONTAINERS = ("mp4", "mkv", "webm")
 AUDIO_FORMATS = ("mp3", "opus", "m4a", "flac", "wav")
 AUDIO_BITRATES = (96, 128, 160, 192, 256, 320)
 SPONSORBLOCK_MODES = ("none", "mark", "remove")
 KINDS = ("video", "exact", "audio_original", "audio_convert")
+
+# Perfiles de la política única (mpvd/ytdl/policy.py). La expresión de formato sólo tiene que cubrir el caso sin
+# ``-J``: cuando la app tiene el análisis del origen, lo que viaja son los dos ``format_id`` que elige ``policy.plan``
+# y estos textos no se usan. Por eso el Opus de aquí es «el del origen» y no distingue voz de música (el perfil sí).
+POLICY_FORMAT = {
+    "opus_origen": "ba[acodec^=opus]/ba/b",
+    "video_720": ("bv*[vcodec^=vp9][height<=?720]+ba[acodec^=opus]/bv*[vcodec^=vp9][height<=?720]+ba/"
+                  "b[height<=?720]/bv*+ba/b"),
+    "compatible": ("bv*[vcodec^=avc1][height<=?1080]+ba[acodec^=mp4a]/b[ext=mp4][height<=?1080]/"
+                   "bv*[height<=?1080]+ba/b"),
+    "pistas": "bv*+ba/b",
+    "convertir": "bv*+ba/b",
+}
+# Orden de elección (-S) de cada perfil. A igual altura manda el bitrate MÁS BAJO («+tbr» ascendente): para guardar
+# interesa el fichero pequeño, no el que decodifica mejor este equipo. En «opus_origen» no hay -S: el Opus va en la
+# expresión y quién decide el bitrate es policy.plan (voz → el más bajo, música → el más alto).
+POLICY_SORT = {
+    "opus_origen": "",
+    "video_720": "vcodec:vp9,res,+tbr,acodec:opus",
+    "compatible": "vcodec:h264,res,acodec:aac",
+    "pistas": "res,+tbr,acodec:opus",
+    "convertir": "",
+}
 
 # Container policy. Merging (video+audio) takes a preference list: yt-dlp picks the first container compatible with the
 # codecs (get_compatible_ext) and falls back to mkv. Remuxing a single-file format fails when the codecs do not fit the
@@ -59,6 +83,11 @@ SUB_LANG_CHOICES = [  # menu order (H19)
 class DownloadSpec:
     url: str
     kind: str = "video"                 # video | exact | audio_original | audio_convert
+    perfil: str | None = None           # política: opus_origen | video_720 | compatible | pistas | convertir
+    video_id: str | None = None         # perfil «pistas»: format_id exacto del vídeo (p. ej. "303")
+    audio_id: str | None = None         # perfil «pistas»/«opus_origen»: format_id exacto del audio (p. ej. "251")
+    video_codec: str | None = None      # códec de esa pista, para validar el contenedor antes de lanzar
+    audio_codec: str | None = None
     height: int | None = None           # video: cap (None = best)
     format: str | None = None           # exact: yt-dlp format expression ("137+140", "251", "bv*[height<=720]+ba")
     container: str = "mp4"              # video/exact: mp4 | mkv | webm (merge + remux target)
@@ -95,6 +124,8 @@ class DownloadSpec:
             raise ValueError("url required")
         if self.kind not in KINDS:
             raise ValueError(f"kind must be one of {KINDS}")
+        if self.perfil is not None and self.perfil not in policy.PERFILES:
+            raise ValueError(f"perfil must be one of {policy.PERFILES}")
         if self.kind == "exact" and not self.format:
             raise ValueError("exact download needs a format")
         if self.container not in CONTAINERS:
@@ -139,6 +170,16 @@ class DownloadSpec:
     def describe(self) -> str:
         if self.kind == "exact":
             return f"formato {self.format} → {self.container}"
+        if self.perfil == "opus_origen":
+            return "audio Opus del origen (sin recodificar)"
+        if self.perfil == "video_720":
+            return f"vídeo 720p VP9 + Opus (sin recodificar, {self.container})"
+        if self.perfil == "compatible":
+            return f"vídeo H.264 + AAC ({self.container})"
+        if self.perfil == "pistas":
+            return "pistas del origen, copiadas tal cual"
+        if self.video_id or self.audio_id:
+            return f"pistas {self.video_id or '—'} + {self.audio_id or '—'} → {self.container}"
         if self.kind == "video":
             return (f"vídeo {self.height}p" if self.height else "vídeo mejor calidad") + f" ({self.container})"
         if self.kind == "audio_original":
@@ -198,23 +239,53 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
                archive_file: str | None = None, vcodec: str = "h264") -> list[str]:
     """Arguments after the binary (+ its base args); the URL is last. ``rate_limit``: yt-dlp ``-r`` (``2M``, ``500K``);
     ``archive_file``: the download archive used when ``spec.archive``; ``vcodec``: preferred codec limit for ``-S``
-    (the best one decoded in hardware, see mpvd.hwdecode.sort_codec)."""
+    (the best one decoded in hardware, see mpvd.hwdecode.sort_codec).
+
+    Con ``video_id``/``audio_id`` (política «pistas») la orden pide esas dos pistas exactas y el contenedor del plan,
+    y la pareja se valida con ``policy.contenedor_valido`` **antes** de construir nada: si no cabe, el error dice el
+    motivo y no se lanza ffmpeg. No se recodifica: el merge de yt-dlp copia los flujos (no existe un ``-c copy`` que
+    pasarle — ``-c`` en yt-dlp es ``--continue`` — lo que garantiza la copia es ``--merge-output-format``/
+    ``--remux-video`` sin ``-x`` ni ``--audio-format``)."""
     spec.validate()
     if vcodec not in VCODEC_SORTS:
         vcodec = "h264"
+    perfil = spec.perfil or ""
+    explicito = bool(spec.video_id or spec.audio_id)
+    solo_pista_audio = bool(spec.audio_id) and not spec.video_id
+    es_audio = spec.is_audio or solo_pista_audio
+    only_subs = spec.subs_mode == "only"
+    if spec.video_codec and not only_subs:
+        # una pareja imposible se rechaza al elegir, con el motivo, no al terminar con el fichero a medias
+        contenedor, motivo = policy.contenedor_valido(spec.video_codec, spec.audio_codec or "none", spec.container)
+        if contenedor is None:
+            raise ValueError(motivo or "esa pareja no se puede copiar en el contenedor pedido")
     args: list[str] = ["--no-overwrites", "--continue", "--ignore-errors", "--retries", "5", "--socket-timeout", "30"]
     if rate_limit and RATE_RE.match(rate_limit):
         args += ["-r", rate_limit]
     if spec.archive and archive_file:
         args += ["--download-archive", archive_file]
-    only_subs = spec.subs_mode == "only"
     if not only_subs:
-        args += ["-f", spec.format_expression()]
-    if spec.kind == "video" and FORMAT_SORT[spec.container] and not only_subs:
-        args += ["-S", FORMAT_SORT[spec.container].format(vcodec=vcodec)]
+        if explicito:
+            expresion = ("+".join(x for x in (spec.video_id, spec.audio_id) if x))
+        elif perfil in POLICY_FORMAT and not spec.sections:
+            expresion = POLICY_FORMAT[perfil]
+        else:
+            expresion = spec.format_expression()
+        args += ["-f", expresion]
+    orden = ""
+    if not only_subs and not explicito:
+        if perfil:
+            orden = POLICY_SORT.get(perfil, "")
+        elif spec.kind == "video" and FORMAT_SORT[spec.container]:
+            orden = FORMAT_SORT[spec.container].format(vcodec=vcodec)
+        elif spec.kind == "audio_original":
+            # H31: the original Opus when there is one (YouTube: 251 over the AAC 140)
+            orden = "acodec:opus"
+    if orden.strip():
+        args += ["-S", orden]
     if only_subs:
         pass
-    elif spec.is_audio:
+    elif es_audio:
         args += ["-x"]
         if spec.kind == "audio_convert":
             args += ["--audio-format", spec.audio_format]
@@ -223,10 +294,7 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
                     args += ["--audio-quality", f"{int(spec.audio_bitrate)}K"]
                 else:
                     args += ["--audio-quality", str(int(spec.audio_vbr))]
-        # audio_original: -x without --audio-format keeps the original codec (FFmpegExtractAudio "best" = stream copy);
-        # H31: the original Opus when there is one (YouTube: 251 over the AAC 140)
-        if spec.kind == "audio_original":
-            args += ["-S", "acodec:opus"]
+        # audio sin --audio-format: FFmpegExtractAudio «best» copia el códec de origen (Opus sigue siendo Opus)
     else:
         args += ["--merge-output-format", MERGE_PREFERENCES[spec.container]]
         if REMUX_RULES[spec.container]:
@@ -275,31 +343,42 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
 # -- presets shown in the "Descargar" menu ------------------------------------------------------------
 
 PRESETS: list[dict[str, Any]] = [
+    # --- la política única (docs/DISENO-YTDL-POLITICAS.md §3). El defecto no recodifica y el contenedor es el que
+    # admiten los códecs del origen: Opus se queda en .opus/.mkv, nunca dentro de un MP4.
+    {"id": "audio_opus_origen", "title": "Audio · Opus del origen (recomendado)", "group": "audio",
+     "spec": {"kind": "audio_original", "perfil": "opus_origen"}},
+    {"id": "video_720", "title": "Vídeo · 720p VP9 + Opus (recomendado)", "group": "video",
+     "spec": {"kind": "video", "perfil": "video_720", "height": 720, "container": "mkv"}},
+    {"id": "compatible", "title": "Vídeo · compatible (H.264 + AAC, MP4)", "group": "video",
+     "spec": {"kind": "video", "perfil": "compatible", "height": 1080, "container": "mp4"}},
+    {"id": "pistas", "title": "Elegir pistas del origen…", "group": "video",
+     "spec": {"kind": "video", "perfil": "pistas", "container": "mkv"}},
+    # --- los de siempre: mismos ids (prefs.json, mu-feeds y mu-record los nombran) y mismo comportamiento
     {"id": "video_best", "title": "Vídeo · mejor calidad", "group": "video", "spec": {"kind": "video", "height": None}},
     {"id": "video_1080", "title": "Vídeo · hasta 1080p (recomendado)", "group": "video",
      "spec": {"kind": "video", "height": 1080}},
-    {"id": "video_720", "title": "Vídeo · 720p", "group": "video", "spec": {"kind": "video", "height": 720}},
     {"id": "video_480", "title": "Vídeo · 480p", "group": "video", "spec": {"kind": "video", "height": 480}},
     {"id": "video_360", "title": "Vídeo · 360p", "group": "video", "spec": {"kind": "video", "height": 360}},
     {"id": "audio_original", "title": "Audio · original (sin recodificar, recomendado)", "group": "audio",
      "spec": {"kind": "audio_original"}},
-    {"id": "audio_mp3_128", "title": "Audio · MP3 128 kbps", "group": "audio",
-     "spec": {"kind": "audio_convert", "audio_format": "mp3", "audio_bitrate": 128}},
-    {"id": "audio_mp3_192", "title": "Audio · MP3 192 kbps", "group": "audio",
-     "spec": {"kind": "audio_convert", "audio_format": "mp3", "audio_bitrate": 192}},
-    {"id": "audio_mp3_320", "title": "Audio · MP3 320 kbps", "group": "audio",
-     "spec": {"kind": "audio_convert", "audio_format": "mp3", "audio_bitrate": 320}},
-    {"id": "audio_mp3_vbr", "title": "Audio · MP3 VBR (máxima)", "group": "audio",
-     "spec": {"kind": "audio_convert", "audio_format": "mp3", "audio_bitrate": None, "audio_vbr": 0}},
-    {"id": "audio_opus_128", "title": "Audio · Opus 128 kbps", "group": "audio",
-     "spec": {"kind": "audio_convert", "audio_format": "opus", "audio_bitrate": 128}},
-    {"id": "audio_m4a_192", "title": "Audio · M4A (AAC) 192 kbps", "group": "audio",
-     "spec": {"kind": "audio_convert", "audio_format": "m4a", "audio_bitrate": 192}},
-    {"id": "audio_flac", "title": "Audio · FLAC (sin pérdida)", "group": "audio",
-     "spec": {"kind": "audio_convert", "audio_format": "flac", "audio_bitrate": None}},
     {"id": "subs_only", "title": "Solo subtítulos (SRT)", "group": "subs",
      "spec": {"kind": "video", "subs_mode": "only", "subtitles": True}},
-    {"id": "audio_wav", "title": "Audio · WAV", "group": "audio",
+    # --- convertir: recodifican, así que viven aparte y con su nombre (nunca el defecto)
+    {"id": "audio_mp3_128", "title": "Audio · MP3 128 kbps", "group": "convertir",
+     "spec": {"kind": "audio_convert", "audio_format": "mp3", "audio_bitrate": 128}},
+    {"id": "audio_mp3_192", "title": "Audio · MP3 192 kbps", "group": "convertir",
+     "spec": {"kind": "audio_convert", "audio_format": "mp3", "audio_bitrate": 192}},
+    {"id": "audio_mp3_320", "title": "Audio · MP3 320 kbps", "group": "convertir",
+     "spec": {"kind": "audio_convert", "audio_format": "mp3", "audio_bitrate": 320}},
+    {"id": "audio_mp3_vbr", "title": "Audio · MP3 VBR (máxima)", "group": "convertir",
+     "spec": {"kind": "audio_convert", "audio_format": "mp3", "audio_bitrate": None, "audio_vbr": 0}},
+    {"id": "audio_opus_128", "title": "Audio · Opus 128 kbps", "group": "convertir",
+     "spec": {"kind": "audio_convert", "audio_format": "opus", "audio_bitrate": 128}},
+    {"id": "audio_m4a_192", "title": "Audio · M4A (AAC) 192 kbps", "group": "convertir",
+     "spec": {"kind": "audio_convert", "audio_format": "m4a", "audio_bitrate": 192}},
+    {"id": "audio_flac", "title": "Audio · FLAC (sin pérdida)", "group": "convertir",
+     "spec": {"kind": "audio_convert", "audio_format": "flac", "audio_bitrate": None}},
+    {"id": "audio_wav", "title": "Audio · WAV", "group": "convertir",
      "spec": {"kind": "audio_convert", "audio_format": "wav", "audio_bitrate": None}},
 ]
 
