@@ -50,12 +50,13 @@ def test_un_campo_cuatro_casos_y_una_sola_pregunta(ytdl_mpv, media_dir):
     h, _d, _arglog, _tmp = ytdl_mpv
     h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
 
-    # A3 · la raíz del menú de descargas tiene UNA puerta, no tres
+    # A3 · la raíz del menú de descargas tiene UNA puerta, no tres (F4 añade «Suscripciones», que no es una puerta)
     h.command("script-binding", "mu_ytdl/ytdl-menu")
     v = ytdl_state(h, lambda v: v.get("view") == "root" and bool(v.get("items")))
     assert titles(v)[0] == "Abrir o descargar…"
-    for ida in ("Abrir URL…", "Buscar en YouTube…", "Descargar…", "Suscripciones"):
+    for ida in ("Abrir URL…", "Buscar en YouTube…", "Descargar…"):
         assert ida not in titles(v), titles(v)
+    assert "Suscripciones" in titles(v), titles(v)
 
     open_gate(h)
     # la caja vacía ya dice qué acepta

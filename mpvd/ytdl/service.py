@@ -34,6 +34,7 @@ from mpvd.ytdl.binary import (
     vendor_path,
 )
 from mpvd.ytdl import chapters, policy, sections, sites, transcode
+from mpvd.ytdl import subscriptions as subs_mod
 from mpvd.convert import hw as hwencode
 from mpvd.ytdl.downloads import BROWSERS, FINAL, DownloadItem, DownloadManager, valid_browser
 from mpvd.ytdl.presets import (
@@ -69,6 +70,7 @@ SEARCH_TTL = 3600.0            # in-memory cache per (query, limit)
 SEARCH_TIMEOUT = 30.0
 SEARCH_MAX_RESULTS = 50
 SEARCH_CACHE_SIZE = 200
+SUBS_TICK = 60.0               # cada cuánto se mira si alguna suscripción toca (no es el intervalo de cada canal)
 
 
 class YtdlService:
@@ -96,6 +98,11 @@ class YtdlService:
         self.last_update_check: dict[str, Any] = {}
         self.downloads.final_hooks.append(self._unir_trozos_al_terminar)
         self.downloads.final_hooks.append(self._convertir_al_terminar)
+        # F4: suscripciones por feed (reglas por canal, sondeo incremental) — sin API y sin cuentas
+        self.subs = subs_mod.Suscripciones(settings.data_dir / "ytdl-suscripciones.json")
+        self._subs_task: asyncio.Task[None] | None = None
+        self._sondeo_lock = asyncio.Lock()
+        self.ultimo_sondeo: dict[str, Any] = {}
 
     # -- binary -------------------------------------------------------------------------------
 
@@ -191,6 +198,145 @@ class YtdlService:
             log.info("ytdl: %d unfinished download(s) resumed", n)
         if self.auto_update_enabled():
             self._auto_task = asyncio.create_task(self._auto_update(), name="mpvd-ytdl-autoupdate")
+        if os.environ.get("MPV_UOS_YTDL_SUBS", "1") != "0":
+            # el sondeo de suscripciones: cada minuto mira si alguna toca (30 min / 6 h / diario, y su ventana de horas)
+            self._subs_task = asyncio.create_task(self._bucle_subs(), name="mpvd-ytdl-subs")
+
+    async def _bucle_subs(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(SUBS_TICK)
+                if not self.subs.items:
+                    continue
+                try:
+                    await self.sondear()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:  # noqa: BLE001 - un sondeo roto no puede tumbar el daemon
+                    log.exception("ytdl: sondeo de suscripciones falló")
+        except asyncio.CancelledError:
+            return
+
+    # -- suscripciones (F4) ---------------------------------------------------------------------
+
+    async def sondear(self, sid: str | None = None, forzar: bool = False,
+                      fetcher: Any = None) -> dict[str, Any]:
+        """Comprueba los canales que tocan (o uno con ``sid`` / ``forzar``) y encola solo lo nuevo.
+
+        Solo mira el feed y el índice: no descarga metadatos de cada vídeo, así que una comprobación de 15 entradas
+        cuesta una petición. Lo que el feed no dice (la duración) se filtra al bajar.
+        """
+        async with self._sondeo_lock:
+            if sid:
+                s = self.subs.get(sid)
+                objetivos = [s] if s is not None else []
+                if s is None:
+                    raise RpcError(NOT_FOUND, f"unknown subscription: {sid}")
+            elif forzar:
+                objetivos = list(self.subs.items)
+            else:
+                objetivos = self.subs.debidas()
+            out: list[dict[str, Any]] = []
+            total_nuevos = 0
+            indice = self.downloads.index
+            for s in objetivos:
+                if not s.activa or not s.regla.en_ventana():
+                    continue
+                try:
+                    datos = await asyncio.to_thread(subs_mod.leer_feed, s.canal, fetcher)
+                    filas = subs_mod.entradas(datos)
+                    pendientes = subs_mod.nuevos(s, filas, indice)
+                    for fila in pendientes:
+                        spec = subs_mod.spec_de(fila, s)
+                        self.downloads.submit(spec, out_dir=s.regla.carpeta or None, notify=DEFAULT_NOTIFY)
+                    # se marca visto todo lo que el feed trae menos lo que se quedó fuera del tope: eso sigue
+                    # pendiente para el próximo sondeo (si no, un canal con 15 novedades perdería las de después del 10)
+                    en_cola = {f.get("video_id") for f in pendientes}
+                    vistos_ahora = set(s.vistos)
+                    atrasados = {f.get("video_id") for f in filas
+                                 if f.get("video_id") and f.get("video_id") not in en_cola
+                                 and f.get("video_id") not in vistos_ahora and s.regla.pasa(f)
+                                 and (indice is None or indice.ya_descargado(str(f.get("video_id"))) is None)}
+                    vistos = [f["video_id"] for f in filas
+                              if f.get("video_id") and f.get("video_id") not in atrasados]
+                    self.subs.anotar(s.id, nuevos=len(pendientes), vistos=vistos)
+                    total_nuevos += len(pendientes)
+                    out.append({"id": s.id, "canal": s.canal, "titulo": s.titulo, "nuevos": len(pendientes),
+                                "encolados": [f.get("url") for f in pendientes], "error": ""})
+                except (subs_mod.SubError, OSError, ValueError) as exc:
+                    self.subs.anotar(s.id, nuevos=0, error=str(exc))
+                    out.append({"id": s.id, "canal": s.canal, "titulo": s.titulo, "nuevos": 0, "encolados": [],
+                                "error": str(exc)})
+            self.ultimo_sondeo = {"cuando": time.time(), "nuevos": total_nuevos, "canales": out}
+            return {"sondeadas": len(out), "nuevos": total_nuevos, "canales": out}
+
+    def subs_lista(self) -> dict[str, Any]:
+        idx = self.downloads.index
+        total = idx.total() if idx is not None else {"items": 0, "bytes": 0}
+        return {"suscripciones": self.subs.lista(), "ultimo_sondeo": self.ultimo_sondeo,
+                "indice": total, "intervalos": list(subs_mod.INTERVALOS),
+                "perfiles": list(subs_mod.PERFILES_SUSCRIPCION)}
+
+    def subs_add(self, url: str, titulo: str = "", **cambios: Any) -> dict[str, Any]:
+        try:
+            s = self.subs.add(url, titulo=titulo, **cambios)
+        except subs_mod.SubError as exc:
+            raise RpcError(INVALID_PARAMS, str(exc)) from None
+        return {**s.to_dict(), "estado": s.estado()}
+
+    def subs_update(self, id: str, **cambios: Any) -> dict[str, Any]:  # noqa: A002
+        try:
+            s = self.subs.update(id, **cambios)
+        except subs_mod.SubError as exc:
+            raise RpcError(INVALID_PARAMS, str(exc)) from None
+        return {**s.to_dict(), "estado": s.estado()}
+
+    def subs_borrar(self, id: str) -> dict[str, Any]:  # noqa: A002
+        return {"removed": self.subs.borrar(id)}
+
+    def subs_historico(self, id: str, desde: float | None = None, hasta: float | None = None) -> dict[str, Any]:
+        """Fondo histórico de un canal: todo lo anterior a lo que ya hay, con archivo y corte en lo conocido."""
+        s = self.subs.get(id)
+        if s is None:
+            raise RpcError(NOT_FOUND, f"unknown subscription: {id}")
+        spec = subs_mod.spec_historico(s.url or s.canal, s, desde=desde, hasta=hasta,
+                                       archivo=self.downloads.archive_path)
+        item = self.downloads.submit(spec, out_dir=s.regla.carpeta or None, notify=DEFAULT_NOTIFY)
+        return item.to_dict()
+
+    def indice_historial(self, n: int = 20, canal: str | None = None) -> dict[str, Any]:
+        idx = self.downloads.index
+        if idx is None:
+            return {"items": [], "total": {"items": 0, "bytes": 0}}
+        return {"items": [i.to_dict() for i in idx.historial(n, canal=canal)], "total": idx.total()}
+
+    def indice_faltan(self, ids: list[str], perfil: str | None = None) -> dict[str, Any]:
+        idx = self.downloads.index
+        if idx is None:
+            return {"faltan": list(ids), "ya": []}
+        faltan = idx.faltan(ids, perfil=perfil)
+        return {"faltan": faltan, "ya": [i for i in ids if i not in set(faltan)]}
+
+    def ficha_lista(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
+        """«32 vídeos · ~6,4 GB · solo los que no tengas», con lo que el índice ya tiene y un tamaño de referencia.
+
+        El tamaño es una estimación a 2,4 Mbit/s (720p VP9 + Opus): sirve para que el usuario sepa si cabe, no para
+        prometer bytes. Con índice solo cuenta lo que falta, que es lo que se va a bajar.
+        """
+        idx = self.downloads.index
+        ids = [str(r.get("id") or "") for r in rows if r.get("id")]
+        faltan = set(idx.faltan(ids)) if idx is not None and ids else set(ids)
+        if idx is not None and ids:
+            rows = [r for r in rows if not r.get("id") or str(r.get("id")) in faltan]
+        bytes_ = sum(int(float(r.get("duration") or 0) * 300_000) for r in rows)
+        n = len(rows)
+        ya = len(ids) - len(faltan) if ids else 0
+        partes = [t("%d vídeos") % n]
+        if bytes_:
+            partes.append("~%.1f GB" % (bytes_ / 1e9) if bytes_ >= 1e9 else "~%d MB" % (bytes_ / 1e6))
+        if ya:
+            partes.append(t("solo los que no tengas"))
+        return {"count": n, "bytes": bytes_, "already": ya, "text": " · ".join(partes)}
 
     async def _auto_update(self) -> None:
         await asyncio.sleep(float(os.environ.get("MPV_UOS_YTDLP_AUTO_UPDATE_DELAY", AUTO_UPDATE_DELAY)))
@@ -213,6 +359,8 @@ class YtdlService:
     async def close(self) -> None:
         if self._auto_task is not None:
             self._auto_task.cancel()
+        if self._subs_task is not None:
+            self._subs_task.cancel()
         # stopping mpvd is not the viewer cancelling: the queue must be there on the next start (H19)
         await self.downloads.cancel_all(closing=True)
 
@@ -603,7 +751,11 @@ class YtdlService:
                 if "list_folder" not in given:
                     spec.list_folder = s.list_folders
                 if "archive" not in given:
-                    spec.archive = s.archive
+                    # en listas el archivo va puesto por defecto (F4): sin él, cada pasada vuelve a bajar lo mismo.
+                    # Quien quiera repetir lo dice con «archive»: false.
+                    spec.archive = True
+                if "archive_file" not in given:
+                    spec.extra["archive_file"] = str(self.downloads.archive_path)
             return spec
         except KeyError as exc:
             raise RpcError(NOT_FOUND, f"unknown preset: {exc}") from exc
@@ -698,9 +850,10 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
 
     @d.method("ytdl.playlist")
     async def playlist(ctx: RpcContext, url: str, force: bool = False) -> dict[str, Any]:
-        """Flat playlist entries (``--flat-playlist -J``)."""
+        """Flat playlist entries (``--flat-playlist -J``), con la ficha «N vídeos · ~X GB · solo los que no tengas»."""
         data = await service.raw_info(url, flat=True, force=force)
-        return {**info_mod.summary(data), "entries": info_mod.flat_entries(data)}
+        rows = info_mod.flat_entries(data)
+        return {**info_mod.summary(data), "entries": rows, "ficha": service.ficha_lista(rows)}
 
     @d.method("ytdl.search")
     async def search(ctx: RpcContext, query: str, limit: int = 15) -> list[dict[str, Any]]:
@@ -755,9 +908,14 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
     @d.method("ytdl.download.batch")
     async def download_batch(ctx: RpcContext, text: str | None = None, urls: list[str] | None = None,
                              file: str | None = None, preset: str | None = None, options: dict[str, Any] | None = None,
-                             notify: str | None = None, out_dir: str | None = None) -> dict[str, Any]:
+                             notify: str | None = None, out_dir: str | None = None,
+                             first: int | None = None) -> dict[str, Any]:
         """Queue several URLs at once: pasted text (any separator), a list, or a text file with one URL per line
-        (``#`` comments). Duplicates are dropped; with the archive on, what was downloaded before is skipped."""
+        (``#`` comments). Duplicates are dropped; with the archive on, what was downloaded before is skipped.
+
+        Guarda de tamaño: más de ``max_items`` (50 por defecto) no se encola a ciegas — se pide confirmación y el
+        menú ofrece «los primeros N» (``first``), que es lo que baja exactamente N de la lista.
+        """
         found: list[str] = []
         sources = [text or ""]
         if file:
@@ -774,11 +932,20 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
         unique = list(dict.fromkeys(u.strip().rstrip(".,;)") for u in found))[:MAX_BATCH]
         if not unique:
             raise RpcError(INVALID_PARAMS, t("no hay ninguna URL"))
+        tope = max(1, int(service.downloads.settings.max_items or MAX_BATCH))
+        if len(unique) > tope:
+            if first is None:
+                # no se baja nada sin decirlo: el menú pregunta y ofrece «los primeros N»
+                raise RpcError(INVALID_PARAMS, t("son %d vídeos, más de %d: confirma cuántos quieres")
+                               % (len(unique), tope),
+                               data={"count": len(unique), "max": tope, "asks": "confirm"})
+            unique = unique[: max(0, int(first))]
         await service.require_binary()
         items = []
         for url in unique:
             ds = service.spec_from_params({"url": url, "preset": preset, "options": options})
-            ds.archive = ds.archive or service.downloads.settings.archive
+            if "archive" not in (options or {}):
+                ds.archive = ds.archive or service.downloads.settings.archive
             await service.resolve_langs(ds)
             items.append(service.downloads.submit(ds, notify=notify or DEFAULT_NOTIFY, out_dir=out_dir).to_dict())
         return {"count": len(items), "items": items}
@@ -818,6 +985,85 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
     async def downloads_clear(ctx: RpcContext) -> dict[str, Any]:
         """Forget all finished downloads."""
         return {"removed": service.downloads.clear_finished()}
+
+    # -- suscripciones, índice y cola (F4) ---------------------------------------------------------
+
+    @d.method("ytdl.subs.list")
+    async def subs_list(ctx: RpcContext) -> dict[str, Any]:
+        """Canales seguidos con su estado (cada cuánto, cuántos nuevos, último error) y el tamaño del índice."""
+        return service.subs_lista()
+
+    @d.method("ytdl.subs.add")
+    async def subs_add(ctx: RpcContext, url: str, titulo: str = "", perfil: str | None = None,
+                       carpeta: str | None = None, duracion_min: int | None = None, duracion_max: int | None = None,
+                       titulo_excluir: str | None = None, hora_desde: int | None = None, hora_hasta: int | None = None,
+                       tope: int | None = None, intervalo: int | None = None) -> dict[str, Any]:
+        """Seguir un canal (id ``UC…`` o su dirección) con sus reglas: perfil, carpeta, filtros y cada cuánto."""
+        cambios = {k: v for k, v in {"perfil": perfil, "carpeta": carpeta, "duracion_min": duracion_min,
+                                     "duracion_max": duracion_max, "titulo_excluir": titulo_excluir,
+                                     "hora_desde": hora_desde, "hora_hasta": hora_hasta, "tope": tope,
+                                     "intervalo": intervalo}.items() if v is not None}
+        return service.subs_add(url, titulo=titulo, **cambios)
+
+    @d.method("ytdl.subs.update")
+    async def subs_update(ctx: RpcContext, id: str, **cambios: Any) -> dict[str, Any]:  # noqa: A002
+        """Cambiar una regla o pausar el canal (``activa``)."""
+        return service.subs_update(id, **cambios)
+
+    @d.method("ytdl.subs.remove")
+    async def subs_remove(ctx: RpcContext, id: str) -> dict[str, Any]:  # noqa: A002
+        """Dejar de seguir un canal (lo descargado se queda donde está)."""
+        return service.subs_borrar(id)
+
+    @d.method("ytdl.subs.check")
+    async def subs_check(ctx: RpcContext, id: str | None = None, forzar: bool = True) -> dict[str, Any]:
+        """Comprobar ahora: solo mira el feed y el índice y encola lo nuevo (sin descargar metadatos de cada vídeo)."""
+        return await service.sondear(sid=id, forzar=forzar)
+
+    @d.method("ytdl.subs.historico")
+    async def subs_historico(ctx: RpcContext, id: str, desde: float | None = None,
+                             hasta: float | None = None) -> dict[str, Any]:
+        """Bajar el fondo histórico del canal: todo lo anterior, con archivo y corte en lo ya conocido."""
+        try:
+            return service.subs_historico(id, desde=desde, hasta=hasta)
+        except ValueError as exc:
+            raise RpcError(INVALID_PARAMS, str(exc)) from None
+
+    @d.method("ytdl.index.historial")
+    async def index_historial(ctx: RpcContext, n: int = 20, canal: str | None = None) -> dict[str, Any]:
+        """Lo último que se bajó, según el índice local (no según la lista de trabajos, que se limpia)."""
+        return service.indice_historial(n, canal=canal)
+
+    @d.method("ytdl.index.faltan")
+    async def index_faltan(ctx: RpcContext, ids: list[str], perfil: str | None = None) -> dict[str, Any]:
+        """De estos ids, cuáles no están en el índice (dedupe por id + perfil)."""
+        return service.indice_faltan(ids, perfil=perfil)
+
+    @d.method("ytdl.queue.pause")
+    async def queue_pause(ctx: RpcContext) -> dict[str, Any]:
+        """Pausar la cola entera: no arranca nada y lo que está en marcha se para para reanudarlo."""
+        return service.downloads.pause_all()
+
+    @d.method("ytdl.queue.resume")
+    async def queue_resume(ctx: RpcContext) -> dict[str, Any]:
+        """Reanudar la cola (yt-dlp --continue recoge el .part donde estaba)."""
+        return service.downloads.resume_all()
+
+    @d.method("ytdl.queue.priority")
+    async def queue_priority(ctx: RpcContext, id: str, prioridad: str = "normal") -> dict[str, Any]:  # noqa: A002
+        """Prioridad de un trabajo: ``high``, ``normal`` o ``low`` (las suscripciones entran en ``low``)."""
+        try:
+            item = service.downloads.set_priority(id, prioridad)
+        except ValueError as exc:
+            raise RpcError(INVALID_PARAMS, str(exc)) from None
+        if item is None:
+            raise RpcError(NOT_FOUND, f"unknown download: {id}")
+        return item.to_dict()
+
+    @d.method("ytdl.downloads.report")
+    async def downloads_report(ctx: RpcContext) -> dict[str, Any]:
+        """Informe del final: cuántos bien, cuántos mal y el motivo de cada fallido."""
+        return service.downloads.report()
 
     @d.method("ytdl.settings.get")
     async def settings_get(ctx: RpcContext) -> dict[str, Any]:

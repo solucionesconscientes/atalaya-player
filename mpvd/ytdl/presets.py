@@ -500,8 +500,17 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
     args: list[str] = ["--no-overwrites", "--continue", "--ignore-errors", "--retries", "5", "--socket-timeout", "30"]
     if rate_limit and RATE_RE.match(rate_limit):
         args += ["-r", rate_limit]
-    if spec.archive and archive_file:
-        args += ["--download-archive", archive_file]
+    extra = spec.extra or {}
+    archivo = str(extra.get("archive_file") or archive_file or "")
+    if spec.archive and archivo:
+        args += ["--download-archive", archivo]
+        if extra.get("break_on_existing"):
+            # fondo histórico de un canal: corta en el primer vídeo que ya está en el archivo (segundos, no minutos)
+            args += ["--break-on-existing"]
+    if extra.get("dateafter"):
+        args += ["--dateafter", str(extra["dateafter"])]
+    if extra.get("datebefore"):
+        args += ["--datebefore", str(extra["datebefore"])]
     if not only_subs:
         if explicito:
             expresion = ("+".join(x for x in (spec.video_id, spec.audio_id) if x))

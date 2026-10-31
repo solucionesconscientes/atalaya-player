@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+  <link rel="self" href="https://www.youtube.com/feeds/videos.xml?channel_id=UCprueba0000000000000000"/>
+  <id>yt:channel:UCprueba0000000000000000</id>
+  <yt:channelId>UCprueba0000000000000000</yt:channelId>
+  <title>Canal de prueba</title>
+  <link rel="alternate" href="https://www.youtube.com/channel/UCprueba0000000000000000"/>
+  <published>2026-09-01T00:00:00+00:00</published>
+  <entry>
+    <id>yt:video:vidtercero1</id>
+    <yt:videoId>vidtercero1</yt:videoId>
+    <yt:channelId>UCprueba0000000000000000</yt:channelId>
+    <title>El segundo más nuevo</title>
+    <link rel="alternate" href="https://www.youtube.com/watch?v=vidtercero1"/>
+    <published>2026-10-29T09:00:00+00:00</published>
+    <updated>2026-10-29T09:05:00+00:00</updated>
+  </entry>
+  <entry>
+    <id>yt:video:vidprimero1</id>
+    <yt:videoId>vidprimero1</yt:videoId>
+    <yt:channelId>UCprueba0000000000000000</yt:channelId>
+    <title>Directo de la semana #shorts</title>
+    <link rel="alternate" href="https://www.youtube.com/watch?v=vidprimero1"/>
+    <published>2026-10-31T18:00:00+00:00</published>
+    <updated>2026-10-31T18:05:00+00:00</updated>
+  </entry>
+  <entry>
+    <id>yt:video:vidsegundo2</id>
+    <yt:videoId>vidsegundo2</yt:videoId>
+    <yt:channelId>UCprueba0000000000000000</yt:channelId>
+    <title>El más viejo del feed</title>
+    <link rel="alternate" href="https://www.youtube.com/watch?v=vidsegundo2"/>
+    <published>2026-10-20T07:30:00+00:00</published>
+    <updated>2026-10-20T07:35:00+00:00</updated>
+  </entry>
+</feed>

@@ -96,6 +96,9 @@ local state = {
   plan = nil,            -- F3: {url, rows = {perfil → ficha}, pistas} las fichas previas de «Descargar»
   picks = nil,           -- F3: {url, tracks, video, audio, plan, motivo} pistas elegidas a mano
   conv = nil,            -- F3: {url, cat, acod, vcod, ...} catálogo de conversión explícito
+  subs = {},             -- F4: id → {activa} de la última lista de suscripciones (para alternar sin volver a preguntar)
+  queue = nil,           -- F4: último informe de la cola {ok, failed, failed_items}
+  paused = false,        -- F4: la cola está en pausa (lo dice mpvd; aquí solo se recuerda para pintar la fila)
 }
 
 local set_button_state -- defined with the bindings below
@@ -535,6 +538,9 @@ views.root = function()
   local n = count_active()
   table.insert(items, { title = tr('Descargas'), hint = n > 0 and (tostring(n) .. ' activas') or nil, icon = 'downloading',
                         value = { view = 'downloads' } })
+  -- F4: los canales que sigues, con su estado y «comprobar ahora». El fondo histórico de un canal vive aquí dentro.
+  table.insert(items, { title = tr('Suscripciones'), hint = tr('canales que sigues'), icon = 'podcasts',
+                        value = { view = 'subs' } })
   -- H20: conversions and the unified tasks panel live in mu-convert (opened as a child: Retroceso comes back here)
   table.insert(items, { title = tr('Convertir…'), hint = tr('MP4, más pequeño, solo audio, GIF'), icon = 'transform',
                         value = { child = 'convert-menu' } })
@@ -892,6 +898,19 @@ end
 local function downloads_items()
   local items = {}
   local seen = {}
+  -- F4 · la cola entera se manda desde aquí: pausar/reanudar y, si algo falló, el informe con el motivo de cada uno
+  local activos = count_active()
+  table.insert(items, {
+    title = state.paused and tr('Reanudar la cola') or tr('Pausar la cola'),
+    hint = activos > 0 and tr('%d en marcha'):format(activos) or tr('nada en marcha'),
+    icon = state.paused and 'play_arrow' or 'pause',
+    value = { queue = state.paused and 'resume' or 'pause' }, keep_open = true, separator = true,
+  })
+  if state.queue and (tonumber(state.queue.failed) or 0) > 0 then
+    table.insert(items, { title = tr('%d no se pudieron bajar'):format(state.queue.failed),
+                          hint = tr('Enter dice cuáles y por qué'), icon = 'error', value = { report = true },
+                          keep_open = true })
+  end
   for _, id in ipairs(state.download_order) do
     local d = state.downloads[id]
     if d and not seen[id] then
@@ -930,6 +949,15 @@ views.downloads = function()
     show(tr('Descargas'), downloads_items(),
          { footnote = tr('Tab: cancelar / repetir / quitar · Enter muestra detalles · Retroceso: atrás') })
   end)
+  -- F4: el informe va aparte para no retrasar la lista; si algo falló, aparece su fila
+  rpc.call('ytdl.downloads.report', nil, function(err, rep)
+    if err or type(rep) ~= 'table' then return end
+    state.queue = rep
+    if state.view == 'downloads' then
+      show(tr('Descargas'), downloads_items(),
+           { footnote = tr('Tab: cancelar / repetir / quitar · Enter muestra detalles · Retroceso: atrás') })
+    end
+  end, 10)
 end
 
 local panel_timer = nil
@@ -1079,6 +1107,96 @@ end
 
 local function close_menus()
   for t in pairs(OUR_MENUS) do uosc.close(t) end
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- F4 · suscripciones. Seguir un canal no pide cuenta ni API: el feed público del canal trae las últimas 15
+-- entradas, y mpvd compara los ids con lo que ya tienes y solo encola lo nuevo. Aquí solo se ven los canales, su
+-- estado y «comprobar ahora»; las reglas (perfil, carpeta, filtros, cada cuánto) las guarda mpvd por canal.
+
+local function subs_reload()
+  if state.view == 'subs' then open_view({ name = 'subs' }, false) end
+end
+
+local function subs_check(id)
+  rpc.call('ytdl.subs.check', id and { id = id } or { forzar = true }, function(err, res)
+    if err then osd(fail(err, 'ytdl.subs.check')) return end
+    local n = tonumber(res and res.nuevos) or 0
+    osd(n > 0 and tr('%d nuevos en cola'):format(n) or tr('Sin novedades'))
+    subs_reload()
+  end, 120)
+end
+
+local function subs_toggle(id)
+  local actual = state.subs[id]
+  rpc.call('ytdl.subs.update', { id = id, activa = not (actual and actual.activa) }, function(err)
+    if err then osd(fail(err, 'ytdl.subs.update')) return end
+    subs_reload()
+  end)
+end
+
+local function subs_borrar(id)
+  rpc.call('ytdl.subs.remove', { id = id }, function(err)
+    if err then osd(fail(err, 'ytdl.subs.remove')) return end
+    subs_reload()
+  end)
+end
+
+-- Seguir el canal que esté en el portapapeles: la dirección del canal o su id (UC…). El @nombre exige resolverlo
+-- una vez, y eso lo dice mpvd con su motivo en vez de fallar en silencio.
+local function subs_add_from_clipboard()
+  local url = clipboard_url() or trim(clipboard_raw())
+  if url == '' then
+    osd(tr('Copia la dirección del canal y vuelve a pulsar'))
+    return
+  end
+  rpc.call('ytdl.subs.add', { url = url }, function(err, res)
+    if err then osd(fail(err, 'ytdl.subs.add')) return end
+    osd(tr('Siguiendo %s'):format(res.titulo ~= '' and res.titulo or res.canal))
+    subs_check(res.id)
+  end)
+end
+
+views.subs = function()
+  if not require_mpvd('Suscripciones') then return end
+  if #state.items == 0 then show(tr('Suscripciones'), uosc.loading_items()) end
+  rpc.call('ytdl.subs.list', nil, function(err, res)
+    if state.view ~= 'subs' then return end
+    if err then show(tr('Suscripciones'), uosc.message_items(fail(err, 'ytdl.subs.list'), 'error')) return end
+    local rows = (res and res.suscripciones) or {}
+    state.subs = {}
+    for _, s in ipairs(rows) do state.subs[s.id] = { activa = s.activa } end
+    local items = {
+      { title = tr('Seguir un canal…'), hint = tr('la dirección o el id del portapapeles'), icon = 'add_link',
+        value = { subs_add = true } },
+    }
+    if #rows > 0 then
+      table.insert(items, { title = tr('Comprobar todos ahora'), hint = tr('solo los que no tengas'),
+                            icon = 'refresh', value = { subs_all = true }, separator = true, keep_open = true })
+    end
+    for _, s in ipairs(rows) do
+      table.insert(items, {
+        title = (s.titulo ~= '' and s.titulo or s.canal),
+        hint = s.estado or nil, icon = s.activa and 'podcasts' or 'pause_circle',
+        muted = not s.activa or nil, value = { subs_check = s.id }, keep_open = true,
+        actions = {
+          { name = 'check', icon = 'refresh', label = tr('Comprobar ahora') },
+          { name = 'toggle', icon = s.activa and 'pause' or 'play_arrow',
+            label = s.activa and tr('Pausar') or tr('Reanudar') },
+          { name = 'delete', icon = 'delete', label = tr('Dejar de seguir') },
+        },
+      })
+    end
+    if #rows == 0 then
+      table.insert(items, { title = tr('Todavía no sigues ningún canal'), icon = 'info', selectable = false,
+                            muted = true, align = 'center' })
+    end
+    local idx = (res and res.indice) or {}
+    local pie = (idx.items or 0) > 0
+        and tr('%d vídeos descargados en total · Enter comprueba un canal'):format(idx.items)
+        or tr('Enter comprueba un canal · Tab: pausar o dejar de seguir')
+    show(tr('Suscripciones'), items, { footnote = pie })
+  end)
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -2084,6 +2202,8 @@ views.picklist = function(args)
         pick_set_entries({ { url = args.url, title = args.url } }, 'links', nil, args.url, args.url)
       else
         pick_set_entries(res.entries, 'url', args.url, res.title or args.url, args.url)
+        -- F4: «32 vídeos · ~6,4 GB · solo los que no tengas», con lo que el índice ya tiene
+        if state.pick then state.pick.ficha = res.ficha end
       end
       reopen_current()
     end, 90)
@@ -2095,7 +2215,13 @@ views.picklist = function(args)
     local n, total = pick_count()
     local propios = 0
     for i = 1, total do if pk.fmt[i] or pk.srt[i] ~= nil then propios = propios + 1 end end
-    local items = {
+    local items = {}
+    -- F4: el tamaño y lo que ya tienes, antes de marcar nada
+    if pk.ficha and pk.ficha.text then
+      items[#items + 1] = { title = pk.ficha.text, icon = 'info', selectable = false, muted = true,
+                            hint = (pk.ficha.already or 0) > 0 and tr('lo que ya tienes no se repite') or nil }
+    end
+    for _, it in ipairs({
       { title = tr('Para todos: %s'):format(pick_preset_title(pk.common)),
         hint = propios > 0 and (propios .. ' con formato propio') or 'Enter para cambiarlo',
         icon = 'tune', value = { pick_fmt = 'all' } },
@@ -2105,7 +2231,7 @@ views.picklist = function(args)
         icon = n == total and 'check_box' or 'check_box_outline_blank', value = { pick_all = true }, keep_open = true },
       { title = tr('Descargar %s'):format(n), icon = 'download', value = { pick_download = true }, muted = n == 0,
         separator = true },
-    }
+    }) do items[#items + 1] = it end
     for i, e in ipairs(pk.entries) do
       local marcas = {}
       if e.duration then marcas[#marcas + 1] = fmt_duration(e.duration) end
@@ -2512,6 +2638,31 @@ local function on_event(source, json)
       if ev.action ~= 'copy' then close_menus() end
     elseif v.clear then
       rpc.call('ytdl.downloads.clear', nil, function() open_view({ name = 'downloads' }, false) end)
+    elseif v.queue then
+      local metodo = v.queue == 'resume' and 'ytdl.queue.resume' or 'ytdl.queue.pause'
+      rpc.call(metodo, nil, function(err, res)
+        if err then osd(fail(err, metodo)) return end
+        state.paused = v.queue ~= 'resume'
+        osd(v.queue == 'resume' and tr('Cola reanudada') or tr('Cola en pausa'))
+        if state.view == 'downloads' then open_view({ name = 'downloads' }, false) end
+      end)
+    elseif v.report then
+      local rep = state.queue or {}
+      local lineas = { tr('%d bien · %d fallaron'):format(rep.ok or 0, rep.failed or 0) }
+      for i, f in ipairs(rep.failed_items or {}) do
+        if i > 5 then break end
+        lineas[#lineas + 1] = '· ' .. ellipsize(f.title or f.url or '?', 50) .. ' — ' .. ellipsize(f.motivo or '', 70)
+      end
+      if #lineas == 1 then lineas[2] = tr('Nada falló') end
+      osd(table.concat(lineas, '\n'))
+    elseif v.subs_add then
+      subs_add_from_clipboard()
+    elseif v.subs_all then
+      subs_check(nil)
+    elseif v.subs_check then
+      if ev.action == 'toggle' then subs_toggle(v.subs_check)
+      elseif ev.action == 'delete' then subs_borrar(v.subs_check)
+      else subs_check(v.subs_check) end
     elseif v.update then
       update_action(v.update)
     elseif v.setting == 'auto_update' then

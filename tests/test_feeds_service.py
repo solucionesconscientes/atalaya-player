@@ -290,7 +290,11 @@ def test_detect_errors_and_settings_validation(env):
         assert caps["services"]["feeds"] is True and any(m["name"] == "feeds.add" for m in caps["methods"])
         lst = await c.call("feeds.list")
         assert lst["state"]["metered"] is False and "{date} - {title}" in lst["rename_presets"]
-        assert [p["id"] for p in lst["presets"]][:2] == ["video_best", "video_1080"]
+        # F1 cambió el orden a propósito: primero la política (Opus del origen, 720p, compatible) y los ids de
+        # siempre siguen existiendo más abajo; las suscripciones pueden usar cualquiera de ellos.
+        ids = [p["id"] for p in lst["presets"]]
+        assert ids[:3] == ["audio_opus_origen", "video_720", "compatible"]
+        assert "video_best" in ids and "video_1080" in ids
 
     run(tmp_path, fn)
 

@@ -233,8 +233,9 @@ def test_una_conversion_de_audio_al_bajar_deja_el_mp3_y_quita_el_intermedio(plan
         assert conv["ok"] is True and conv["acodec"] == "mp3" and conv["contenedor"] == "mp3"
         salida = Path(d["outputs"][0])
         assert salida.suffix == ".mp3" and salida.is_file() and salida.stat().st_size > 0
-        # el original (el .flac que se descargó) no se queda: era el paso intermedio
-        assert [p.suffix for p in Path(d["out_dir"]).iterdir()] == [".mp3"]
+        # el original (el .flac que se descargó) no se queda: era el paso intermedio. Se ignoran las carpetas ocultas:
+        # F4 deja el índice de lo descargado en <carpeta>/.atalaya/
+        assert [p.suffix for p in Path(d["out_dir"]).iterdir() if not p.name.startswith(".")] == [".mp3"]
         assert d["message"].startswith("listo")
         # la orden que se le dio a yt-dlp NO recodifica: baja el original tal cual (nada de --audio-format)
         argv = [a for a in argv_lines(arglog) if a[-1] == "https://fake.test/clip"][-1]

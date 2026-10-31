@@ -14,6 +14,8 @@ import json
 import logging
 import os
 import re
+import shutil
+import subprocess
 import sys
 import time
 import uuid
@@ -24,8 +26,10 @@ from pathlib import Path
 from typing import Any
 
 from mpvd.brand import folder_name
+from mpvd.i18n import t
 from mpvd.jobs import Job, JobQueue, Priority, Status
 from mpvd.ytdl.binary import YtdlpBinary
+from mpvd.ytdl.index import Index, default_path as indice_default_path, id_de_ruta
 from mpvd.ytdl.presets import (
     DEFAULT_SUB_LANGS,
     DEFAULT_TEMPLATE,
@@ -42,6 +46,141 @@ log = logging.getLogger("mpvd.ytdl.downloads")
 FINAL = ("done", "failed", "cancelled")
 MAX_HISTORY = 200
 STDERR_TAIL = 12
+MARGEN_ESPACIO = 1.2                       # el estimado se queda corto: 20 % de aire
+MARGEN_LIBRE = 2 * 1024 ** 3               # y 2 GB para que el sistema siga respirando
+VERIFY_SECONDS = 10.0                      # trozo que tiene que decodificar, como mínimo
+MEDIA_EXT = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi", ".mp3", ".m4a", ".opus", ".ogg", ".oga", ".flac",
+             ".wav", ".aac", ".m4b"}
+
+
+# -- guardas: espacio en disco y comprobación del fichero ------------------------------------------
+
+
+def necesario(bytes_estimados: float) -> int:
+    """Lo que hay que tener libre para bajar eso: el estimado con un 20 % de aire más 2 GB de respiro."""
+    return int(max(0.0, float(bytes_estimados)) * MARGEN_ESPACIO + MARGEN_LIBRE)
+
+
+def espacio_libre(destino: str | os.PathLike[str]) -> int | None:
+    """Bytes libres en el sistema de ficheros de ``destino`` (se sube hasta la primera carpeta que exista)."""
+    p = Path(os.path.expanduser(str(destino)))
+    while not p.exists() and p != p.parent:
+        p = p.parent
+    try:
+        return int(shutil.disk_usage(p).free)
+    except OSError:
+        return None
+
+
+def comprobar_espacio(destino: str | os.PathLike[str], bytes_estimados: float) -> dict[str, Any]:
+    """``{ok, libre, necesario, motivo}``. Sin dato del disco (raro) no se bloquea: se avisa."""
+    libre = espacio_libre(destino)
+    nec = necesario(bytes_estimados)
+    if libre is None:
+        return {"ok": True, "libre": None, "necesario": nec, "motivo": t("no se pudo mirar el espacio libre")}
+    if libre < nec:
+        return {"ok": False, "libre": libre, "necesario": nec,
+                "motivo": t("no cabe: hacen falta %.1f GB y quedan %.1f GB en %s")
+                          % (nec / 1e9, libre / 1e9, destino)}
+    return {"ok": True, "libre": libre, "necesario": nec, "motivo": ""}
+
+
+def _ffprobe(ruta: str, timeout: float = 90.0) -> dict[str, Any] | None:
+    exe = shutil.which("ffprobe")
+    if exe is None:
+        return None
+    try:
+        proc = subprocess.run([exe, "-v", "error", "-show_format", "-show_streams", "-of", "json", ruta],
+                              capture_output=True, text=True, timeout=timeout, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        cola = (proc.stderr or "").strip().splitlines()
+        return {"error": cola[-1] if cola else f"ffprobe salió con {proc.returncode}"}
+    try:
+        return json.loads(proc.stdout or "{}")
+    except ValueError:
+        return {"error": "ffprobe no devolvió JSON"}
+
+
+def _decodifica(ruta: str, segundos: float = VERIFY_SECONDS, timeout: float = 180.0) -> tuple[bool, str]:
+    """Los primeros ``segundos`` del fichero se decodifican de verdad (ffmpeg a ``-f null``), no solo se abren."""
+    exe = shutil.which("ffmpeg")
+    if exe is None:
+        return True, ""      # sin ffmpeg no se puede comprobar; no se tumba una descarga por eso
+    try:
+        proc = subprocess.run([exe, "-v", "error", "-xerror", "-t", f"{segundos:g}", "-i", ruta, "-f", "null", "-"],
+                              capture_output=True, text=True, timeout=timeout, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, t("no se pudo comprobar el fichero: %s") % exc
+    if proc.returncode != 0:
+        cola = (proc.stderr or "").strip().splitlines()[-1:] or [f"ffmpeg salió con {proc.returncode}"]
+        return False, t("el fichero no decodifica: %s") % cola[0]
+    return True, ""
+
+
+def verificar_salida(ruta: str | os.PathLike[str], esperado: dict[str, Any] | None = None,
+                     segundos: float = VERIFY_SECONDS) -> dict[str, Any]:
+    """¿Este fichero es lo que se pidió? ``{ok, motivo, duracion, pistas}``.
+
+    Tres cosas, en este orden: que exista y no esté vacío, que ffprobe lea duración y las pistas esperadas (audio,
+    y vídeo si se pedía vídeo), y que los primeros ``segundos`` **decodifiquen**. «Terminó sin error» no basta: un
+    fichero truncado por un corte de red también termina sin error.
+    """
+    p = Path(str(ruta))
+    esperado = esperado or {}
+    if not p.is_file():
+        return {"ok": False, "motivo": t("no se creó el fichero"), "duracion": None, "pistas": {}}
+    try:
+        tam = p.stat().st_size
+    except OSError as exc:
+        return {"ok": False, "motivo": str(exc), "duracion": None, "pistas": {}}
+    if tam < 1024:
+        return {"ok": False, "motivo": t("el fichero salió vacío (%d bytes)") % tam, "duracion": None, "pistas": {}}
+    datos = _ffprobe(str(p))
+    if datos is None:
+        return {"ok": True, "motivo": t("sin ffprobe no se puede comprobar (se da por bueno)"), "duracion": None,
+                "pistas": {}}
+    if datos.get("error"):
+        return {"ok": False, "motivo": t("el fichero no se puede abrir: %s") % datos["error"], "duracion": None,
+                "pistas": {}}
+    tipos = {str(s.get("codec_type") or "") for s in datos.get("streams") or []}
+    duracion = None
+    with contextlib.suppress(TypeError, ValueError):
+        duracion = float((datos.get("format") or {}).get("duration"))
+    pistas = {"audio": "audio" in tipos, "video": "video" in tipos}
+    if esperado.get("audio") and not pistas["audio"]:
+        return {"ok": False, "motivo": t("el fichero no tiene sonido"), "duracion": duracion, "pistas": pistas}
+    if esperado.get("video") and not pistas["video"]:
+        return {"ok": False, "motivo": t("el fichero no tiene imagen"), "duracion": duracion, "pistas": pistas}
+    if not duracion or duracion <= 0:
+        return {"ok": False, "motivo": t("el fichero no dice cuánto dura (está a medias)"), "duracion": duracion,
+                "pistas": pistas}
+    prevista = float(esperado["duracion"]) if esperado.get("duracion") else 0.0
+    if prevista and duracion < prevista * 0.9:
+        return {"ok": False, "motivo": t("se bajó %d s de %d s") % (int(duracion), int(prevista)),
+                "duracion": duracion, "pistas": pistas}
+    bien, motivo = _decodifica(str(p), segundos)
+    return {"ok": bien, "motivo": motivo, "duracion": duracion, "pistas": pistas}
+
+
+def borrar_restos(rutas: list[str]) -> None:
+    """Antes de reintentar por un fichero malo: fuera el trozo y el ``.part``, o ``--no-overwrites`` no baja nada."""
+    for r in rutas:
+        for sufijo in ("", ".part", ".ytdl"):
+            with contextlib.suppress(OSError):
+                Path(str(r) + sufijo).unlink()
+
+
+def _fecha_de(upload_date: Any) -> float | None:
+    """``20261031`` (lo que da yt-dlp) → epoch; ``None`` si no hay fecha o no se entiende."""
+    texto = str(upload_date or "").strip()
+    if len(texto) != 8 or not texto.isdigit():
+        return None
+    try:
+        return time.mktime(time.strptime(texto, "%Y%m%d"))
+    except ValueError:
+        return None
 
 
 # -- target folders --------------------------------------------------------------------------------
@@ -123,6 +262,11 @@ class DownloadSettings:
     list_folders: bool = True   # a list or channel goes to its own folder, numbered
     cookies_browser: str = ""   # «usar mi sesión del navegador» (off): yt-dlp --cookies-from-browser <this>
     nightly_fallback: bool = True  # retry a failed download once with the nightly yt-dlp
+    max_items: int = 50         # a list bigger than this asks first («los primeros N»)
+    verify: bool = True         # ffprobe + 10 s de decodificación al terminar, con un reintento
+    guard_space: bool = True    # estimado × 1,2 + 2 GB contra el disco de destino antes de empezar
+    index_enabled: bool = True  # índice SQLite de lo descargado (<carpeta>/.atalaya/index.db)
+    index_dir: str = ""         # "" = la carpeta de vídeo
 
     def session_args(self) -> list[str]:
         """``--cookies-from-browser`` when the user chose a browser (never by default; DRM stays out of reach)."""
@@ -131,6 +275,11 @@ class DownloadSettings:
     def resolved_dir(self, kind: str) -> Path:
         raw = self.video_dir if kind == "video" else self.audio_dir
         return Path(os.path.expanduser(raw)) if raw else default_media_dir(kind)
+
+    def indice_path(self) -> Path:
+        """Dónde vive ``index.db``: ``index_dir`` si se eligió, si no la carpeta de vídeo (``<carpeta>/.atalaya``)."""
+        base = Path(os.path.expanduser(self.index_dir)) if self.index_dir else self.resolved_dir("video")
+        return indice_default_path(base)
 
     def to_dict(self) -> dict[str, Any]:
         return {**self.__dict__, "video_dir_resolved": str(self.resolved_dir("video")),
@@ -320,6 +469,7 @@ class DownloadItem:
     outputs: list[str] = field(default_factory=list)
     error: str = ""
     attempts: int = 0
+    gen: int = 0                      # turno de ejecución: distingue una cancelación tardía del intento vigente
     created_at: float = field(default_factory=time.time)
     started_at: float | None = None
     finished_at: float | None = None
@@ -329,6 +479,8 @@ class DownloadItem:
     argv: list[str] = field(default_factory=list)
     stderr_tail: list[str] = field(default_factory=list)
     info: dict[str, Any] = field(default_factory=dict)   # MU_DONE fields (id, title, upload_date, uploader…)
+    verify: dict[str, Any] = field(default_factory=dict)  # ffprobe del fichero terminado: {ok, motivo, duracion, pistas}
+    pause_requested: bool = False    # la pausa la pidió el usuario: al cancelar el trabajo se queda «en pausa», no «cancelada»
     post: dict[str, Any] = field(default_factory=dict)   # H23: steps after the download (mpvd.subscriptions.chain)
     _proc: asyncio.subprocess.Process | None = field(default=None, repr=False)
 
@@ -341,6 +493,7 @@ class DownloadItem:
             "outputs": list(self.outputs), "out_dir": self.out_dir, "error": self.error, "attempts": self.attempts,
             "created_at": self.created_at, "started_at": self.started_at, "finished_at": self.finished_at,
             "job_id": self.job_id, "spec": self.spec.to_dict(), "info": dict(self.info), "post": dict(self.post),
+            "verify": dict(self.verify),
         }
 
     @classmethod
@@ -348,10 +501,12 @@ class DownloadItem:
         spec = DownloadSpec.from_dict(d.get("spec") or {"url": d.get("url", "")})
         item = cls(spec=spec, out_dir=str(d.get("out_dir") or ""), id=str(d.get("id") or uuid.uuid4().hex[:10]))
         for k in ("title", "status", "progress", "message", "stage", "downloaded", "total", "outputs", "error",
-                  "attempts", "created_at", "started_at", "finished_at", "info", "post"):
+                  "attempts", "created_at", "started_at", "finished_at", "info", "post", "verify"):
             if k in d and d[k] is not None:
                 setattr(item, k, d[k])
-        if item.status not in FINAL:  # interrupted by a daemon restart: the manager resumes it (yt-dlp --continue)
+        if item.status == "paused":
+            item.resume = False       # una cola en pausa sigue en pausa al reiniciar mpvd: no se baja nada de madrugada
+        elif item.status not in FINAL:  # interrupted by a daemon restart: the manager resumes it (yt-dlp --continue)
             item.status, item.message = "queued", "se reanudará"
             item.resume = True
         return item
@@ -380,9 +535,46 @@ class DownloadManager:
         # downloading while being invisible in the panel and absent from downloads.json (a 250-link batch)
         self._order: deque[str] = deque()
         self._closing = False
+        self._paused = False
+        self._index: Index | None = None
         self._pending: deque[str] = deque()   # ids waiting for a free slot (not inside a worker of the job pool)
         self._active: set[str] = set()
         self._load_history()
+
+    # -- índice --------------------------------------------------------------------------------
+
+    @property
+    def index(self) -> Index | None:
+        """El índice local (<carpeta>/.atalaya/index.db), abierto la primera vez que hace falta."""
+        if self._index is None and self.settings.index_enabled:
+            try:
+                self._index = Index(ruta=self.settings.indice_path())
+            except OSError as exc:
+                log.warning("no se puede abrir el índice: %s", exc)
+                return None
+        return self._index
+
+    def anotar_en_indice(self, item: DownloadItem, salidas: list[str] | None = None) -> int:
+        """Apunta los ficheros de un trabajo terminado (id del sitio, canal, tamaño y fecha). Devuelve cuántos entró."""
+        idx = self.index
+        if idx is None:
+            return 0
+        info = item.info or {}
+        vid = str(info.get("id") or "") or id_de_ruta((salidas or item.outputs or [""])[0])
+        perfil = str(item.spec.perfil or item.spec.extra.get("preset") or item.spec.kind)
+        canal = str(info.get("channel") or info.get("uploader") or item.spec.extra.get("canal") or "")
+        fecha = _fecha_de(info.get("upload_date"))
+        n = 0
+        for ruta in salidas or item.outputs:
+            try:
+                if idx.anotar_salida(vid or id_de_ruta(ruta), ruta, perfil=perfil, canal=canal,
+                                     titulo=str(info.get("title") or item.title or ""), bytes_=0, hash_=False):
+                    n += 1
+                elif fecha:
+                    idx.actualizar(vid or id_de_ruta(ruta), perfil=perfil, fecha=fecha)
+            except (OSError, ValueError) as exc:
+                log.warning("no se pudo anotar %s en el índice: %s", ruta, exc)
+        return n
 
     # -- persistence --------------------------------------------------------------------------
 
@@ -445,6 +637,11 @@ class DownloadManager:
         spec.validate()
         kind = "audio" if spec.is_audio else "video"
         target = Path(os.path.expanduser(out_dir)) if out_dir else self.settings.resolved_dir(kind)
+        if self.settings.guard_space and spec.extra.get("bytes_estimados"):
+            # guarda de disco: estimado × 1,2 + 2 GB. Se comprueba antes de crear el trabajo, no a mitad de descarga.
+            espacio = comprobar_espacio(target, float(spec.extra["bytes_estimados"]))
+            if not espacio["ok"]:
+                raise ValueError(espacio["motivo"])
         item = DownloadItem(spec=spec, out_dir=str(target), title=title or spec.title or "", notify=notify)
         self.items[item.id] = item
         self._order.append(item.id)
@@ -460,11 +657,13 @@ class DownloadManager:
 
     def _start(self, item: DownloadItem) -> None:
         item.status, item.stage, item.message, item.error = "queued", "queued", "en cola", ""
+        item.pause_requested = False
         item.progress, item.speed, item.eta, item.downloaded, item.total = 0.0, None, None, 0.0, 0.0
         item.outputs, item.stderr_tail, item.info, item.post = [], [], {}, {}
         item.started_at = item.finished_at = None
         item.job_id = None
         item.attempts += 1
+        item.gen += 1
         self._pending.append(item.id)
         self._changed(item, persist=True)
         self._pump()
@@ -475,21 +674,102 @@ class DownloadManager:
         A download's job lasts the whole download, so queueing them all inside the pool (which has one worker per core
         minus one) starved everything else: on this laptop three downloads left no worker for the urgent jobs of live
         subtitles, translation or clips, and the priorities stopped meaning anything. What waits, waits here.
+
+        Con la cola en pausa no arranca nada nuevo; lo que está en marcha se para desde ``pause_all``.
         """
-        if self._closing:
+        if self._closing or self._paused:
             return
         limit = max(1, self.settings.concurrent)
         while len(self._active) < limit and self._pending:
-            item = self.items.get(self._pending.popleft())
+            item = self.items.get(self._siguiente_pendiente())
             if item is None or item.status != "queued" or item.job_id is not None:
                 continue
             # subscriptions queue in the background: whatever the user asks for goes first
-            priority = Priority.INDEX if item.spec.extra.get("priority") == "low" else Priority.INTERACTIVE
+            prioridad = str(item.spec.extra.get("priority") or "")
+            priority = Priority.INDEX if prioridad == "low" else Priority.INTERACTIVE
             job = self.jobs.submit(f"download:{item.id}", lambda job, it=item: self._run(it, job), priority=priority,
                                    heavy=False, meta={"download": item.id})
             item.job_id = job.id
             self._active.add(item.id)
             self._changed(item, persist=False)
+
+    def _siguiente_pendiente(self) -> str:
+        """El siguiente de la cola por prioridad (alta → normal → baja) y, a igualdad, el más antiguo."""
+        if not self._pending:
+            return ""
+        rango = {"high": 0, "normal": 1, "low": 2}
+
+        def clave(i: str) -> tuple[int, int]:
+            it = self.items.get(i)
+            prio = str(it.spec.extra.get("priority") or "") if it is not None else ""
+            return (rango.get(prio, 1), self._order.index(i) if i in self._order else 10 ** 9)
+
+        mejor = min(self._pending, key=clave)
+        self._pending.remove(mejor)
+        return mejor
+
+    def set_priority(self, item_id: str, prioridad: str) -> DownloadItem | None:
+        """Prioridad de un trabajo en cola: ``high`` | ``normal`` | ``low``. Se aplica al siguiente arranque."""
+        item = self.items.get(item_id)
+        if item is None:
+            return None
+        valor = {"alta": "high", "high": "high", "normal": "normal", "": "normal",
+                 "baja": "low", "low": "low"}.get(str(prioridad).strip().lower())
+        if valor is None:
+            raise ValueError(f"priority must be high, normal or low: {prioridad}")
+        item.spec.extra["priority"] = valor
+        self._changed(item)
+        return item
+
+    def pause_all(self) -> dict[str, int]:
+        """Pausa la cola entera: no arranca nada nuevo y lo que está en marcha se detiene y se podrá reanudar."""
+        self._paused = True
+        parados = en_cola = 0
+        for item in list(self.items.values()):
+            if item.status == "running":
+                self._pausar(item)
+                parados += 1
+            elif item.status == "queued":
+                self._pausar(item)
+                en_cola += 1
+        self._save_history()
+        return {"paused": parados + en_cola, "running": parados, "queued": en_cola}
+
+    def resume_all(self) -> dict[str, int]:
+        """Reanuda lo pausado (yt-dlp --continue recoge el ``.part`` donde se quedó)."""
+        self._paused = False
+        reanudados = 0
+        for item in list(self.items.values()):
+            if item.status == "paused":
+                item.attempts = max(0, item.attempts - 1)   # una pausa no es un reintento
+                item.resume = False
+                self._start(item)
+                reanudados += 1
+        return {"resumed": reanudados}
+
+    def _pausar(self, item: DownloadItem) -> None:
+        self._active.discard(item.id)
+        with contextlib.suppress(ValueError):
+            self._pending.remove(item.id)
+        item.pause_requested = True
+        self._pause_for_restart(item)
+        item.status, item.stage, item.message = "paused", "queued", "en pausa"
+
+    def paused(self) -> bool:
+        return self._paused
+
+    def report(self) -> dict[str, Any]:
+        """El informe del final: cuántos bien, cuántos mal y el motivo de cada fallido (no solo «terminó»)."""
+        rows = [it for it in self.items.values()]
+        hechos = [r for r in rows if r.status == "done"]
+        fallidos = [r for r in rows if r.status == "failed"]
+        return {
+            "total": len(rows), "ok": len(hechos), "failed": len(fallidos),
+            "cancelled": sum(1 for r in rows if r.status == "cancelled"),
+            "running": sum(1 for r in rows if r.status in ("queued", "running")),
+            "failed_items": [{"id": r.id, "title": r.title or r.spec.url, "url": r.spec.url,
+                              "motivo": r.error or r.message} for r in fallidos],
+        }
 
     def resume_pending(self) -> int:
         """Queue again what a previous mpvd left unfinished (yt-dlp --continue picks up the .part files)."""
@@ -650,39 +930,44 @@ class DownloadManager:
         if binary is None:
             self._finish(item, "failed", "yt-dlp no disponible", "yt-dlp not found (vendor/bin, $MPV_UOS_YTDLP or PATH)")
             raise RuntimeError(item.error)
+        mi_gen = item.gen               # una cancelación que llega tarde no puede tocar el turno siguiente
         Path(item.out_dir).mkdir(parents=True, exist_ok=True)
         item.status, item.stage, item.message, item.started_at = "running", "download", "iniciando…", time.time()
         self._changed(item)
         job.report(0.0, item.message)
-        try:
-            rc, ps, tail = await self._exec(item, job, binary)
-            if rc != 0 and merge_failed(tail) and item.spec.container == "mp4" and item.spec.kind in ("video", "exact"):
-                # mp4 is forced for merges (H31): codecs ffmpeg cannot put in mp4 → the same download as .mkv, once
-                item.message = "no cabe en MP4: se guarda en MKV…"
+        rc, ps, tail, usado_nightly = 1, None, [], False
+        for intento in (1, 2):
+            try:
+                rc, ps, tail, usado_nightly = await self._ejecutar(item, job, binary)
+            except asyncio.CancelledError:
+                if item.gen != mi_gen:
+                    raise          # ya hay otro intento en marcha: este trabajo es historia
+                if item.pause_requested or self._closing:
+                    # pausa o mpvd parando: queda listo para reanudar con --continue, no como cancelado
+                    self._pause_for_restart(item)
+                    if item.pause_requested and not self._closing:
+                        item.status, item.message = "paused", "en pausa"
+                    self._changed(item, persist=True)
+                else:
+                    self._finish(item, "cancelled", "cancelada")
+                raise
+            if ps is None or not (rc == 0 and (ps.outputs or ps.stage == "done")):
+                break
+            problema = await self._verificar(item, ps) if self.settings.verify else ""
+            if not problema:
+                break
+            if intento == 1:
+                # «terminó sin error» no es un fichero bueno: se borra el trozo y se baja otra vez, una sola vez
+                item.message = "el fichero no se puede reproducir: se vuelve a bajar…"
                 self._changed(item)
-                item.spec.container = "mkv"
-                rc, ps, tail = await self._exec(item, job, binary)
-            used_nightly = False
-            if not (rc == 0 and (ps.outputs or ps.stage == "done")) and self.settings.nightly_fallback \
-                    and binary.source not in ("nightly", "env-nightly") and self.fallback is not None \
-                    and worth_nightly(tail):
-                # the site changed and the stable yt-dlp does not know yet (ok.ru, 2026-09): the nightly build usually
-                # does; downloaded on demand (and refreshed daily with the stable one)
-                item.message = "la versión estable falló: probando con yt-dlp nightly…"
-                self._changed(item)
-                nightly = await self.fallback()
-                if nightly is not None:
-                    rc, ps, tail = await self._exec(item, job, nightly)
-                    used_nightly = True
-        except asyncio.CancelledError:
-            if self._closing:      # mpvd stopping: queued again on the next start
-                self._pause_for_restart(item)
-                self._changed(item, persist=True)
-            else:
-                self._finish(item, "cancelled", "cancelada")
-            raise
-        if rc == 0 and (ps.outputs or ps.stage == "done"):
-            self._finish(item, "done", "completado con yt-dlp nightly" if used_nightly else "completado")
+                borrar_restos(item.outputs)
+                item.outputs = []
+                continue
+            self._finish(item, "failed", "el fichero salió mal", problema)
+            raise RuntimeError(problema)
+        if rc == 0 and ps is not None and (ps.outputs or ps.stage == "done"):
+            self.anotar_en_indice(item)
+            self._finish(item, "done", "completado con yt-dlp nightly" if usado_nightly else "completado")
             return {"outputs": item.outputs}
         errors = [line for line in tail if line.startswith("ERROR")] or list(tail)
         err = errors[-1] if errors else f"yt-dlp exited with {rc}"
@@ -690,6 +975,46 @@ class DownloadManager:
             err = "yt-dlp terminó sin producir ningún archivo (¿ya existía?): " + err
         self._finish(item, "failed", "error", err)
         raise RuntimeError(err)
+
+    async def _verificar(self, item: DownloadItem, ps: ProgressState) -> str:
+        """Comprueba con ffprobe lo que se acaba de bajar. Devuelve el motivo del fallo, o ``""`` si está bien."""
+        esperado = {"audio": True, "video": not item.spec.is_audio,
+                    "duracion": ps.done_info.get("duration") or item.info.get("duration")}
+        for ruta in item.outputs:
+            if Path(str(ruta)).suffix.lower() not in MEDIA_EXT:
+                continue      # un .srt o un .json no se comprueban con ffprobe (solo subtítulos, sidecars)
+            res = await asyncio.to_thread(verificar_salida, ruta, esperado)
+            item.verify = res if isinstance(res, dict) else {}
+            if not res.get("ok"):
+                return str(res.get("motivo") or t("el fichero no se puede reproducir"))
+        return ""
+
+    async def _ejecutar(self, item: DownloadItem, job: Job,
+                        binary: YtdlpBinary) -> tuple[int, ProgressState, list[str], bool]:
+        """Una descarga con sus reintentos de formato: MP4 que no cabe → MKV; estable que no conoce el sitio → nightly.
+
+        Devuelve ``(rc, progreso, cola de stderr, si_hizo_falta_el_nightly)``.
+        """
+        usado_nightly = False
+        rc, ps, tail = await self._exec(item, job, binary)
+        if rc != 0 and merge_failed(tail) and item.spec.container == "mp4" and item.spec.kind in ("video", "exact"):
+            # mp4 is forced for merges (H31): codecs ffmpeg cannot put in mp4 → the same download as .mkv, once
+            item.message = "no cabe en MP4: se guarda en MKV…"
+            self._changed(item)
+            item.spec.container = "mkv"
+            rc, ps, tail = await self._exec(item, job, binary)
+        if not (rc == 0 and (ps.outputs or ps.stage == "done")) and self.settings.nightly_fallback \
+                and binary.source not in ("nightly", "env-nightly") and self.fallback is not None \
+                and worth_nightly(tail):
+            # the site changed and the stable yt-dlp does not know yet (ok.ru, 2026-09): the nightly build usually
+            # does; downloaded on demand (and refreshed daily with the stable one)
+            item.message = "la versión estable falló: probando con yt-dlp nightly…"
+            self._changed(item)
+            nightly = await self.fallback()
+            if nightly is not None:
+                rc, ps, tail = await self._exec(item, job, nightly)
+                usado_nightly = True
+        return rc, ps, tail, usado_nightly
 
     @staticmethod
     async def _kill(proc: asyncio.subprocess.Process) -> None:
@@ -706,5 +1031,5 @@ class DownloadManager:
                 await asyncio.wait_for(proc.wait(), 5)
 
 
-__all__ = ["DownloadItem", "DownloadManager", "DownloadSettings", "ProgressState", "Status", "default_media_dir",
-           "fmt_eta"]
+__all__ = ["DownloadItem", "DownloadManager", "DownloadSettings", "ProgressState", "Status", "borrar_restos",
+           "comprobar_espacio", "default_media_dir", "espacio_libre", "fmt_eta", "necesario", "verificar_salida"]
