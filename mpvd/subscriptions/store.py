@@ -17,7 +17,7 @@ from mpvd.ytdl.presets import CONTAINERS, PRESETS, SPONSORBLOCK_MODES
 
 log = logging.getLogger("mpvd.subscriptions")
 
-PRESET_IDS = tuple(p["id"] for p in PRESETS if p["group"] in ("video", "audio"))
+PRESET_IDS = tuple(p["id"] for p in PRESETS if p["group"] in ("video", "audio", "convertir"))
 MAX_SEEN = 3000
 MIN_INTERVAL_H = 0.25
 DEFAULT_INITIAL = {"channel": 3, "rss": 3, "playlist": -1}   # -1 = everything the list has (at most 500)
