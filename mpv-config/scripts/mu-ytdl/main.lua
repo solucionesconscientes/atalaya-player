@@ -91,6 +91,8 @@ local state = {
   gate = nil,            -- H42/A2: lo reconocido {kind, url|urls|path, count, list, entries, title}
   site = nil,            -- H37/D4: respuesta de ytdl.site_support para la URL pegada
   pick = nil,            -- H37/D2: {entries, sel, fmt, srt, common, common_srt, source, url, title}
+  chap = nil,            -- F2: {url, title, rows, sel} capítulos del vídeo y cuáles están marcados
+  frag = nil,            -- F2: {url, rangos, join, aviso, bytes, total} fragmentos de tiempo elegidos
 }
 
 local set_button_state -- defined with the bindings below
@@ -725,6 +727,10 @@ views.download = function(args)
         items = options_items(o) },
     }
     for i, it in ipairs(subs) do table.insert(items, 2 + i, it) end
+    -- F2: los capítulos y los fragmentos cuelgan de aquí (donde se busca qué bajar) y no solo de una tecla
+    table.insert(items, { title = tr('Capítulos…'), icon = 'bookmarks', value = { view = 'chapters', url = target } })
+    table.insert(items, { title = tr('Fragmentos de tiempo…'), icon = 'content_cut',
+                          value = { view = 'fragments', url = target } })
     show(tr('Descargar · %s'):format(target_title or ''), items, {
       footnote = tr('Enter descarga con el preset · Opciones: Enter alterna · Retroceso: atrás'),
     })
@@ -972,6 +978,263 @@ end
 
 local function close_menus()
   for t in pairs(OUR_MENUS) do uosc.close(t) end
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- F2 · capítulos y fragmentos. Dos pantallas que salen de «Descargar», porque es donde se busca qué bajar.
+--
+-- Capítulos: una fila por capítulo con su casilla (los trae mpvd en `ytdl.chapters`) y dos maneras de entregarlos:
+-- un fichero por capítulo, o todos en uno (se descargan como trozos y se unen al terminar, sin recodificar).
+-- Fragmentos: se añaden desde el punto donde estás —sin escribir tiempos—, se ajustan de 5 en 5 segundos y se
+-- pueden unir al terminar. Los cortes y la unión los hace mpvd; aquí solo se eligen.
+
+local function ancho(bytes)
+  local n = tonumber(bytes)
+  if not n or n <= 0 then return nil end
+  if n >= 1e9 then return string.format('%.1f GB', n / 1e9) end
+  if n >= 1e6 then return string.format('%.1f MB', n / 1e6) end
+  return string.format('%.0f KB', n / 1e3)
+end
+
+local function mmss(sec)
+  local t = fmt_duration(sec)
+  return t or '0:00'
+end
+
+local function chap_count()
+  local ch = state.chap
+  if not ch then return 0, 0 end
+  local n = 0
+  for i = 1, #ch.rows do if ch.sel[i] then n = n + 1 end end
+  return n, #ch.rows
+end
+
+-- Una descarga que se pide tal cual (capítulos y fragmentos): `start_download` mete las opciones guardadas y se
+-- llevaría por delante lo que se ha elegido aquí, así que estas dos pantallas montan su propio spec.
+local function submit_raw(params, que)
+  rpc.call('ytdl.download', params, function(err, item)
+    if err then osd(tr('Descarga: %s'):format(fail(err, 'ytdl.download'))) return end
+    state.downloads[item.id] = item
+    table.insert(state.download_order, 1, item.id)
+    publish()
+    set_button_state()
+    osd(tr('⬇ En cola: %s'):format(que or item.title or item.url))
+  end, 60)
+  close_menus()
+end
+
+-- El spec que comparten capítulos y fragmentos: los mismos ajustes de la descarga normal (contenedor, subtítulos,
+-- metadatos) pero con las secciones o los capítulos elegidos dentro.
+local function spec_elegido(url, extra)
+  local o = state.dl_options or {}
+  local spec = {
+    url = url, title = state.title, perfil = 'compatible',
+    container = o.container or 'mp4', subtitles = o.subtitles ~= false, subs_mode = o.subs_mode or 'file',
+    sub_langs = o.sub_langs, chapters = false, thumbnail = o.thumbnail == true,
+    metadata = o.metadata ~= false, sponsorblock = o.sponsorblock or 'none', playlist = false,
+  }
+  for k, v in pairs(extra or {}) do spec[k] = v end
+  return spec
+end
+
+local function descargar_capitulos(modo)
+  local ch = state.chap
+  if not ch then return end
+  local sel = {}
+  for i, c in ipairs(ch.rows) do if ch.sel[i] then sel[#sel + 1] = c end end
+  if #sel == 0 then osd(tr('Marca al menos un capítulo')) return end
+  local spec = spec_elegido(ch.url, { chapters = sel, chapters_mode = modo })
+  submit_raw(spec, #sel == 1 and sel[1].titulo or (tostring(#sel) .. ' capítulos'))
+end
+
+views.chapters = function(args)
+  local url = args.url or state.url
+  if not url or url == '' then
+    show(tr('Capítulos'), uosc.message_items(tr('Abre una URL de yt-dlp primero'), 'info'))
+    return
+  end
+  if not require_mpvd('Capítulos') then return end
+  if not state.chap or state.chap.url ~= url then
+    show(tr('Capítulos'), uosc.loading_items(tr('Mirando qué capítulos tiene…')))
+    rpc.call('ytdl.chapters', { url = url }, function(err, res)
+      if state.view ~= 'chapters' then return end
+      if err then show(tr('Capítulos'), uosc.message_items(fail(err, 'ytdl.chapters'), 'error')) return end
+      local sel = {}
+      for i = 1, #(res.capitulos or {}) do sel[i] = true end
+      state.chap = { url = url, title = res.title or state.title, rows = res.capitulos or {}, sel = sel }
+      reopen_current()
+    end, 90)
+    return
+  end
+  local ch = state.chap
+  local titulo = tr('Capítulos · %s'):format(ellipsize(ch.title or '', 40))
+  if #ch.rows == 0 then
+    -- estado vacío explícito: dice por qué y ofrece lo que sí se puede hacer con este vídeo
+    show(titulo, {
+      { title = tr('Este vídeo no tiene capítulos'), icon = 'info', selectable = false, muted = true,
+        align = 'center' },
+      { title = tr('Descargar el vídeo entero'), hint = fmt_duration(mp.get_property_number('duration')),
+        icon = 'download', value = { view = 'download' }, separator = true },
+    })
+    return
+  end
+  local n, total = chap_count()
+  local items = {
+    { title = n == total and tr('Desmarcar todos') or tr('Marcar todos'), hint = string.format('%d/%d', n, total),
+      icon = n == total and 'check_box' or 'check_box_outline_blank', value = { chap_all = true }, keep_open = true },
+    { title = tr('Un fichero por capítulo'), hint = n > 0 and tostring(n) or nil, icon = 'library_add',
+      value = { chap_down = 'separado' }, muted = n == 0 },
+    { title = tr('Unirlos en uno'), hint = n > 1 and tr('se unen al terminar') or nil, icon = 'merge',
+      value = { chap_down = 'unido' }, muted = n < 2, separator = true },
+  }
+  for i, c in ipairs(ch.rows) do
+    items[#items + 1] = {
+      title = string.format('%d · %s', c.numero, c.titulo), hint = mmss(c.duracion),
+      icon = ch.sel[i] and 'check_box' or 'check_box_outline_blank', value = { chap_toggle = i }, keep_open = true,
+    }
+  end
+  show(titulo, items, { footnote = tr('Enter marca o desmarca · las tres filas de arriba descargan · Retroceso: atrás') })
+end
+
+-- fragmentos de tiempo --------------------------------------------------------------------------
+
+local function frag_expr(rangos)
+  local out = {}
+  for i, r in ipairs(rangos or {}) do
+    out[i] = r.b and string.format('%.3f-%.3f', r.a, r.b) or string.format('%.3f-', r.a)
+  end
+  return out
+end
+
+-- La ficha previa (cuánto dura la suma y cuánto pesará) y el aviso de precisión se piden a mpvd cada vez que cambia
+-- la lista: es lo que evita descubrir al final que el trozo salió 10 s más largo de lo pedido.
+local function frag_preview()
+  local fr = state.frag
+  if not fr then return end
+  if #fr.rangos == 0 then
+    fr.aviso, fr.bytes, fr.total = nil, nil, 0
+    if state.view == 'fragments' or state.view == 'frag_edit' then reopen_current() end
+    return
+  end
+  rpc.call('ytdl.sections.preview', { url = fr.url, expr = frag_expr(fr.rangos), perfil = 'compatible' },
+    function(err, res)
+      if state.view ~= 'fragments' and state.view ~= 'frag_edit' then return end
+      if err or type(res) ~= 'table' then
+        fr.aviso, fr.bytes, fr.total = nil, nil, 0
+      else
+        fr.aviso, fr.bytes, fr.total = res.aviso, res.bytes, res.total or 0
+      end
+      reopen_current()
+    end, 60)
+end
+
+local function frag_add(dur)
+  local fr = state.frag
+  local pos = mp.get_property_number('time-pos')
+  if not fr then return end
+  if not pos then osd(tr('No se sabe en qué punto está el vídeo')) return end
+  local total = mp.get_property_number('duration')
+  local b = (dur and dur > 0) and (pos + dur) or nil
+  if b and total and b > total then b = total end
+  fr.rangos[#fr.rangos + 1] = { a = pos, b = b }
+  frag_preview()
+end
+
+local function frag_move(i, que, delta)
+  local fr = state.frag
+  local r = fr and fr.rangos[i]
+  if not r then return end
+  local total = mp.get_property_number('duration')
+  if que == 'a' then
+    r.a = math.max(0, r.a + delta)
+    if r.b and r.b <= r.a then r.b = r.a + 1 end
+  else
+    local base = r.b or total or (r.a + 60)
+    r.b = math.max(r.a + 1, base + delta)
+    if total and r.b > total then r.b = total end
+  end
+  frag_preview()
+end
+
+local function descargar_fragmentos()
+  local fr = state.frag
+  if not fr or #fr.rangos == 0 then osd(tr('Añade al menos un fragmento')) return end
+  local spec = spec_elegido(fr.url, { sections = frag_expr(fr.rangos), sections_margin = 0.3,
+                                      sections_join = fr.join })
+  submit_raw(spec, tostring(#fr.rangos) .. ' fragmentos')
+end
+
+views.fragments = function(args)
+  local url = args.url or state.url
+  if not url or url == '' then
+    show(tr('Fragmentos'), uosc.message_items(tr('Abre una URL de yt-dlp primero'), 'info'))
+    return
+  end
+  if not require_mpvd('Fragmentos') then return end
+  if not state.frag or state.frag.url ~= url then
+    state.frag = { url = url, rangos = {}, join = true, aviso = nil, bytes = nil, total = 0 }
+  end
+  local fr = state.frag
+  local pos = mp.get_property_number('time-pos')
+  local items = {
+    { title = tr('Añadir un fragmento desde aquí…'), hint = pos and tr('ahora: %s'):format(mmss(pos)) or nil,
+      icon = 'content_cut', muted = not pos,
+      items = {
+        { title = tr('Hasta el final'), icon = 'last_page', value = { frag_add = 0 } },
+        { title = tr('Los próximos 30 segundos'), icon = 'timer', value = { frag_add = 30 } },
+        { title = tr('El próximo minuto'), icon = 'timer', value = { frag_add = 60 } },
+        { title = tr('Los próximos 5 minutos'), icon = 'timer', value = { frag_add = 300 } },
+      } },
+  }
+  for i, r in ipairs(fr.rangos) do
+    local fin = r.b or mp.get_property_number('duration') or r.a
+    items[#items + 1] = {
+      title = r.b and string.format('%s – %s', mmss(r.a), mmss(r.b)) or tr('Desde %s hasta el final'):format(mmss(r.a)),
+      hint = mmss(fin - r.a), icon = 'content_cut', value = { frag_edit = i },
+      actions = { { name = 'quitar', icon = 'delete', label = tr('Quitar este fragmento') } },
+    }
+  end
+  if #fr.rangos == 0 then
+    items[#items + 1] = { title = tr('Todavía no hay ningún fragmento'), icon = 'info', selectable = false,
+                          muted = true, align = 'center' }
+  end
+  items[#items + 1] = { title = tr('Unir los trozos al terminar'), hint = fr.join and 'sí' or 'no', active = fr.join,
+                        icon = 'merge', value = { frag_join = true }, keep_open = true, separator = true }
+  items[#items + 1] = { title = #fr.rangos > 1 and tr('Descargar %d fragmentos'):format(#fr.rangos)
+                                       or tr('Descargar el fragmento'), icon = 'download', muted = #fr.rangos == 0,
+                        hint = ancho(fr.bytes) or (fr.total and fr.total > 0 and mmss(fr.total) or nil),
+                        value = { frag_down = true } }
+  if fr.aviso then
+    items[#items + 1] = { title = fr.aviso, icon = 'info', selectable = false, muted = true }
+  end
+  show(tr('Fragmentos · %s'):format(ellipsize(state.title or url, 40)), items,
+       { footnote = tr('Enter abre el fragmento para ajustarlo · Tab lo quita · Retroceso: atrás') })
+end
+
+views.frag_edit = function(args)
+  local fr = state.frag
+  local i = args.i or 0
+  local r = fr and fr.rangos[i]
+  if not r then
+    show(tr('Fragmento'), uosc.message_items(tr('Ese fragmento ya no está'), 'info'))
+    return
+  end
+  local total = mp.get_property_number('duration')
+  local titulo = r.b and string.format('%s – %s', mmss(r.a), mmss(r.b)) or tr('Desde %s hasta el final'):format(mmss(r.a))
+  local fin = r.b or total
+  local items = {
+    { title = tr('Empezar 5 segundos antes'), hint = mmss(math.max(0, r.a - 5)), icon = 'first_page', keep_open = true,
+      value = { frag_move = { i = i, que = 'a', delta = -5 } } },
+    { title = tr('Empezar 5 segundos después'), hint = mmss(r.a + 5), icon = 'first_page', keep_open = true,
+      value = { frag_move = { i = i, que = 'a', delta = 5 } } },
+    { title = tr('Terminar 5 segundos antes'), hint = fin and mmss(math.max(r.a + 1, fin - 5)) or nil,
+      icon = 'last_page', keep_open = true, value = { frag_move = { i = i, que = 'b', delta = -5 } } },
+    { title = tr('Terminar 5 segundos después'), hint = fin and mmss(fin + 5) or nil, icon = 'last_page',
+      keep_open = true, value = { frag_move = { i = i, que = 'b', delta = 5 } } },
+    { title = tr('Quitar este fragmento'), icon = 'delete', value = { frag_del = i }, separator = true },
+  }
+  show(tr('Fragmento · %s'):format(titulo), items,
+       { footnote = tr('Enter ajusta 5 s · los cambios se ven en la lista de fragmentos · Retroceso: atrás') })
 end
 
 local function load_url(url, append, title)
@@ -1697,6 +1960,36 @@ local function on_event(source, json)
     elseif v.preset then
       start_download({ preset = v.preset, url = v.url, title = v.title })
       uosc.close(MENU)
+    elseif v.chap_all then
+      local n, total = chap_count()
+      for i = 1, total do state.chap.sel[i] = n ~= total end
+      reopen_current()
+    elseif v.chap_toggle then
+      state.chap.sel[v.chap_toggle] = not state.chap.sel[v.chap_toggle]
+      reopen_current()
+    elseif v.chap_down then
+      descargar_capitulos(v.chap_down)
+    elseif v.frag_add then
+      frag_add(v.frag_add)
+    elseif v.frag_edit then
+      if ev.action == 'quitar' then
+        table.remove(state.frag.rangos, v.frag_edit)
+        frag_preview()
+      else
+        open_view({ name = 'frag_edit', args = { i = v.frag_edit } })
+      end
+    elseif v.frag_move then
+      frag_move(v.frag_move.i, v.frag_move.que, v.frag_move.delta)
+    elseif v.frag_del then
+      table.remove(state.frag.rangos, v.frag_del)
+      table.remove(state.stack)
+      state.view = 'fragments'        -- al quitar se vuelve a la lista (la vista de ajuste ya no tiene qué enseñar)
+      frag_preview()
+    elseif v.frag_join then
+      state.frag.join = not state.frag.join
+      reopen_current()
+    elseif v.frag_down then
+      descargar_fragmentos()
     elseif v.opt then
       toggle_option(v.opt)
       local remembered = {}

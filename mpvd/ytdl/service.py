@@ -33,7 +33,7 @@ from mpvd.ytdl.binary import (
     nightly_path,
     vendor_path,
 )
-from mpvd.ytdl import sites
+from mpvd.ytdl import chapters, policy, sections, sites
 from mpvd.ytdl.downloads import BROWSERS, FINAL, DownloadItem, DownloadManager, valid_browser
 from mpvd.ytdl.presets import (
     preset_rows,
@@ -90,6 +90,7 @@ class YtdlService:
         self._search_cache: dict[tuple[str, int], tuple[float, list[dict[str, Any]]]] = {}
         self._auto_task: asyncio.Task[None] | None = None
         self.last_update_check: dict[str, Any] = {}
+        self.downloads.final_hooks.append(self._unir_trozos_al_terminar)
 
     # -- binary -------------------------------------------------------------------------------
 
@@ -298,6 +299,97 @@ class YtdlService:
         hw = (await asyncio.to_thread(hwdecode.detect))["hw"]
         return {**info_mod.analyze(data, set(hw) if hw is not None else None), "url": url}
 
+    # -- capítulos y fragmentos (F2) -----------------------------------------------------------
+
+    async def chapters_of(self, url: str, force: bool = False,
+                          expr: str | list[int] | None = None) -> dict[str, Any]:
+        """Los capítulos que declara el origen: número, título, inicio, fin y duración.
+
+        Con ``expr`` se devuelve además la selección ya resuelta (``2,4,7``, ``3-``, ``/entrevista/``), que es lo que
+        la pantalla manda al descargar. Un vídeo sin capítulos no es un error: la lista viene vacía y la vista dice
+        por qué, con la acción que lo resuelve.
+        """
+        datos = await self.raw_info(url, force=force)
+        caps = chapters.capitulos(datos)
+        out: dict[str, Any] = {"url": url, "title": datos.get("title") or "", "count": len(caps),
+                               "capitulos": caps, "duration": float(datos.get("duration") or 0)}
+        if expr not in (None, "", []):
+            out["seleccion"] = [int(c["numero"]) for c in chapters.seleccionar(caps, expr)]
+        return out
+
+    async def sections_preview(self, url: str, expr: Any, perfil: str | None = None,
+                               cola: float | None = None, duration: float | None = None) -> dict[str, Any]:
+        """Los rangos normalizados, la orden que saldría y el tamaño estimado, antes de descargar.
+
+        El tamaño sale de la ficha del perfil (``policy.plan``) repartida por la parte del vídeo que se pide: es una
+        estimación, y se dice como tal en la pantalla.
+        """
+        rangos = sections.parsear(expr, sections.MARGEN_COLA if cola is None else float(cola))
+        if not rangos:
+            raise ValueError(t("no hay ningún rango de tiempo"))
+        perfil = perfil if perfil in policy.PERFILES else sections.PERFIL_FRAGMENTOS
+        datos = await self.raw_info(url)
+        total_video = float(duration or datos.get("duration") or 0)
+        plan = policy.plan(datos, perfil)
+        suma = sections.total(rangos, total_video or None)
+        cod = {str(r["id"]): str(r["familia"]) for r in policy.pistas(datos)["video"]}
+        cod.update({str(r["id"]): str(r["familia"]) for r in policy.pistas(datos)["audio"]})
+        bytes_est = None
+        if plan.bytes_estimados and total_video > 0:
+            bytes_est = int(plan.bytes_estimados * min(1.0, suma / total_video))
+        return {"url": url, "perfil": perfil, "nota": plan.nota,
+                "rangos": [r.to_dict(total_video or None) for r in rangos],
+                "args": sections.args_rangos(rangos), "total": suma, "duration": total_video,
+                "bytes": bytes_est, "union": len(rangos) > 1,
+                "aviso": sections.precision(cod.get(plan.video_id or "", ""), cod.get(plan.audio_id or "", ""))}
+
+    async def resolve_chapters(self, spec: DownloadSpec) -> None:
+        """``"3-5"`` o ``[3, 5]`` → las filas del capítulo, para que la orden lleve rangos y no una suposición.
+
+        La lista completa va en ``spec.extra["chapters_all"]`` porque es lo que decide si cabe ``--split-chapters``
+        (todos) o hay que pedir un trozo por capítulo (unos pocos).
+        """
+        c = spec.chapters
+        if not c or isinstance(c, bool):
+            return
+        if isinstance(c, (list, tuple)) and c and isinstance(c[0], dict):
+            spec.extra.setdefault("chapters_all", list(c))
+        else:
+            todos = chapters.capitulos(await self.raw_info(spec.url))
+            spec.chapters = chapters.seleccionar(todos, c)
+            spec.extra["chapters_all"] = todos
+        if spec.chapters_mode == chapters.UNIDO:
+            spec.sections_join = True
+
+    def _unir_trozos_al_terminar(self, item: DownloadItem) -> None:
+        """Los trozos que se pidieron unidos se unen al terminar, **sin recodificar**, y se cuenta cómo fue.
+
+        Se hace en una tarea aparte: unir es un ffmpeg que puede tardar, y el cierre de la descarga no puede esperar
+        a que termine para avisar de que el vídeo ya está.
+        """
+        if item.status != "done" or not item.spec.sections_join:
+            return
+        trozos = [p for p in item.outputs if p and Path(p).is_file()]
+        if len(trozos) < 2:
+            return
+        try:
+            bucle = asyncio.get_running_loop()
+        except RuntimeError:                      # sin bucle (llamada desde un hilo de pruebas): no se une
+            return
+        bucle.create_task(self._unir(item, trozos), name="ytdl-unir")
+
+    async def _unir(self, item: DownloadItem, trozos: list[str]) -> None:
+        destino = Path(trozos[0]).with_name(chapters.nombre_unido(trozos))
+        res = await asyncio.to_thread(chapters.unir, trozos, destino)
+        if res.ok:
+            item.outputs = [str(destino)] + [p for p in item.outputs if p not in trozos]
+            item.message = t("unido en %s (%d trozos)") % (destino.name, len(trozos))
+        else:
+            item.message = t("no se pudo unir: %s") % (res.error or "")
+            log.warning("ytdl: no se pudo unir %s: %s", item.id, res.error)
+        item.post = {**(item.post or {}), "union": res.to_dict()}
+        self.downloads.changed(item)
+
     # -- qué sabe abrir el yt-dlp instalado (H37/D4) -------------------------------------------
 
     async def site_support(self, url: str) -> dict[str, Any]:
@@ -446,6 +538,26 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
             return await service.raw_info(url, force=force, seed=seed)
         return await service.analyze(url, force=force, seed=seed)
 
+    @d.method("ytdl.chapters")
+    async def ytdl_chapters(ctx: RpcContext, url: str, expr: str | list[int] | None = None,
+                            force: bool = False) -> dict[str, Any]:
+        """Capítulos del vídeo para la vista «Capítulos»: lista con número, título, inicio, fin y duración, y la
+        selección ya resuelta cuando se pide una expresión (``3``, ``3-5``, ``2,4,7``, ``/entrevista/``)."""
+        try:
+            return await service.chapters_of(url, force=force, expr=expr)
+        except ValueError as exc:                     # selección vacía, capítulo que no existe, regex rota
+            raise RpcError(INVALID_PARAMS, str(exc)) from None
+
+    @d.method("ytdl.sections.preview")
+    async def sections_preview(ctx: RpcContext, url: str, expr: str | list[str],
+                               perfil: str | None = None, cola: float | None = None,
+                               duration: float | None = None) -> dict[str, Any]:
+        """Fragmentos: los rangos normalizados, el tamaño estimado y el aviso de precisión, antes de descargar."""
+        try:
+            return await service.sections_preview(url, expr, perfil=perfil, cola=cola, duration=duration)
+        except ValueError as exc:
+            raise RpcError(INVALID_PARAMS, str(exc)) from None
+
     @d.method("ytdl.hw")
     async def hw(ctx: RpcContext) -> dict[str, Any]:
         """Video codecs this machine decodes in hardware (vainfo on Linux), the ``-S vcodec`` limit used for
@@ -490,6 +602,11 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
         if title:
             ds.title = title
         await service.require_binary()
+        try:
+            # «3-5» o [3, 5] → los rangos del capítulo: la orden no lleva números que yt-dlp no sabría usar
+            await service.resolve_chapters(ds)
+        except ValueError as exc:
+            raise RpcError(INVALID_PARAMS, str(exc)) from None
         await service.resolve_langs(ds)
         item = service.downloads.submit(ds, title=title or "", notify=notify or DEFAULT_NOTIFY, out_dir=out_dir)
         return item.to_dict()

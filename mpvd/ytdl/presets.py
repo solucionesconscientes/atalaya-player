@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from mpvd.i18n import t
-from mpvd.ytdl import policy
+from mpvd.ytdl import chapters, policy, sections
 
 CONTAINERS = ("mp4", "mkv", "webm")
 AUDIO_FORMATS = ("mp3", "opus", "m4a", "flac", "wav")
@@ -97,13 +97,20 @@ class DownloadSpec:
     subtitles: bool = False
     sub_langs: str = DEFAULT_SUB_LANGS
     subs_mode: str = "embed"            # embed | file (.srt next to the video) | only (just the .srt)
-    chapters: bool = False
     thumbnail: bool = False
     metadata: bool = False
     sponsorblock: str = "none"          # none | mark | remove
     playlist: bool = False              # whole playlist vs only the referenced item
     playlist_items: str | None = None   # e.g. "1:5"
-    sections: str | None = None         # time range only: "*10.5-16" (seconds; H18 «Grabar» of internet videos)
+    # Un trozo, o varios: "00:10-02:30", "*12.5-20", "3:00-4:00,10:00-11:00" (o la lista ya partida). El `*` de la
+    # forma de yt-dlp sobra; se acepta igual. Ver mpvd/ytdl/sections.py.
+    sections: str | list[str] | None = None
+    sections_margin: float = 0.0        # s de cola que se suman al final de cada rango (Fragmentos: 0,3)
+    sections_join: bool = False         # unir los trozos al terminar, sin recodificar (mpvd.ytdl.chapters.unir)
+    # Capítulos: True = marcas de capítulo dentro del fichero (lo de siempre); una lista de números, una expresión
+    # ("3-5", "/entrevista/") o la lista de capítulos ya resuelta = entregarlos (ver mpvd/ytdl/chapters.py).
+    chapters: bool | str | list[Any] = False
+    chapters_mode: str = "separado"     # separado (un fichero por capítulo) | unido (un solo fichero)
     archive: bool = False               # skip what the download archive already has (lists, channels, batches)
     list_folder: bool = False           # a playlist goes to its own folder with numbered files
     title: str | None = None            # display only
@@ -142,8 +149,15 @@ class DownloadSpec:
             raise ValueError("height must be positive")
         if self.subs_mode not in SUBS_MODES:
             raise ValueError(f"subs_mode must be one of {SUBS_MODES}")
-        if self.sections is not None and not SECTIONS_RE.match(self.sections):
-            raise ValueError("sections must look like *START-END in seconds (END may be inf)")
+        if self.sections is not None:
+            # un rango imposible se rechaza al elegir, con el motivo, no con un trozo de cero segundos
+            sections.parsear(self.sections, float(self.sections_margin))
+        if self.chapters_mode not in chapters.MODOS:
+            raise ValueError(f"chapters_mode must be one of {chapters.MODOS}")
+        if isinstance(self.chapters, str) and not self.chapters.strip():
+            raise ValueError(t("no has elegido ningún capítulo"))
+        if isinstance(self.chapters, (list, tuple)) and not self.chapters:
+            raise ValueError(t("no has elegido ningún capítulo"))
 
     @property
     def is_audio(self) -> bool:
@@ -152,7 +166,7 @@ class DownloadSpec:
     def format_expression(self) -> str:
         if self.kind == "exact":
             return str(self.format)
-        if self.sections:
+        if self.sections or seleccion_capitulos(self):
             # sections are cut by ffmpeg with input seeking + stream copy: with YouTube's webm/opus formats the range
             # comes out wrong (16 s instead of 6, verified 2026-09-30), with H.264/AAC in mp4/m4a it is right (±0.03 s)
             if self.is_audio:
@@ -191,6 +205,25 @@ class DownloadSpec:
 
 
 SECTIONS_RE = re.compile(r"^\*\d+(\.\d+)?-(\d+(\.\d+)?|inf)$")
+
+
+def seleccion_capitulos(spec: DownloadSpec) -> list[dict[str, Any]] | None:
+    """Los capítulos pedidos, ya resueltos a filas (número, título, inicio, fin), o ``None``.
+
+    ``spec.chapters`` llega de la interfaz como números o como expresión (``"3-5"``, ``"/entrevista/"``) y quien lo
+    convierte en filas es ``YtdlService.resolve_chapters`` con el ``-J`` del vídeo; aquí solo se acepta lo ya
+    resuelto. Una lista de números sin el análisis no se puede convertir en rangos, y suponer que son «todos» sería
+    bajar capítulos que nadie ha pedido.
+    """
+    c = spec.chapters
+    if not c or isinstance(c, bool):
+        return None
+    if isinstance(c, str) or (isinstance(c, (list, tuple)) and c and not isinstance(c[0], dict)):
+        raise ValueError(t("para elegir capítulos por número hace falta el análisis del vídeo: usa ytdl.chapters"))
+    filas = [dict(x) for x in c if isinstance(x, dict)]
+    if not filas:
+        raise ValueError(t("no has elegido ningún capítulo"))
+    return sorted(filas, key=lambda x: int(x.get("numero") or 0))
 
 
 def section_template(template: str) -> str:
@@ -247,6 +280,8 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
     pasarle — ``-c`` en yt-dlp es ``--continue`` — lo que garantiza la copia es ``--merge-output-format``/
     ``--remux-video`` sin ``-x`` ni ``--audio-format``)."""
     spec.validate()
+    cap_sel = seleccion_capitulos(spec)                       # None, o las filas de capítulos ya resueltas
+    rangos = sections.parsear(spec.sections, float(spec.sections_margin)) if spec.sections else []
     if vcodec not in VCODEC_SORTS:
         vcodec = "h264"
     perfil = spec.perfil or ""
@@ -267,7 +302,7 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
     if not only_subs:
         if explicito:
             expresion = ("+".join(x for x in (spec.video_id, spec.audio_id) if x))
-        elif perfil in POLICY_FORMAT and not spec.sections:
+        elif perfil in POLICY_FORMAT and not spec.sections and not cap_sel:
             expresion = POLICY_FORMAT[perfil]
         else:
             expresion = spec.format_expression()
@@ -312,7 +347,7 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
         args += ["--write-subs", "--write-auto-subs", "--sub-langs", langs, "--convert-subs", "srt", *subs_print]
     elif spec.subtitles and not spec.is_audio:
         args += ["--write-subs", "--write-auto-subs", "--sub-langs", langs, "--embed-subs"]
-    if spec.chapters:
+    if spec.chapters is True:
         args += ["--embed-chapters"]
     if spec.thumbnail:
         args += ["--embed-thumbnail"]
@@ -330,10 +365,17 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
             template = list_template(template)
     else:
         args += ["--no-playlist"]
-    if spec.sections:
-        # cut at keyframes, no re-encode (like the local «Grabar»); needs ffmpeg, which is required anyway
-        args += ["--download-sections", spec.sections]
+    if rangos:
+        # corte en el fotograma clave, sin recodificar (como «Grabar»); necesita ffmpeg, que ya es obligatorio.
+        # Un --download-sections por rango: yt-dlp los acepta repetidos y escribe un fichero por rango.
+        args += sections.args_rangos(rangos)
         template = section_template(template)
+    if cap_sel:
+        # --split-chapters con su plantilla «chapter:» cuando van todos; trozo por capítulo cuando van algunos
+        cap_args = chapters.args_capitulos(cap_sel, spec.chapters_mode, None, todos=spec.extra.get("chapters_all"))
+        args += cap_args
+        if "--download-sections" in cap_args:
+            template = section_template(template)
     args += output_args(out_dir, template)
     args += progress_args()
     args += ["--", spec.url]

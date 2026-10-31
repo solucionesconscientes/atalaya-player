@@ -237,7 +237,8 @@ def test_youtube_search_palette(pal_mpv):
     search_event(h, {"type": "activate", "index": 3, "action": "download", "value": c_item})
     menu_type(h, "mu-ytdl")
     v = st(h, lambda v: v.get("view") == "download" and any(i["title"] == "Opciones" for i in v.get("items", [])))
-    assert [i["title"] for i in v["items"]] == ["Vídeo", "Audio", "Solo subtítulos (SRT)", "Opciones"]
+    assert [i["title"] for i in v["items"]] == ["Vídeo", "Audio", "Solo subtítulos (SRT)", "Opciones",
+                                                "Capítulos…", "Fragmentos de tiempo…"]
     # back to the same results without searching again
     n = len(argv_lines(arglog))
     send(h, "mu-ytdl-event", {"type": "back"})
