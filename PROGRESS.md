@@ -1,6 +1,20 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## Resumen para Ser (2026-11-01, tarde) · los últimos rojos, y el respiro del disco
+
+- **El respiro de espacio no puede ser mayor que el disco** (`5c95e27`). Exigir 2 GB libres por adelantado bloqueaba
+  cualquier descarga cuando el sistema de ficheros tenía menos de 2 GB libres (aquí `/tmp` es un tmpfs de 7,6 GB al
+  84 %): incluso un fichero de 1 KB decía «no cabe». Ahora el respiro es una quinta parte de lo libre, mínimo 128 MB y
+  máximo 2 GB; con disco grande, igual que antes.
+- **Los distintivos del canal salen del manifiesto** (`1fe1794`): la CC desaparecía de la lista en cuanto el canal
+  empezaba a sonar, porque se recalculaban con lo que mpv consigue montar y ffmpeg no soporta las renditions de
+  subtítulos de HLS («hls: Can't support the subtitle»). La lista de pistas sigue siendo solo lo que se puede elegir.
+
+**Recuento**: de 23 rojos a los que quedan, todos del banco de pruebas: 4 de navegador y `test_downloads_panel`
+(Chrome headless sin GPU, más de 180 s), `test_install` (el `xdg-mime` de aquí es el de qtxdg y rechaza un `.desktop`
+mínimo), y `test_mu_notes`, `test_nav[mu_intro]` y `test_smoke_mpv`, intermitentes según la carga.
+
 ## Resumen para Ser (2026-11-01, mañana) · los rojos que quedaban, uno por uno
 
 - **El portapapeles ya no lanza programas que no están** (`d2307ab`). Cuando no hay `wl-copy`, `xclip` ni `xsel`,
