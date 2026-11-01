@@ -160,7 +160,10 @@ def test_folder_from_downloads_menu_and_tasks_entry(conv_mpv, clip, tmp_path):
     h.command("script-binding", "mu_ytdl/ytdl-menu")
     wait_nav(h, "mu-ytdl", f"{APP} › Descargas y conversión")
     st = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("view") == "root", timeout=10)
-    assert {"Convertir…", "Tareas"} <= {i["title"] for i in st["items"]}
+    raiz = {i["title"] for i in st["items"]}
+    assert "Convertir…" in raiz
+    # la raíz se queda en 7 filas: el panel de tareas se abre desde Descargas, no como fila aparte
+    assert "Tareas" not in raiz and "Ajustes y estado" in raiz, sorted(raiz)
     h.command("script-message-to", "mu_ytdl", "mu-ytdl-event", json.dumps(
         {"type": "activate", "index": 1, "menu_id": "{root}", "value": {"child": "convert-menu"}}))
     wait_nav(h, "mu-convert", f"{APP} › Descargas y conversión › Convertir")
@@ -188,7 +191,7 @@ def test_folder_from_downloads_menu_and_tasks_entry(conv_mpv, clip, tmp_path):
     assert sorted(p.name for p in (out_dir / "Clases").iterdir()) == ["tema 1.mp3", "tema 2.mp3"]
     assert st["tasks_active"] == 0
 
-    # «Tareas» from the downloads menu: ⌫ goes back to it
+    # «Tareas y conversiones…» vive dentro de Descargas; el child abre el panel y ⌫ vuelve a la lista
     h.command("script-binding", "mu_ytdl/ytdl-menu")
     wait_nav(h, "mu-ytdl", f"{APP} › Descargas y conversión")
     h.command("script-message-to", "mu_ytdl", "mu-ytdl-event", json.dumps(
