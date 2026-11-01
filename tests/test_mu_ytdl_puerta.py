@@ -57,6 +57,9 @@ def test_un_campo_cuatro_casos_y_una_sola_pregunta(ytdl_mpv, media_dir):
     for ida in ("Abrir URL…", "Buscar en YouTube…", "Descargar…"):
         assert ida not in titles(v), titles(v)
     assert "Suscripciones" in titles(v), titles(v)
+    # regla del proyecto: como mucho 7 filas por pantalla (las informativas no cuentan)
+    elegibles = [i for i in v["items"] if i.get("selectable", True)]
+    assert len(elegibles) <= 7, titles(v)
 
     open_gate(h)
     # la caja vacía ya dice qué acepta
