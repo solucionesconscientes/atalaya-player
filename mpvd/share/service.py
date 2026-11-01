@@ -693,6 +693,7 @@ class ShareService:
 
     async def _poll(self, rt: RoomRuntime) -> None:
         last_mono = time.monotonic()
+        muertos = 0        # vueltas seguidas en las que el reproductor no contesta a nada
         try:
             while True:
                 room = rt.room
@@ -707,6 +708,16 @@ class ShareService:
                     self._spawn(rt, self.close("player"))
                     return
                 raw = await self._read_host(s)
+                # un mpv que se cierra de golpe (o se cuelga) deja el socket muerto y las propiedades todas a None:
+                # sin esto la sala seguía abierta diciendo «nada en reproducción» para siempre
+                if all(v is None for v in raw.values()):
+                    muertos += 1
+                    if muertos >= 3:
+                        log.info("share: la sala se cierra porque el reproductor no contesta")
+                        self._spawn(rt, self.close("player"))
+                        return
+                else:
+                    muertos = 0
                 now = time.monotonic()
                 old = rt.raw
                 reason = ""
