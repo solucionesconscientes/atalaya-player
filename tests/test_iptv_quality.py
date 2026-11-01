@@ -173,7 +173,10 @@ def test_bundled_country_names_match_the_system(monkeypatch, tmp_path):
     bundled = json.loads(labels.BUNDLED_COUNTRIES.read_text(encoding="utf-8"))
     assert len(bundled) >= 245 and bundled["es"] == "España"
     if system:  # the JSON is a copy of what iso-codes gives here (regenerate it if the system catalogue changes)
-        assert bundled == system
+        # iso-codes trae una errata en San Martín («holandsea»); el nombre empaquetado se queda bien escrito
+        errata = {"sx"}
+        assert {k: v for k, v in bundled.items() if k not in errata} == \
+               {k: v for k, v in system.items() if k not in errata}
     # without iso-codes (Windows, macOS, minimal Linux) the bundled names are used
     monkeypatch.setattr(labels, "ISO_DIRS", [tmp_path])
     labels.country_names.cache_clear()
@@ -277,6 +280,8 @@ def web():
 
 def run_server(tmp_path: Path, base: str, fn):
     sources = [Source("tdt_tv", "España TV", f"{base}/tv.m3u8", "tv", "es", country="es"),
+               # la radio de TDTChannels existe en la instalación real: sin ella, radio.countries no tiene lista
+               Source("tdt_radio", "España Radio", f"{base}/tv.m3u8", "radio", "es", country="es"),
                Source("iptv_org", "Mundo", f"{base}/world.m3u", "tv", "world", country_from_tvg_id=True)]
 
     async def go():
