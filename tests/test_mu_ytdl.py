@@ -106,8 +106,10 @@ def test_hook_path_switch_quality_download_and_panel(ytdl_mpv, media_dir):
     wait_view(h, "quality")
     st = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("view") == "quality"
                          and any(i["submenu"] for i in v.get("items", [])), timeout=30)
-    assert [i["title"] for i in st["items"]][:1] == ["Automático (mejor ≤1080p)"]
-    assert [(i["title"], i["submenu"]) for i in st["items"][1:]] == [("Vídeo + audio", 1),
+    # el conmutador solo audio / con imagen es la primera fila: es donde se elige qué bajar
+    assert [i["title"] for i in st["items"]][0] == "Quitar el vídeo"
+    assert [i["title"] for i in st["items"]][1:2] == ["Automático (mejor ≤1080p)"]
+    assert [(i["title"], i["submenu"]) for i in st["items"][2:]] == [("Vídeo + audio", 1),
                                                                      ("Solo vídeo (+ mejor audio)", 1), ("Solo audio", 2)]
     assert len([a for a in argv_lines(arglog)[n:] if "-J" in a]) == 0, "quality menu must reuse ytdl_hook's JSON"
     info = d.call("ytdl.info", {"url": URL})

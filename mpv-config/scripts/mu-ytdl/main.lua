@@ -523,12 +523,6 @@ views.root = function()
       icon = 'add_link', value = { view = 'gate' }, separator = true },
   }
   if state.active then
-    table.insert(items, {
-      title = audio_only() and 'Volver al vídeo' or 'Quitar el vídeo',
-      hint = audio_only() and 'ahora: solo audio' or 'ahora: con imagen',
-      icon = audio_only() and 'movie' or 'videocam_off',
-      value = { toggle = true },
-    })
     table.insert(items, { title = tr('Calidad'), hint = short_format(), icon = 'high_quality', value = { view = 'quality' } })
     table.insert(items, { title = tr('Descargar'), icon = 'download', value = { view = 'download' } })
   else
@@ -544,10 +538,9 @@ views.root = function()
   -- H20: conversions and the unified tasks panel live in mu-convert (opened as a child: Retroceso comes back here)
   table.insert(items, { title = tr('Convertir…'), hint = tr('MP4, más pequeño, solo audio, GIF'), icon = 'transform',
                         value = { child = 'convert-menu' } })
-  table.insert(items, { title = tr('Tareas'), hint = tr('descargas y conversiones'), icon = 'pending_actions',
-                        value = { child = 'tasks-menu' }, separator = true })
-  table.insert(items, { title = tr('Ajustes de descarga'), icon = 'tune', value = { view = 'dl_settings' } })
-  table.insert(items, { title = tr('Estado de yt-dlp'), icon = 'settings', value = { view = 'status' } })
+  -- la raíz se queda en 7 filas con una URL abierta: el panel de tareas vive en Descargas y los ajustes en su submenú
+  table.insert(items, { title = tr('Ajustes y estado'), hint = tr('descarga, yt-dlp'), icon = 'settings',
+                        value = { view = 'ajustes' }, separator = true })
   show(ROOT_TITLE, items)
 end
 
@@ -601,6 +594,14 @@ local function with_info(cb)
   end, 150)
 end
 
+views.ajustes = function()
+  show(tr('Ajustes y estado'), {
+    { title = tr('Ajustes de descarga'), hint = tr('carpeta, calidad, subtítulos'), icon = 'tune',
+      value = { view = 'dl_settings' } },
+    { title = tr('Estado de yt-dlp'), hint = tr('versión y rutas'), icon = 'info', value = { view = 'status' } },
+  })
+end
+
 views.quality = function()
   if not state.active then show(tr('Calidad'), uosc.message_items(tr('Abre una URL de yt-dlp primero'), 'info')) return end
   if not require_mpvd('Calidad') then return end
@@ -609,6 +610,13 @@ views.quality = function()
     if err then show(tr('Calidad'), uosc.message_items(fail(err, 'ytdl.info'), 'error')) return end
     local items = quality_items(info)
     if #items == 0 then items = uosc.message_items(tr('yt-dlp no devolvió formatos'), 'info') end
+    -- el conmutador solo audio / con imagen vive aquí, que es donde se elige qué bajar
+    table.insert(items, 1, {
+      title = audio_only() and 'Volver al vídeo' or 'Quitar el vídeo',
+      hint = audio_only() and 'ahora: solo audio' or 'ahora: con imagen',
+      icon = audio_only() and 'movie' or 'videocam_off',
+      value = { toggle = true }, separator = true,
+    })
     show(tr('Calidad · %s'):format(info.title or ''), items, {
       footnote = tr('Enter cambia en caliente · Tab descarga ese formato · / busca · Retroceso: atrás'),
     })
@@ -924,6 +932,9 @@ local function downloads_items()
     table.insert(items, { title = tr('Limpiar terminadas'), icon = 'cleaning_services', value = { clear = true },
                           separator = true, actions = {}, keep_open = true })
   end
+  -- las conversiones y la cola unificada son tareas de este mismo sitio: una sola puerta, no dos filas en la raíz
+  table.insert(items, { title = tr('Tareas y conversiones…'), hint = tr('descargas y conversiones'), icon = 'pending_actions',
+                        value = { child = 'tasks-menu' } })
   -- H42/A4 · el panel web es un enlace que hay que llevarse a otro aparato: se abre aquí o se copia con Tab
   table.insert(items, { title = tr('Panel de descargas en el navegador'), hint = tr('Tab copia el enlace'),
                         icon = 'open_in_browser', value = { panel = true }, separator = #items > 0,
