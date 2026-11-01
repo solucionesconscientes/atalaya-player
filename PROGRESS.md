@@ -1,6 +1,23 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## Resumen para Ser (2026-11-01, noche) · versión 0.1.1 empaquetada (`08815f2`)
+
+`dist/` tiene los cuatro paquetes nuevos, construidos de cero y verificados, y los del 30-oct quedan en
+`dist/antiguos/2026-11-01/`:
+
+- `Atalaya-0.1.1-setup.exe` 68.118.131 B · sha256 `5ccc2461…` · `7z t` OK
+- `Atalaya-0.1.1-windows-x86_64.zip` 36.461.694 B
+- `atalaya-player_0.1.1_amd64.deb` 28.160.292 B
+- `Atalaya-x86_64.AppImage` 39.520.760 B
+- `SHA256SUMS` verificado y `latest.json` con los cuatro paquetes y la versión 0.1.1.
+
+Comprobado dentro: el `.deb` y el zip llevan `mpvd/ytdl/downloads.py` con el respiro proporcional y el `main.lua`
+con «Ajustes y estado» y «Tareas y conversiones». **No lleva whisper**: en los paquetes se descarga al pedirlo, y
+conviene vigilar que ese binario no vuelva a pedir una glibc más nueva que la del equipo.
+
+Falta: probarlo en Windows (instalador, TV, salas, descargas) y decidir el push de `feat/ytdl-politicas`.
+
 ## Resumen para Ser (2026-11-01, tarde) · los últimos rojos, y el respiro del disco
 
 - **El respiro de espacio no puede ser mayor que el disco** (`5c95e27`). Exigir 2 GB libres por adelantado bloqueaba
