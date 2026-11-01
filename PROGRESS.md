@@ -24,7 +24,10 @@ sube. Ocho repeticiones del test, ocho en verde.
 
 **Tests**: índice 12 · suscripciones 17 · guardas 13 · i18n 48. Batería completa: 1.311 tests, 23 fallos, **todos de
 la línea base ajena** (ASR real, share, IPTV, instalación, letras, subtítulos, panel de descargas, `smoke_mpv`),
-ninguno en ytdl, mu_ytdl, i18n ni feeds.
+ninguno en ytdl, mu_ytdl, i18n ni feeds. Repetida tras el cambio de menú: 24 fallos, de los que **dos son de esta
+pasada y ya están atendidos** (la expectativa de `test_mu_convert`, que esperaba «Tareas» en la raíz, corregida; y un
+`TimeoutError` de arranque de mpv en `test_flujos_e2e` con el indexador de búsqueda ocupando el disco, que pasa con la
+máquina libre), y dos de la lista anterior desaparecen (`smoke_mpv`, `subs_service`: intermitentes por carga).
 
 **La raíz del menú, a 7 filas** (`588f8e6`): «Ajustes de descarga» y «Estado de yt-dlp» se juntan en «Ajustes y
 estado»; el panel de tareas se abre desde Descargas; y el conmutador solo audio / con imagen se muda a «Calidad», que es
