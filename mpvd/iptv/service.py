@@ -544,10 +544,12 @@ class IptvService:
         probed = self._probed.pop(ch.id, [])
         quality: dict[str, Any] = {}
         renditions: list[dict[str, Any]] | None = None
-        if good and ch.is_hls():
+        if ch.is_hls():
+            # las renditions se leen del manifiesto aunque el sondeo falle: es lo que anuncia el canal (CC/VO/AD)
             text = await asyncio.to_thread(self.master_text, ch)
-            quality = self.master_quality(text) or {}
             renditions = trk.parse_master_media(text) if text is not None else None
+            if good:
+                quality = self.master_quality(text) or {}
         if good:
             self._learn_tracks(ch, renditions, probed)
         if good and video:
@@ -584,6 +586,10 @@ class IptvService:
                 renditions = await asyncio.to_thread(self.master_renditions, ch)
         labelled = trk.label_player_tracks(track_list, renditions)
         summary = trk.summary([dict(t) for t in labelled], "player")
+        if renditions:
+            # los distintivos dicen lo que el canal lleva, no lo que este mpv sabe montar: el manifiesto anuncia
+            # subtítulos que ffmpeg a veces no puede abrir, y sin esto la CC desaparecía de la lista al reproducir
+            summary["badges"] = trk.badges([dict(r) for r in renditions])
         if ch is not None and labelled:
             self.store.set_tracks(ch.id, summary, "player", renditions)
         keep = ("type", "id", "label", "role", "lang", "selected", "forced", "cc", "external")
