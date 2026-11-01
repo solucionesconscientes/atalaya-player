@@ -11,9 +11,10 @@ ESTADO_GLOBAL: EN_CURSO
   empezaba a sonar, porque se recalculaban con lo que mpv consigue montar y ffmpeg no soporta las renditions de
   subtítulos de HLS («hls: Can't support the subtitle»). La lista de pistas sigue siendo solo lo que se puede elegir.
 
-**Recuento**: de 23 rojos a los que quedan, todos del banco de pruebas: 4 de navegador y `test_downloads_panel`
-(Chrome headless sin GPU, más de 180 s), `test_install` (el `xdg-mime` de aquí es el de qtxdg y rechaza un `.desktop`
-mínimo), y `test_mu_notes`, `test_nav[mu_intro]` y `test_smoke_mpv`, intermitentes según la carga.
+**Recuento final de la batería** (1.311 tests): **7 rojos, ninguno del producto**. 5 usan Chrome headless con CDP y
+aquí, sin GPU, no bajan de los 180 s (`test_share_browser` ×4 y `test_downloads_panel`); `test_install` choca con el
+`xdg-mime` de qtxdg de esta máquina, que rechaza un `.desktop` mínimo; y `test_flujos_e2e` es un timeout de arranque de
+mpv según la carga. En un equipo con pantalla y GPU los cinco primeros se miden en segundos.
 
 ## Resumen para Ser (2026-11-01, mañana) · los rojos que quedaban, uno por uno
 
