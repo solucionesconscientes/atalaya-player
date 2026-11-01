@@ -56,9 +56,22 @@ MEDIA_EXT = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi", ".mp3", ".m4a", ".
 # -- guardas: espacio en disco y comprobación del fichero ------------------------------------------
 
 
-def necesario(bytes_estimados: float) -> int:
-    """Lo que hay que tener libre para bajar eso: el estimado con un 20 % de aire más 2 GB de respiro."""
-    return int(max(0.0, float(bytes_estimados)) * MARGEN_ESPACIO + MARGEN_LIBRE)
+RESERVA_MIN = 128 * 1024 ** 2             # el respiro nunca baja de aquí
+RESERVA_FRACCION = 0.2                     # ni de una quinta parte de lo que queda libre
+
+
+def necesario(bytes_estimados: float, libre: int | None = None) -> int:
+    """Lo que hay que tener libre para bajar eso: el estimado con un 20 % de aire más un respiro.
+
+    El respiro es de 2 GB, pero no puede ser mayor que lo que hay: con un disco de 1,3 GB libres, exigir 2 GB
+    bloqueaba cualquier descarga, incluso la de un fichero de 1 KB. Se queda en la quinta parte de lo libre,
+    con un mínimo de 128 MB.
+    """
+    estimado = max(0.0, float(bytes_estimados)) * MARGEN_ESPACIO
+    if libre is None:
+        return int(estimado + MARGEN_LIBRE)
+    respiro = int(min(MARGEN_LIBRE, max(RESERVA_MIN, libre * RESERVA_FRACCION)))
+    return int(estimado + respiro)
 
 
 def espacio_libre(destino: str | os.PathLike[str]) -> int | None:
@@ -75,7 +88,7 @@ def espacio_libre(destino: str | os.PathLike[str]) -> int | None:
 def comprobar_espacio(destino: str | os.PathLike[str], bytes_estimados: float) -> dict[str, Any]:
     """``{ok, libre, necesario, motivo}``. Sin dato del disco (raro) no se bloquea: se avisa."""
     libre = espacio_libre(destino)
-    nec = necesario(bytes_estimados)
+    nec = necesario(bytes_estimados, libre)
     if libre is None:
         return {"ok": True, "libre": None, "necesario": nec, "motivo": t("no se pudo mirar el espacio libre")}
     if libre < nec:
