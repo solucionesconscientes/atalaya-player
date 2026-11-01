@@ -26,9 +26,13 @@ sube. Ocho repeticiones del test, ocho en verde.
 la línea base ajena** (ASR real, share, IPTV, instalación, letras, subtítulos, panel de descargas, `smoke_mpv`),
 ninguno en ytdl, mu_ytdl, i18n ni feeds.
 
-**SIGUIENTE PASO**: el menú raíz de descargas ya tiene 8 filas (10 con una URL abierta) y la regla del proyecto es 7:
-hay que agrupar antes de la próxima versión. Commits en `feat/ytdl-politicas` (F1 `b3ae44d`, F2 `a019e7e`, F3 `fe2a690`,
-F4 `5d926b6`), sin push.
+**La raíz del menú, a 7 filas** (`588f8e6`): «Ajustes de descarga» y «Estado de yt-dlp» se juntan en «Ajustes y
+estado»; el panel de tareas se abre desde Descargas; y el conmutador solo audio / con imagen se muda a «Calidad», que es
+donde se elige qué bajar. Con una URL abierta quedan 7 filas y sin URL, 5.
+
+**SIGUIENTE PASO**: la rama `feat/ytdl-politicas` está cerrada y probada (F1 `b3ae44d`, F2 `a019e7e`, F3 `fe2a690`,
+F4 `5d926b6`, menú `588f8e6`), sin push. Lo que falta para una versión nueva: subir el número, empaquetar (deb y
+AppImage amd64/arm64, zip y `.exe`), regenerar `SHA256SUMS` y `latest.json`, y que Ser pruebe el `.exe` en Windows.
 
 ## Resumen para Ser (2026-10-30) · la lista de canales es una columna que no se cierra al cambiar de canal (H77, ADR-138)
 
