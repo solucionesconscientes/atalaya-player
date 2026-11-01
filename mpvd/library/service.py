@@ -25,6 +25,7 @@ from mpvd.jobs import Job, Priority, Status
 from mpvd.library import tmdb as tmdb_mod
 from mpvd.library.opensubtitles import API_URL as OSUB_URL
 from mpvd.library.opensubtitles import MIN_HASH_SIZE, OpenSubtitles, OpenSubtitlesError, rank
+from mpvd.proc import spawn_kwargs
 
 # C4 · dónde se saca la clave y qué campos se pueden pegar del portapapeles sin que pasen por el script.
 OSUB_KEY_URL = "https://www.opensubtitles.com/es/consumers"
@@ -72,7 +73,8 @@ def extract_frame(video: str, dest: Path, timeout: float = 40.0) -> bool:
         args = [*nice, ffmpeg, "-v", "error", "-nostdin", "-y", "-ss", f"{t:.2f}", "-i", video, "-frames:v", "1",
                 "-vf", "scale=342:-2", "-q:v", "4", str(tmp)]
         try:
-            proc = subprocess.run(args, capture_output=True, timeout=timeout, check=False)  # noqa: S603
+            proc = subprocess.run(args, capture_output=True, timeout=timeout, check=False,  # noqa: S603
+                                  **spawn_kwargs())
         except (subprocess.TimeoutExpired, OSError):
             continue
         if proc.returncode == 0 and tmp.exists() and tmp.stat().st_size > 0:

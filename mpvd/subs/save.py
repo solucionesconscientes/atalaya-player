@@ -23,6 +23,7 @@ from typing import Any
 
 from mpvd.asr.srt import render_srt
 from mpvd.subs.formats import SubtitleError, detect_format, load_cues, read_text
+from mpvd.proc import spawn_kwargs
 
 KINDS = ("ai", "translation", "resync", "track")
 KIND_TAG = {"ai": "ia", "translation": "ia", "resync": "resync", "track": ""}
@@ -186,7 +187,7 @@ def probe_streams(path: str, timeout: float = 30.0) -> list[dict[str, Any]]:
     try:
         out = subprocess.run([ffprobe, "-v", "error", "-show_entries",
                               "stream=index,codec_type,codec_name:stream_tags=language,title", "-of", "json", path],
-                             capture_output=True, text=True, timeout=timeout, check=False)
+                             capture_output=True, text=True, timeout=timeout, check=False, **spawn_kwargs())
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise SaveError(f"ffprobe: {exc}") from exc
     try:
@@ -219,7 +220,7 @@ async def extract_srt(path: str, ff_index: int, dest: Path, duration: float | No
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(f".{dest.stem}.part.srt")
     proc = await asyncio.create_subprocess_exec(*extract_args(path, ff_index, str(tmp)), stdout=asyncio.subprocess.PIPE,
-                                                stderr=asyncio.subprocess.PIPE)
+                                                stderr=asyncio.subprocess.PIPE, **spawn_kwargs())
 
     async def read_progress() -> None:
         assert proc.stdout is not None

@@ -20,6 +20,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from mpvd.proc import spawn_kwargs
+
 log = logging.getLogger("mpvd.share.tunnel")
 
 URL_RE = re.compile(rb"https://[a-z0-9][a-z0-9-]*\.trycloudflare\.com")
@@ -76,7 +78,7 @@ class CloudflaredTunnel:
         await self.stop()
         proc = await asyncio.create_subprocess_exec(
             *self.args(local_port), stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE)
+            stderr=asyncio.subprocess.PIPE, **spawn_kwargs())
         self._proc = proc
         assert proc.stderr is not None
         tail: list[bytes] = []

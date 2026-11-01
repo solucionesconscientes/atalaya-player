@@ -55,6 +55,7 @@ from mpvd.share.live import register as register_live
 from mpvd.share.rooms import (CHAT_BURST, DEFAULT_VIEWERS, MIN_TTL, MODE_PRIVATE, MODES, PERM_CONTROL, PERM_VIEW,
                               PERMS, REACT_BURST, REACTIONS, ROOM_TTL, AttemptLimiter, JoinError, Room, clean_chat,
                               rate_ok)
+from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
     from mpvd.server import MpvdServer, RpcContext
@@ -1033,7 +1034,7 @@ class ShareService:
                 cmd = hls.vtt_command(source, tmp, index)
                 proc = await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.DEVNULL,
                                                             stdout=asyncio.subprocess.DEVNULL,
-                                                            stderr=asyncio.subprocess.PIPE)
+                                                            stderr=asyncio.subprocess.PIPE, **spawn_kwargs())
                 try:
                     _, err = await asyncio.wait_for(proc.communicate(), 180)
                 except asyncio.TimeoutError:

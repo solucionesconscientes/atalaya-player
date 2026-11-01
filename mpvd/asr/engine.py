@@ -24,6 +24,7 @@ from mpvd.asr.models import VAD_MODEL, ModelError, ModelStore, find_binary
 from mpvd.asr.srt import Segment, clean_text
 from mpvd.asr.timing import (align_to_stretches, build_cues, parse_vad_segments, remap_words, speech_regions,
                               split_stretches, words_from_cli_json)
+from mpvd.proc import spawn_kwargs
 
 log = logging.getLogger("mpvd.asr")
 
@@ -135,7 +136,7 @@ class WhisperEngine:
                     import subprocess  # noqa: PLC0415
 
                     out = subprocess.run([str(self.cli), "--version"], capture_output=True, text=True, timeout=10,
-                                         env=library_env(self.cli), check=False)
+                                         env=library_env(self.cli), check=False, **spawn_kwargs())
                     txt = (out.stdout or out.stderr).strip().splitlines()
                     self._version = txt[0].strip() if txt else "unknown"
                 except (OSError, subprocess.TimeoutExpired):
@@ -196,7 +197,7 @@ class WhisperEngine:
             # H69 · nunca compite con la reproducción: nice 15 y disco en clase «idle»
             proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.DEVNULL,
                                                         stderr=asyncio.subprocess.PIPE, env=library_env(self.cli),
-                                                        **prio.background(nice=prio.NICE_HEAVY))
+                                                        **prio.background(nice=prio.NICE_HEAVY), **spawn_kwargs())
             try:
                 _, err = await asyncio.wait_for(proc.communicate(), timeout)
             except (asyncio.TimeoutError, asyncio.CancelledError):

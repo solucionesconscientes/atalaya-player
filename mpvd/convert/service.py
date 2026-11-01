@@ -56,6 +56,7 @@ from mpvd.jobs import Job, Priority, job_rows
 from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, RpcError
 from mpvd.ytdl.downloads import default_media_dir, fmt_eta
+from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
     from mpvd.server import MpvdServer, RpcContext
@@ -475,7 +476,7 @@ class ConvertService:
             kwargs["preexec_fn"] = prio.lower
         for cmd, weight in zip(plan.commands, plan.weights, strict=True):
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE,
-                                                        stderr=asyncio.subprocess.PIPE, **kwargs)
+                                                        stderr=asyncio.subprocess.PIPE, **kwargs, **spawn_kwargs())
             self._procs[item.id] = proc
             last_push = 0.0
 

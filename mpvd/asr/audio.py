@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 from mpvd import priority as prio
+from mpvd.proc import spawn_kwargs
 
 SAMPLE_RATE = 16000
 
@@ -41,7 +42,7 @@ async def extract_wav(src: str, start: float, duration: float, out: Path, audio_
     # H69 · sacar el audio es trabajo de fondo y lee el archivo entero: no compite con la reproducción
     proc = await asyncio.create_subprocess_exec(*extract_args(src, start, duration, str(out), audio_track),
                                                 stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
-                                                **prio.background())
+                                                **prio.background(), **spawn_kwargs())
     try:
         _, err = await asyncio.wait_for(proc.communicate(), timeout)
     except asyncio.TimeoutError:
@@ -70,7 +71,7 @@ def probe_audio_streams(src: str, timeout: float = 30.0) -> int | None:
     try:
         out = subprocess.run([ffprobe, "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
                               "-of", "json", src],
-                             capture_output=True, text=True, timeout=timeout, check=False).stdout
+                             capture_output=True, text=True, timeout=timeout, check=False, **spawn_kwargs()).stdout
         streams = json.loads(out).get("streams")
         return len(streams) if isinstance(streams, list) else None
     except (ValueError, subprocess.TimeoutExpired, OSError):
@@ -84,7 +85,7 @@ def probe_duration(src: str, timeout: float = 30.0) -> float | None:
         return None
     try:
         out = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "json", src],
-                             capture_output=True, text=True, timeout=timeout, check=False).stdout
+                             capture_output=True, text=True, timeout=timeout, check=False, **spawn_kwargs()).stdout
         value = json.loads(out).get("format", {}).get("duration")
         return float(value) if value not in (None, "N/A") else None
     except (ValueError, subprocess.TimeoutExpired, OSError):

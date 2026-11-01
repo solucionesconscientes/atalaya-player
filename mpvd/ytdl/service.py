@@ -53,6 +53,7 @@ from mpvd.ytdl.presets import (
     spec_conversion,
     spec_from_preset,
 )
+from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
     from mpvd.server import MpvdServer, RpcContext
@@ -371,6 +372,7 @@ class YtdlService:
         cmd = b.command(*self.downloads.settings.session_args(), *args)
         proc = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, limit=64 * 1024 * 1024,
+            **spawn_kwargs(),
         )
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout)

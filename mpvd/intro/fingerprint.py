@@ -18,6 +18,7 @@ from pathlib import Path
 
 from mpvd import priority as prio
 from mpvd.asr.audio import extract_wav
+from mpvd.proc import spawn_kwargs
 
 MASK_HIGH = 0xFFFFF000       # exact-match key: top 20 bits (the low bits flip with encoding noise)
 MAX_BITS = 6                 # Hamming distance considered "the same sound" (random audio differs in ~16 of 32)
@@ -84,7 +85,8 @@ async def fingerprint_window(src: str, start: float, length: float, tmp_dir: Pat
         # H69 · buscar la intro es trabajo de fondo: no compite con la reproducción
         proc = await asyncio.create_subprocess_exec(fpcalc_path(), "-raw", "-json", "-length", str(int(length) + 1),
                                                     str(wav), stdout=asyncio.subprocess.PIPE,
-                                                    stderr=asyncio.subprocess.PIPE, **prio.background())
+                                                    stderr=asyncio.subprocess.PIPE, **prio.background(),
+                                                    **spawn_kwargs())
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout)
         except asyncio.TimeoutError:

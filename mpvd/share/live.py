@@ -41,6 +41,7 @@ from mpvd.library.settings import write_private
 from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
 from mpvd.share import hls
+from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
     from mpvd.server import MpvdServer, RpcContext
@@ -353,7 +354,7 @@ class LiveRun:
             try:
                 self.proc = await asyncio.create_subprocess_exec(
                     *plan.cmd, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE)
+                    stderr=asyncio.subprocess.PIPE, **spawn_kwargs())
             except OSError as exc:
                 self.error = f"no se pudo lanzar ffmpeg: {exc.strerror or type(exc).__name__}"
                 self._set("failed")

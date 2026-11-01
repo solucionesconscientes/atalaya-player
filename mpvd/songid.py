@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 from mpvd.net import DEFAULT_USER_AGENT
 from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
+from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
     from mpvd.lyrics import SongSettings
@@ -50,7 +51,7 @@ def fingerprint(path: str, seconds: int = 120, timeout: float = 60.0) -> tuple[f
         raise SongIdError("falta fpcalc (Chromaprint)")
     try:
         res = subprocess.run([fpcalc, "-json", "-length", str(seconds), path], capture_output=True, text=True,
-                             timeout=timeout)
+                             timeout=timeout, **spawn_kwargs())
         data = json.loads(res.stdout or "{}")
     except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
         raise SongIdError(f"fpcalc: {exc}") from exc
@@ -117,7 +118,7 @@ def write_tags(path: str, tags: dict[str, str], timeout: float = 120.0) -> dict[
     for k, v in clean.items():
         args += ["-metadata", f"{k}={v}"]
     try:
-        res = subprocess.run([*args, str(tmp)], capture_output=True, text=True, timeout=timeout)
+        res = subprocess.run([*args, str(tmp)], capture_output=True, text=True, timeout=timeout, **spawn_kwargs())
         if res.returncode != 0 or not tmp.exists() or tmp.stat().st_size == 0:
             raise SongIdError("ffmpeg: " + (res.stderr.strip().splitlines() or ["error"])[-1])
         shutil.copymode(src, tmp)

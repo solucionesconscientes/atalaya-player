@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any
 from mpvd.library.settings import write_private
 from mpvd.net import DEFAULT_USER_AGENT
 from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
+from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
     from mpvd.server import MpvdServer, RpcContext
@@ -172,7 +173,8 @@ def probe_tags(path: Path, timeout: float = 20.0) -> dict[str, Any]:
         return {"tags": {}, "duration": None}
     try:
         res = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format=duration:format_tags:stream_tags",
-                              "-of", "json", str(path)], capture_output=True, text=True, timeout=timeout)
+                              "-of", "json", str(path)], capture_output=True, text=True, timeout=timeout,
+                             **spawn_kwargs())
         data = json.loads(res.stdout or "{}")
     except (OSError, subprocess.TimeoutExpired, ValueError):
         return {"tags": {}, "duration": None}

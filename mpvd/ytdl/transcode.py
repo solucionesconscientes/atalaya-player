@@ -33,6 +33,7 @@ from typing import Any
 
 from mpvd.convert.presets import CRF, SVTAV1_PRESET, VAAPI_QP, VP9_SPEED, X264_PRESET, X265_PRESET
 from mpvd.i18n import t
+from mpvd.proc import spawn_kwargs
 
 # Codificador de cada familia destino. Las claves son las mismas que usa la política (policy._familia_*).
 ENC_VIDEO = {"h264": "libx264", "hevc": "libx265", "vp9": "libvpx-vp9", "av1": "libsvtav1"}
@@ -82,7 +83,7 @@ def sonda(ruta: str | Path) -> dict[str, Any]:
         raise ValueError(t("hace falta ffprobe para comprobar lo convertido y no está instalado"))
     proc = subprocess.run([ffprobe, "-hide_banner", "-loglevel", "error", "-of", "json",
                            "-show_entries", FFPROBE_ENTRIES, str(ruta)],
-                          capture_output=True, text=True, timeout=120, check=False)
+                          capture_output=True, text=True, timeout=120, check=False, **spawn_kwargs())
     if proc.returncode != 0:
         raise ValueError(t("ffprobe no pudo leer %s: %s") % (Path(ruta).name, (proc.stderr or "").strip()[-200:]))
     try:
@@ -244,7 +245,8 @@ def convertir(origen: str | Path, destino: str | Path, **ajustes: Any) -> Conver
         escrito = salida
     for i, cmd in enumerate(ordenes, 1):
         cmd = [str(escrito) if j == len(cmd) - 1 else a for j, a in enumerate(cmd)]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=FFMPEG_TIMEOUT, check=False)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=FFMPEG_TIMEOUT, check=False,
+                              **spawn_kwargs())
         if proc.returncode != 0:
             ultima = (proc.stderr or "").strip().splitlines()[-1:] or [""]
             for sufijo in ("-0.log", "-0.log.mbtree"):

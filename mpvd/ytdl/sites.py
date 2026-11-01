@@ -17,6 +17,8 @@ import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from mpvd.proc import spawn_kwargs
+
 if TYPE_CHECKING:
     from mpvd.ytdl.binary import YtdlpBinary
 
@@ -68,7 +70,7 @@ def broken_extractors(binary: YtdlpBinary, timeout: float = 30.0) -> set[str]:
     """Los que el propio yt-dlp instalado marca «CURRENTLY BROKEN» en `--list-extractors`."""
     try:
         out = subprocess.run([*binary.argv, "--list-extractors"], capture_output=True, text=True,
-                             timeout=timeout, check=False).stdout
+                             timeout=timeout, check=False, **spawn_kwargs()).stdout
     except (OSError, subprocess.TimeoutExpired):
         return set()
     return {m.group("name") for m in (BROKEN_RE.match(line) for line in out.splitlines()) if m}

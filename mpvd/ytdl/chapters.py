@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 from mpvd.i18n import t
+from mpvd.proc import spawn_kwargs
 
 SEPARADO = "separado"          # un fichero por capítulo
 UNIDO = "unido"                # un solo fichero: trozos y unión después
@@ -259,7 +260,7 @@ def _sonda(ruta: str) -> dict[str, Any]:
     if ffprobe is None:
         raise ValueError(t("hace falta ffprobe para comprobar los trozos y no está instalado"))
     proc = subprocess.run([ffprobe, "-v", "error", "-show_entries", FFPROBE_ENTRIES, "-of", "json", ruta],
-                          capture_output=True, text=True, timeout=120, check=False)
+                          capture_output=True, text=True, timeout=120, check=False, **spawn_kwargs())
     if proc.returncode != 0:
         raise ValueError(t("no se puede leer %s: %s") % (ruta, proc.stderr.strip().splitlines()[-1:] or ""))
     datos = json.loads(proc.stdout or "{}")
@@ -313,7 +314,7 @@ def unir(rutas: Sequence[str | Path], salida: str | Path) -> Union:
                          encoding="utf-8")
         proc = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0",
                                "-i", str(lista), "-c", "copy", str(destino)],
-                              capture_output=True, text=True, timeout=1800, check=False)
+                              capture_output=True, text=True, timeout=1800, check=False, **spawn_kwargs())
     if proc.returncode != 0:
         ultima = (proc.stderr.strip().splitlines() or [""])[-1]
         return Union(False, str(destino), esperado=esperado, error=t("ffmpeg no pudo unir los trozos: %s") % ultima)

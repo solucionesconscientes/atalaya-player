@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Any
 
 from mpvd.hashing import content_key, url_key
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, RpcError
+from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
     from mpvd.server import MpvdServer, RpcContext
@@ -83,7 +84,7 @@ def probe(path: Path, timeout: float = 20.0) -> dict[str, Any]:
         return empty
     try:
         res = subprocess.run([ffprobe, "-v", "error", "-show_format", "-show_streams", "-show_chapters", "-of", "json",
-                              str(path)], capture_output=True, text=True, timeout=timeout)
+                              str(path)], capture_output=True, text=True, timeout=timeout, **spawn_kwargs())
         data = json.loads(res.stdout or "{}")
     except (OSError, subprocess.TimeoutExpired, ValueError):
         return empty

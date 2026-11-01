@@ -27,6 +27,7 @@ from typing import Any
 
 from mpvd import priority as prio
 from mpvd.library.parse import norm
+from mpvd.proc import spawn_kwargs
 
 AUDIO_EXTS = frozenset((".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".m4b", ".aac", ".wav", ".wv", ".ape",
                         ".aif", ".aiff", ".alac", ".wma", ".mka", ".mpc", ".tta", ".dsf", ".dff", ".spx"))
@@ -46,7 +47,7 @@ def run_low(cmd: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
     if sys.platform != "win32":
         kwargs["preexec_fn"] = prio.lower
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False,  # noqa: S603
-                          encoding="utf-8", errors="replace", **kwargs)
+                          encoding="utf-8", errors="replace", **kwargs, **spawn_kwargs())
 
 
 # -- tags ------------------------------------------------------------------------------------------------------------

@@ -26,6 +26,7 @@ from mpvd.jobs import Job
 from mpvd.net import HttpCache
 from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
+from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
     from mpvd.server import MpvdServer, RpcContext
@@ -493,7 +494,8 @@ class IptvService:
         cmd += ["-show_entries", "stream=codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate"
                 ":stream_tags=language,title:stream_disposition=visual_impaired,hearing_impaired,forced",
                 "-of", "json", "-i", ch.url]
-        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE,
+                                                    stderr=asyncio.subprocess.PIPE, **spawn_kwargs())
         try:
             out, err = await asyncio.wait_for(proc.communicate(), timeout + 5)
         except asyncio.TimeoutError:

@@ -26,6 +26,7 @@ from typing import Any
 
 from mpvd import priority as prio
 from mpvd.convert.presets import HwPlan
+from mpvd.proc import spawn_kwargs
 
 log = logging.getLogger("mpvd.share.hls")
 
@@ -94,7 +95,8 @@ def probe(inp: Input, timeout: float = 30.0) -> dict[str, Any]:
     ua = next((v for k, v in inp.headers.items() if k.lower() == "user-agent"), None)
     if ua and "://" in inp.url:
         cmd += ["-user_agent", ua]
-    out = subprocess.run([*cmd, inp.url], capture_output=True, text=True, timeout=timeout, check=False)
+    out = subprocess.run([*cmd, inp.url], capture_output=True, text=True, timeout=timeout, check=False,
+                         **spawn_kwargs())
     if out.returncode != 0:
         raise RuntimeError((out.stderr.strip().splitlines() or [f"ffprobe terminó con {out.returncode}"])[-1])
     return json.loads(out.stdout or "{}")
@@ -474,7 +476,7 @@ class HlsStream:
             try:
                 self.proc = await asyncio.create_subprocess_exec(
                     *plan.cmd, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.PIPE, **kwargs)
+                    stderr=asyncio.subprocess.PIPE, **kwargs, **spawn_kwargs())
             except OSError as exc:
                 self.status, self.error = "failed", f"no se pudo lanzar ffmpeg: {exc}"
                 return

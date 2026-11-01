@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from mpvd import priority as prio
+from mpvd.proc import spawn_kwargs
 
 log = logging.getLogger("mpvd.llm")
 
@@ -303,7 +304,7 @@ class LlmEngine:
             proc = await asyncio.create_subprocess_exec(*self.argv(model, system, prompt, tokens),
                                                         stdout=asyncio.subprocess.PIPE,
                                                         stderr=asyncio.subprocess.PIPE, env=env,
-                                                        **prio.background(nice=prio.NICE_HEAVY))
+                                                        **prio.background(nice=prio.NICE_HEAVY), **spawn_kwargs())
             try:
                 out, err = await asyncio.wait_for(proc.communicate(), timeout)
             except asyncio.TimeoutError:

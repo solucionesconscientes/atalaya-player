@@ -21,6 +21,7 @@ from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
 from mpvd.study.clips import audio_codec, audio_copy_ext
 from mpvd.ytdl.downloads import default_media_dir
+from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
     from mpvd.server import MpvdServer, RpcContext
@@ -51,7 +52,7 @@ async def extract_audio(src: Path, remove: bool = False, timeout: float = 600.0)
     if out == src:
         out = src.with_name(src.stem + " (audio)" + src.suffix)
     proc = await asyncio.create_subprocess_exec(*audio_args(src, out), stdout=asyncio.subprocess.DEVNULL,
-                                                stderr=asyncio.subprocess.PIPE)
+                                                stderr=asyncio.subprocess.PIPE, **spawn_kwargs())
     try:
         _, err = await asyncio.wait_for(proc.communicate(), timeout)
     except (asyncio.TimeoutError, asyncio.CancelledError):

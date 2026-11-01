@@ -21,6 +21,8 @@ from mpvd.i18n import t
 from pathlib import Path
 from typing import Any
 
+from mpvd.proc import spawn_kwargs
+
 PRESETS: list[dict[str, Any]] = [
     {"id": "mp4", "label": "MP4 compatible", "hint": "H.264 + AAC · se abre en cualquier sitio", "kind": "video",
      "ext": ".mp4", "vcodec": "h264"},
@@ -57,7 +59,7 @@ def available_encoders(ffmpeg: str | None = None) -> set[str]:
         try:
             binario = ffmpeg or shutil.which("ffmpeg") or "ffmpeg"
             out = subprocess.run([binario, "-hide_banner", "-encoders"],
-                                 capture_output=True, text=True, timeout=20, check=False).stdout
+                                 capture_output=True, text=True, timeout=20, check=False, **spawn_kwargs()).stdout
         except (OSError, subprocess.SubprocessError):
             out = ""
         _encoders = {line.split()[1] for line in out.splitlines()
@@ -308,7 +310,7 @@ def probe(src: Path, timeout: float = 30.0) -> SourceInfo:
         out = subprocess.run([ffprobe, "-v", "error", "-show_entries",
                               "format=duration:stream=index,codec_type,codec_name,width,height:stream_disposition="
                               "attached_pic", "-of", "json", str(src)],
-                             capture_output=True, text=True, timeout=timeout, check=False)
+                             capture_output=True, text=True, timeout=timeout, check=False, **spawn_kwargs())
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ConvertError(f"ffprobe: {exc}") from exc
     if out.returncode != 0:

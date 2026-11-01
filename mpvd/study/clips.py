@@ -14,6 +14,7 @@ from typing import Any
 
 from mpvd.asr.audio import ffmpeg_path
 from mpvd.ytdl.downloads import default_media_dir
+from mpvd.proc import spawn_kwargs
 
 FORMATS = {
     "mp4": {"ext": ".mp4", "kind": "video", "label": "MP4 recodificado (corte exacto)"},
@@ -54,7 +55,8 @@ def audio_codec(src: Path, audio_track: int | None = None, timeout: float = 20.0
     sel = f"a:{audio_track}" if audio_track is not None else "a:0"
     try:
         out = subprocess.run([ffprobe, "-v", "error", "-select_streams", sel, "-show_entries", "stream=codec_name",
-                              "-of", "json", str(src)], capture_output=True, text=True, timeout=timeout, check=False)
+                              "-of", "json", str(src)], capture_output=True, text=True, timeout=timeout,
+                             check=False, **spawn_kwargs())
         streams = json.loads(out.stdout or "{}").get("streams") or []
         return str(streams[0]["codec_name"]) if streams else None
     except (OSError, ValueError, subprocess.TimeoutExpired, KeyError):
@@ -131,7 +133,8 @@ async def export_clip(src: Path, a: float, b: float, fmt: str, out: Path, audio_
         raise ClipError(f"tramo demasiado largo (máx. {int(limit)} s)")
     out.parent.mkdir(parents=True, exist_ok=True)
     args = ffmpeg_args(src, a, b, fmt, out, audio_track)
-    proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE,
+                                                stderr=asyncio.subprocess.PIPE, **spawn_kwargs())
     dur_us = (b - a) * 1e6
 
     async def pump() -> None:

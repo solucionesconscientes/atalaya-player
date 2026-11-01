@@ -16,6 +16,8 @@ import os
 import shutil
 import sys
 
+from mpvd.proc import spawn_kwargs
+
 ICON = "media-record"
 
 
@@ -42,7 +44,7 @@ async def notify(title: str, body: str, icon: str = ICON) -> None:
         cmd = ["notify-send", "-a", "MPV-UOS", "-i", icon, title, body]
     with contextlib.suppress(OSError, asyncio.TimeoutError):
         proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.DEVNULL,
-                                                    stderr=asyncio.subprocess.DEVNULL)
+                                                    stderr=asyncio.subprocess.DEVNULL, **spawn_kwargs())
         await asyncio.wait_for(proc.wait(), 10)
 
 
@@ -62,7 +64,7 @@ async def ask(title: str, body: str, actions: dict[str, str], timeout: float = 6
     cmd += [title, body]
     try:
         proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE,
-                                                    stderr=asyncio.subprocess.DEVNULL)
+                                                    stderr=asyncio.subprocess.DEVNULL, **spawn_kwargs())
     except OSError:
         return None
     try:

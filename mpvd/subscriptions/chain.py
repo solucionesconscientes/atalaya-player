@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Any
 
 from mpvd import priority as prio
 from mpvd.jobs import Priority, Status
+from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
     from mpvd.ytdl.downloads import DownloadItem
@@ -253,7 +254,7 @@ def audio_stream(src: Path, timeout: float = 30.0) -> dict[str, Any] | None:
         raise ChainError("ffprobe no está instalado")
     out = subprocess.run([ffprobe, "-v", "error", "-select_streams", "a:0", "-show_entries",
                           "stream=codec_name,bit_rate,sample_rate,channels", "-of", "json", str(src)],
-                         capture_output=True, text=True, timeout=timeout, check=False)
+                         capture_output=True, text=True, timeout=timeout, check=False, **spawn_kwargs())
     if out.returncode != 0:
         raise ChainError("no se puede leer el archivo: " + (out.stderr.strip().splitlines() or ["?"])[-1])
     streams = (json.loads(out.stdout or "{}").get("streams") or [])
@@ -326,7 +327,7 @@ async def _run(cmd: list[str]) -> tuple[int, str]:
     if sys.platform != "win32":
         kwargs["preexec_fn"] = prio.lower
     proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.DEVNULL,
-                                                stderr=asyncio.subprocess.PIPE, **kwargs)
+                                                stderr=asyncio.subprocess.PIPE, **kwargs, **spawn_kwargs())
     try:
         _, err = await proc.communicate()
     except asyncio.CancelledError:

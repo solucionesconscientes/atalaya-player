@@ -38,6 +38,7 @@ from mpvd.power import WAKE_MARGIN, inhibit_prefix
 from mpvd.iptv.model import HLS_LAVF_DEFAULTS, Channel
 from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
+from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
     from mpvd.iptv.service import IptvService
@@ -447,7 +448,7 @@ async def desktop_notify(title: str, body: str) -> None:
         return
     with contextlib.suppress(OSError, asyncio.TimeoutError):
         proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.DEVNULL,
-                                                    stderr=asyncio.subprocess.DEVNULL)
+                                                    stderr=asyncio.subprocess.DEVNULL, **spawn_kwargs())
         await asyncio.wait_for(proc.wait(), 10)
 
 
@@ -693,7 +694,8 @@ class ScheduleService:
         cmd = [*base, *WINDOW_ARGS]
         log.info("schedule: se abre una ventana para la franja (%s)", " ".join(cmd))
         await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.DEVNULL,
-                                             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+                                             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                                             **spawn_kwargs())
         fin = time.monotonic() + PLAYER_WAIT
         while time.monotonic() < fin:
             await asyncio.sleep(0.5)
@@ -764,7 +766,8 @@ class ScheduleService:
             log.info("recording %s: %s", rec.id, " ".join(cmd[:-1]) + " " + out.name)
             with open(log_path, "ab") as err:
                 proc = await asyncio.create_subprocess_exec(*cmd, stdin=asyncio.subprocess.PIPE,
-                                                            stdout=asyncio.subprocess.DEVNULL, stderr=err)
+                                                            stdout=asyncio.subprocess.DEVNULL, stderr=err,
+                                                            **spawn_kwargs())
             self._procs[rec.id] = proc
             parts += 1
             # stopped by the wall clock, not by -t: a live HLS starts a few segments back and reads them at once,

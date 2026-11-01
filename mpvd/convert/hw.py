@@ -18,6 +18,7 @@ import subprocess
 from typing import Any
 
 from mpvd.convert.presets import HwPlan
+from mpvd.proc import spawn_kwargs
 
 _LINE = re.compile(r"^\s*(VAProfile\w+)\s*:\s*(VAEntrypoint\w+)", re.MULTILINE)
 _DRIVER = re.compile(r"Driver version:\s*(.+)")
@@ -64,7 +65,7 @@ def ffmpeg_encoders(ffmpeg: str | None = None, timeout: float = 10.0) -> set[str
         return set()
     try:
         out = subprocess.run([ff, "-hide_banner", "-encoders"], capture_output=True, text=True, timeout=timeout,
-                             check=False).stdout
+                             check=False, **spawn_kwargs()).stdout
     except (OSError, subprocess.TimeoutExpired):
         return set()
     return {m.group(1) for m in re.finditer(r"^\s*[VAS][\w.]{5}\s+(\S+)", out, re.MULTILINE)}
@@ -89,7 +90,7 @@ def detect(timeout: float = VAINFO_TIMEOUT) -> dict[str, Any]:
     for dev in devices:
         try:
             out = subprocess.run([vainfo, "--display", "drm", "--device", dev], capture_output=True, text=True,
-                                 timeout=timeout, check=False)
+                                 timeout=timeout, check=False, **spawn_kwargs())
         except subprocess.TimeoutExpired:
             result["reason"] = f"vainfo no respondió en {timeout:.0f} s"
             continue

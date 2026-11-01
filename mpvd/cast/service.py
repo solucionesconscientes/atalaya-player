@@ -31,6 +31,7 @@ from mpvd.cast import dlna
 from mpvd.remote.http import HttpError, HttpServer, Request, Response
 from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, NOT_FOUND, UNAVAILABLE, RpcError
+from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
     from mpvd.server import MpvdServer, RpcContext
@@ -190,7 +191,8 @@ class CastService:
         if not ffmpeg:
             return
         proc = await asyncio.create_subprocess_exec(*relay_argv(media, media.offset, ffmpeg), stdout=asyncio.subprocess.PIPE,
-                                                    stderr=asyncio.subprocess.DEVNULL, start_new_session=True)
+                                                    stderr=asyncio.subprocess.DEVNULL, start_new_session=True,
+                                                    **spawn_kwargs())
         self._relays.add(proc)
         try:
             assert proc.stdout is not None

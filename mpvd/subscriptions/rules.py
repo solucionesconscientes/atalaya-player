@@ -12,6 +12,8 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any
 
+from mpvd.proc import spawn_kwargs
+
 # a window is (start, end) in minutes after midnight; end < start crosses midnight; None = always
 Window = tuple[int, int]
 
@@ -183,7 +185,7 @@ def detect_metered(timeout: float = 5.0) -> bool | None:
     try:
         out = subprocess.run([nmcli, "-t", "-f", "GENERAL.STATE,GENERAL.METERED,IP4.GATEWAY,IP6.GATEWAY", "dev", "show"],
                              capture_output=True, text=True, timeout=timeout, check=False,
-                             env={**os.environ, "LC_ALL": "C"})
+                             env={**os.environ, "LC_ALL": "C"}, **spawn_kwargs())
     except (OSError, subprocess.TimeoutExpired):
         return None
     if out.returncode != 0:

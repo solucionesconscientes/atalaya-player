@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from mpvd.net import FetchError, HttpCache
+from mpvd.proc import spawn_kwargs
 
 log = logging.getLogger("mpvd.ytdl.binary")
 
@@ -62,7 +63,8 @@ def _is_python_zip(path: Path) -> bool:
 
 def _node_version(exe: str) -> int | None:
     try:
-        out = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=10, check=False).stdout
+        out = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=10, check=False,
+                             **spawn_kwargs()).stdout
     except (OSError, subprocess.TimeoutExpired):
         return None
     m = re.match(r"v?(\d+)", out.strip())
@@ -127,7 +129,8 @@ class YtdlpBinary:
 
     def version_sync(self, refresh: bool = False, timeout: float = 30.0) -> str:
         if self._version is None or refresh:
-            out = subprocess.run([*self.argv, "--version"], capture_output=True, text=True, timeout=timeout, check=False)
+            out = subprocess.run([*self.argv, "--version"], capture_output=True, text=True, timeout=timeout,
+                                 check=False, **spawn_kwargs())
             self._version = out.stdout.strip().splitlines()[-1] if out.stdout.strip() else ""
         return self._version
 

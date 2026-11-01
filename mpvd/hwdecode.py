@@ -15,6 +15,8 @@ import sys
 from functools import lru_cache
 from typing import Any
 
+from mpvd.proc import spawn_kwargs
+
 # VA-API profile (without the "VAProfile" prefix) → codec key
 VA_PROFILES: list[tuple[str, str]] = [
     ("H264", "h264"),
@@ -123,7 +125,7 @@ def detect() -> dict[str, Any]:
                 "sort": sort_codec(keys), "note": ""}
     if sys.platform.startswith("linux") and shutil.which("vainfo"):
         try:
-            res = subprocess.run(["vainfo"], capture_output=True, text=True, timeout=8)
+            res = subprocess.run(["vainfo"], capture_output=True, text=True, timeout=8, **spawn_kwargs())
             hw = parse_vainfo(res.stdout + res.stderr)
         except (OSError, subprocess.SubprocessError) as exc:
             return {"source": "vainfo", "hw": None, "names": [], "sort": "h264", "note": f"vainfo falló: {exc}"}

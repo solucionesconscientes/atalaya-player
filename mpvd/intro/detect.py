@@ -10,6 +10,7 @@ import asyncio
 import re
 
 from mpvd.asr.audio import AudioError, ffmpeg_path
+from mpvd.proc import spawn_kwargs
 
 SIL_START = re.compile(r"silence_start:\s*([0-9.]+)")
 SIL_END = re.compile(r"silence_end:\s*([0-9.]+)")
@@ -56,7 +57,8 @@ async def _detect_edges(src: str, start: float, length: float, silence_db: float
     args = [ffmpeg_path(), "-hide_banner", "-nostdin", "-v", "info", "-ss", f"{max(0.0, start):.3f}", "-t", f"{length:.3f}",
             "-i", src, "-af", f"silencedetect=n={silence_db}dB:d={silence_min}", "-vf", f"blackdetect=d={black_min}:pix_th=0.10",
             "-f", "null", "-"]
-    proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+    proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.DEVNULL,
+                                                stderr=asyncio.subprocess.PIPE, **spawn_kwargs())
     try:
         _, err = await asyncio.wait_for(proc.communicate(), timeout)
     except asyncio.TimeoutError:
@@ -93,7 +95,8 @@ async def _audio_only(src: str, start: float, length: float, silence_db: float, 
                       timeout: float) -> dict[str, list[tuple[float, float]]]:
     args = [ffmpeg_path(), "-hide_banner", "-nostdin", "-v", "info", "-ss", f"{max(0.0, start):.3f}", "-t", f"{length:.3f}",
             "-i", src, "-vn", "-af", f"silencedetect=n={silence_db}dB:d={silence_min}", "-f", "null", "-"]
-    proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+    proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.DEVNULL,
+                                                stderr=asyncio.subprocess.PIPE, **spawn_kwargs())
     try:
         _, err = await asyncio.wait_for(proc.communicate(), timeout)
     except asyncio.TimeoutError:

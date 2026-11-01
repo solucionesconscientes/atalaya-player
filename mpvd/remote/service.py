@@ -31,6 +31,7 @@ from mpvd.remote.http import HttpError, HttpServer, Request, Response, sse_event
 from mpvd.i18n import forget_visitor, page_script, t, visitor_language
 from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
+from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
     from mpvd.server import MpvdServer, RpcContext
@@ -86,7 +87,8 @@ def firewall_hint(port: int, ip: str, label: str = "mando") -> dict[str, Any] | 
             ("firewalld", f"sudo firewall-cmd --permanent --add-port={port}/tcp && sudo firewall-cmd --reload"),
         ):
             try:
-                out = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=3).stdout
+                out = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=3,
+                                     **spawn_kwargs()).stdout
             except (OSError, subprocess.SubprocessError):
                 continue
             if out.strip() == "active":

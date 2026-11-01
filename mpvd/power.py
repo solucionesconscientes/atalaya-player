@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 from mpvd import notify
 from mpvd.i18n import t
 from mpvd.rpc import INVALID_PARAMS, UNAVAILABLE, RpcError
+from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
     from mpvd.server import MpvdServer
@@ -85,7 +86,7 @@ async def _run(args: list[str], timeout: float = 20.0) -> tuple[int, str]:
         args = [fake, *args]
     try:
         proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE,
-                                                    stderr=asyncio.subprocess.STDOUT)
+                                                    stderr=asyncio.subprocess.STDOUT, **spawn_kwargs())
     except OSError as exc:
         return 127, str(exc)
     try:
@@ -105,7 +106,7 @@ def _logind_can(what: str) -> bool:
     try:
         out = subprocess.run([busctl, "call", "org.freedesktop.login1", "/org/freedesktop/login1",
                               "org.freedesktop.login1.Manager", what],
-                             capture_output=True, text=True, timeout=10, check=False).stdout
+                             capture_output=True, text=True, timeout=10, check=False, **spawn_kwargs()).stdout
     except (OSError, subprocess.TimeoutExpired):
         return False
     return '"yes"' in out
@@ -338,7 +339,8 @@ def _sudo_ok(args: list[str]) -> bool:
     if sudo is None:
         return False
     try:
-        return subprocess.run([sudo, "-n", *args], capture_output=True, timeout=10, check=False).returncode == 0
+        return subprocess.run([sudo, "-n", *args], capture_output=True, timeout=10, check=False,
+                              **spawn_kwargs()).returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
 

@@ -40,6 +40,7 @@ from mpvd.ytdl.presets import (
     DownloadSpec,
     build_args,
 )
+from mpvd.proc import spawn_kwargs
 
 log = logging.getLogger("mpvd.ytdl.downloads")
 
@@ -104,7 +105,7 @@ def _ffprobe(ruta: str, timeout: float = 90.0) -> dict[str, Any] | None:
         return None
     try:
         proc = subprocess.run([exe, "-v", "error", "-show_format", "-show_streams", "-of", "json", ruta],
-                              capture_output=True, text=True, timeout=timeout, check=False)
+                              capture_output=True, text=True, timeout=timeout, check=False, **spawn_kwargs())
     except (OSError, subprocess.SubprocessError):
         return None
     if proc.returncode != 0:
@@ -123,7 +124,7 @@ def _decodifica(ruta: str, segundos: float = VERIFY_SECONDS, timeout: float = 18
         return True, ""      # sin ffmpeg no se puede comprobar; no se tumba una descarga por eso
     try:
         proc = subprocess.run([exe, "-v", "error", "-xerror", "-t", f"{segundos:g}", "-i", ruta, "-f", "null", "-"],
-                              capture_output=True, text=True, timeout=timeout, check=False)
+                              capture_output=True, text=True, timeout=timeout, check=False, **spawn_kwargs())
     except (OSError, subprocess.SubprocessError) as exc:
         return False, t("no se pudo comprobar el fichero: %s") % exc
     if proc.returncode != 0:
@@ -894,7 +895,7 @@ class DownloadManager:
         env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
         proc = await asyncio.create_subprocess_exec(
             *item.argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=env,
-            cwd=item.out_dir, limit=4 * 1024 * 1024,
+            cwd=item.out_dir, limit=4 * 1024 * 1024, **spawn_kwargs(),
         )
         item._proc = proc
         last_push = 0.0
