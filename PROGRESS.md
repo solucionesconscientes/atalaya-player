@@ -1,6 +1,19 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## Resumen para Ser (2026-11-01, mañana) · los rojos que quedaban, uno por uno
+
+- **El portapapeles ya no lanza programas que no están** (`d2307ab`). Cuando no hay `wl-copy`, `xclip` ni `xsel`,
+  cada copia intentaba arrancarlos y mpv apuntaba «Subprocess failed: init», que se lee como avería. Ahora se
+  comprueba antes y se dice «sin portapapeles». Esto era la causa de buena parte de los fallos de «Compartir · ver
+  juntos», no el servicio de salas.
+- **El ASR vuelve a funcionar aquí**: el `whisper-cli` que había en `vendor/whisper/bin` se compiló en otra máquina y
+  pedía GLIBC 2.43; recompilado con el árbol local (`~/src/whisper.cpp`) y copiados binario y bibliotecas 1.9.5, las
+  pruebas de transcripción y de subtítulos pasan.
+- **`fpcalc` instalado** en `~/.local/bin` (Chromaprint 1.6.2, sin root): las pruebas de letras dejan de fallar por
+  «falta fpcalc».
+- **IPTV**: nombres de país al día y el arnés con la radio de TDTChannels (`30bbea0`).
+
 ## Resumen para Ser (2026-11-01, madrugada) · descargas que se siguen solas: suscripciones, índice y cola (YTDL F4, `5d926b6`)
 
 Con esto quedan cerradas las cuatro fases de la política de descargas. Lo que trae la F4, en palabras de uso:
