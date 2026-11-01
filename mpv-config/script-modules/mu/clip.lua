@@ -4,14 +4,29 @@
 -- H42/A4: every link that has to travel to another device is copied through here. Before this module mu-iptv,
 -- mu-remote and mu-share each carried their own copy of the same code.
 local mp = require('mp')
+local utils = require('mp.utils')
 
 local M = {}
+
+-- ¿está el programa? Lanzar un subproceso que no existe deja un error en el registro de mpv que se lee como
+-- avería («Subprocess failed: init»), y en un equipo sin X ni Wayland no hay ninguno: se comprueba antes.
+local function existe(nombre)
+  for _, dir in ipairs({ '/usr/bin/', '/usr/local/bin/', '/bin/', '/opt/homebrew/bin/' }) do
+    local info = utils.file_info(dir .. nombre)
+    if info and not info.is_dir then return true end
+  end
+  return false
+end
 
 local function helpers()
   local platform = mp.get_property_native('platform')
   if platform == 'windows' then return { { 'cmd', '/c', 'clip' } } end
-  if platform == 'darwin' then return { { 'pbcopy' } } end
-  return { { 'wl-copy' }, { 'xclip', '-selection', 'clipboard' }, { 'xsel', '--clipboard', '--input' } }
+  if platform == 'darwin' then return existe('pbcopy') and { { 'pbcopy' } } or {} end
+  local out = {}
+  if existe('wl-copy') then table.insert(out, { 'wl-copy' }) end
+  if existe('xclip') then table.insert(out, { 'xclip', '-selection', 'clipboard' }) end
+  if existe('xsel') then table.insert(out, { 'xsel', '--clipboard', '--input' }) end
+  return out
 end
 
 -- copy(text[, done]) → true when mpv's own clipboard took the text right away (nothing else is run). Otherwise the
