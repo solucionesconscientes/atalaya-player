@@ -139,9 +139,11 @@ def test_video_presets_sort_codecs_for_the_container():
     assert "-S" not in args_of(kind="audio_convert")
     orig = args_of(kind="audio_original")
     assert orig[orig.index("-S") + 1] == "acodec:opus"   # H31: the original Opus when the site has it
+    # «audio_opus_origen» también ordena: sin el -J, «+abr» es lo que trae el Opus de menor bitrate del origen
+    con_orden = ("audio_original", "audio_opus_origen")
     for p in PRESETS:
         argv = build_args(spec_from_preset(p["id"], URL, {"container": "mp4"}), "/tmp/out")
-        assert ("-S" in argv) == (p["group"] == "video" or p["id"] == "audio_original"), p["id"]
+        assert ("-S" in argv) == (p["group"] == "video" or p["id"] in con_orden), p["id"]
 
 
 @pytest.mark.skipif(not VENDORED.is_file(), reason="vendored yt-dlp missing (tools/vendor.sh)")

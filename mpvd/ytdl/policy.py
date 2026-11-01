@@ -1,12 +1,13 @@
 """Una sola verdad para decidir **qué pistas** se le piden a yt-dlp.
 
 Portado de la política ya probada del bot (``~/.local/share/ytdl/ytdlbot/formats.py``: ``plan()``,
-``elegir_audio()``, ``es_musica()``, ``_orden_video()``). Reglas que no se saltan:
+``elegir_audio()``, ``_orden_video()``). Reglas que no se saltan:
 
 * **El defecto no recodifica.** Convertir es una acción aparte (perfil ``convertir``), con su nombre.
 * **A igual altura gana el bitrate más bajo**: para guardar, un 720p a 1,5 Mbps es mejor que uno a 2,5.
-* **Voz y música no se tratan igual**: en voz el Opus más bajo del origen es indistinguible y ahorra la mitad;
-  en música el más alto es el único que conserva detalle.
+* **El audio por defecto es el original y el pequeño**: de los Opus del origen, el de menor bitrate; sin Opus, el
+  AAC de menor bitrate, y se dice. Sin ninguno de los dos, la mejor pista que haya y el aviso de que para
+  ``.opus``/``.m4a`` habría que convertir (otra pantalla). Nunca se recodifica en el camino de descarga.
 * **Un contenedor que no admite el códec se rechaza con el motivo**, nunca se descubre a mitad de la descarga.
 
 Este módulo no ejecuta nada ni conoce yt-dlp: recibe el ``-J`` (crudo o ya analizado por ``info.py``) y devuelve
@@ -69,17 +70,47 @@ NOMBRE = {"vp9": "VP9", "h264": "H.264", "hevc": "H.265", "av1": "AV1", "vp8": "
           "flac": "FLAC", "": ""}
 
 # Contenedor honesto de cada códec de audio suelto, y de cada pareja copiada tal cual (DISENO-YTDL-POLITICAS §3.2).
+# Un Opus suelto va en Ogg con extensión .opus, y un AAC suelto en .m4a: es lo que el códec admite sin tocarlo.
 CONTENEDOR_AUDIO = {"opus": "opus", "aac": "m4a", "vorbis": "webm", "mp3": "mp4", "flac": "mkv"}
 CON_VIDEO = (("h264", "aac", "mp4"), ("hevc", "aac", "mp4"), ("h264", "opus", "mkv"), ("hevc", "opus", "mkv"),
              ("vp9", "aac", "mkv"), ("vp9", "opus", "mkv"), ("av1", "aac", "mkv"), ("av1", "opus", "mkv"))
 
+# «Extensión compatible»: el mismo fichero Ogg con Opus dentro, entregado como .ogg porque hay programas que no
+# reconocen la extensión .opus. Es un renombrado al terminar, nunca una conversión.
+EXT_COMPATIBLE = {"opus": "ogg"}
+
+# Los avisos de la ficha cuando el origen no trae lo que se querría. Son texto para el usuario: salen tal cual.
+AVISO_SIN_OPUS = "el origen no trae Opus"
+AVISO_SIN_OPUS_NI_AAC = ("el origen no trae ni Opus ni AAC: para .opus o .m4a habría que convertirlo, "
+                         "y eso es otra pantalla")
+
+
+def lista_ids(ident: Any) -> list[str]:
+    """Uno o varios ``format_id`` → siempre una lista. ``None``, ``""`` y las listas vacías dan ``[]``.
+
+    La elección a mano admite **varias pistas** (dos audios, o audio y vídeo de doblajes distintos): se muxean tal
+    cual en un MKV. Por eso ``video_id``/``audio_id`` viajan como id suelto (el caso de siempre) o como lista.
+    """
+    if ident is None or ident == "":
+        return []
+    if isinstance(ident, (list, tuple)):
+        return [str(x) for x in ident if x not in (None, "")]
+    return [str(ident)]
+
+
+def _uno_o_varios(ids: list[str]) -> str | list[str] | None:
+    """Lo que se devuelve en la ``Decision``: el id suelto si es uno (lo que esperan el menú y la estimación)."""
+    if not ids:
+        return None
+    return ids[0] if len(ids) == 1 else ids
+
 
 @dataclass(frozen=True)
 class Decision:
-    """Lo que se va a pedir: dos pistas (o una) y un contenedor, sin recodificar salvo que se diga."""
+    """Lo que se va a pedir: las pistas elegidas y un contenedor, sin recodificar salvo que se diga."""
 
-    video_id: str | None
-    audio_id: str | None
+    video_id: str | list[str] | None
+    audio_id: str | list[str] | None
     contenedor: str            # "mkv" | "mp4" | "opus" | "m4a" | "webm"
     recodificar: bool          # siempre False salvo perfil «convertir»
     nota: str                  # «Opus del origen, el más bajo (voz)»
@@ -218,58 +249,52 @@ def _kbps(f: dict[str, Any] | None) -> int:
     return int(f["abr"] or f["tbr"])
 
 
-# ------------------------------------------------------------------ clasificación y pistas
-
-def clasificar(info: dict[str, Any]) -> str:
-    """``musica`` si el origen lo dice (categoría con «music», o ``track``/``artist``); si no, ``voz``.
-
-    La misma regla que ``es_musica()`` del bot: no se adivina por el título ni por la duración.
-    """
-    if not isinstance(info, dict):
-        return "voz"
-    cats = info.get("categories")
-    if cats is None:
-        cats = info.get("categorias")
-    texto = " ".join(str(c) for c in cats) if isinstance(cats, (list, tuple)) else str(cats or "")
-    if "music" in texto.lower():
-        return "musica"
-    if info.get("track") or info.get("artist"):
-        return "musica"
-    return "voz"
-
+# ------------------------------------------------------------------ las pistas del origen
 
 def pistas(info: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
-    """Lo que ofrece el origen, listo para pintar: vídeo por altura y audio por bitrate.
+    """**Todos** los flujos reales del origen, listos para pintar y para marcar varios: vídeo y audio.
 
-    Cada fila: ``id``, ``codec``, ``familia``, ``altura``/``fps`` (solo vídeo), ``kbps``, ``bytes``, ``idioma``,
-    ``ext`` y ``canales`` (solo audio). Los bytes son los que declara el origen; no se estiman con la duración
-    porque quien pinta la ficha ya la conoce.
+    Cada fila: ``id``, ``codec``, ``familia``, ``altura``/``ancho``/``fps`` (solo vídeo), ``kbps``, ``bytes``,
+    ``idioma``, ``ext`` y ``canales``/``asr`` (solo audio). ``bytes`` son los que declara el origen y, cuando no los
+    declara, los que salen del bitrate por la duración (``estimado`` lo dice): sin eso, media lista sale sin tamaño.
     """
     orden_v = {"vp9": 0, "h264": 1, "av1": 2, "hevc": 3, "otro": 4}
+    dur = _duracion(info)
     vids = _separadas(info) + _combinadas(info)
     vid = sorted(vids, key=lambda f: (-f["altura"], orden_v.get(f["vfam"], 9), -f["fps"], -f["bytes"], f["tbr"]))
     aud = sorted(_audios(info), key=lambda f: ({"opus": 0, "aac": 1}.get(f["afam"], 9), -_kbps(f), f["idioma"]))
     return {
         "video": [{"id": f["id"], "codec": NOMBRE.get(f["vfam"], f["vfam"]), "familia": f["vfam"],
                    "altura": f["altura"], "ancho": f["ancho"], "fps": int(f["fps"]), "kbps": int(f["tbr"]),
-                   "bytes": f["bytes"], "idioma": f["idioma"], "ext": f["ext"],
+                   "bytes": f["bytes"] or _bytes(f, dur), "estimado": not f["bytes"],
+                   "idioma": f["idioma"], "ext": f["ext"],
                    "con_audio": bool(f["afam"])} for f in vid],
         "audio": [{"id": f["id"], "codec": NOMBRE.get(f["afam"], f["afam"]), "familia": f["afam"],
-                   "kbps": _kbps(f), "canales": f["canales"], "asr": f["asr"], "bytes": f["bytes"],
+                   "kbps": _kbps(f), "canales": f["canales"], "asr": f["asr"],
+                   "bytes": f["bytes"] or _bytes(f, dur), "estimado": not f["bytes"],
                    "idioma": f["idioma"], "ext": f["ext"]} for f in aud],
     }
 
 
 # ------------------------------------------------------------------ contenedor por pareja
 
-def contenedor_valido(vcodec: str, acodec: str, pedido: str | None = None) -> tuple[str | None, str | None]:
+def contenedor_valido(vcodec: str, acodec: str, pedido: str | None = None, *,
+                      varias: bool = False, capitulos: bool = False) -> tuple[str | None, str | None]:
     """``(contenedor, None)`` si la pareja se puede copiar tal cual; ``(None, motivo)`` si no.
 
     Sin ``pedido`` devuelve el contenedor honesto de la pareja. Con ``pedido``, ese si lo admite y, si no, se
     rechaza con el motivo en castellano: el contenedor nunca se cambia en silencio.
+
+    ``varias`` (más de dos pistas marcadas) y ``capitulos`` (marcas de capítulo dentro del fichero) fuerzan MKV
+    aunque la pareja cupiera en MP4: es el único contenedor que admite varias pistas y capítulos sin recodificar.
     """
     vfam, afam = _familia_video(vcodec), _familia_audio(acodec)
     pedido = (pedido or "").strip().lower() or None
+    if vfam and (varias or capitulos):
+        if not pedido or pedido == "mkv":
+            return "mkv", None
+        return None, ("MKV es el único contenedor que lleva varias pistas o capítulos sin recodificar: "
+                      f"{pedido.upper()} no")
 
     if not vfam:                                   # solo audio: el contenedor lo pone el códec
         if not afam:
@@ -318,20 +343,21 @@ def _mejor_video(rows: list[dict[str, Any]], familias: tuple[str, ...],
     return sorted(pool, key=lambda f: (-f["altura"], 0 if f["bytes"] else 1, f["tbr"] or 1e9, -f["fps"]))[0]
 
 
-def _mejor_opus(audios: list[dict[str, Any]], musica: bool) -> dict[str, Any] | None:
-    """Voz → el Opus más bajo del origen; música → el más alto. A igualdad, el estéreo."""
-    opus = [f for f in audios if f["afam"] == "opus"]
-    if not opus:
-        return None
-    clave = lambda f: (_kbps(f), -f["canales"])     # noqa: E731 - una línea
-    return (max if musica else min)(opus, key=clave)
+def _audio_defecto(audios: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, str]:
+    """El audio del origen que se entrega por defecto, y el aviso que lleva la ficha.
 
-
-def _audio_general(audios: list[dict[str, Any]], musica: bool) -> dict[str, Any] | None:
-    """Sin Opus en el origen: se coge lo que haya y se dice en la nota (no se disimula)."""
+    Opus → el de menor bitrate (es el que se quiere: el original y el pequeño). Sin Opus → el AAC de menor
+    bitrate, y la ficha dice que el origen no trae Opus. Sin Opus ni AAC → la mejor pista que haya, y se avisa de
+    que para ``.opus``/``.m4a`` habría que convertir. En ningún caso se recodifica aquí.
+    """
+    for familia, aviso in (("opus", ""), ("aac", AVISO_SIN_OPUS)):
+        iguales = [f for f in audios if f["afam"] == familia]
+        if iguales:
+            # un bitrate que el origen no declara (0) no puede ganar un «el más bajo»: se deja para el final
+            return min(iguales, key=lambda f: (_kbps(f) or 1 << 30, -f["canales"])), aviso
     if not audios:
-        return None
-    return sorted(audios, key=lambda f: (_kbps(f), f["canales"]), reverse=musica)[0]
+        return None, ""
+    return max(audios, key=lambda f: (_kbps(f), f["canales"])), AVISO_SIN_OPUS_NI_AAC
 
 
 def _aac_cerca(audios: list[dict[str, Any]], objetivo: int = AAC_OBJETIVO) -> dict[str, Any] | None:
@@ -352,18 +378,18 @@ def _pista(info: dict[str, Any], ident: str | None, que: str) -> dict[str, Any] 
     raise ValueError(f"la pista de {que} {ident} ya no está en el origen")
 
 
-def _nota_audio(f: dict[str, Any] | None, tipo: str, elegido: bool = False, aac_objetivo: bool = False) -> str:
+def _nota_audio(f: dict[str, Any] | None, elegido: bool = False, aac_objetivo: bool = False,
+                aviso: str = "") -> str:
     if f is None:
         return "sin audio"
     nombre = NOMBRE.get(f["afam"], f["afam"])
     if elegido:
         return f"{nombre} {_kbps(f)}k del origen, copiado tal cual"
-    if f["afam"] == "opus":
-        return (f"Opus del origen, el mejor bitrate (música): {_kbps(f)}k" if tipo == "musica"
-                else f"Opus del origen, el bitrate más bajo (voz): {_kbps(f)}k")
     if aac_objetivo and f["afam"] == "aac":
         return f"{nombre} del origen, el más cercano a {AAC_OBJETIVO}k: {_kbps(f)}k"
-    return f"el origen no trae Opus: se entrega {nombre} {_kbps(f)}k"
+    cual = "el de menor bitrate" if f["afam"] in ("opus", "aac") else "la mejor pista del origen"
+    nota = f"{nombre} del origen, {cual}: {_kbps(f)}k"
+    return f"{nota} · {aviso}" if aviso else nota
 
 
 def _nota_video(f: dict[str, Any] | None) -> str:
@@ -373,7 +399,7 @@ def _nota_video(f: dict[str, Any] | None) -> str:
     return f"{nombre} {f['altura']}p {int(f['tbr'])}k" if f["altura"] else f"{nombre} {int(f['tbr'])}k"
 
 
-def _completa(f: dict[str, Any], tipo: str) -> Decision:
+def _completa(f: dict[str, Any]) -> Decision:
     """Una pista progresiva: el audio viaja dentro y no se puede sustituir (archive.org y compañía)."""
     contenedor = f["ext"] if f["ext"] in ("mp4", "webm", "mkv") else "mkv"
     return Decision(f["id"], None, contenedor, False,
@@ -444,13 +470,59 @@ def _plan_conversion(info: dict[str, Any], destino: dict[str, Any], audios: list
                     (_bytes(v, duracion) + _bytes(a, duracion)) or None)
 
 
-def plan(info: dict[str, Any], perfil: str, video_id: str | None = None,
-         audio_id: str | None = None, destino: dict[str, Any] | None = None) -> Decision:
-    """El plan de descarga: qué dos pistas y en qué contenedor, sin recodificar salvo ``convertir``.
+def _pistas_a_mano(info: dict[str, Any], video_id: Any, audio_id: Any, duracion: float,
+                   capitulos: bool) -> Decision:
+    """Las pistas que ha marcado el usuario, **una o varias**, muxeadas tal cual (nunca se recodifica).
 
-    ``video_id``/``audio_id`` mandan sobre el perfil (es lo que el usuario marcó a mano en «Pistas del
-    origen»). Si la pareja no cabe en ningún contenedor honesto, se lanza ``ValueError`` con el motivo: no se
-    cambia el contenedor ni el códec en silencio.
+    Con más de dos pistas el contenedor es MKV, que es el único que las lleva todas sin tocarlas; con una pareja
+    manda la tabla de ``contenedor_valido``, y si no cabe se dice cuál sí en vez de fallar al final de la descarga.
+    """
+    vids = [f for f in (_pista(info, i, "vídeo") for i in lista_ids(video_id)) if f]
+    auds = [f for f in (_pista(info, i, "audio") for i in lista_ids(audio_id)) if f]
+    for v in vids:
+        if not v["vfam"]:
+            raise ValueError(f"la pista {v['id']} es de audio, no de vídeo")
+    for a in auds:
+        if a["vfam"] or not a["afam"]:
+            raise ValueError(f"la pista {a['id']} no es una pista de audio suelta")
+    if not vids and not auds:
+        raise ValueError("«pistas» necesita al menos una pista de vídeo o de audio")
+    progresivas = [v for v in vids if v["afam"]]
+    if progresivas and (len(vids) > 1 or auds):
+        raise ValueError(f"la pista {progresivas[0]['id']} ya trae su propio audio: elige una de vídeo sin audio "
+                         "para combinar, o quita las de audio")
+    bytes_ = sum(_bytes(f, duracion) for f in vids + auds) or None
+    varias = len(vids) + len(auds) > 2
+
+    if not vids:                                   # audio suelto: el contenedor lo pone el códec (.opus, .m4a…)
+        contenedor = "mkv" if len(auds) > 1 else CONTENEDOR_AUDIO.get(auds[0]["afam"], "mkv")
+        nota = " + ".join(_nota_audio(a, elegido=True) for a in auds) + f" → {contenedor.upper()}"
+        return Decision(None, _uno_o_varios([a["id"] for a in auds]), contenedor, False, nota, bytes_)
+    if progresivas:                                # pista progresiva: ya trae su audio dentro
+        return _completa(vids[0])
+    if not auds:
+        elegido, aviso = _audio_defecto(_audios(info))
+        if elegido is None:
+            raise ValueError("el origen no ofrece ninguna pista de audio para acompañar al vídeo")
+        auds, bytes_ = [elegido], (bytes_ or 0) + _bytes(elegido, duracion) or None
+    contenedor, motivo = contenedor_valido(vids[0]["vcod"], auds[0]["acod"], varias=varias, capitulos=capitulos)
+    if contenedor is None:
+        raise ValueError(motivo or "esas pistas no se pueden copiar en un solo contenedor")
+    nota = " + ".join([_nota_video(v) for v in vids] + [_nota_audio(a, elegido=True) for a in auds])
+    return Decision(_uno_o_varios([v["id"] for v in vids]), _uno_o_varios([a["id"] for a in auds]),
+                    contenedor, False, f"{nota} → {contenedor.upper()}", bytes_)
+
+
+def plan(info: dict[str, Any], perfil: str, video_id: Any = None, audio_id: Any = None,
+         destino: dict[str, Any] | None = None, capitulos: bool = False) -> Decision:
+    """El plan de descarga: qué pistas y en qué contenedor, sin recodificar salvo ``convertir``.
+
+    ``video_id``/``audio_id`` mandan sobre el perfil (es lo que el usuario marcó a mano en «Pistas del origen») y
+    admiten **varias** pistas, como id suelto o como lista. Si no caben en ningún contenedor honesto, se lanza
+    ``ValueError`` con el motivo: no se cambia el contenedor ni el códec en silencio.
+
+    ``capitulos`` (marcas de capítulo dentro del fichero) fuerza MKV con las pistas elegidas a mano: MP4 no las
+    lleva sin recodificar.
 
     ``destino`` solo tiene sentido con el perfil ``convertir``: ``{"vcod": "hevc", "acod": "aac", "altura": 720}``.
     Lo que se convierte **después** de bajar (``mpvd/ytdl/transcode.py``); sin él, ``convertir`` se queda como
@@ -458,72 +530,50 @@ def plan(info: dict[str, Any], perfil: str, video_id: str | None = None,
     """
     if perfil not in PERFILES:
         raise ValueError(f"perfil de descarga desconocido: {perfil}")
-    tipo = clasificar(info)
-    musica = tipo == "musica"
     duracion = _duracion(info)
     audios = _audios(info)
 
     # --- un solo fichero de audio, el del origen, sin tocar
     if perfil == "opus_origen":
-        audio = (_pista(info, audio_id, "audio") if audio_id
-                 else _mejor_opus(audios, musica) or _audio_general(audios, musica))
+        if audio_id:
+            audio, aviso = _pista(info, lista_ids(audio_id)[0], "audio"), ""
+        else:
+            audio, aviso = _audio_defecto(audios)
         if audio is None:
             raise ValueError("este enlace no ofrece ninguna pista de audio utilizable")
         if audio["vfam"]:
             raise ValueError(f"la pista {audio['id']} es un vídeo: elige una pista de audio suelta")
         contenedor = CONTENEDOR_AUDIO.get(audio["afam"], "mkv")
-        nota = _nota_audio(audio, tipo, elegido=bool(audio_id))
-        if audio["afam"] != "opus" and not audio_id:
-            nota += f" · no hay Opus: el fichero va en .{contenedor}, sin recodificar"
+        nota = _nota_audio(audio, elegido=bool(audio_id), aviso=aviso)
+        if aviso:
+            nota += f" · el fichero va en .{contenedor}, sin recodificar"
         return Decision(None, audio["id"], contenedor, False, nota, _bytes(audio, duracion) or None)
 
-    # --- pistas elegidas a mano: se copian tal cual, contenedor por pareja
+    # --- pistas elegidas a mano: se copian tal cual, contenedor por lo que se haya marcado
     if perfil == "pistas":
-        v = _pista(info, video_id, "vídeo") if video_id else None
-        a = _pista(info, audio_id, "audio") if audio_id else None
-        if v is not None and not v["vfam"]:
-            raise ValueError(f"la pista {v['id']} es de audio, no de vídeo")
-        if a is not None and (a["vfam"] or not a["afam"]):
-            raise ValueError(f"la pista {a['id']} no es una pista de audio suelta")
-        if v is None and a is None:
-            raise ValueError("«pistas» necesita al menos una pista de vídeo o de audio")
-        if v is None:
-            contenedor = CONTENEDOR_AUDIO.get(a["afam"], "mkv")            # type: ignore[index]
-            return Decision(None, a["id"], contenedor, False,                # type: ignore[index]
-                            _nota_audio(a, tipo, elegido=True), _bytes(a, duracion) or None)  # type: ignore[arg-type]
-        if v["afam"]:                              # pista progresiva: ya trae su audio
-            if a is not None:
-                raise ValueError(f"la pista {v['id']} ya trae su propio audio: elige una de vídeo sin audio "
-                                 "para combinar, o quita la de audio")
-            return _completa(v, tipo)
-        if a is None:
-            a = _mejor_opus(audios, musica) or _audio_general(audios, musica)
-        if a is None:
-            raise ValueError("el origen no ofrece ninguna pista de audio para acompañar al vídeo")
-        contenedor, motivo = contenedor_valido(v["vcod"], a["acod"])
-        if contenedor is None:
-            raise ValueError(motivo or "esa pareja de pistas no se puede copiar en un solo contenedor")
-        nota = f"{_nota_video(v)} + {_nota_audio(a, tipo, elegido=True)} → {contenedor.upper()}"
-        return Decision(v["id"], a["id"], contenedor, False, nota,
-                        (_bytes(v, duracion) + _bytes(a, duracion)) or None)
+        return _pistas_a_mano(info, video_id, audio_id, duracion, capitulos)
 
     # --- perfiles de vídeo: el perfil elige y dice lo que ha elegido
+    aviso = ""
     if perfil == "video_720":
         v = (_mejor_video(_separadas(info), ("vp9",), VIDEO_720)
              or _mejor_video(_separadas(info), ("h264",), VIDEO_720)
              or _mejor_video(_separadas(info), ("av1", "hevc", "otro"), VIDEO_720))
-        a = _mejor_opus(audios, musica) or _audio_general(audios, musica)
+        a, aviso = _audio_defecto(audios)
         pedido, aac_obj = "mkv", False
     elif perfil == "compatible":
         v = (_mejor_video(_separadas(info), ("h264",), COMPATIBLE_MAX)
              or _mejor_video(_separadas(info), ("hevc", "vp9", "av1", "otro"), COMPATIBLE_MAX))
-        a = _aac_cerca(audios) or _mejor_opus(audios, musica) or _audio_general(audios, musica)
-        pedido, aac_obj = "mp4", True
+        a = _aac_cerca(audios)
+        aac_obj = True
+        if a is None:
+            a, aviso = _audio_defecto(audios)
+        pedido = "mp4"
     else:                                          # convertir: la conversión va después de bajar
         if destino:
             return _plan_conversion(info, destino, audios, duracion)
         v = _mejor_video(_separadas(info), ("vp9", "h264", "av1", "hevc", "otro"), None)
-        a = _mejor_opus(audios, musica) or _audio_general(audios, musica)
+        a, aviso = _audio_defecto(audios)
         pedido, aac_obj = "mkv", False
 
     if v is None:
@@ -532,7 +582,7 @@ def plan(info: dict[str, Any], perfil: str, video_id: str | None = None,
                                 VIDEO_720 if perfil == "video_720" else COMPATIBLE_MAX)
         if completa is None:
             raise ValueError("este enlace no ofrece ninguna pista de vídeo utilizable")
-        return _completa(completa, tipo)
+        return _completa(completa)
 
     contenedor, motivo = contenedor_valido(v["vcod"], (a or {}).get("acod", "none"), pedido)
     recodificar = perfil == "convertir"
@@ -547,7 +597,7 @@ def plan(info: dict[str, Any], perfil: str, video_id: str | None = None,
     if a is None:
         nota = f"{_nota_video(v)} (sin pista de audio suelta) → {contenedor.upper()}"
     else:
-        nota = f"{_nota_video(v)} + {_nota_audio(a, tipo, aac_objetivo=aac_obj)} → {contenedor.upper()}"
+        nota = f"{_nota_video(v)} + {_nota_audio(a, aac_objetivo=aac_obj, aviso=aviso)} → {contenedor.upper()}"
     if perfil == "compatible" and v["vfam"] != "h264":
         nota += " · el origen no ofrece H.264: no es el MP4 «compatible» de siempre"
     if perfil == "video_720" and v["altura"] > VIDEO_720:

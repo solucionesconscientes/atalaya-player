@@ -222,6 +222,9 @@ def download(url: str, opts: dict[str, list[str]], flags: set[str]) -> int:
         ext = first(opts, "--audio-format", default="m4a")
         if ext == "best":
             ext = "m4a"
+        if "--audio-format" not in opts and "opus" in fmt:
+            # como el binario de verdad: sin --audio-format se conserva el códec del origen, y un Opus sale en .opus
+            ext = "opus"
     else:
         # "mp4/mkv" = preference list; the fake pretends the first one is compatible
         ext = first(opts, "--merge-output-format", default="mp4").split("/")[0]

@@ -15,6 +15,9 @@ from mpvd.i18n import t
 from mpvd.ytdl import chapters, policy, sections, transcode
 
 CONTAINERS = ("mp4", "mkv", "webm")
+# Los contenedores que puede traer el plan de un audio suelto (policy.CONTENEDOR_AUDIO): no se eligen en el menú,
+# pero llegan en el spec cuando se baja una pista de audio marcada a mano, y rechazarlos sería rechazar el plan.
+CONTENEDORES_AUDIO = ("opus", "m4a", "ogg", "mp3", "flac")
 AUDIO_FORMATS = ("mp3", "opus", "m4a", "flac", "wav")   # los de yt-dlp (--audio-format); ALAC va por transcode
 AUDIO_BITRATES = (96, 128, 160, 192, 256, 320)
 SPONSORBLOCK_MODES = ("none", "mark", "remove")
@@ -38,10 +41,10 @@ POLICY_FORMAT = {
     "convertir": "bv*+ba/b",
 }
 # Orden de elección (-S) de cada perfil. A igual altura manda el bitrate MÁS BAJO («+tbr» ascendente): para guardar
-# interesa el fichero pequeño, no el que decodifica mejor este equipo. En «opus_origen» no hay -S: el Opus va en la
-# expresión y quién decide el bitrate es policy.plan (voz → el más bajo, música → el más alto).
+# interesa el fichero pequeño, no el que decodifica mejor este equipo. En «opus_origen» el «+abr» hace lo mismo con
+# el audio: el Opus de menor bitrate del origen, que es el que elige policy.plan cuando hay ``-J``.
 POLICY_SORT = {
-    "opus_origen": "",
+    "opus_origen": "+abr",
     "video_720": "vcodec:vp9,res,+tbr,acodec:opus",
     "compatible": "vcodec:h264,res,acodec:aac",
     "pistas": "res,+tbr,acodec:opus",
@@ -90,8 +93,10 @@ class DownloadSpec:
     url: str
     kind: str = "video"                 # video | exact | audio_original | audio_convert
     perfil: str | None = None           # política: opus_origen | video_720 | compatible | pistas | convertir
-    video_id: str | None = None         # perfil «pistas»: format_id exacto del vídeo (p. ej. "303")
-    audio_id: str | None = None         # perfil «pistas»/«opus_origen»: format_id exacto del audio (p. ej. "251")
+    # perfil «pistas»: los format_id exactos, uno ("303") o varios (["303", "251", "140"]); varios se muxean tal
+    # cual en un MKV, sin recodificar
+    video_id: str | list[str] | None = None
+    audio_id: str | list[str] | None = None
     video_codec: str | None = None      # códec de esa pista, para validar el contenedor antes de lanzar
     audio_codec: str | None = None
     height: int | None = None           # video: cap (None = best)
@@ -112,6 +117,10 @@ class DownloadSpec:
     hardware: bool = False              # codificar en la tarjeta gráfica, si esta máquina puede
     audio_canales: str = "conservar"    # conservar | estereo | mono
     loudness: str = "ninguna"           # ninguna | -18 (voz) | -14 (música)
+    # «Extensión compatible»: un audio Opus se entrega como .ogg en vez de .opus. Es un RENOMBRADO al terminar
+    # (mismo contenido, mismo tamaño): hay programas que no reconocen .opus y sí .ogg, y convertirlo sería perder
+    # calidad para nada.
+    ext_compatible: bool = False
     subtitles: bool = False
     sub_langs: str = DEFAULT_SUB_LANGS
     subs_mode: str = "embed"            # embed | file (.srt next to the video) | only (just the .srt)
@@ -153,8 +162,8 @@ class DownloadSpec:
             raise ValueError(f"perfil must be one of {policy.PERFILES}")
         if self.kind == "exact" and not self.format:
             raise ValueError("exact download needs a format")
-        if self.container not in CONTAINERS:
-            raise ValueError(f"container must be one of {CONTAINERS}")
+        if self.container not in CONTAINERS + CONTENEDORES_AUDIO:
+            raise ValueError(f"container must be one of {CONTAINERS + CONTENEDORES_AUDIO}")
         if self.audio_format not in AUDIO_FORMATS:
             raise ValueError(f"audio_format must be one of {AUDIO_FORMATS}")
         if self.audio_bitrate is not None and not (8 <= int(self.audio_bitrate) <= 512):
@@ -243,7 +252,8 @@ class DownloadSpec:
         if self.perfil == "pistas":
             return "pistas del origen, copiadas tal cual"
         if self.video_id or self.audio_id:
-            return f"pistas {self.video_id or '—'} + {self.audio_id or '—'} → {self.container}"
+            marcadas = policy.lista_ids(self.video_id) + policy.lista_ids(self.audio_id)
+            return f"pistas {'+'.join(marcadas)} → {self.container}"
         if self.kind == "video":
             return (f"vídeo {self.height}p" if self.height else "vídeo mejor calidad") + f" ({self.container})"
         if self.kind == "audio_original":
@@ -488,11 +498,14 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
     if vcodec not in VCODEC_SORTS:
         vcodec = "h264"
     perfil = spec.perfil or ""
-    explicito = bool(spec.video_id or spec.audio_id)
-    solo_pista_audio = bool(spec.audio_id) and not spec.video_id
-    es_audio = spec.is_audio or solo_pista_audio
+    ids_video, ids_audio = policy.lista_ids(spec.video_id), policy.lista_ids(spec.audio_id)
+    explicito = bool(ids_video or ids_audio)
+    solo_pista_audio = bool(ids_audio) and not ids_video
+    # `-x` (extraer el audio) vale para UNA pista: con varias marcadas lo que se quiere es un fichero con todas
+    # dentro, y ExtractAudio se quedaría con la primera
+    es_audio = (spec.is_audio or solo_pista_audio) and len(ids_audio) < 2
     only_subs = spec.subs_mode == "only"
-    if spec.video_codec and not only_subs:
+    if spec.video_codec and not only_subs and len(ids_video) + len(ids_audio) <= 2:
         # una pareja imposible se rechaza al elegir, con el motivo, no al terminar con el fichero a medias
         contenedor, motivo = policy.contenedor_valido(spec.video_codec, spec.audio_codec or "none", spec.container)
         if contenedor is None:
@@ -513,7 +526,14 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
         args += ["--datebefore", str(extra["datebefore"])]
     if not only_subs:
         if explicito:
-            expresion = ("+".join(x for x in (spec.video_id, spec.audio_id) if x))
+            # varias pistas: yt-dlp las muxea en un fichero («303+251+140»), copiando los flujos tal cual. Sin los
+            # --*-multistreams tira TODAS las pistas de la misma clase menos la primera, y sin avisar (comprobado
+            # con el yt-dlp vendorizado 2026.10.26: «302+251+140» bajaba solo 302+251)
+            expresion = "+".join(ids_video + ids_audio)
+            if len(ids_video) > 1:
+                args += ["--video-multistreams"]
+            if len(ids_audio) > 1:
+                args += ["--audio-multistreams"]
         elif perfil in POLICY_FORMAT and not spec.sections and not cap_sel:
             expresion = POLICY_FORMAT[perfil]
         else:
@@ -526,7 +546,7 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
             orden = "res"
         elif perfil:
             orden = POLICY_SORT.get(perfil, "")
-        elif spec.kind == "video" and FORMAT_SORT[spec.container]:
+        elif spec.kind == "video" and FORMAT_SORT.get(spec.container):
             orden = FORMAT_SORT[spec.container].format(vcodec=vcodec)
         elif spec.kind == "audio_original":
             # H31: the original Opus when there is one (YouTube: 251 over the AAC 140)
@@ -550,8 +570,9 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
         # fichero tal y como lo sirve el origen (nada de --recode-video ni --audio-format, que se saltarían el trabajo)
         args += ["--merge-output-format", "mkv"]
     else:
-        args += ["--merge-output-format", MERGE_PREFERENCES[spec.container]]
-        if REMUX_RULES[spec.container]:
+        # con varias pistas marcadas el contenedor es MKV (lo dice el plan): es el único que las lleva sin tocarlas
+        args += ["--merge-output-format", MERGE_PREFERENCES.get(spec.container, "mkv")]
+        if REMUX_RULES.get(spec.container):
             args += ["--remux-video", REMUX_RULES[spec.container]]
     langs = spec.sub_langs.replace("orig,", "").replace(",orig", "") if "orig" in spec.sub_langs.split(",") else \
         spec.sub_langs  # an unresolved «orig» (no info): the other languages

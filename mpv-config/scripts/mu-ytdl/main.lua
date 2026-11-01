@@ -94,7 +94,7 @@ local state = {
   chap = nil,            -- F2: {url, title, rows, sel} capítulos del vídeo y cuáles están marcados
   frag = nil,            -- F2: {url, rangos, join, aviso, bytes, total} fragmentos de tiempo elegidos
   plan = nil,            -- F3: {url, rows = {perfil → ficha}, pistas} las fichas previas de «Descargar»
-  picks = nil,           -- F3: {url, tracks, video, audio, plan, motivo} pistas elegidas a mano
+  picks = nil,           -- F3: {url, tracks, video = {ids}, audio = {ids}, plan, motivo} pistas marcadas a mano
   conv = nil,            -- F3: {url, cat, acod, vcod, ...} catálogo de conversión explícito
   subs = {},             -- F4: id → {activa} de la última lista de suscripciones (para alternar sin volver a preguntar)
   queue = nil,           -- F4: último informe de la cola {ok, failed, failed_items}
@@ -632,12 +632,13 @@ end
 
 local function default_dl_options(settings)
   return {
-    -- H75/F5: toda descarga de YouTube baja también la transcripción (.srt junto al fichero) salvo que se apague en
-    -- las opciones; es lo que hace falta para los capítulos con una IA y para buscar dentro de lo descargado.
-    container = settings.container or 'mp4', subtitles = settings.subtitles ~= false,
+    -- Los subtítulos van APAGADOS por defecto: una descarga baja el vídeo y nada más. Quien los quiera (para los
+    -- capítulos con una IA, o para buscar dentro de lo descargado) los enciende en las opciones.
+    container = settings.container or 'mp4', subtitles = settings.subtitles == true,
     chapters = settings.chapters ~= false, thumbnail = settings.thumbnail == true,
     metadata = settings.metadata ~= false, sponsorblock = settings.sponsorblock or 'none', playlist = false,
     subs_mode = settings.subs_mode or 'file', sub_langs = settings.sub_langs or 'orig,es.*,en.*',
+    ext_compatible = settings.ext_compatible == true,
   }
 end
 
@@ -676,8 +677,16 @@ end
 
 local function options_items(o)
   return {
-    opt_item('Contenedor de vídeo', o.container, 'inventory_2', 'container'),
-    opt_item('Subtítulos', SUBS_HINT[o.subtitles and (o.subs_mode or 'embed') or 'off'], 'subtitles', 'subtitles'),
+    -- El contenedor y la extensión del audio son lo mismo visto de dos maneras: van juntos y no gastan dos filas
+    { title = tr('Formato del fichero'), icon = 'inventory_2',
+      hint = o.container .. (o.ext_compatible and ' · .ogg' or ''), items = {
+        opt_item('Contenedor de vídeo', o.container, 'inventory_2', 'container'),
+        -- renombrado, no conversión: el mismo Opus con la extensión que reconocen los programas antiguos
+        opt_item(tr('Extensión compatible para el audio'), o.ext_compatible and '.ogg' or '.opus', 'label',
+                 'ext_compatible'),
+      } },
+    opt_item(tr('Descargar también los subtítulos'),
+             SUBS_HINT[o.subtitles and (o.subs_mode or 'embed') or 'off'], 'subtitles', 'subtitles'),
     opt_item('Idiomas de los subtítulos', sub_langs_label(o.sub_langs), 'translate', 'sub_langs'),
     opt_item('Capítulos', bool_hint(o.chapters), 'bookmarks', 'chapters'),
     opt_item('Miniatura como portada', bool_hint(o.thumbnail), 'image', 'thumbnail'),
@@ -798,8 +807,9 @@ views.download = function(args)
                    hint = plan and (plan.error or ficha(plan)) or tr('mirando qué hay…'),
                    value = { preset = a.preset, url = target, title = target and target_title or nil } }
       if plan and plan.error then it.muted, it.icon = true, 'info' end
-      if plan and plan.video_id and plan.audio_id and not plan.error then
+      if plan and (plan.video_id or plan.audio_id) and not plan.error then
         -- la descarga pide exactamente las pistas de la ficha, no una expresión que yt-dlp vuelva a decidir
+        -- (sin esto, «Opus del origen» prometía el de 64k y yt-dlp bajaba el de 160k)
         it.value.elegidas = { video = plan.video_id, audio = plan.audio_id }
       end
       table.insert(items, it)
@@ -832,7 +842,8 @@ views.download = function(args)
       end
     end
     table.insert(items, { title = tr('Opciones…'), icon = 'tune',
-                          hint = (o.subtitles and 'subs ' or '') .. (o.sponsorblock ~= 'none' and 'SB ' or '') .. o.container,
+                          hint = (o.subtitles and 'subs ' or '') .. (o.sponsorblock ~= 'none' and 'SB ' or '')
+                              .. (o.ext_compatible and '.ogg ' or '') .. o.container,
                           items = (function()
                             local filas = options_items(o)
                             table.insert(filas, { title = tr('Otras descargas…'), icon = 'download_for_offline',
@@ -853,6 +864,7 @@ local function start_download(params)
     thumbnail = state.dl_options.thumbnail, metadata = state.dl_options.metadata,
     subs_mode = state.dl_options.subs_mode, sub_langs = state.dl_options.sub_langs,
     sponsorblock = state.dl_options.sponsorblock, playlist = state.dl_options.playlist,
+    ext_compatible = state.dl_options.ext_compatible,
   } or nil
   if params.elegidas then
     -- F3: las dos pistas exactas de la ficha (o de «Pistas del origen»), para que se baje lo que se ha prometido
@@ -1259,9 +1271,10 @@ local function spec_elegido(url, extra)
   local o = state.dl_options or {}
   local spec = {
     url = url, title = state.title, perfil = 'compatible',
-    container = o.container or 'mp4', subtitles = o.subtitles ~= false, subs_mode = o.subs_mode or 'file',
+    container = o.container or 'mp4', subtitles = o.subtitles == true, subs_mode = o.subs_mode or 'file',
     sub_langs = o.sub_langs, chapters = false, thumbnail = o.thumbnail == true,
     metadata = o.metadata ~= false, sponsorblock = o.sponsorblock or 'none', playlist = false,
+    ext_compatible = o.ext_compatible == true,
   }
   for k, v in pairs(extra or {}) do spec[k] = v end
   return spec
@@ -1468,11 +1481,30 @@ views.frag_edit = function(args)
 end
 
 -- ---------------------------------------------------------------------------------------------
--- F3 · «Pistas del origen»: las dos listas de verdad (vídeo y audio) con su marca y la pareja resultante.
+-- F3 · «Pistas del origen»: TODOS los flujos del origen (vídeo y audio) con su marca y lo que saldría al juntarlos.
+-- Se pueden marcar VARIAS de cada clase (dos idiomas de audio, por ejemplo): se muxean tal cual, sin recodificar.
 --
--- La pantalla no decide qué pareja cabe: se lo pregunta a `ytdl.plan` cada vez que cambia la elección, y si no se
--- puede copiar en un contenedor honesto, mpvd contesta con el motivo y la fila de descargar queda apagada. «Todo a
--- Auto» vuelve a la pareja de la política (VP9 ≤720p + el Opus del origen), que es la misma que enseña «Descargar».
+-- La pantalla no decide qué cabe: se lo pregunta a `ytdl.plan` cada vez que cambia la elección, y si no se puede
+-- copiar en un contenedor honesto, mpvd contesta con el motivo (y con cuál sí) y la fila de descargar queda
+-- apagada. «Todo a Auto» vuelve a la elección de la política (VP9 ≤720p + el Opus más pequeño del origen), que es
+-- la misma que enseña «Descargar».
+
+-- Lo que viaja en el RPC: nada si no hay nada marcado, el id suelto si hay uno, la lista si hay varios.
+local function ids_rpc(t)
+  if not t or #t == 0 then return nil end
+  if #t == 1 then return t[1] end
+  return t
+end
+
+local function marcada(t, id)
+  for i, v in ipairs(t) do if v == id then return i end end
+  return nil
+end
+
+local function alternar(t, id)
+  local i = marcada(t, id)
+  if i then table.remove(t, i) else t[#t + 1] = id end
+end
 
 local function pista_v_titulo(r)
   local t = r.codec or ''
@@ -1484,8 +1516,9 @@ local function pista_v_hint(r)
   local out = {}
   if tonumber(r.fps) and r.fps > 0 then out[#out + 1] = string.format('%d fps', r.fps) end
   if tonumber(r.kbps) and r.kbps > 0 then out[#out + 1] = string.format('%d kbps', r.kbps) end
+  if r.idioma and r.idioma ~= '' then out[#out + 1] = r.idioma end
   local p = peso(r.bytes)
-  if p then out[#out + 1] = p end
+  if p then out[#out + 1] = (r.estimado and '~' or '') .. p end
   if r.con_audio then out[#out + 1] = tr('con el audio dentro') end
   return table.concat(out, ' · ')
 end
@@ -1502,21 +1535,24 @@ local function pista_a_hint(r)
   elseif tonumber(r.canales) and r.canales >= 2 then out[#out + 1] = tr('estéreo') end
   if r.idioma and r.idioma ~= '' then out[#out + 1] = r.idioma end
   local p = peso(r.bytes)
-  if p then out[#out + 1] = p end
+  if p then out[#out + 1] = (r.estimado and '~' or '') .. p end
   return table.concat(out, ' · ')
 end
 
--- La pareja elegida se comprueba en mpvd: contenedor y motivo salen de la misma verdad que después descarga.
+-- Lo marcado se comprueba en mpvd: contenedor y motivo salen de la misma verdad que después descarga. Los
+-- capítulos viajan también, porque un fichero con capítulos dentro solo cabe en MKV.
 local function comprobar_pareja()
   local p = state.picks
   if not p then return end
-  if not p.video and not p.audio then
+  local o = state.dl_options or {}
+  if #p.video == 0 and #p.audio == 0 then
     p.plan, p.motivo = nil, nil
     reopen_current()
     return
   end
   if state.view ~= 'tracks' then return end
-  rpc.call('ytdl.plan', { url = p.url, perfil = 'pistas', video_id = p.video, audio_id = p.audio },
+  rpc.call('ytdl.plan', { url = p.url, perfil = 'pistas', video_id = ids_rpc(p.video),
+                          audio_id = ids_rpc(p.audio), capitulos = o.chapters ~= false },
     function(err, res)
       if state.view ~= 'tracks' or state.picks ~= p then return end
       if err then p.plan, p.motivo = nil, fail(err, 'ytdl.plan')
@@ -1527,13 +1563,15 @@ end
 
 local function descargar_pistas()
   local p = state.picks
-  if not p or not p.plan then osd(tr('Esa pareja de pistas no se puede copiar')) return end
+  if not p or not p.plan then osd(tr('Esas pistas no se pueden copiar en un solo fichero')) return end
   local o = state.dl_options or {}
+  local con_video = #p.video > 0
   local spec = {
-    url = p.url, title = state.title, kind = p.video and 'video' or 'audio_original', perfil = 'pistas',
-    video_id = p.video, audio_id = p.audio, container = p.plan.contenedor,
-    subtitles = (p.video ~= nil) and (o.subtitles ~= false) or false, subs_mode = o.subs_mode or 'file',
-    sub_langs = o.sub_langs, chapters = false, thumbnail = o.thumbnail == true,
+    url = p.url, title = state.title, kind = con_video and 'video' or 'audio_original', perfil = 'pistas',
+    video_id = ids_rpc(p.video), audio_id = ids_rpc(p.audio), container = p.plan.contenedor,
+    subtitles = con_video and (o.subtitles == true) or false, subs_mode = o.subs_mode or 'file',
+    sub_langs = o.sub_langs, chapters = con_video and (o.chapters ~= false) or false,
+    thumbnail = o.thumbnail == true, ext_compatible = o.ext_compatible == true,
     metadata = o.metadata ~= false, sponsorblock = o.sponsorblock or 'none', playlist = false,
   }
   submit_raw(spec, tr('pistas del origen'))
@@ -1547,14 +1585,15 @@ views.tracks = function(args)
   end
   if not require_mpvd('Pistas del origen') then return end
   if not state.picks or state.picks.url ~= url then
-    state.picks = { url = url, tracks = nil, video = nil, audio = nil, plan = nil, motivo = nil }
+    state.picks = { url = url, tracks = nil, video = {}, audio = {}, plan = nil, motivo = nil }
     show(tr('Pistas del origen'), uosc.loading_items(tr('Mirando qué pistas trae…')))
     rpc.call('ytdl.pistas', { url = url, seed = state.seed }, function(err, res)
       if state.view ~= 'tracks' or not state.picks or state.picks.url ~= url then return end
       if err then show(tr('Pistas del origen'), uosc.message_items(fail(err, 'ytdl.pistas'), 'error')) return end
       state.picks.tracks = res
       if res.auto and res.auto.video_id then
-        state.picks.video, state.picks.audio = res.auto.video_id, res.auto.audio_id
+        state.picks.video = { res.auto.video_id }
+        state.picks.audio = res.auto.audio_id and { res.auto.audio_id } or {}
       end
       reopen_current()
       comprobar_pareja()
@@ -1577,23 +1616,26 @@ views.tracks = function(args)
     return
   end
   local auto = datos.auto
-  local es_auto = auto and p.video == auto.video_id and p.audio == auto.audio_id
+  local es_auto = auto and #p.video == 1 and p.video[1] == auto.video_id
+      and ((auto.audio_id == nil and #p.audio == 0) or (#p.audio == 1 and p.audio[1] == auto.audio_id))
   local vrows, arows = {}, {}
   for _, r in ipairs(datos.video) do
     vrows[#vrows + 1] = { title = pista_v_titulo(r), hint = pista_v_hint(r),
-                          icon = p.video == r.id and 'check_box' or 'check_box_outline_blank',
+                          icon = marcada(p.video, r.id) and 'check_box' or 'check_box_outline_blank',
                           value = { pick_video = r.id }, keep_open = true }
   end
   for _, r in ipairs(datos.audio) do
     arows[#arows + 1] = { title = pista_a_titulo(r), hint = pista_a_hint(r),
-                          icon = p.audio == r.id and 'check_box' or 'check_box_outline_blank',
+                          icon = marcada(p.audio, r.id) and 'check_box' or 'check_box_outline_blank',
                           value = { pick_audio = r.id }, keep_open = true }
   end
   local items = {
     { title = tr('Todo a Auto'), hint = es_auto and '✓' or nil, icon = 'auto_awesome',
       value = { pick_auto = true }, keep_open = true },
-    { title = tr('Vídeo'), hint = p.video and tostring(p.video) or tr('sin vídeo'), icon = 'movie', items = vrows },
-    { title = tr('Audio'), hint = p.audio or tr('sin audio'), icon = 'audiotrack', items = arows },
+    { title = tr('Imagen'), hint = #p.video > 0 and table.concat(p.video, ' + ') or tr('sin vídeo'),
+      icon = 'movie', items = vrows },
+    { title = tr('Idiomas del audio'), hint = #p.audio > 0 and table.concat(p.audio, ' + ') or tr('sin audio'),
+      icon = 'audiotrack', items = arows },
   }
   local ficha_pareja = p.motivo or (p.plan and ficha(p.plan)) or tr('eligiendo…')
   items[#items + 1] = { title = tr('Descargar con estas pistas'), hint = ficha_pareja, icon = 'download',
@@ -1601,7 +1643,7 @@ views.tracks = function(args)
   if p.motivo then
     items[#items + 1] = { title = p.motivo, icon = 'error', selectable = false, muted = true }
   end
-  show(titulo, items, { footnote = tr('Enter elige una pista y comprueba la pareja · Retroceso: atrás') })
+  show(titulo, items, { footnote = tr('Enter marca o desmarca · se pueden marcar varias · Retroceso: atrás') })
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -2565,15 +2607,18 @@ local function on_event(source, json)
     elseif v.pick_video or v.pick_audio then
       local p = state.picks
       if p then
-        if v.pick_video then p.video = v.pick_video end
-        if v.pick_audio then p.audio = v.pick_audio end
+        -- marcar y desmarcar: se pueden llevar varias pistas de cada clase, que se muxean tal cual
+        if v.pick_video then alternar(p.video, v.pick_video) end
+        if v.pick_audio then alternar(p.audio, v.pick_audio) end
         reopen_current()
         comprobar_pareja()
       end
     elseif v.pick_auto then
       local p = state.picks
       if p and p.tracks and p.tracks.auto then
-        p.video, p.audio = p.tracks.auto.video_id, p.tracks.auto.audio_id
+        local a = p.tracks.auto
+        p.video = a.video_id and { a.video_id } or {}
+        p.audio = a.audio_id and { a.audio_id } or {}
         reopen_current()
         comprobar_pareja()
       end

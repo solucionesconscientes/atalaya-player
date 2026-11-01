@@ -28,6 +28,7 @@ from typing import Any
 from mpvd.brand import folder_name
 from mpvd.i18n import t
 from mpvd.jobs import Job, JobQueue, Priority, Status
+from mpvd.ytdl import policy
 from mpvd.ytdl.binary import YtdlpBinary
 from mpvd.ytdl.index import Index, default_path as indice_default_path, id_de_ruta
 from mpvd.ytdl.presets import (
@@ -184,6 +185,30 @@ def borrar_restos(rutas: list[str]) -> None:
         for sufijo in ("", ".part", ".ytdl"):
             with contextlib.suppress(OSError):
                 Path(str(r) + sufijo).unlink()
+
+
+def extension_compatible(rutas: list[str]) -> list[str]:
+    """``.opus`` → ``.ogg`` con el interruptor «extensión compatible» puesto: se RENOMBRA, no se convierte.
+
+    El contenido es el mismo (Ogg con Opus dentro) y el fichero no se vuelve a escribir: solo cambia el nombre,
+    porque hay programas que no reconocen la extensión ``.opus`` y sí la ``.ogg``. Si el ``.ogg`` ya existe se deja
+    el ``.opus`` como está: perder el fichero de alguien para cambiarle la extensión no es un arreglo.
+    """
+    salida: list[str] = []
+    for r in rutas:
+        p = Path(str(r))
+        nueva = policy.EXT_COMPATIBLE.get(p.suffix.lower().lstrip("."))
+        destino = p.with_suffix("." + nueva) if nueva else None
+        if destino is not None and p.is_file() and not destino.exists():
+            try:
+                p.rename(destino)
+            except OSError as exc:                 # el fichero está bien: la extensión no es motivo para fallar
+                log.warning("ytdl: no se pudo renombrar %s a %s (%s)", p, destino, exc)
+            else:
+                salida.append(str(destino))
+                continue
+        salida.append(str(r))
+    return salida
 
 
 def _fecha_de(upload_date: Any) -> float | None:
@@ -980,6 +1005,9 @@ class DownloadManager:
             self._finish(item, "failed", "el fichero salió mal", problema)
             raise RuntimeError(problema)
         if rc == 0 and ps is not None and (ps.outputs or ps.stage == "done"):
+            if item.spec.ext_compatible:
+                # la extensión se cambia ANTES de anotar en el índice: lo que se apunta es el fichero que queda
+                item.outputs = extension_compatible(item.outputs)
             self.anotar_en_indice(item)
             self._finish(item, "done", "completado con yt-dlp nightly" if usado_nightly else "completado")
             return {"outputs": item.outputs}
@@ -1046,4 +1074,5 @@ class DownloadManager:
 
 
 __all__ = ["DownloadItem", "DownloadManager", "DownloadSettings", "ProgressState", "Status", "borrar_restos",
+           "extension_compatible",
            "comprobar_espacio", "default_media_dir", "espacio_libre", "fmt_eta", "necesario", "verificar_salida"]

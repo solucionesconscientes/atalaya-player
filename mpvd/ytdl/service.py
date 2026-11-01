@@ -500,9 +500,9 @@ class YtdlService:
 
     # -- fichas y pistas del origen (F3) --------------------------------------------------------
 
-    async def plan_of(self, url: str, perfil: str = "video_720", video_id: str | None = None,
-                      audio_id: str | None = None, destino: dict[str, Any] | None = None,
-                      seed: str | None = None) -> dict[str, Any]:
+    async def plan_of(self, url: str, perfil: str = "video_720", video_id: Any = None,
+                      audio_id: Any = None, destino: dict[str, Any] | None = None,
+                      seed: str | None = None, capitulos: bool = False) -> dict[str, Any]:
         """La ficha previa: qué pistas, en qué contenedor, cuánto ocupa y cuánto tarda.
 
         ``destino`` (solo con el perfil «convertir») dice a qué se convierte: ``{"vcod": "hevc", "acod": "aac",
@@ -517,7 +517,8 @@ class YtdlService:
         # la política primero: es la que rechaza con el motivo en castellano (pareja imposible, códec fuera del catálogo)
         d = policy.plan(datos, perfil, video_id, audio_id,
                         destino={"vcod": destino.get("vcod"), "acod": destino.get("acod"),
-                                 "altura": destino.get("altura")} if destino else None)
+                                 "altura": destino.get("altura")} if destino else None,
+                        capitulos=bool(capitulos))
         if destino:
             spec = spec_conversion(url, acod=destino.get("acod"), vcod=destino.get("vcod"),
                                    altura=destino.get("altura"), audio_bitrate=destino.get("audio_bitrate"),
@@ -823,17 +824,20 @@ def register(server: MpvdServer, service: YtdlService) -> None:  # noqa: C901 - 
             raise RpcError(INVALID_PARAMS, str(exc)) from None
 
     @d.method("ytdl.plan")
-    async def ytdl_plan(ctx: RpcContext, url: str, perfil: str = "video_720", video_id: str | None = None,
-                        audio_id: str | None = None, destino: dict[str, Any] | None = None,
-                        seed: str | None = None) -> dict[str, Any]:
+    async def ytdl_plan(ctx: RpcContext, url: str, perfil: str = "video_720",
+                        video_id: str | list[str] | None = None, audio_id: str | list[str] | None = None,
+                        destino: dict[str, Any] | None = None, seed: str | None = None,
+                        capitulos: bool = False) -> dict[str, Any]:
         """La ficha previa de una descarga: pistas, contenedor, tamaño y tiempo aproximados, **antes** de empezar.
 
-        Con ``perfil`` «pistas» y sus dos ids se comprueba la pareja (contenedor y motivo si no cabe); con
-        «convertir» y ``destino`` se dice a qué códec se convierte y cuánto va a ocupar el resultado.
+        Con ``perfil`` «pistas», uno o varios ids de cada clase (``"251"`` o ``["251", "140"]``) se comprueban
+        juntos: contenedor resultante, o el motivo si no caben. ``capitulos`` dice si el fichero va a llevar
+        marcas de capítulo dentro, que es lo que obliga a MKV. Con «convertir» y ``destino`` se dice a qué códec
+        se convierte y cuánto va a ocupar el resultado.
         """
         try:
             return await service.plan_of(url, perfil=perfil, video_id=video_id, audio_id=audio_id,
-                                         destino=destino, seed=seed)
+                                         destino=destino, seed=seed, capitulos=capitulos)
         except ValueError as exc:                    # pareja imposible, pista que ya no está, perfil raro
             raise RpcError(INVALID_PARAMS, str(exc)) from None
 

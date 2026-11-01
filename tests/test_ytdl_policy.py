@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from mpvd.ytdl import policy
-from mpvd.ytdl.policy import Decision, clasificar, contenedor_valido, pistas, plan
+from mpvd.ytdl.policy import Decision, contenedor_valido, pistas, plan
 from mpvd.ytdl.presets import DownloadSpec, build_args, spec_from_preset
 
 URL = "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
@@ -43,30 +43,20 @@ VOZ = {
 MUSICA = {**VOZ, "categories": ["Music"], "track": "Bolero", "artist": "Autor"}
 
 
-# ------------------------------------------------------------------ voz o música
-
-def test_clasificar_mira_lo_que_declara_el_origen():
-    assert clasificar(VOZ) == "voz"
-    assert clasificar(MUSICA) == "musica"
-    assert clasificar({"track": "Bolero"}) == "musica"            # sin categoría, basta el track
-    assert clasificar({"categorias": ["Music", "Latin"]}) == "musica"   # y la clave en castellano del bot
-    assert clasificar({}) == "voz"
-
-
 # ------------------------------------------------------------------ Opus del origen
 
-def test_opus_origen_voz_coge_el_opus_mas_bajo():
+def test_opus_origen_coge_el_opus_de_menor_bitrate():
     d = plan(VOZ, "opus_origen")
     assert d == Decision(None, "250", "opus", False, d.nota, d.bytes_estimados)
     assert d.audio_id == "250" and d.video_id is None
     assert d.contenedor == "opus" and d.recodificar is False
-    assert "más bajo" in d.nota and "64k" in d.nota
+    assert "menor bitrate" in d.nota and "64k" in d.nota
 
 
-def test_opus_origen_musica_coge_el_opus_mas_alto():
-    d = plan(MUSICA, "opus_origen")
-    assert d.audio_id == "251" and d.contenedor == "opus"
-    assert "música" in d.nota and "128k" in d.nota
+def test_lo_que_declare_el_origen_no_cambia_el_audio_que_se_elige():
+    """El dueño quiere el Opus pequeño: que el vídeo diga que es música no sube el bitrate por su cuenta."""
+    assert plan(MUSICA, "opus_origen").audio_id == "250"
+    assert plan(MUSICA, "video_720").audio_id == "250"
 
 
 def test_opus_origen_respeta_la_pista_elegida_a_mano():
@@ -85,10 +75,6 @@ def test_video_720_elige_vp9_y_el_de_menor_bitrate_a_igual_altura():
     assert "VP9 720p" in d.nota and "MKV" in d.nota
     # la copia HLS con DRM declara 900k (menos tbr) y no se elige: no se puede descargar
     assert d.video_id != "hls-720"
-
-
-def test_video_720_en_musica_lleva_el_opus_bueno():
-    assert plan(MUSICA, "video_720").audio_id == "251"
 
 
 def test_bytes_estimados_suma_lo_declarado_y_estima_lo_que_falta():
@@ -214,7 +200,8 @@ def test_build_args_de_audio_con_id_extrae_sin_convertir():
 
 def test_los_presets_nuevos_piden_lo_que_dicen():
     a = build_args(spec_from_preset("audio_opus_origen", URL), "/tmp/out")
-    assert a[a.index("-f") + 1] == "ba[acodec^=opus]/ba/b" and "-x" in a and "-S" not in a
+    assert a[a.index("-f") + 1] == "ba[acodec^=opus]/ba/b" and "-x" in a
+    assert a[a.index("-S") + 1] == "+abr"          # sin el -J, el Opus de menor bitrate también aquí
     v = build_args(spec_from_preset("video_720", URL), "/tmp/out")
     assert "[vcodec^=vp9][height<=?720]" in v[v.index("-f") + 1]
     assert v[v.index("-S") + 1] == "vcodec:vp9,res,+tbr,acodec:opus"      # a igual altura, el más pequeño
