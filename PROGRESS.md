@@ -13,6 +13,14 @@ ESTADO_GLOBAL: EN_CURSO
 - **`fpcalc` instalado** en `~/.local/bin` (Chromaprint 1.6.2, sin root): las pruebas de letras dejan de fallar por
   «falta fpcalc».
 - **IPTV**: nombres de país al día y el arnés con la radio de TDTChannels (`30bbea0`).
+- **Las salas se cierran cuando el reproductor muere** (`0bb08e9`): con el socket muerto todas las propiedades
+  devuelven `None` y la sala seguía abierta con «nada en reproducción», con los invitados esperando un cierre que no
+  llegaba. Tres vueltas seguidas sin una sola respuesta y se cierra avisando.
+
+**De 23 rojos a 9.** Los 9 que quedan y por qué: 4 de navegador (Chrome headless sin GPU tarda más de 15 min por
+prueba y el límite es 180 s), `test_install` (el `xdg-mime` de esta máquina es el de qtxdg y rechaza un `.desktop`
+mínimo), `test_mu_iptv_tracks` (el manifiesto HLS falso no trae el subtítulo que el test espera),
+`test_downloads_panel` y `test_mu_subs` (timeout de 180 s) y `test_smoke_mpv` (intermitente).
 
 ## Resumen para Ser (2026-11-01, madrugada) · descargas que se siguen solas: suscripciones, índice y cola (YTDL F4, `5d926b6`)
 
