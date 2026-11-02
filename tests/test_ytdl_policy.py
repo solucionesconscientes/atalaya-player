@@ -221,3 +221,57 @@ def test_convertir_solo_lo_dice_y_lo_marca():
     assert plan(VOZ, "video_720").recodificar is False
     with pytest.raises(ValueError, match="perfil de descarga desconocido"):
         plan(VOZ, "inventado")
+
+
+# ------------------------------------------------------------------ salidas de cada fuente de audio
+
+def test_audio_opus_ofrece_opus_por_copia_y_m4a_convirtiendo():
+    auds = {f["id"]: f for f in pistas(VOZ)["audio"]}
+    assert auds["250"]["salidas"] == [
+        {"ext": "opus", "contenedor": "opus", "accion": "copiar"},
+        {"ext": "m4a", "contenedor": "m4a", "accion": "convertir"},
+    ]
+
+
+def test_audio_aac_ofrece_m4a_por_copia_y_no_opus_por_copia():
+    auds = {f["id"]: f for f in pistas(VOZ)["audio"]}
+    salidas = auds["140"]["salidas"]
+    assert {"ext": "m4a", "contenedor": "m4a", "accion": "copiar"} in salidas
+    assert not any(s for s in salidas if s["ext"] == "opus" and s["accion"] == "copiar")
+    assert {"ext": "opus", "contenedor": "opus", "accion": "convertir"} in salidas
+
+
+def test_audio_vorbis_y_mp3_ofrecen_las_dos_convirtiendo():
+    info = {"duration": 60, "formats": [
+        {"format_id": "v1", "ext": "webm", "vcodec": "none", "acodec": "vorbis", "abr": 128},
+        {"format_id": "m1", "ext": "mp3", "vcodec": "none", "acodec": "mp3", "abr": 192},
+    ]}
+    auds = {f["id"]: f for f in pistas(info)["audio"]}
+    for pista in (auds["v1"], auds["m1"]):
+        assert [s["accion"] for s in pista["salidas"]] == ["convertir", "convertir"]
+        assert {s["ext"] for s in pista["salidas"]} == {"opus", "m4a"}
+
+
+# ------------------------------------------------------------------ selección inicial del selector
+
+def test_seleccion_inicial_es_vp9_mas_opus_en_mkv():
+    d = policy.seleccion_inicial(VOZ)
+    assert (d.video_id, d.audio_id, d.contenedor) == ("247", "250", "mkv")
+    assert d.recodificar is False
+
+
+def test_seleccion_inicial_sin_vp9_cae_en_la_mejor_de_video_y_contenedor_valido():
+    info = {"duration": 60, "formats": [
+        {"format_id": "137", "ext": "mp4", "vcodec": "avc1.640028", "acodec": "none", "height": 1080,
+         "tbr": 4400},
+        {"format_id": "140", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "abr": 129},
+    ]}
+    d = policy.seleccion_inicial(info)
+    assert d.video_id == "137" and d.contenedor == "mp4"
+    assert policy.contenedor_valido("h264", "aac", d.contenedor)[0] == "mp4"
+
+
+def test_contenedor_valido_nunca_ofrece_mp4_con_opus():
+    assert contenedor_valido("vp9", "opus") == ("mkv", None)
+    contenedor, motivo = contenedor_valido("h264", "opus", "mp4")
+    assert contenedor is None and "Opus no es estándar en MP4" in motivo

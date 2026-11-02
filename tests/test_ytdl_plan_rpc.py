@@ -136,8 +136,8 @@ def test_pistas_trae_las_dos_listas_con_lo_que_hace_falta_para_elegir(plan_env):
         ids = [r["id"] for r in res["video"] + res["audio"]]
         assert not [i for i in ids if i.startswith("sb")], ids
         assert "251-drc" not in ids and "251" in ids
-        # la pareja automática es la de la política, no la primera fila de la lista
-        assert res["auto"]["video_id"] == "302" and res["auto"]["audio_id"] == "249"
+        # la pareja automática es la mejor VP9 (sin tope de altura) y el Opus más pequeño del origen
+        assert res["auto"]["video_id"] == "315" and res["auto"]["audio_id"] == "249"
         assert res["auto"]["contenedor"] == "mkv"
 
     with_server(tmp_path, fn)

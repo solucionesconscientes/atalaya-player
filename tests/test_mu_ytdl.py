@@ -142,6 +142,11 @@ def test_hook_path_switch_quality_download_and_panel(ytdl_mpv, media_dir):
     head = [(i["title"], i["hint"]) for i in st["items"]][:3]
     assert head[0][0] == "Opus del origen" and "Opus" in head[0][1]
     assert head[1][0] == "Vídeo 720p VP9 + Opus"
+    # subtítulos: dos filas independientes y las dos en «no» por defecto
+    opts = next(i for i in st["items"] if i["title"] == "Opciones…")
+    subs_rows = [i for i in opts.get("items", []) if i["title"].startswith("Subtítulos")]
+    assert [i["title"] for i in subs_rows] == ["Subtítulos dentro del vídeo", "Subtítulos SRT aparte"]
+    assert [i["hint"] for i in subs_rows] == ["–", "–"]
     st = h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("view") == "download"
                          and any(i["title"] == "Vídeo 720p VP9 + Opus" and "~" in str(i.get("hint"))
                                  and "MKV" in str(i.get("hint")) for i in v.get("items", [])), timeout=40)

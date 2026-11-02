@@ -526,7 +526,8 @@ class YtdlService:
                                    fps=destino.get("fps"), two_pass=bool(destino.get("two_pass")),
                                    hardware=bool(destino.get("hardware")),
                                    audio_canales=str(destino.get("audio_canales") or "conservar"),
-                                   loudness=str(destino.get("loudness") or "ninguna"))
+                                   loudness=str(destino.get("loudness") or "ninguna"),
+                                   options={"audio_id": audio_id} if audio_id else None)
         else:
             spec = DownloadSpec(url=url, perfil=perfil, video_id=video_id, audio_id=audio_id,
                                 kind="audio_original" if perfil == "opus_origen" else "video")
@@ -540,8 +541,8 @@ class YtdlService:
     async def tracks_of(self, url: str, seed: str | None = None) -> dict[str, Any]:
         """Las pistas reales del origen, con lo que hace falta para elegir: códec, altura, fps, kbps, bytes, idioma.
 
-        ``auto`` es la pareja que elegiría la política (VP9 ≤720p + el Opus del origen): la vista la marca «Todo a
-        Auto» y así la primera pantalla ya dice qué saldría sin tocar nada.
+        ``auto`` es la pareja que el selector marca al abrirse (la mejor VP9 y el Opus del origen, en su
+        contenedor): la vista la marca «Todo a Auto» y así la primera pantalla ya dice qué saldría sin tocar nada.
         """
         datos = await self.raw_info(url, seed=seed)
         p = policy.pistas(datos)
@@ -550,7 +551,7 @@ class YtdlService:
                                "video": p["video"], "audio": p["audio"],
                                "counts": {"video": len(p["video"]), "audio": len(p["audio"])}, "auto": None}
         try:
-            out["auto"] = policy.plan(datos, "video_720").to_dict()
+            out["auto"] = policy.seleccion_inicial(datos).to_dict()
         except ValueError as exc:            # sin pistas separadas: la vista lo dice, no se inventa una pareja
             out["motivo"] = str(exc)
         return out
@@ -720,7 +721,8 @@ class YtdlService:
 
     async def resolve_langs(self, spec: DownloadSpec) -> None:
         """«orig» in the subtitle languages → the video's language (from its -J info; a list keeps ``.*-orig``)."""
-        if "orig" not in spec.sub_langs.split(",") or not (spec.subtitles or spec.subs_mode == "only"):
+        if "orig" not in spec.sub_langs.split(",") or not (
+                spec.subtitles or spec.subs_embed or spec.subs_file or spec.subs_mode == "only"):
             return
         language = None
         if not spec.playlist:
@@ -736,7 +738,9 @@ class YtdlService:
         if not url:
             raise RpcError(INVALID_PARAMS, "url required")
         s = self.downloads.settings
+        # compatibilidad: unos ajustes viejos con subtitles=True eran «dentro del vídeo»
         defaults = {"container": s.container, "sub_langs": s.sub_langs, "subtitles": s.subtitles,
+                    "subs_embed": s.subs_embed or s.subtitles, "subs_file": s.subs_file,
                     "chapters": s.chapters, "thumbnail": s.thumbnail, "metadata": s.metadata,
                     "sponsorblock": s.sponsorblock}
         options = {**defaults, **(params.get("options") or {})}

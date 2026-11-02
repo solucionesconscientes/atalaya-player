@@ -16,7 +16,7 @@ from mpvd.rpc import RpcError
 from mpvd.server import MpvdServer
 from mpvd.ytdl import subscriptions as subs
 from mpvd.ytdl.index import Index
-from mpvd.ytdl.presets import build_args
+from mpvd.ytdl.presets import DownloadSpec, build_args
 
 FIX = Path(__file__).parent / "fixtures" / "ytdlp"
 FEED_XML = (FIX / "youtube_feed.xml").read_bytes()
@@ -271,3 +271,24 @@ def test_rpc_subs_historico_enqueues_a_channel_with_archive(ytdl_env):
         assert "--yes-playlist" in d["argv"]
 
     with_server(tmp_path, fn)
+
+
+# -- subtítulos: dos opciones independientes, apagadas por defecto ---------------------------------
+
+
+def test_subs_embed_y_subs_file_apagados_por_defecto():
+    spec = DownloadSpec(url="https://x/y")
+    assert spec.subs_embed is False and spec.subs_file is False
+
+
+def test_subs_file_y_subs_embed_generan_sus_argumentos_y_conviven():
+    file = build_args(DownloadSpec(url="https://x/y", subs_file=True, sub_langs="es.*"), "/o")
+    assert "--write-subs" in file and "--sub-format" in file and "--convert-subs" in file
+    assert "--embed-subs" not in file and file[file.index("--sub-langs") + 1] == "es.*"
+    embed = build_args(DownloadSpec(url="https://x/y", subs_embed=True, sub_langs="es.*"), "/o")
+    assert "--embed-subs" in embed and "--convert-subs" not in embed
+    both = build_args(DownloadSpec(url="https://x/y", subs_embed=True, subs_file=True, sub_langs="es.*"), "/o")
+    assert "--embed-subs" in both and "--convert-subs" in both
+    # compatibilidad: subtitles=True + subs_mode=file equivale a subs_file
+    legacy = build_args(DownloadSpec(url="https://x/y", subtitles=True, subs_mode="file", sub_langs="es.*"), "/o")
+    assert "--convert-subs" in legacy and "--embed-subs" not in legacy

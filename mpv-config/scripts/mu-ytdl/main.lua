@@ -43,7 +43,7 @@ local opts = {
   clipboard_text = '',              -- tests: fixed clipboard contents instead of mpv's clipboard/text
 }
 options.read_options(opts, 'mu-ytdl')
--- remembered choices: the download options (container, subtitles…). H60 dropped "prefer_audio": an internet video
+-- remembered choices: the download options (container, subs…). H60 dropped "prefer_audio": an internet video
 -- always opens with its picture, and taking the video away is a thing of the moment (alt+a, or minimizing).
 local P = prefs.ns('mu-ytdl', { dl_options = {}, pick_preset = 'video_1080' })
 
@@ -77,7 +77,7 @@ local state = {
   last_event = nil,
   last_error = '',
   hook_path = '',
-  dl_options = nil,      -- {container, subtitles, chapters, thumbnail, metadata, sponsorblock, playlist}
+  dl_options = nil,      -- {container, subs_embed, subs_file, chapters, thumbnail, metadata, sponsorblock, playlist}
   presets = nil,
   info = nil,            -- last ytdl.info result (per url)
   items = {},            -- compact copy of the menu last shown (tests/diagnostics)
@@ -137,15 +137,27 @@ end
 
 -- uosc only exposes the open menu's type in user-data, so keep a compact copy of what we showed.
 local function remember(items)
+  local function compact(it)
+    local names = {}
+    for _, a in ipairs(it.actions or {}) do table.insert(names, a.name) end
+    local out = {
+      title = it.title or '', hint = it.hint or '', icon = it.icon or '', value = it.value or '',
+      active = it.active or false, submenu = it.items ~= nil and #it.items or 0, actions = names,
+    }
+    if it.items then                               -- un nivel: las filas de Opciones… se pueden comprobar
+      out.items = {}
+      for j, sub in ipairs(it.items) do
+        if j > 100 then break end
+        table.insert(out.items, { title = sub.title or '', hint = sub.hint or '', icon = sub.icon or '',
+                                  value = sub.value or '', active = sub.active or false })
+      end
+    end
+    return out
+  end
   local out = {}
   for i, it in ipairs(items or {}) do
     if i > 300 then break end
-    local names = {}
-    for _, a in ipairs(it.actions or {}) do table.insert(names, a.name) end
-    table.insert(out, {
-      title = it.title or '', hint = it.hint or '', icon = it.icon or '', value = it.value or '',
-      active = it.active or false, submenu = it.items ~= nil and #it.items or 0, actions = names,
-    })
+    table.insert(out, compact(it))
   end
   state.items = out
 end
@@ -631,13 +643,16 @@ end
 -- download --------------------------------------------------------------------------------------
 
 local function default_dl_options(settings)
+  -- Los subtítulos van APAGADOS por defecto: una descarga baja el vídeo y nada más. Quien los quiera (para los
+  -- capítulos con una IA, o para buscar dentro de lo descargado) enciende la fila que quiera en las opciones.
+  -- «subtitles» de ajustes viejos valía como «dentro del vídeo».
   return {
-    -- Los subtítulos van APAGADOS por defecto: una descarga baja el vídeo y nada más. Quien los quiera (para los
-    -- capítulos con una IA, o para buscar dentro de lo descargado) los enciende en las opciones.
-    container = settings.container or 'mp4', subtitles = settings.subtitles == true,
+    container = settings.container or 'mp4',
+    subs_embed = settings.subs_embed == true or settings.subtitles == true,
+    subs_file = settings.subs_file == true,
     chapters = settings.chapters ~= false, thumbnail = settings.thumbnail == true,
     metadata = settings.metadata ~= false, sponsorblock = settings.sponsorblock or 'none', playlist = false,
-    subs_mode = settings.subs_mode or 'file', sub_langs = settings.sub_langs or 'orig,es.*,en.*',
+    sub_langs = settings.sub_langs or 'orig,es.*,en.*',
     ext_compatible = settings.ext_compatible == true,
   }
 end
@@ -650,6 +665,14 @@ local function with_presets(cb)
       if not state.dl_options then
         state.dl_options = default_dl_options(res.settings or {})
         for k, v in pairs(P:get('dl_options')) do state.dl_options[k] = v end  -- the user's last choices
+        -- una preferencia vieja (subtitles/subs_mode) se traduce a las dos filas nuevas y se deja de arrastrar
+        local o = state.dl_options
+        if o.subtitles ~= nil then
+          if o.subtitles == true then
+            if o.subs_mode == 'file' then o.subs_file = true else o.subs_embed = true end
+          end
+          o.subtitles, o.subs_mode = nil, nil
+        end
         state.dl_options.playlist = false  -- "whole playlist" is per download, never remembered
       end
     end
@@ -664,8 +687,7 @@ local function opt_item(title, hint, icon, name)
 end
 
 local SB_HINT = { none = 'no', mark = 'marcar capítulos', remove = 'quitar segmentos' }
--- subtitles: off → inside the video → .srt next to it (H19); languages cycle through these
-local SUBS_HINT = { off = 'no', embed = 'dentro del vídeo', file = 'archivo SRT aparte' }
+-- subtítulos: dos filas independientes (dentro del vídeo / .srt aparte), las dos apagadas por defecto (H19)
 local SUB_LANGS = {
   { 'orig,es.*,en.*', 'originales + es + en' }, { 'orig', 'solo el original' }, { 'es.*', 'español' },
   { 'en.*', 'inglés' }, { 'all,-live_chat', 'todos' },
@@ -685,8 +707,8 @@ local function options_items(o)
         opt_item(tr('Extensión compatible para el audio'), o.ext_compatible and '.ogg' or '.opus', 'label',
                  'ext_compatible'),
       } },
-    opt_item(tr('Descargar también los subtítulos'),
-             SUBS_HINT[o.subtitles and (o.subs_mode or 'embed') or 'off'], 'subtitles', 'subtitles'),
+    opt_item(tr('Subtítulos dentro del vídeo'), bool_hint(o.subs_embed), 'subtitles', 'subs_embed'),
+    opt_item(tr('Subtítulos SRT aparte'), bool_hint(o.subs_file), 'subtitles', 'subs_file'),
     opt_item('Idiomas de los subtítulos', sub_langs_label(o.sub_langs), 'translate', 'sub_langs'),
     opt_item('Capítulos', bool_hint(o.chapters), 'bookmarks', 'chapters'),
     opt_item('Miniatura como portada', bool_hint(o.thumbnail), 'image', 'thumbnail'),
@@ -705,10 +727,6 @@ local function toggle_option(name)
   elseif name == 'sponsorblock' then
     local order = { none = 'mark', mark = 'remove', remove = 'none' }
     o.sponsorblock = order[o.sponsorblock] or 'none'
-  elseif name == 'subtitles' then
-    if not o.subtitles then o.subtitles, o.subs_mode = true, 'embed'
-    elseif o.subs_mode ~= 'file' then o.subs_mode = 'file'
-    else o.subtitles, o.subs_mode = false, 'embed' end
   elseif name == 'sub_langs' then
     local nxt = 1
     for i, l in ipairs(SUB_LANGS) do if l[1] == o.sub_langs then nxt = i % #SUB_LANGS + 1 end end
@@ -842,7 +860,7 @@ views.download = function(args)
       end
     end
     table.insert(items, { title = tr('Opciones…'), icon = 'tune',
-                          hint = (o.subtitles and 'subs ' or '') .. (o.sponsorblock ~= 'none' and 'SB ' or '')
+                          hint = ((o.subs_embed or o.subs_file) and 'subs ' or '') .. (o.sponsorblock ~= 'none' and 'SB ' or '')
                               .. (o.ext_compatible and '.ogg ' or '') .. o.container,
                           items = (function()
                             local filas = options_items(o)
@@ -860,9 +878,10 @@ local function start_download(params)
   params.url = params.url or state.url
   params.title = params.title or state.title
   params.options = state.dl_options and {
-    container = state.dl_options.container, subtitles = state.dl_options.subtitles, chapters = state.dl_options.chapters,
+    container = state.dl_options.container, subs_embed = state.dl_options.subs_embed,
+    subs_file = state.dl_options.subs_file, chapters = state.dl_options.chapters,
     thumbnail = state.dl_options.thumbnail, metadata = state.dl_options.metadata,
-    subs_mode = state.dl_options.subs_mode, sub_langs = state.dl_options.sub_langs,
+    sub_langs = state.dl_options.sub_langs,
     sponsorblock = state.dl_options.sponsorblock, playlist = state.dl_options.playlist,
     ext_compatible = state.dl_options.ext_compatible,
   } or nil
@@ -1271,7 +1290,7 @@ local function spec_elegido(url, extra)
   local o = state.dl_options or {}
   local spec = {
     url = url, title = state.title, perfil = 'compatible',
-    container = o.container or 'mp4', subtitles = o.subtitles == true, subs_mode = o.subs_mode or 'file',
+    container = o.container or 'mp4', subs_embed = o.subs_embed == true, subs_file = o.subs_file == true,
     sub_langs = o.sub_langs, chapters = false, thumbnail = o.thumbnail == true,
     metadata = o.metadata ~= false, sponsorblock = o.sponsorblock or 'none', playlist = false,
     ext_compatible = o.ext_compatible == true,
@@ -1529,6 +1548,16 @@ local function pista_a_titulo(r)
   return t
 end
 
+-- Cada fuente de audio dice qué ficheros se pueden sacar de ella; «(conversión)» es lo que NO hace la descarga
+-- sola: al elegir esa salida se abre «Convertir…» con esta fuente ya seleccionada.
+local function salidas_txt(r)
+  local out = {}
+  for _, s in ipairs(r.salidas or {}) do
+    out[#out + 1] = '.' .. s.ext .. (s.accion == 'convertir' and ' ' .. tr('(conversión)') or '')
+  end
+  return table.concat(out, ' · ')
+end
+
 local function pista_a_hint(r)
   local out = {}
   if tonumber(r.canales) and r.canales == 1 then out[#out + 1] = tr('mono')
@@ -1536,7 +1565,27 @@ local function pista_a_hint(r)
   if r.idioma and r.idioma ~= '' then out[#out + 1] = r.idioma end
   local p = peso(r.bytes)
   if p then out[#out + 1] = (r.estimado and '~' or '') .. p end
+  local s = salidas_txt(r)
+  if s ~= '' then out[#out + 1] = s end
   return table.concat(out, ' · ')
+end
+
+-- «VP9 + Opus · .mkv»: la pareja y el contenedor que saldrían de lo marcado. El contenedor lo pone mpvd en el
+-- plan (contenedor_valido); aquí solo se buscan los nombres de las pistas elegidas.
+local function pareja_resumen(datos, plan)
+  local function ids(v) if type(v) == 'table' then return v end return v and { v } or {} end
+  local function codec_de(rows, valor)
+    for _, id in ipairs(ids(valor)) do
+      for _, r in ipairs(rows or {}) do if tostring(r.id) == tostring(id) then return r.codec end end
+    end
+  end
+  local vn = codec_de(datos.video, plan.video_id)
+  local an = codec_de(datos.audio, plan.audio_id)
+  local partes = {}
+  if vn then partes[#partes + 1] = vn end
+  if an then partes[#partes + 1] = an end
+  if #partes == 0 then return nil end
+  return table.concat(partes, ' + ') .. ' · .' .. tostring(plan.contenedor)
 end
 
 -- Lo marcado se comprueba en mpvd: contenedor y motivo salen de la misma verdad que después descarga. Los
@@ -1569,7 +1618,7 @@ local function descargar_pistas()
   local spec = {
     url = p.url, title = state.title, kind = con_video and 'video' or 'audio_original', perfil = 'pistas',
     video_id = ids_rpc(p.video), audio_id = ids_rpc(p.audio), container = p.plan.contenedor,
-    subtitles = con_video and (o.subtitles == true) or false, subs_mode = o.subs_mode or 'file',
+    subs_embed = con_video and (o.subs_embed == true) or false, subs_file = con_video and (o.subs_file == true) or false,
     sub_langs = o.sub_langs, chapters = con_video and (o.chapters ~= false) or false,
     thumbnail = o.thumbnail == true, ext_compatible = o.ext_compatible == true,
     metadata = o.metadata ~= false, sponsorblock = o.sponsorblock or 'none', playlist = false,
@@ -1625,9 +1674,17 @@ views.tracks = function(args)
                           value = { pick_video = r.id }, keep_open = true }
   end
   for _, r in ipairs(datos.audio) do
+    local acciones = {}
+    for _, s in ipairs(r.salidas or {}) do
+      if s.accion == 'convertir' then
+        acciones[#acciones + 1] = { name = 'conv_' .. s.ext, icon = 'transform',
+                                    label = tr('Convertir a .%s'):format(s.ext) }
+      end
+    end
     arows[#arows + 1] = { title = pista_a_titulo(r), hint = pista_a_hint(r),
                           icon = marcada(p.audio, r.id) and 'check_box' or 'check_box_outline_blank',
-                          value = { pick_audio = r.id }, keep_open = true }
+                          value = { pick_audio = r.id }, keep_open = true,
+                          actions = #acciones > 0 and acciones or nil }
   end
   local items = {
     { title = tr('Todo a Auto'), hint = es_auto and '✓' or nil, icon = 'auto_awesome',
@@ -1637,7 +1694,10 @@ views.tracks = function(args)
     { title = tr('Idiomas del audio'), hint = #p.audio > 0 and table.concat(p.audio, ' + ') or tr('sin audio'),
       icon = 'audiotrack', items = arows },
   }
-  local ficha_pareja = p.motivo or (p.plan and ficha(p.plan)) or tr('eligiendo…')
+  local resumen = p.plan and pareja_resumen(datos, p.plan) or nil
+  local detalle = p.plan and ficha(p.plan) or nil
+  local ficha_pareja = p.motivo or (resumen and detalle and (resumen .. ' · ' .. detalle))
+      or resumen or detalle or tr('eligiendo…')
   items[#items + 1] = { title = tr('Descargar con estas pistas'), hint = ficha_pareja, icon = 'download',
                         muted = (p.plan == nil), value = { pick_down = true }, separator = true }
   if p.motivo then
@@ -1676,6 +1736,11 @@ local function conv_catalogo()
   return cat or { audio = {}, video = {}, canales = {}, loudness = {}, resoluciones = {}, fps = {} }
 end
 
+local function conv_acod_valido(cat, id)
+  for _, c in ipairs(cat.audio or {}) do if c.id == id then return true end end
+  return false
+end
+
 local function conv_ficha()
   local cv = state.conv
   if not cv then return nil end
@@ -1692,7 +1757,9 @@ local function conv_calcular()
     fps = cv.vcod and cv.fps or nil, two_pass = cv.vcod and cv.dos_pasadas or false,
     hardware = cv.vcod and cv.hardware or false, audio_canales = cv.canales, loudness = cv.loudness,
   }
-  rpc.call('ytdl.plan', { url = cv.url, perfil = 'convertir', destino = destino }, function(err, res)
+  rpc.call('ytdl.plan', { url = cv.url, perfil = 'convertir', destino = destino,
+                          audio_id = not cv.vcod and cv.audio_id or nil },
+           function(err, res)
     if state.view ~= 'convert' or state.conv ~= cv then return end
     if err then cv.plan, cv.motivo = nil, fail(err, 'ytdl.plan')
     else cv.plan, cv.motivo = res, nil end
@@ -1706,12 +1773,13 @@ local function conv_descargar()
   local o = state.dl_options or {}
   local spec = {
     url = cv.url, title = state.title, kind = cv.vcod and 'video' or 'audio_original',
-    vcod_destino = cv.vcod, acod_destino = cv.acod, audio_bitrate = cv.kbps,
+    audio_id = not cv.vcod and cv.audio_id or nil, vcod_destino = cv.vcod, acod_destino = cv.acod,
+    audio_bitrate = cv.kbps,
     crf = cv.vcod and cv.crf or nil, video_bitrate = cv.vcod and cv.vbitrate or nil,
     height = cv.vcod and cv.altura or nil, fps = cv.vcod and cv.fps or nil,
     two_pass = cv.vcod and cv.dos_pasadas or false, hardware = cv.vcod and cv.hardware or false,
     audio_canales = cv.canales, loudness = cv.loudness,
-    container = 'mkv', subtitles = false, chapters = false, metadata = o.metadata ~= false,
+    container = 'mkv', subs_embed = false, subs_file = false, chapters = false, metadata = o.metadata ~= false,
     sponsorblock = o.sponsorblock or 'none', playlist = false,
   }
   submit_raw(spec, tr('convertido a %s'):format(cv.vcod and cv.vcod:upper() or cv.acod:upper()))
@@ -1733,9 +1801,18 @@ views.convert = function(args)
     return
   end
   local cat = conv_catalogo()
-  if not state.conv or state.conv.url ~= url then
-    state.conv = { url = url, cat = cat, acod = 'mp3', vcod = nil, kbps = 192, canales = 'conservar',
-                   loudness = 'ninguna', crf = 23, altura = 720, fps = nil, dos_pasadas = false, hardware = false }
+  if not state.conv or state.conv.url ~= url
+      or (args.audio_id and state.conv.audio_id ~= args.audio_id) then
+    local acod = args.acod and conv_acod_valido(cat, args.acod) and args.acod or nil
+    local kbps = 192
+    if acod then
+      for _, c in ipairs(cat.audio or {}) do
+        if c.id == acod and c.bitrates and #c.bitrates > 0 then kbps = c.bitrates[3] or c.bitrates[#c.bitrates] end
+      end
+    end
+    state.conv = { url = url, audio_id = args.audio_id, cat = cat, acod = acod or 'mp3', vcod = nil, kbps = kbps,
+                   canales = 'conservar', loudness = 'ninguna', crf = 23, altura = 720, fps = nil,
+                   dos_pasadas = false, hardware = false }
     conv_calcular()
   end
   local cv = state.conv
@@ -2338,7 +2415,7 @@ local function pick_download()
   for i = 1, #pk.entries do if pk.fmt[i] or pk.srt[i] ~= nil then propios = true end end
   local srt_opts = function(on)
     if not on then return nil end
-    return { subtitles = true, subs_mode = 'file' }
+    return { subs_file = true }
   end
   if pk.source == 'url' and not propios then
     local idx = {}
@@ -2347,7 +2424,7 @@ local function pick_download()
     local params = { url = pk.url, title = pk.title, preset = pk.common, playlist = true,
                      playlist_items = not all and table.concat(idx, ',') or nil }
     if pk.common_srt then
-      params.options = { subtitles = true, subs_mode = 'file' }
+      params.options = { subs_file = true }
     end
     start_download(params)
     return
@@ -2604,6 +2681,15 @@ local function on_event(source, json)
       reopen_current()
     elseif v.frag_down then
       descargar_fragmentos()
+    elseif v.pick_audio and type(ev.action) == 'string' and ev.action:sub(1, 5) == 'conv_' then
+      local p = state.picks
+      if p then
+        -- la descarga copia el origen: una salida convertida se pide en «Convertir…», con esta fuente ya elegida
+        local ext = ev.action:sub(6)
+        osd(tr('Eso se consigue convirtiendo: se abre «Convertir…», no se hace al bajar'))
+        open_view({ name = 'convert', args = { url = p.url, audio_id = v.pick_audio,
+                                              acod = ext == 'm4a' and 'aac' or ext, title = state.title } })
+      end
     elseif v.pick_video or v.pick_audio then
       local p = state.picks
       if p then

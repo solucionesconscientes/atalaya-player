@@ -290,7 +290,9 @@ class DownloadSettings:
     auto_update: bool = True  # daily yt-dlp update (verified against the official checksums)
     container: str = "mp4"
     sub_langs: str = DEFAULT_SUB_LANGS
-    subtitles: bool = False
+    subtitles: bool = False     # compatibilidad: ajustes viejos; lo nuevo son las dos filas de abajo
+    subs_embed: bool = False    # subtítulos dentro del vídeo (por defecto, no)
+    subs_file: bool = False     # .srt al lado del vídeo (por defecto, no)
     chapters: bool = True
     thumbnail: bool = False
     metadata: bool = True

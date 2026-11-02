@@ -157,8 +157,8 @@ def test_formato_comun_formato_por_fila_srt_y_lo_que_no_se_puede_bajar(ytdl_mpv)
 
 
 def test_subtitles_options_and_subtitles_only(ytdl_mpv):
-    """Descargar → Opciones: subtítulos no → dentro del vídeo → archivo SRT aparte, idiomas que rotan; «Solo subtítulos
-    (SRT)» baja solo los .srt (sin vídeo) con «originales» resueltos por mpvd."""
+    """Descargar → Opciones: dos filas de subtítulos independientes (dentro del vídeo y .srt aparte), apagadas por
+    defecto; «Solo subtítulos (SRT)» baja solo los .srt (sin vídeo) con «originales» resueltos por mpvd."""
     h, d, arglog, _tmp = ytdl_mpv
     from tests.test_mu_ytdl import URL
 
@@ -171,9 +171,10 @@ def test_subtitles_options_and_subtitles_only(ytdl_mpv):
     st = ytdl_state(h, lambda v: v.get("view") == "download" and any(i["title"] == "Opciones…" for i in v.get("items", [])))
     opts = next(i for i in st["items"] if i["title"] == "Opciones…")
     assert opts["submenu"] > 0
-    for expected in ("dentro del vídeo", "archivo SRT aparte"):
-        send_event(h, {"type": "activate", "index": 1, "value": {"opt": "subtitles"}})
-        h.wait_property("user-data/mu/ytdl", lambda v, e=expected: bool(v) and v.get("view") == "download", timeout=10)
+    # las dos filas son independientes: se enciende la de incrustar y la de archivo, y se deja solo la de archivo
+    for name in ("subs_embed", "subs_file", "subs_embed"):
+        send_event(h, {"type": "activate", "index": 1, "value": {"opt": name}})
+        h.wait_property("user-data/mu/ytdl", lambda v: bool(v) and v.get("view") == "download", timeout=10)
     send_event(h, {"type": "activate", "index": 1, "value": {"opt": "sub_langs"}})   # → solo el original
     send_event(h, {"type": "activate", "index": 1, "value": {"opt": "sub_langs"}})   # → español
     st = ytdl_state(h, lambda v: v.get("view") == "download")

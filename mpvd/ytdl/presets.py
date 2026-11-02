@@ -121,9 +121,11 @@ class DownloadSpec:
     # (mismo contenido, mismo tamaño): hay programas que no reconocen .opus y sí .ogg, y convertirlo sería perder
     # calidad para nada.
     ext_compatible: bool = False
-    subtitles: bool = False
+    subtitles: bool = False             # compatibilidad: subtitles=True + subs_mode equivalen a las dos de abajo
+    subs_embed: bool = False            # subtítulos dentro del vídeo (por defecto, no)
+    subs_file: bool = False             # .srt al lado del vídeo (por defecto, no)
     sub_langs: str = DEFAULT_SUB_LANGS
-    subs_mode: str = "embed"            # embed | file (.srt next to the video) | only (just the .srt)
+    subs_mode: str = "embed"            # compatibilidad y «only»: embed | file | only (solo el .srt)
     thumbnail: bool = False
     metadata: bool = False
     sponsorblock: str = "none"          # none | mark | remove
@@ -580,13 +582,18 @@ def build_args(spec: DownloadSpec, out_dir: str, template: str = DEFAULT_TEMPLAT
     # .srt files that stay on disk: their paths come from an after_video print (after_move never runs without a
     # download); embedded subtitles are deleted once inside the video, so they are not reported
     subs_print = ["--print", f"after_video:{SUBS_PREFIX} %(requested_subtitles.:.filepath)j"]
+    # compatibilidad: «subtitles + subs_mode» de antes equivalen a las dos filas nuevas
+    subs_embed = spec.subs_embed or (spec.subtitles and spec.subs_mode == "embed")
+    subs_file = spec.subs_file or (spec.subtitles and spec.subs_mode == "file")
     if spec.subs_mode == "only":
         args += ["--skip-download", "--write-subs", "--write-auto-subs", "--sub-langs", langs, "--convert-subs", "srt",
                  *subs_print]
-    elif spec.subtitles and spec.subs_mode == "file":
-        args += ["--write-subs", "--write-auto-subs", "--sub-langs", langs, "--convert-subs", "srt", *subs_print]
-    elif spec.subtitles and not spec.is_audio:
-        args += ["--write-subs", "--write-auto-subs", "--sub-langs", langs, "--embed-subs"]
+    elif subs_file or (subs_embed and not spec.is_audio):
+        args += ["--write-subs", "--write-auto-subs", "--sub-langs", langs]
+        if subs_file:
+            args += ["--sub-format", "srt/best", "--convert-subs", "srt", *subs_print]
+        if subs_embed and not spec.is_audio:
+            args += ["--embed-subs"]
     if spec.chapters is True:
         args += ["--embed-chapters"]
     if spec.thumbnail:
