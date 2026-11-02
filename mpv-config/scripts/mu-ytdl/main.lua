@@ -1548,12 +1548,12 @@ local function pista_a_titulo(r)
   return t
 end
 
--- Cada fuente de audio dice qué ficheros se pueden sacar de ella; «(conversión)» es lo que NO hace la descarga
--- sola: al elegir esa salida se abre «Convertir…» con esta fuente ya seleccionada.
+-- Cada fuente de audio dice con qué extensión se entrega, copiada tal cual: .opus si es Opus, .m4a si es AAC.
+-- No hay conversiones en la descarga; convertir es otra pantalla.
 local function salidas_txt(r)
   local out = {}
   for _, s in ipairs(r.salidas or {}) do
-    out[#out + 1] = '.' .. s.ext .. (s.accion == 'convertir' and ' ' .. tr('(conversión)') or '')
+    out[#out + 1] = '.' .. s.ext
   end
   return table.concat(out, ' · ')
 end
@@ -1674,17 +1674,9 @@ views.tracks = function(args)
                           value = { pick_video = r.id }, keep_open = true }
   end
   for _, r in ipairs(datos.audio) do
-    local acciones = {}
-    for _, s in ipairs(r.salidas or {}) do
-      if s.accion == 'convertir' then
-        acciones[#acciones + 1] = { name = 'conv_' .. s.ext, icon = 'transform',
-                                    label = tr('Convertir a .%s'):format(s.ext) }
-      end
-    end
     arows[#arows + 1] = { title = pista_a_titulo(r), hint = pista_a_hint(r),
                           icon = marcada(p.audio, r.id) and 'check_box' or 'check_box_outline_blank',
-                          value = { pick_audio = r.id }, keep_open = true,
-                          actions = #acciones > 0 and acciones or nil }
+                          value = { pick_audio = r.id }, keep_open = true }
   end
   local items = {
     { title = tr('Todo a Auto'), hint = es_auto and '✓' or nil, icon = 'auto_awesome',
@@ -2681,15 +2673,6 @@ local function on_event(source, json)
       reopen_current()
     elseif v.frag_down then
       descargar_fragmentos()
-    elseif v.pick_audio and type(ev.action) == 'string' and ev.action:sub(1, 5) == 'conv_' then
-      local p = state.picks
-      if p then
-        -- la descarga copia el origen: una salida convertida se pide en «Convertir…», con esta fuente ya elegida
-        local ext = ev.action:sub(6)
-        osd(tr('Eso se consigue convirtiendo: se abre «Convertir…», no se hace al bajar'))
-        open_view({ name = 'convert', args = { url = p.url, audio_id = v.pick_audio,
-                                              acod = ext == 'm4a' and 'aac' or ext, title = state.title } })
-      end
     elseif v.pick_video or v.pick_audio then
       local p = state.picks
       if p then

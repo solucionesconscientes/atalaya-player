@@ -5,6 +5,7 @@ el yt-dlp falso.
 """
 
 import json
+import datetime
 import time
 from pathlib import Path
 
@@ -135,7 +136,9 @@ def test_store_add_update_delete_and_reload(tmp_path):
 def test_store_debida_respects_interval_and_window(tmp_path):
     store = subs.Suscripciones(tmp_path / "subs.json")
     s = store.add(CANAL, intervalo=360)
-    ahora = time.time()
+    # Hora fija (06:00 local) para que la prueba no dependa de cuándo se ejecute: con time.time(), a las
+    # 17:00 el +7 h caía dentro de la ventana 22-23 y el test fallaba sin que hubiera nada roto.
+    ahora = datetime.datetime(2026, 6, 15, 6, 0).timestamp()
     assert s.debida(ahora) is True                    # nunca se ha mirado
     s.ultima = ahora
     assert s.debida(ahora) is False
