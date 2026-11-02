@@ -73,6 +73,9 @@ NOMBRE = {"vp9": "VP9", "h264": "H.264", "hevc": "H.265", "av1": "AV1", "vp8": "
 # Contenedor honesto de cada códec de audio suelto, y de cada pareja copiada tal cual (DISENO-YTDL-POLITICAS §3.2).
 # Un Opus suelto va en Ogg con extensión .opus, y un AAC suelto en .m4a: es lo que el códec admite sin tocarlo.
 CONTENEDOR_AUDIO = {"opus": "opus", "aac": "m4a", "alac": "m4a", "vorbis": "webm", "mp3": "mp4", "flac": "mkv"}
+# Contenedor y extensión NATIVOS de cada familia de audio: se copia el flujo, no se recodifica.
+SALIDA_NATIVA = {"opus": ("opus", "opus"), "aac": ("m4a", "m4a"), "alac": ("m4a", "m4a"),
+                 "vorbis": ("webm", "webm"), "mp3": ("mp3", "mp3")}
 CON_VIDEO = (("h264", "aac", "mp4"), ("hevc", "aac", "mp4"), ("h264", "opus", "mkv"), ("hevc", "opus", "mkv"),
              ("vp9", "aac", "mkv"), ("vp9", "opus", "mkv"), ("av1", "aac", "mkv"), ("av1", "opus", "mkv"))
 
@@ -253,16 +256,18 @@ def _kbps(f: dict[str, Any] | None) -> int:
 # ------------------------------------------------------------------ las pistas del origen
 
 def _salidas_audio(fam: str) -> list[dict[str, str]]:
-    """Lo que se puede entregar de cada fuente: copiada tal cual o convertida (siempre con su nombre)."""
-    if fam == "opus":
-        return [{"ext": "opus", "contenedor": "opus", "accion": "copiar"},
-                {"ext": "m4a", "contenedor": "m4a", "accion": "convertir"}]
-    if fam in ("aac", "alac"):
-        return [{"ext": "m4a", "contenedor": "m4a", "accion": "copiar"},
-                {"ext": "opus", "contenedor": "opus", "accion": "convertir"}]
-    # Vorbis/MP3 (y lo que no tiene una salida copiable): las dos se consiguen convirtiendo
-    return [{"ext": "opus", "contenedor": "opus", "accion": "convertir"},
-            {"ext": "m4a", "contenedor": "m4a", "accion": "convertir"}]
+    """El fichero que se entrega de una fuente: **el suyo, copiado tal cual**, sin recodificar.
+
+    YouTube publica el mismo audio en dos familias, Opus y AAC, y cada una con varios bitrates. Todas esas
+    fuentes se ofrecen por separado y cada una con su contenedor nativo: Opus en ``.opus`` y AAC en ``.m4a``
+    (un AAC dentro de ``.m4a`` es un remuxeo, no una conversión). Convertir de una familia a otra es otra
+    cosa y va por la pantalla «Convertir…», nunca por el camino de descarga.
+    """
+    nativa = SALIDA_NATIVA.get(fam)
+    if not nativa:
+        return []
+    contenedor, ext = nativa
+    return [{"ext": ext, "contenedor": contenedor, "accion": "copiar"}]
 
 
 def pistas(info: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:

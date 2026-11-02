@@ -225,31 +225,38 @@ def test_convertir_solo_lo_dice_y_lo_marca():
 
 # ------------------------------------------------------------------ salidas de cada fuente de audio
 
-def test_audio_opus_ofrece_opus_por_copia_y_m4a_convirtiendo():
+def test_audio_opus_sale_en_opus_copiado():
+    """Una fuente Opus se entrega en .opus tal cual: no hay ninguna conversión en el camino de descarga."""
     auds = {f["id"]: f for f in pistas(VOZ)["audio"]}
-    assert auds["250"]["salidas"] == [
-        {"ext": "opus", "contenedor": "opus", "accion": "copiar"},
-        {"ext": "m4a", "contenedor": "m4a", "accion": "convertir"},
-    ]
+    assert auds["250"]["salidas"] == [{"ext": "opus", "contenedor": "opus", "accion": "copiar"}]
 
 
-def test_audio_aac_ofrece_m4a_por_copia_y_no_opus_por_copia():
+def test_audio_aac_sale_en_m4a_remuxeado():
+    """Un AAC dentro de .m4a es un remuxeo, no una conversión: se copia el flujo y solo cambia el contenedor."""
     auds = {f["id"]: f for f in pistas(VOZ)["audio"]}
-    salidas = auds["140"]["salidas"]
-    assert {"ext": "m4a", "contenedor": "m4a", "accion": "copiar"} in salidas
-    assert not any(s for s in salidas if s["ext"] == "opus" and s["accion"] == "copiar")
-    assert {"ext": "opus", "contenedor": "opus", "accion": "convertir"} in salidas
+    assert auds["140"]["salidas"] == [{"ext": "m4a", "contenedor": "m4a", "accion": "copiar"}]
 
 
-def test_audio_vorbis_y_mp3_ofrecen_las_dos_convirtiendo():
+def test_cada_fuente_de_audio_sale_con_su_contenedor_nativo():
+    """Todas las fuentes del origen aparecen, cada una con su extensión y sin conversiones escondidas."""
+    auds = pistas(VOZ)["audio"]
+    esperado = {"opus": "opus", "aac": "m4a"}
+    assert len(auds) >= 2, "el origen de prueba trae Opus y AAC"
+    for pista in auds:
+        salidas = pista["salidas"]
+        assert len(salidas) == 1, f"{pista['id']} no puede ofrecer dos ficheros distintos"
+        assert salidas[0]["accion"] == "copiar"
+        assert salidas[0]["ext"] == esperado.get(pista["familia"], salidas[0]["ext"])
+
+
+def test_audio_vorbis_y_mp3_salen_en_su_contenedor():
     info = {"duration": 60, "formats": [
         {"format_id": "v1", "ext": "webm", "vcodec": "none", "acodec": "vorbis", "abr": 128},
         {"format_id": "m1", "ext": "mp3", "vcodec": "none", "acodec": "mp3", "abr": 192},
     ]}
     auds = {f["id"]: f for f in pistas(info)["audio"]}
-    for pista in (auds["v1"], auds["m1"]):
-        assert [s["accion"] for s in pista["salidas"]] == ["convertir", "convertir"]
-        assert {s["ext"] for s in pista["salidas"]} == {"opus", "m4a"}
+    assert auds["v1"]["salidas"] == [{"ext": "webm", "contenedor": "webm", "accion": "copiar"}]
+    assert auds["m1"]["salidas"] == [{"ext": "mp3", "contenedor": "mp3", "accion": "copiar"}]
 
 
 # ------------------------------------------------------------------ selección inicial del selector
