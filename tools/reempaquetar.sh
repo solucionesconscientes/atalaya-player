@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Reempaquetar Atalaya (AppImage x86_64, .deb amd64, zip de Windows, instalador NSIS, latest.json y SHA256SUMS) y
-# comprobar POR DENTRO que cada paquete lleva el código nuevo: se busca una cadena del panel de canales (ADR-136)
+# comprobar POR DENTRO que cada paquete lleva el código nuevo: se busca una cadena del panel de canales (ADR-138)
 # dentro de lo extraído. Un paquete que no la lleve es un fallo, no un aviso.
+#
+# Antes de compilar, los ejecutables que hay en dist/ se apartan a dist/antiguos/<AAAA-MM-DD>/ con su SHA256SUMS:
+# un paquete nuevo no borra el anterior (si la build sale mal, la de ayer tiene que seguir existiendo).
 #
 # Uso: tools/reempaquetar.sh
 # Necesita: lo mismo que cada build_*.sh (uv, dpkg-deb, makensis, zip, 7z, unzip) y red la primera vez.
@@ -10,10 +13,28 @@ cd "$(dirname "$(readlink -f "$0")")/.."
 ROOT="$PWD"
 OUT="$ROOT/dist"
 LOG="$ROOT/tmp/reempaquetar.log"
-MARCA="panel_align"   # solo existe en el panel de canales nuevo (mu-iptv y el parche de uosc)
+MARCA="follow_selection"   # solo existe en el panel de canales de ADR-138 (mu-iptv y el parche de uosc)
 mkdir -p "$OUT" "$ROOT/tmp"
 : > "$LOG"
 fail=0
+
+# Los paquetes de la tanda anterior se guardan enteros, con sus sumas, antes de que los sobrescriba el build.
+archivar() {
+    local viejo="$OUT/antiguos/$(date +%F)" n=0 f
+    for f in "$OUT"/*.AppImage "$OUT"/*.deb "$OUT"/*.zip "$OUT"/*.exe; do
+        [ -f "$f" ] || continue
+        mkdir -p "$viejo"
+        mv -f "$f" "$viejo/"
+        n=$((n + 1))
+    done
+    for f in latest.json SHA256SUMS; do
+        [ -f "$OUT/$f" ] && mv -f "$OUT/$f" "$viejo/"
+    done
+    if [ "$n" -gt 0 ]; then
+        ( cd "$viejo" && sha256sum *.AppImage *.deb *.zip *.exe 2>/dev/null > SHA256SUMS )
+        echo "    apartados $n paquete(s) a dist/antiguos/$(date +%F) (con su SHA256SUMS)" | tee -a "$LOG"
+    fi
+}
 
 paso() {  # $1 = etiqueta, resto = comando
     local n="$1"; shift
@@ -53,6 +74,9 @@ verificar() {  # $1 = etiqueta, $2 = fichero
 
 echo "git: $(git log --oneline -1)" | tee -a "$LOG"
 echo "sin commit: $(git status --porcelain | wc -l) fichero(s) modificados en el árbol" | tee -a "$LOG"
+
+echo "=== apartar la build anterior ===" | tee -a "$LOG"
+archivar
 
 paso "AppImage x86_64" tools/build_appimage.sh --arch x86_64
 paso "deb amd64" tools/build_deb.sh --arch amd64
