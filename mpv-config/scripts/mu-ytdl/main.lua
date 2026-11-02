@@ -697,6 +697,16 @@ local function sub_langs_label(v)
   return v or ''
 end
 
+-- Versión de la app, para poder ver de un vistazo qué código está corriendo (un instalador viejo se nota aquí).
+local function app_version()
+  local dir = mp.get_script_directory()
+  if not dir then return nil end
+  local f = io.open(dir .. '/../../VERSION', 'r')
+  if not f then return nil end
+  local v = f:read('*l'); f:close()
+  return v and v:gsub('%s+$', '') or nil
+end
+
 local function options_items(o)
   return {
     -- El contenedor y la extensión del audio son lo mismo visto de dos maneras: van juntos y no gastan dos filas
@@ -868,8 +878,9 @@ views.download = function(args)
                                                   hint = tostring(#otras), items = otras, separator = true })
                             return filas
                           end)() })
+    local v = app_version()
     show(tr('Descargar · %s'):format(target_title or ''), items, {
-      footnote = tr('Enter descarga con la ficha que ves · Retroceso: atrás'),
+      footnote = tr('Enter descarga con la ficha que ves · Retroceso: atrás') .. (v and (' · v' .. v) or ''),
     })
   end)
 end

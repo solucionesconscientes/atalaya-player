@@ -26,6 +26,9 @@ p = Path("pyproject.toml"); p.write_text(re.sub(r'(?m)^version = "[^"]+"', f'ver
 q = Path("mpvd/__init__.py"); q.write_text(re.sub(r'(?m)^__version__ = "[^"]+"', f'__version__ = "{v}"', q.read_text(encoding="utf-8"), count=1), encoding="utf-8")
 print("pyproject:", tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])
 PY
+  # la versión visible dentro de la app (mpv-config/scripts/mu-ytdl/main.lua la lee de aquí)
+  python3 -c "import tomllib;open('VERSION','w').write(tomllib.load(open('pyproject.toml','rb'))['project']['version']+'\n')"
+  echo "VERSION: $(cat VERSION)" | tee -a "$LOG"
 fi
 
 log "batería completa"

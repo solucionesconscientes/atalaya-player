@@ -114,6 +114,7 @@ Section "Atalaya Player" SecMain
   ${EndIf}
 
   SetOutPath "$INSTDIR"
+  RMDir /r "$INSTDIR\mpv-config"
   File /r "${SRCDIR}\*.*"
 
   ; mpv: el del sistema manda (se actualiza y trae los drivers de la máquina). Solo si no hay ninguno se descomprime
