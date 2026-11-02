@@ -57,7 +57,7 @@ mkdir -p "$APP" "$PKGDIR/DEBIAN" "$PKGDIR/usr/bin" "$PKGDIR/usr/share/applicatio
 # 1. la aplicación: exactamente lo que lleva git (ni .venv, ni cachés, ni descargas de vendor, ni tests)
 # OJO: `locales` tiene que estar. Sin los catálogos todo cae al castellano sin avisar, porque ese respaldo
 # silencioso es justo lo que se diseñó (H49, ADR-087) — y el AppImage se publicó una vez sin ellos.
-git -C "$ROOT" ls-files -z -- bin mpv-config mpvd locales brand.json pyproject.toml vendor.lock README.md \
+git -C "$ROOT" ls-files -z -- bin mpv-config mpvd locales brand.json pyproject.toml vendor.lock README.md VERSION \
     docs/USO.md docs/ATAJOS.md docs/marca | (cd "$ROOT" && xargs -0 cp --parents -t "$APP")
 chmod 0755 "$APP/bin/mpv-uos" "$APP/bin/wake"
 if [ -d "$ROOT/mpv-config/scripts/uosc/bin" ]; then

@@ -44,7 +44,7 @@ rm -rf "$WORK"
 mkdir -p "$APP"
 
 # 1. la aplicación: lo que lleva git, más los dos lanzadores de Windows y el instalador opcional
-git -C "$ROOT" ls-files -z -- bin mpv-config mpvd locales brand.json pyproject.toml vendor.lock README.md \
+git -C "$ROOT" ls-files -z -- bin mpv-config mpvd locales brand.json pyproject.toml vendor.lock README.md VERSION \
     docs/USO.md docs/ATAJOS.md docs/PLATAFORMAS.md docs/marca tools/install.ps1 \
     | (cd "$ROOT" && xargs -0 cp --parents -t "$APP")
 mkdir -p "$APP/tools"

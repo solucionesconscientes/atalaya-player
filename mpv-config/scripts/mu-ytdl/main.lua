@@ -702,9 +702,15 @@ local function app_version()
   local dir = mp.get_script_directory()
   if not dir then return nil end
   local f = io.open(dir .. '/../../VERSION', 'r')
-  if not f then return nil end
-  local v = f:read('*l'); f:close()
-  return v and v:gsub('%s+$', '') or nil
+  if f then
+    local v = f:read('*l'); f:close()
+    if v and v:match('%d+%.%d+%.%d+') then return v:gsub('%s+$', '') end
+  end
+  -- respaldo: pyproject.toml viaja siempre en el paquete aunque VERSION no se copie
+  local g = io.open(dir .. '/../../pyproject.toml', 'r')
+  if not g then return nil end
+  local txt = g:read('*a'); g:close()
+  return txt and txt:match('version%s*=%s*"([%d%.]+)"') or nil
 end
 
 local function options_items(o)

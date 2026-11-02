@@ -55,7 +55,7 @@ rm -rf "$APPDIR"
 mkdir -p "$APP"
 # OJO: `locales` tiene que estar. Sin los catálogos, mpvd y los scripts no encuentran en.json/fr.json, todo cae
 # al castellano y nadie se entera, porque ese respaldo silencioso es justo lo que diseñamos (H49, ADR-087).
-git -C "$ROOT" ls-files -z -- bin mpv-config mpvd locales brand.json pyproject.toml vendor.lock README.md \
+git -C "$ROOT" ls-files -z -- bin mpv-config mpvd locales brand.json pyproject.toml vendor.lock README.md VERSION \
     docs/USO.md docs/ATAJOS.md docs/marca | (cd "$ROOT" && xargs -0 cp --parents -t "$APP")
 # uosc's helper binaries are fetched by tools/vendor.sh (ignored by git) and uosc needs them
 if [ -d "$ROOT/mpv-config/scripts/uosc/bin" ]; then
