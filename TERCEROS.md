@@ -9,6 +9,7 @@ usa, cómo lo usa y bajo qué licencia.
 | [mpv](https://mpv.io/) | el del sistema, sin fork y sin enlazar: el programa corre dentro de él como scripts | GPL-2.0-or-later / LGPL-2.1-or-later |
 | [uosc](https://github.com/tomasklaen/uosc) | vendorizado tal cual, usado por su API pública; sin modificar | LGPL-2.1 |
 | [yt-dlp](https://github.com/yt-dlp/yt-dlp) | proceso aparte, descargado con su suma de verificación | Unlicense |
+| [cloudflared](https://github.com/cloudflare/cloudflared) | proceso aparte, opcional: va dentro de los paquetes completos o se descarga al abrir una sala con internet, con suma de verificación | Apache-2.0 (texto y aviso en `licenses/cloudflared/`) |
 | ffmpeg | proceso aparte, el del sistema | LGPL/GPL según su compilación |
 | [whisper.cpp](https://github.com/ggerganov/whisper.cpp) | binario propio en `vendor/`, proceso aparte | MIT |
 | Modelos Whisper y OPUS-MT | se descargan, no se redistribuyen | la de cada modelo (OPUS-MT, CC-BY 4.0) |

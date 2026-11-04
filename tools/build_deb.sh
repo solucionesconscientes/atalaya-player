@@ -9,6 +9,8 @@
 # arrancar de lo que no va que negarse a instalar.
 #
 # Uso: tools/build_deb.sh [--arch amd64|arm64] [--extras desktop,impersonate] [--out DIR]
+# MU_PACKAGE_CLOUDFLARED=1 construye la variante COMPLETA (lleva cloudflared dentro, unos 40 MB); sin ella sale la
+# ligera, que no lo lleva y lo descarga mpvd la primera vez que una sala pide internet.
 # Necesita: git, uv, dpkg-deb, fakeroot, curl, sha256sum (y red la primera vez que se cruza a arm64).
 set -euo pipefail
 
@@ -17,13 +19,14 @@ ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 source "$ROOT/vendor.lock"
 ARCH="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
 EXTRAS="desktop"
+PACKAGE_CLOUDFLARED="${MU_PACKAGE_CLOUDFLARED:-0}"
 OUT="$ROOT/dist"
 while [ $# -gt 0 ]; do
   case "$1" in
     --arch) ARCH="$2"; shift 2 ;;
     --extras) EXTRAS="$2"; shift 2 ;;
     --out) OUT="$2"; shift 2 ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "opción desconocida: $1" >&2; exit 2 ;;
   esac
 done
@@ -58,7 +61,7 @@ mkdir -p "$APP" "$PKGDIR/DEBIAN" "$PKGDIR/usr/bin" "$PKGDIR/usr/share/applicatio
 # OJO: `locales` tiene que estar. Sin los catálogos todo cae al castellano sin avisar, porque ese respaldo
 # silencioso es justo lo que se diseñó (H49, ADR-087) — y el AppImage se publicó una vez sin ellos.
 git -C "$ROOT" ls-files -z -- bin mpv-config mpvd locales brand.json pyproject.toml vendor.lock README.md VERSION \
-    docs/USO.md docs/ATAJOS.md docs/marca | (cd "$ROOT" && xargs -0 cp --parents -t "$APP")
+    TERCEROS.md licenses docs/USO.md docs/ATAJOS.md docs/marca | (cd "$ROOT" && xargs -0 cp --parents -t "$APP")
 chmod 0755 "$APP/bin/mpv-uos" "$APP/bin/wake"
 if [ -d "$ROOT/mpv-config/scripts/uosc/bin" ]; then
   cp -a "$ROOT/mpv-config/scripts/uosc/bin" "$APP/mpv-config/scripts/uosc/"
@@ -70,6 +73,12 @@ mkdir -p "$APP/vendor/bin"
 if [ -f "$ROOT/vendor/bin/yt-dlp" ] && [ "$ARCH" = "$(dpkg --print-architecture)" ]; then
   cp "$ROOT/vendor/bin/yt-dlp" "$APP/vendor/bin/"
   [ -f "$ROOT/vendor/bin/yt-dlp.version" ] && cp "$ROOT/vendor/bin/yt-dlp.version" "$APP/vendor/bin/"
+fi
+if [ "$PACKAGE_CLOUDFLARED" = "1" ]; then
+  case "$ARCH" in amd64) cf_arch=x86_64 ;; arm64) cf_arch=aarch64 ;; esac
+  # shellcheck source=/dev/null
+  source "$ROOT/tools/vendor_cloudflared.sh"
+  fetch_cloudflared linux "$cf_arch" "$APP/vendor/bin/cloudflared"
 fi
 
 # 2. el intérprete, reubicable. Para la arquitectura de la máquina se copia el que gestiona uv; para la otra se
@@ -171,6 +180,8 @@ MimeType=video/mp4;video/x-matroska;video/webm;audio/mpeg;audio/flac;audio/ogg;x
 EOF
 cp "$ROOT/mpvd/remote/www/icon-512.png" "$PKGDIR/usr/share/icons/hicolor/512x512/apps/$APP_ID.png"
 cp "$ROOT/docs/USO.md" "$PKGDIR/usr/share/doc/$PKG/"
+cp "$ROOT/TERCEROS.md" "$PKGDIR/usr/share/doc/$PKG/"
+cp -a "$ROOT/licenses" "$PKGDIR/usr/share/doc/$PKG/"
 cat > "$PKGDIR/usr/share/doc/$PKG/copyright" <<EOF
 Upstream-Name: $NAME
 Source: $SITE
@@ -182,6 +193,8 @@ License: GPL-2+
  General de GNU, versión 2 o posterior. El texto completo está en /usr/share/common-licenses/GPL-2.
  .
  uosc y thumbfast van dentro con su propia licencia; mpv no va dentro (se usa el del sistema).
+ cloudflared (Apache-2.0) puede ir dentro o descargarse al usar las salas; su licencia y aviso están en
+ /usr/share/doc/$PKG/licenses/cloudflared/.
 EOF
 printf '%s (%s) unstable; urgency=low\n\n  * Paquete generado por tools/build_deb.sh.\n\n -- %s  %s\n' \
   "$PKG" "$VERSION" "$MAINTAINER" "$(date -R)" | gzip -9n > "$PKGDIR/usr/share/doc/$PKG/changelog.gz"
@@ -334,6 +347,7 @@ chmod 0755 "$PKGDIR/usr/bin/$APP_ID" "$APP/bin/mpv-uos" "$APP/bin/wake" "$PKGDIR
            "$PKGDIR/DEBIAN/postrm" "$APP/python/bin/python3.12"
 find "$APP/python/bin" -type f -exec chmod 0755 {} +
 [ -f "$APP/vendor/bin/yt-dlp" ] && chmod 0755 "$APP/vendor/bin/yt-dlp"
+[ -f "$APP/vendor/bin/cloudflared" ] && chmod 0755 "$APP/vendor/bin/cloudflared"
 for b in "$APP/mpv-config/scripts/uosc/bin/"*linux*; do [ -e "$b" ] && chmod 0755 "$b"; done
 chmod 0440 "$PKGDIR/etc/sudoers.d/$APP_ID-rtcwake"
 # Despojar los binarios del intérprete (el tarball «stripped» deja algunos módulos con símbolos). Solo se puede

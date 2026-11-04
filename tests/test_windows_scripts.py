@@ -155,7 +155,8 @@ def test_ps1_avoids_powershell7_only_syntax(script: Path):
 def test_vendor_lock_pins_the_windows_binaries():
     lock = dict(line.split("=", 1) for line in (ROOT / "vendor.lock").read_text().splitlines()
                 if line and not line.startswith("#") and "=" in line)
-    for key in ("YTDLP_EXE_SHA256", "WHISPER_WIN_SHA256", "DENO_SHA256_x86_64_windows", "UOSC_ZIP_SHA256"):
+    for key in ("YTDLP_EXE_SHA256", "WHISPER_WIN_SHA256", "DENO_SHA256_x86_64_windows", "UOSC_ZIP_SHA256",
+                "CLOUDFLARED_SHA256_x86_64_windows"):
         assert re.fullmatch(r"[0-9a-f]{64}", lock[key]), key
     assert lock["WHISPER_WIN_URL"] == (f"https://github.com/ggml-org/whisper.cpp/releases/download/"
                                        f"{lock['WHISPER_WIN_VERSION']}/whisper-bin-x64.zip")
@@ -163,6 +164,16 @@ def test_vendor_lock_pins_the_windows_binaries():
     for key in ("YTDLP_VERSION", "YTDLP_EXE_SHA256", "WHISPER_WIN_URL", "WHISPER_WIN_SHA256", "DENO_BASE_URL",
                 "DENO_SHA256_x86_64_windows", "UOSC_ZIP_URL", "UOSC_ZIP_SHA256", "SHA2-256SUMS"):
         assert key in install, key
+
+
+def test_el_paquete_windows_sabe_hacer_las_dos_variantes_de_cloudflared():
+    """F1 · el zip y el instalador meten o quitan cloudflared según MU_PACKAGE_CLOUDFLARED; la ligera es la de serie."""
+    zip_script = (ROOT / "tools" / "build_zip_windows.sh").read_text(encoding="utf-8")
+    inst_script = (ROOT / "tools" / "build_win_installer.sh").read_text(encoding="utf-8")
+    for texto in (zip_script, inst_script):
+        assert 'MU_PACKAGE_CLOUDFLARED:-0' in texto
+        assert "fetch_cloudflared windows x86_64" in texto
+    assert "cloudflared.exe" in zip_script and "cloudflared.exe" in inst_script
 
 
 # -- Python side of the Windows port (no PowerShell needed) ---------------------------------------------------------

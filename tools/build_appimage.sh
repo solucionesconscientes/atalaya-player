@@ -7,6 +7,8 @@
 # Usage: tools/build_appimage.sh [--arch x86_64|aarch64] [--extras desktop,impersonate] [--out DIR]
 # Con --arch aarch64 se CRUZA desde x86-64 (intérprete y ruedas de aarch64 + el runtime de AppImage
 # para esa arquitectura): el paquete se construye y se inspecciona, pero no se puede ejecutar aquí.
+# MU_PACKAGE_CLOUDFLARED=1 construye la variante COMPLETA (lleva cloudflared dentro, unos 40 MB); sin ella sale la
+# ligera, que no lo lleva y lo descarga mpvd la primera vez que una sala pide internet.
 # Needs: git, uv, curl, sha256sum (and network the first time: appimagetool and its runtime).
 set -euo pipefail
 
@@ -14,6 +16,7 @@ ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 # shellcheck source=/dev/null
 source "$ROOT/vendor.lock"
 EXTRAS="desktop"
+PACKAGE_CLOUDFLARED="${MU_PACKAGE_CLOUDFLARED:-0}"
 OUT="$ROOT/dist"
 ARCH="$(uname -m)"
 while [ $# -gt 0 ]; do
@@ -21,7 +24,7 @@ while [ $# -gt 0 ]; do
     --extras) EXTRAS="$2"; shift 2 ;;
     --arch) ARCH="$2"; shift 2 ;;
     --out) OUT="$2"; shift 2 ;;
-    -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
     *) echo "opción desconocida: $1" >&2; exit 2 ;;
   esac
 done
@@ -56,7 +59,7 @@ mkdir -p "$APP"
 # OJO: `locales` tiene que estar. Sin los catálogos, mpvd y los scripts no encuentran en.json/fr.json, todo cae
 # al castellano y nadie se entera, porque ese respaldo silencioso es justo lo que diseñamos (H49, ADR-087).
 git -C "$ROOT" ls-files -z -- bin mpv-config mpvd locales brand.json pyproject.toml vendor.lock README.md VERSION \
-    docs/USO.md docs/ATAJOS.md docs/marca | (cd "$ROOT" && xargs -0 cp --parents -t "$APP")
+    TERCEROS.md licenses docs/USO.md docs/ATAJOS.md docs/marca | (cd "$ROOT" && xargs -0 cp --parents -t "$APP")
 # uosc's helper binaries are fetched by tools/vendor.sh (ignored by git) and uosc needs them
 if [ -d "$ROOT/mpv-config/scripts/uosc/bin" ]; then
   cp -a "$ROOT/mpv-config/scripts/uosc/bin" "$APP/mpv-config/scripts/uosc/"
@@ -65,6 +68,11 @@ mkdir -p "$APP/vendor/bin"
 if [ -f "$ROOT/vendor/bin/yt-dlp" ]; then
   cp "$ROOT/vendor/bin/yt-dlp" "$APP/vendor/bin/"
   [ -f "$ROOT/vendor/bin/yt-dlp.version" ] && cp "$ROOT/vendor/bin/yt-dlp.version" "$APP/vendor/bin/"
+fi
+if [ "$PACKAGE_CLOUDFLARED" = "1" ]; then
+  # shellcheck source=/dev/null
+  source "$ROOT/tools/vendor_cloudflared.sh"
+  fetch_cloudflared linux "$ARCH" "$APP/vendor/bin/cloudflared"
 fi
 
 # 3. a relocatable Python with the light extras; `.venv/bin/python` is where mu-core and bin/mpv-uos look for it

@@ -13,6 +13,8 @@
 # en docs/PLATAFORMAS.md, junto con lo más importante: NADA de esto se ha podido ejecutar en un Windows de verdad.
 #
 # Uso: tools/build_zip_windows.sh [--out DIR]
+# MU_PACKAGE_CLOUDFLARED=1 construye la variante COMPLETA (lleva cloudflared.exe dentro, unos 55 MB); sin ella sale
+# la ligera, que no lo lleva y lo descarga mpvd la primera vez que una sala pide internet.
 # Necesita: git, curl, sha256sum, tar, zip (y red la primera vez).
 set -euo pipefail
 
@@ -20,10 +22,11 @@ ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 # shellcheck source=/dev/null
 source "$ROOT/vendor.lock"
 OUT="$ROOT/dist"
+PACKAGE_CLOUDFLARED="${MU_PACKAGE_CLOUDFLARED:-0}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --out) OUT="$2"; shift 2 ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
     *) echo "opción desconocida: $1" >&2; exit 2 ;;
   esac
 done
@@ -45,7 +48,7 @@ mkdir -p "$APP"
 
 # 1. la aplicación: lo que lleva git, más los dos lanzadores de Windows y el instalador opcional
 git -C "$ROOT" ls-files -z -- bin mpv-config mpvd locales brand.json pyproject.toml vendor.lock README.md VERSION \
-    docs/USO.md docs/ATAJOS.md docs/PLATAFORMAS.md docs/marca tools/install.ps1 \
+    TERCEROS.md licenses docs/USO.md docs/ATAJOS.md docs/PLATAFORMAS.md docs/marca tools/install.ps1 \
     | (cd "$ROOT" && xargs -0 cp --parents -t "$APP")
 mkdir -p "$APP/tools"
 cp "$ROOT/tools/verificar-iptv.py" "$APP/tools/"    # comprobación de listas/canales en el Windows de destino
@@ -111,6 +114,11 @@ if [ ! -f "$exe" ]; then
 fi
 cp "$exe" "$APP/vendor/bin/"
 printf '%s\n' "$YTDLP_VERSION" > "$APP/vendor/bin/yt-dlp.exe.version"
+if [ "$PACKAGE_CLOUDFLARED" = "1" ]; then
+  # shellcheck source=/dev/null
+  source "$ROOT/tools/vendor_cloudflared.sh"
+  fetch_cloudflared windows x86_64 "$APP/vendor/bin/cloudflared.exe"
+fi
 
 # 4. el papel que lee quien lo descomprime
 cat > "$APP/LEE-ME.txt" <<EOF
@@ -143,6 +151,8 @@ ACCESOS DIRECTOS Y ENLACES mpv-uos://
 
 QUÉ LLEVA DENTRO
   La aplicación, un Python 3.12 propio (no hace falta instalar Python) y yt-dlp.
+  cloudflared (el túnel de las salas) va dentro en la variante completa; en la ligera
+  se descarga solo la primera vez que abres una sala hacia internet.
   NO lleva mpv: se usa el que tengas instalado, para no perder la aceleración por
   hardware de tu tarjeta gráfica. Si el tuyo es anterior al 0.41, al arrancar te
   dirá qué es lo que no va a funcionar.

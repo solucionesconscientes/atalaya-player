@@ -4,6 +4,8 @@
 # Aplicaciones (SAC) lo bloquea; instalado con un .exe, los ficheros no llevan esa marca y arranca sin recuadros.
 #
 # Uso: tools/build_win_installer.sh [--zip dist/Atalaya-X-windows-x86_64.zip] [--out DIR]
+# MU_PACKAGE_CLOUDFLARED=1 mete cloudflared.exe en el instalador (variante completa); sin ella se quita, aunque el
+# zip de entrada lo lleve: así el instalador ligero es ligero de verdad.
 # Necesita: unzip, makensis (con sus stubs: NSISDIR) y, para el icono, google-chrome/chromium + ImageMagick.
 # En server1, sin root:
 #   apt-get download nsis nsis-common && dpkg-deb -x nsis_*.deb ~/.local/nsis   (y ~/.local/bin/makensis con NSISDIR)
@@ -12,6 +14,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 OUT="$ROOT/dist"
 ZIP=""
+PACKAGE_CLOUDFLARED="${MU_PACKAGE_CLOUDFLARED:-0}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -37,6 +40,18 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 unzip -q "$ZIP" -d "$TMP"
 [ -d "$TMP/Atalaya" ] || { echo "el zip no trae la carpeta Atalaya/" >&2; exit 1; }
+
+# F1 · cloudflared dentro o fuera, según la variante. Se hace DESPUÉS de descomprimir para que un zip «completo»
+# pasado con la variante ligera no cuele el binario por la puerta de atrás.
+# shellcheck source=/dev/null
+source "$ROOT/vendor.lock"
+if [ "$PACKAGE_CLOUDFLARED" = "1" ]; then
+  # shellcheck source=/dev/null
+  source "$ROOT/tools/vendor_cloudflared.sh"
+  fetch_cloudflared windows x86_64 "$TMP/Atalaya/vendor/bin/cloudflared.exe"
+else
+  rm -f "$TMP/Atalaya/vendor/bin/cloudflared.exe"
+fi
 
 # Icono del instalador y de la entrada de «Aplicaciones instaladas»: el logo aprobado, rasterizado con Chrome (el
 # renderizador de ImageMagick no dibuja bien los trazos del SVG) y convertido a .ico multi-tamaño.

@@ -90,6 +90,21 @@ def test_los_catalogos_de_idiomas_viajan_dentro(contenido):
         assert contenido[ruta].size > 10000
 
 
+def test_las_licencias_de_cloudflared_viajan(contenido):
+    """F1 · el binario puede ir dentro o descargarse, pero la licencia Apache-2.0 y su aviso van siempre."""
+    for ruta in ("/usr/share/doc/atalaya-player/TERCEROS.md",
+                 "/usr/share/doc/atalaya-player/licenses/cloudflared/LICENSE",
+                 "/usr/share/doc/atalaya-player/licenses/cloudflared/AVISO.md"):
+        assert ruta in contenido, f"falta {ruta}"
+
+
+def test_el_deb_sabe_hacer_las_dos_variantes_de_cloudflared():
+    script = (ROOT / "tools" / "build_deb.sh").read_text(encoding="utf-8")
+    assert "MU_PACKAGE_CLOUDFLARED:-0" in script
+    assert "fetch_cloudflared linux" in script
+    assert "cloudflared" in script
+
+
 def test_lo_que_hace_falta_para_arrancar_esta(contenido):
     for ruta in ("/usr/bin/mpv-uos", "/usr/bin/atalaya", "/usr/lib/mpv-uos/bin/mpv-uos",
                  "/usr/lib/mpv-uos/bin/wake", "/usr/lib/mpv-uos/python/bin/python3.12",

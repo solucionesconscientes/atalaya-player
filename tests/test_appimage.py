@@ -40,6 +40,10 @@ def test_appimage_contents(image, tmp_path):
         cat = app / "usr/share/mpv-uos/locales" / f"{lang}.json"
         assert cat.is_file(), f"falta locales/{lang}.json en el paquete"
         assert len(json.loads(cat.read_text(encoding="utf-8"))) > 1000, f"locales/{lang}.json llega cojo"
+    # F1 · la licencia y el aviso de cloudflared viajan siempre, vaya el binario dentro o se descargue
+    assert (app / "usr/share/mpv-uos/TERCEROS.md").is_file()
+    assert (app / "usr/share/mpv-uos/licenses/cloudflared/LICENSE").is_file()
+    assert (app / "usr/share/mpv-uos/licenses/cloudflared/AVISO.md").is_file()
     py = app / "usr/share/mpv-uos/.venv/bin/python"
     assert py.is_symlink() and py.resolve() == (app / "usr/python/bin/python3.12").resolve()
     # the bundled interpreter runs from its new place and imports mpvd from the app

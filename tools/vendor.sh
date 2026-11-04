@@ -111,12 +111,11 @@ elif [ -x vendor/llama/bin/llama-cli ]; then
   echo "llama.cpp: presente (vendor/llama/bin)"
 fi
 
-# cloudflared (H25; por defecto desde H51). Desde que las salas se abren hacia internet por defecto —compartir es
-# para quien NO está en casa—, el binario tiene que estar o el ajuste prometería algo imposible. Instalarlo no abre
-# nada: solo existe mientras hay una sala que lo pide. MU_VENDOR_CLOUDFLARED=0 lo deja fuera.
+# cloudflared (H25). Desde F1 (ADR-139) mpvd lo descarga bajo demanda la primera vez que una sala pide internet, así
+# que aquí solo se instala si se pide expresamente. Instalarlo no abre nada: solo existe mientras hay una sala.
 if [ -x vendor/bin/cloudflared ]; then
   echo "cloudflared: presente (vendor/bin/cloudflared)"
-elif [ "${MU_VENDOR_CLOUDFLARED:-1}" = "1" ]; then
+elif [ "${MU_VENDOR_CLOUDFLARED:-0}" = "1" ]; then
   arch="$(uname -m)"; os="$(uname -s | tr '[:upper:]' '[:lower:]')"
   case "$arch" in x86_64|amd64) arch=x86_64 ;; aarch64|arm64) arch=aarch64 ;; esac
   case "$os/$arch" in
@@ -138,7 +137,7 @@ elif [ "${MU_VENDOR_CLOUDFLARED:-1}" = "1" ]; then
     echo "cloudflared: sin suma fijada para $os/$arch en vendor.lock (descárgalo, compruébalo y añádela)"
   fi
 else
-  echo "cloudflared: no instalado por tu elección (MU_VENDOR_CLOUDFLARED=0); las salas funcionarán solo en tu red"
+  echo "cloudflared: no instalado ahora; mpvd lo descarga al abrir una sala con internet (MU_VENDOR_CLOUDFLARED=1 lo instala ya)"
 fi
 
 # Sanity: the committed sources must match the pinned version.
