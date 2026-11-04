@@ -417,27 +417,25 @@ views.root = function()
     items[#items + 1] = { title = tr('Tus invitados verán lo mismo que tú, a la vez, en su navegador'), icon = 'info',
                           muted = true, selectable = false }
     local internet = P:get('internet') == true
-    local can = st.tunnel_available ~= false
+    local can = st.tunnel_available == true or st.tunnel_downloadable == true
     items[#items + 1] = { title = tr('Que se pueda entrar desde internet'), icon = internet and 'public' or 'wifi',
                           value = { action = 'toggle_internet' }, active = internet,
-                          hint = (not can and 'falta cloudflared')
-                            or (internet and 'túnel de Cloudflare mientras la sala esté abierta')
-                            or 'ahora solo desde tu wifi' }
-    if internet and not can then
-      items[#items + 1] = { title = tr('Instálalo con: MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh'), icon = 'info',
-                            muted = true, selectable = false }
-    end
+                          hint = (not can and tr('no disponible en este sistema'))
+                            or (internet and tr('túnel de Cloudflare mientras la sala esté abierta'))
+                            or tr('ahora solo desde tu wifi') }
   else
     local public = st.mode == 'public'
     -- H51 · lo primero es el enlace, que es lo que se manda a quien no está aquí; el QR baja a segundo plano
     local tunel = st.tunnel_state or 'off'
-    local copiar_hint = 'listo para pegar'
-    if tunel == 'starting' or tunel == 'warming' then
-      copiar_hint = 'todavía no sirve fuera de tu red · se copia solo en cuanto conteste'
+    local copiar_hint = tr('listo para pegar')
+    if tunel == 'downloading' then
+      copiar_hint = tr('descargando cloudflared…')
+    elseif tunel == 'starting' or tunel == 'warming' then
+      copiar_hint = tr('todavía no sirve fuera de tu red · se copia solo en cuanto conteste')
     elseif tunel == 'ready' then
-      copiar_hint = 'se puede entrar desde internet'
+      copiar_hint = tr('se puede entrar desde internet')
     elseif tunel == 'failed' then
-      copiar_hint = 'solo dentro de tu red'
+      copiar_hint = tr('solo dentro de tu red')
     end
     -- H56 · lo primero, los DOS enlaces explicados: es lo que se pega en un mensaje. Que esté aquí además de
     -- copiarse solo al abrir la sala importa, porque si no pillas ese momento parece que no ha copiado nada.
@@ -446,14 +444,24 @@ views.root = function()
                           value = { action = 'copy-invite' } }
     items[#items + 1] = { title = tr('Copiar solo el del navegador'), icon = 'link', hint = copiar_hint,
                           value = { action = 'copy' } }
-    if tunel == 'starting' or tunel == 'warming' then
-      items[#items + 1] = { title = tr('Abriendo la puerta a internet…'), icon = 'hourglass_top', muted = true,
+    if tunel == 'downloading' then
+      local progreso = st.tunnel_progress or ''
+      items[#items + 1] = { title = progreso ~= ''
+                              and tr('Descargando cloudflared %s'):format(progreso)
+                              or tr('Descargando cloudflared…'),
+                            icon = 'download', muted = true, selectable = false,
+                            hint = tr('se descarga una sola vez') }
+    elseif tunel == 'starting' or tunel == 'warming' then
+      items[#items + 1] = { title = tr('Preparando el enlace…'), icon = 'hourglass_top', muted = true,
                             selectable = false,
-                            hint = tunel == 'starting' and 'arrancando' or 'esperando a que la dirección conteste' }
-    elseif tunel == 'failed' and (st.tunnel_error or '') ~= '' then
-      items[#items + 1] = { title = tr('Sin puerta a internet: %s'):format(st.tunnel_error), icon = 'info',
-                          muted = true,
-                            selectable = false, hint = tr('la sala funciona en tu red') }
+                            hint = tunel == 'starting' and tr('arrancando') or tr('esperando a que la dirección conteste') }
+    elseif tunel == 'ready' then
+      items[#items + 1] = { title = tr('Listo: se puede entrar desde internet'), icon = 'check_circle',
+                            muted = true, selectable = false }
+    elseif tunel == 'failed' then
+      items[#items + 1] = { title = tr('No se pudo · reintentar'), icon = 'refresh',
+                            value = { action = 'retry-tunnel' },
+                            hint = (st.tunnel_error or '') ~= '' and st.tunnel_error or tr('la sala funciona en tu red') }
     end
     -- H54 · el enlace de la sala NO puede abrirse en VLC ni en mpv: su token va en el fragmento (#k=) y un
     -- navegador no manda nunca el fragmento al servidor. Este es el que sí vale, y da calidad original.
@@ -518,7 +526,7 @@ views.root = function()
     items[#items + 1] = { title = tr('Enlace nuevo'), hint = tr('el anterior deja de valer'), icon = 'autorenew',
                           value = { action = 'rotate' }, separator = true }
     items[#items + 1] = { title = tr('Cerrar la sala'), icon = 'close', value = { action = 'close' } }
-    local donde = (st.tunnel_state == 'ready') and 'desde internet' or 'solo tu red'
+    local donde = (st.tunnel_state == 'ready') and tr('desde internet') or tr('solo tu red')
     items[#items + 1] = { title = expires_text(st.room) .. ' · ' .. donde, icon = 'schedule', muted = true,
                           selectable = false }
   end
@@ -756,7 +764,9 @@ local function create_room(then_menu, mode)
     -- H55 · no se copia nada todavía: mpvd avisa (`link-ready`) cuando la sala sirve de verdad —el túnel contesta
     -- y hay algo que compartir— y entonces copia LOS DOS enlaces explicados, el del navegador y el de VLC/mpv.
     local st = res.status or {}
-    if st.tunnel_state == 'starting' or st.tunnel_state == 'warming' then
+    if st.tunnel_state == 'downloading' then
+      osd(tr('Sala abierta · descargando cloudflared para salir a internet. Te aviso cuando esté'), 6)
+    elseif st.tunnel_state == 'starting' or st.tunnel_state == 'warming' then
       osd(tr('Sala abierta · abriendo la puerta a internet, suele tardar un minuto. Te aviso y te copio el enlace'), 6)
     else
       osd(tr('Sala abierta · preparando lo que se va a ver; te copio los enlaces en un momento'), 4)
@@ -926,6 +936,13 @@ local function menu_action(v)
     osd(on and 'Compartir: la próxima sala también se podrá abrir desde internet'
           or 'Compartir: las salas solo se abrirán en tu red')
     reopen_current()
+  elseif v.action == 'retry-tunnel' then
+    rpc.call('share.tunnel_retry', nil, function(err, st)
+      if err then fail(err, 'no se pudo reintentar el túnel'); return end
+      if type(st) == 'table' then state.status = st end
+      publish()
+      reopen_current()
+    end, 30)
   elseif v.action == 'join-write' then
     open_input('join')
   elseif v.action == 'join-clipboard' then
@@ -1120,6 +1137,13 @@ mp.register_script_message('mu-event', function(payload)
   end
   if ev.event ~= 'share' then return end
   if type(ev.status) == 'table' then state.status = ev.status end
+  if ev.kind == 'tunnel' then
+    -- F1 · progreso de la descarga y del enlace: la fila del menú se actualiza sola, sin OSD a cada trozo
+    if ev.text and ev.text ~= '' then notice(ev.text); osd(ev.text, 5) end
+    publish()
+    if state.view == 'root' then reopen_current() end
+    return
+  end
   if ev.kind == 'chat' then
     chat_push(ev.chat)
     if state.view == 'chat' then reopen_current() end
