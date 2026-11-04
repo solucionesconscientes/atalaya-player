@@ -12,7 +12,7 @@ What the guests play: a web video's direct URL when a browser can play it (yt-dl
 made by ffmpeg in the cache (mpvd/share/hls.py); the active text subtitle goes along as WebVTT.
 
 Network: its own HTTP server (port 8791, not the remote's): the remote's API must stay LAN-only, while this one is
-the only thing a future tunnel will publish. ``ShareService.tunnel`` (None today) is where the Cloudflare quick tunnel
+the only thing a future tunnel will publish. ``ShareService.tunnel`` is where the Cloudflare quick tunnel
 plugs in: started when a room opens, stopped when it closes (Ser's decision: internet only while a room is open)."""
 
 from __future__ import annotations
@@ -102,7 +102,7 @@ STATE_PROPS = ("path", "time-pos", "pause", "speed", "duration", "media-title", 
 
 
 class Tunnel(Protocol):
-    """A way to reach the room from the internet (H25 point 3: Cloudflare quick tunnel, not implemented yet).
+    """A way to reach the room from the internet (H25 point 3: Cloudflare quick tunnel).
 
     ``start`` gets the local port of the share server and returns the public base URL (``https://….trycloudflare.com``);
     ``stop`` tears it down. The service starts it when a room opens and stops it when the room closes or expires."""
@@ -166,9 +166,12 @@ class ShareService:
         # means handing out a dead link for a minute, which is what happened. While it warms up it lives here and
         # the room keeps using its local address, so nothing ever points at something that does not work yet.
         self.pending_url: str | None = None
-        self.tunnel_state = "off"               # off | starting | warming | ready | failed
+        self.tunnel_state = "off"               # off | downloading | starting | warming | ready | failed
         self.tunnel_task: asyncio.Task[None] | None = None
         self.tunnel_error = ""                  # why there is no tunnel, for the menu to say it
+        self.tunnel_progress = ""               # F1: «12,4 de 40 MB» while cloudflared is being downloaded
+        self._progress_sent = 0.0
+        self.pid_file = server.settings.runtime_dir / tunnel_mod.PID_NAME
         self.root = server.settings.cache_dir / "share"
         self.firewall: dict[str, Any] | None = None
         self._seq = 0
@@ -179,14 +182,9 @@ class ShareService:
     # -- life of the room --------------------------------------------------------------------------------
 
     def _make_tunnel(self) -> Tunnel | None:
-        """A Cloudflare quick tunnel, or None when cloudflared is not installed (the room still works in the LAN)."""
+        """A Cloudflare quick tunnel with the binary already installed, or None (the room still works in the LAN)."""
         binary = tunnel_mod.find_cloudflared(self.server.root)
-        if binary is None:
-            self.tunnel_error = ("falta cloudflared: ejecuta MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh "
-                                 "(la sala sigue funcionando en tu red)")
-            log.warning("tunnel requested but cloudflared is not installed")
-            return None
-        return tunnel_mod.CloudflaredTunnel(binary)
+        return tunnel_mod.CloudflaredTunnel(binary, pid_file=self.pid_file) if binary is not None else None
 
     def base_url(self) -> str:
         if self.public_url:
@@ -228,16 +226,20 @@ class ShareService:
         rt = RoomRuntime(room=room, session_id=session.id, dir=self.root / room.id)
         self.rt = rt
         self.tunnel_error = ""
+        self.tunnel_progress = ""
         self.public_url = None
         self.pending_url = None
-        self.tunnel = self._make_tunnel() if internet else None
-        self.tunnel_state = "off" if not internet else ("starting" if self.tunnel is not None else "failed")
-        # H51 · la sala se abre YA y el túnel se abre detrás. Antes se esperaba aquí a cloudflared, así que no
-        # aparecía nada —ni enlace ni QR— durante los 6-8 s que tarda en hablar, y lo que aparecía después no
-        # servía hasta un minuto más tarde.
-        if self.tunnel is not None:
+        self.tunnel = None
+        if not internet:
+            self.tunnel_state = "off"
+        else:
+            binary = tunnel_mod.find_cloudflared(self.server.root)
+            self.tunnel_state = "starting" if binary is not None else "downloading"
+            if binary is not None:
+                self.tunnel = tunnel_mod.CloudflaredTunnel(binary, pid_file=self.pid_file)
+            # H51 · la sala se abre YA y el túnel se abre detrás. F1: si falta el binario, primero se descarga.
             self.tunnel_task = asyncio.create_task(self._open_tunnel(rt), name="share-tunnel-open")
-        if self.host in ("0.0.0.0", "") and self.tunnel is None:
+        if self.host in ("0.0.0.0", "") and not internet:
             self.firewall = await asyncio.to_thread(firewall_hint, self.http.port, lan_ip(), "compartir")
         rt.born = time.monotonic()
         rt.task = asyncio.create_task(self._poll(rt), name=f"share-room-{room.id}")
@@ -245,19 +247,44 @@ class ShareService:
         return await self.link()
 
     async def _open_tunnel(self, rt: RoomRuntime) -> None:
-        """Open the tunnel and do not call the public address good until it answers (H51)."""
-        tun = self.tunnel
-        if tun is None:
+        """Open the tunnel and do not call the public address good until it answers (H51).
+
+        F1: the binary is downloaded here, never from ``status()``: opening a menu must not start a 40 MB download.
+        The download resumes if it was cut and is verified before it is executed."""
+        if self.rt is not rt or rt.room.closed:
             return
+        if self.tunnel is None:
+            self.tunnel_state = "downloading"
+            self.tunnel_progress = ""
+            self._host_push(rt, "tunnel")
+            loop = asyncio.get_running_loop()
+
+            def report(done: int, total: int) -> None:
+                with contextlib.suppress(RuntimeError):
+                    loop.call_soon_threadsafe(self._tunnel_progress, rt, tunnel_mod.progress_text(done, total))
+
+            try:
+                binary = await tunnel_mod.ensure_cloudflared(
+                    self.server.root, self.server.settings.data_dir, progress=report,
+                    cancelled=lambda: self.rt is not rt or rt.room.closed)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - the room still works in the LAN
+                self._tunnel_failed(rt, str(exc))
+                return
+            if self.rt is not rt or rt.room.closed:
+                return
+            self.tunnel_progress = ""
+            self.tunnel = tunnel_mod.CloudflaredTunnel(binary, pid_file=self.pid_file)
+        tun = self.tunnel
+        self.tunnel_state = "starting"
+        self._host_push(rt, "tunnel")
         try:
             url = await tun.start(self.http.port)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - the room still works in the LAN
-            log.warning("tunnel %s failed: %s", getattr(tun, "name", "?"), exc)
-            self.tunnel_error = str(exc)
-            self.tunnel_state = "failed"
-            self._host_push(rt, "link", "No se ha podido abrir la puerta a internet; la sala sigue en tu red")
+            self._tunnel_failed(rt, str(exc))
             return
         if self.rt is not rt or rt.room.closed:
             return
@@ -277,6 +304,42 @@ class ShareService:
         self.tunnel_state = "ready"
         log.info("tunnel ready: %s", url)
         self._maybe_invite(rt)
+
+    def _tunnel_progress(self, rt: RoomRuntime, text: str) -> None:
+        if self.rt is not rt or rt.room.closed:
+            return
+        self.tunnel_progress = text
+        now = time.monotonic()
+        if now - self._progress_sent >= 0.5:
+            self._progress_sent = now
+            self._host_push(rt, "tunnel")
+
+    def _tunnel_failed(self, rt: RoomRuntime, error: str) -> None:
+        self.tunnel_progress = ""
+        self.tunnel_error = error or "no se pudo preparar el enlace"
+        self.tunnel_state = "failed"
+        log.warning("tunnel failed: %s", self.tunnel_error)
+        self._host_push(rt, "tunnel", "No se pudo preparar el enlace; la sala sigue en tu red")
+
+    async def retry_tunnel(self) -> dict[str, Any]:
+        """F1 · retry the download/start without closing and reopening the room."""
+        rt = self._room()
+        if self.tunnel_state in ("downloading", "starting", "warming"):
+            return self.status()
+        if self.tunnel_task is not None and not self.tunnel_task.done():
+            return self.status()
+        if self.tunnel is not None:
+            with contextlib.suppress(Exception):
+                await self.tunnel.stop()
+            self.tunnel = None
+        self.tunnel_error = ""
+        self.tunnel_progress = ""
+        binary = tunnel_mod.find_cloudflared(self.server.root)
+        self.tunnel_state = "starting" if binary is not None else "downloading"
+        if binary is not None:
+            self.tunnel = tunnel_mod.CloudflaredTunnel(binary, pid_file=self.pid_file)
+        self.tunnel_task = asyncio.create_task(self._open_tunnel(rt), name="share-tunnel-retry")
+        return self.status()
 
     async def _wait_public(self, url: str, rt: RoomRuntime) -> bool:
         if os.environ.get("MPVD_SHARE_TUNNEL_PROBE") == "0":
@@ -357,7 +420,7 @@ class ShareService:
         Una sola vez: copiar dos veces en el portapapeles sería peor que no copiar."""
         if rt.invited or self.rt is not rt or not rt.room.alive():
             return
-        if self.tunnel_state in ("starting", "warming"):
+        if self.tunnel_state in ("downloading", "starting", "warming"):
             return
         listo = rt.media.get("kind") not in ("preparing", None)
         if not listo and time.monotonic() - rt.born < INVITE_WAIT:
@@ -411,9 +474,12 @@ class ShareService:
             if self.tunnel is not None:
                 with contextlib.suppress(Exception):
                     await self.tunnel.stop()
+            self.tunnel = None
             self.public_url = None
             self.pending_url = None
             self.tunnel_state = "off"
+            self.tunnel_progress = ""
+            self.tunnel_error = ""
             await self.http.stop()
             # a guest asking for a relay right now is inside a handler of that server: only once it is down can no new
             # ffmpeg appear. Whatever started meanwhile is stopped here, and only then does the folder go.
@@ -444,9 +510,11 @@ class ShareService:
             "firewall": self.firewall if open_ else None, "tunnel": getattr(self.tunnel, "name", None),
             "public_url": self.public_url, "lan_only": self.public_url is None,
             "tunnel_error": self.tunnel_error, "tunnel_state": self.tunnel_state,
+            "tunnel_progress": self.tunnel_progress,
             "pending_url": self.pending_url,
-            # whether «se puede entrar desde internet» can even be offered (cloudflared installed)
+            # installed here, and downloadable from the pinned vendor.lock asset (F1: the UI offers both)
             "tunnel_available": tunnel_mod.find_cloudflared(self.server.root) is not None,
+            "tunnel_downloadable": tunnel_mod.platform_asset(self.server.root) is not None,
             "mode": None, "viewers": 0, "max_viewers": 0, "chat": [], "open_control": False,
             "guest_of": self.guest.state.public() if self.guest is not None else None,
         }
@@ -1406,6 +1474,11 @@ def register(server: MpvdServer, service: ShareService) -> None:
     async def status(ctx: RpcContext) -> dict[str, Any]:
         """The open room (link, guests with permissions, what the guests play), or open=false."""
         return service.status()
+
+    @d.method("share.tunnel_retry")
+    async def tunnel_retry(ctx: RpcContext) -> dict[str, Any]:
+        """F1 · retry the cloudflared download/start without closing the room (the «No se pudo · reintentar» row)."""
+        return await service.retry_tunnel()
 
     @d.method("share.create")
     async def create(ctx: RpcContext, ttl_hours: float = ROOM_TTL / 3600, session: str | None = None,

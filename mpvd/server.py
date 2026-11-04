@@ -176,6 +176,8 @@ class MpvdServer:
         if socket_is_alive(s.endpoint):
             raise RuntimeError(f"another mpvd is already listening on {s.endpoint}")
         transport.remove_stale(s.endpoint)
+        from mpvd.share import tunnel as tunnel_mod  # noqa: PLC0415 - evita cargar el túnel antes de tiempo
+        await asyncio.to_thread(tunnel_mod.kill_stale, s.runtime_dir / tunnel_mod.PID_NAME)
         self._server = await transport.start_server(self._handle_peer, s.endpoint, STREAM_LIMIT)
         if not transport.is_pipe(s.endpoint):
             with contextlib.suppress(OSError):

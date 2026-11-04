@@ -33,13 +33,16 @@ MPV_WIN_URL=https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20
 MPV_WIN_SHA256=cbeda25235a24e9145f6ab3e784052e437e6e5aac306b682afd2bbf0070ddea8
 
 # cloudflared: túnel rápido de Cloudflare para que se pueda entrar en una sala de Compartir desde fuera de casa (H25,
-# ADR-068). NO se instala por defecto: solo con MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh, porque la sala funciona en la red
-# local sin él y esto es lo único que saca algo a internet. Cloudflare no publica ficheros de sumas en sus releases, así
-# que esta suma es la del binario que se descargó y se verificó aquí el 2026-10-01 (protege de cambios posteriores, no es
-# una firma del fabricante). Para otras plataformas: descarga, comprueba y añade su suma.
+# ADR-068). Desde F1 (ADR-139) mpvd lo descarga bajo demanda la primera vez que una sala pide internet; tools/vendor.sh
+# solo lo deja instalado ya con MU_VENDOR_CLOUDFLARED=1. Los paquetes completos (MU_PACKAGE_CLOUDFLARED=1) lo llevan
+# dentro. Cloudflare no publica ficheros de sumas en sus releases, así que estas sumas son las de los binarios que se
+# descargaron y verificaron aquí: linux-amd64 el 2026-10-01 y linux-arm64/windows-amd64 el 2026-11-04 (protegen de
+# cambios posteriores; no son una firma del fabricante). macOS no está fijado: se acepta uno del PATH o de la variable.
 CLOUDFLARED_VERSION=2026.9.3
 CLOUDFLARED_BASE_URL=https://github.com/cloudflare/cloudflared/releases/download/2026.9.3
 CLOUDFLARED_SHA256_x86_64_linux=77e26d8d900e0b8469f416239d14b5f296525fdf79fee6f511ef55609e3fbac2
+CLOUDFLARED_SHA256_aarch64_linux=aaeb2d7d0da3614634c7e03ab13487a1522c2e79165ed2929cfe23d5e95b326d
+CLOUDFLARED_SHA256_x86_64_windows=f096265ec2fcbe9bb6e2d64268db167ced3fcbb83d894bdb9e2fcdb26f2ea7e2
 
 # Argos Translate packages (docs/TRADUCCION.md): CTranslate2 model + sentencepiece, CC-BY 4.0 (OPUS-MT). Downloaded on demand by
 # mpvd (mpvd/subs/translate.py::PINNED) into vendor/dl and unpacked into vendor/models/argos/<from>_<to>/.

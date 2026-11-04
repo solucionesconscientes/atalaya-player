@@ -9,8 +9,15 @@ the whole promise: nothing reachable from the internet for longer than the room)
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import hashlib
+import http.server
 import os
+import platform
 import signal
+import subprocess
+import sys
+import threading
 import time
 from pathlib import Path
 
@@ -18,8 +25,10 @@ import pytest
 
 from mpvd.config import Settings
 from mpvd.server import MpvdServer
-from mpvd.share.tunnel import CloudflaredTunnel, TunnelError, find_cloudflared
+from mpvd.share import tunnel as tunnel_mod
+from mpvd.share.tunnel import CloudflaredDownloadError, CloudflaredTunnel, TunnelError, find_cloudflared
 
+ROOT = Path(__file__).resolve().parents[1]
 FAKE = Path(__file__).parent / "fixtures" / "share" / "fake_cloudflared.py"
 
 
@@ -52,7 +61,8 @@ def test_start_reads_the_address_and_stop_kills_the_process(tmp_path, monkeypatc
     monkeypatch.setenv("FAKE_CF_PIDFILE", str(pid_file))
     monkeypatch.setenv("FAKE_CF_ARGSFILE", str(args_file))
     monkeypatch.setenv("FAKE_CF_URL", "https://dos-palabras-azar.trycloudflare.com")
-    t = CloudflaredTunnel(FAKE, start_timeout=20)
+    daemon_pid = tmp_path / "cloudflared.pid"
+    t = CloudflaredTunnel(FAKE, start_timeout=20, pid_file=daemon_pid)
 
     async def go():
         # one loop for the whole life of the process, as it is in the daemon
@@ -61,8 +71,10 @@ def test_start_reads_the_address_and_stop_kills_the_process(tmp_path, monkeypatc
         assert "--url http://127.0.0.1:8791" in args_file.read_text(encoding="utf-8")
         pid = int(pid_file.read_text(encoding="utf-8"))
         assert alive(pid)
+        assert daemon_pid.read_text(encoding="utf-8").strip() == str(pid)   # F1: the sweep needs this
         assert await t.start(8791) == url            # asking again reuses the one already open
         await t.stop()
+        assert not daemon_pid.exists(), "el fichero de PID queda huérfano al cerrar"
         await t.stop()                               # idempotent
         return pid
 
@@ -115,14 +127,16 @@ def test_a_room_only_gets_a_tunnel_when_it_asks_for_one(tmp_path, monkeypatch):
     assert share.tunnel is None
 
 
-def test_without_cloudflared_the_room_still_works_and_says_why(tmp_path, monkeypatch):
+def test_without_cloudflared_the_room_still_works_and_can_download_it(tmp_path, monkeypatch):
     monkeypatch.setenv("MPV_UOS_CLOUDFLARED", str(tmp_path / "no-existe"))
     monkeypatch.setenv("PATH", str(tmp_path))
     share = make_server(tmp_path).share
-    share.server.root = tmp_path / "sin-vendor"      # a checkout without vendor/bin/cloudflared
-    assert share.status()["tunnel_available"] is False
+    share.server.root = tmp_path / "sin-vendor"      # a package without the binary and without vendor.lock
+    st = share.status()
+    assert st["tunnel_available"] is False and st["tunnel_downloadable"] is False
     assert share._make_tunnel() is None
-    assert "falta cloudflared" in share.tunnel_error and "sigue funcionando en tu red" in share.tunnel_error
+    # the old instruction is gone from the UI and from the error: F1 downloads it on demand
+    assert "MU_VENDOR_CLOUDFLARED" not in share.tunnel_error
 
 
 def esperar(d, cond, timeout: float = 30.0) -> dict:  # type: ignore[no-untyped-def]
@@ -340,5 +354,247 @@ def test_la_direccion_no_se_da_por_buena_hasta_que_contesta(daemon_env, tmp_path
 
         daemon_env.call("share.close")
         assert wait_gone(int(pid_file.read_text(encoding="utf-8"))), "el túnel a medias sigue abierto"
+    finally:
+        h.stop()
+
+
+# -- F1 · cloudflared bajo demanda, con hash y sin huérfanos ---------------------------------------------------------
+
+
+def _linux_amd64() -> bool:
+    return sys.platform.startswith("linux") and platform.machine().lower() in ("x86_64", "amd64")
+
+
+def _asset_server(payload: bytes, support_range: bool = True):
+    class Handler(http.server.BaseHTTPRequestHandler):
+        ranges: list[str] = []
+
+        def do_GET(self):  # noqa: N802
+            data = payload
+            header = self.headers.get("Range")
+            type(self).ranges.append(header or "")
+            if header and support_range:
+                start = int(header.split("=", 1)[1].split("-", 1)[0])
+                body = data[start:]
+                self.send_response(206)
+                self.send_header("Content-Range", f"bytes {start}-{len(data) - 1}/{len(data)}")
+            else:
+                body = data
+                self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):  # noqa: ANN002
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, Handler
+
+
+def _write_lock(root: Path, base_url: str, sha: str, version: str = "test") -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "vendor.lock").write_text(
+        f"CLOUDFLARED_VERSION={version}\nCLOUDFLARED_BASE_URL={base_url}\n"
+        f"CLOUDFLARED_SHA256_x86_64_linux={sha}\n",
+        encoding="utf-8")
+
+
+def test_en_un_paquete_manda_el_binario_que_viaja_dentro(tmp_path, monkeypatch):
+    monkeypatch.setenv("MPV_UOS_PACKAGED", "1")
+    monkeypatch.setenv("MPV_UOS_CLOUDFLARED", str(FAKE))
+    root = tmp_path / "app"
+    (root / "vendor" / "bin").mkdir(parents=True)
+    bundled = root / "vendor" / "bin" / "cloudflared"
+    bundled.write_text("#!/bin/sh\n", encoding="utf-8")
+    bundled.chmod(0o755)
+    assert find_cloudflared(root) == bundled
+
+
+def test_vendor_lock_fija_las_tres_plataformas():
+    lock = {}
+    for line in (ROOT / "vendor.lock").read_text(encoding="utf-8").splitlines():
+        if line and not line.startswith("#") and "=" in line:
+            k, _, v = line.partition("=")
+            lock[k] = v
+    for key in ("CLOUDFLARED_SHA256_x86_64_linux", "CLOUDFLARED_SHA256_aarch64_linux",
+                "CLOUDFLARED_SHA256_x86_64_windows"):
+        assert len(lock[key]) == 64 and all(c in "0123456789abcdef" for c in lock[key]), key
+    assert lock["CLOUDFLARED_BASE_URL"].endswith(lock["CLOUDFLARED_VERSION"])
+
+
+def test_la_descarga_bajo_demanda_verifica_e_instala(tmp_path, monkeypatch):
+    if not _linux_amd64():
+        pytest.skip("el lock de prueba usa la suma de linux-amd64")
+    payload = b"#!/bin/sh\necho cloudflared\n" + b"x" * (1 << 20)
+    srv, _ = _asset_server(payload)
+    root = tmp_path / "app"
+    _write_lock(root, f"http://127.0.0.1:{srv.server_address[1]}", hashlib.sha256(payload).hexdigest())
+    monkeypatch.delenv("MPV_UOS_VENDOR_BIN", raising=False)
+    monkeypatch.delenv("MPV_UOS_CLOUDFLARED", raising=False)
+    seen: list[tuple[int, int]] = []
+    try:
+        dest = asyncio.run(tunnel_mod.download_cloudflared(
+            root, tmp_path / "data", progress=lambda done, total: seen.append((done, total))))
+    finally:
+        srv.shutdown()
+    assert dest == root / "vendor" / "bin" / "cloudflared"
+    assert dest.read_bytes() == payload and os.access(dest, os.X_OK)
+    assert seen and seen[-1][0] == len(payload)
+
+
+def test_un_hash_malo_rechaza_y_borra_el_temporal(tmp_path, monkeypatch):
+    if not _linux_amd64():
+        pytest.skip("el lock de prueba usa la suma de linux-amd64")
+    payload = b"no es cloudflared" * 1000
+    srv, _ = _asset_server(payload)
+    root = tmp_path / "app"
+    _write_lock(root, f"http://127.0.0.1:{srv.server_address[1]}", "0" * 64)
+    monkeypatch.delenv("MPV_UOS_VENDOR_BIN", raising=False)
+    try:
+        with pytest.raises(CloudflaredDownloadError, match="SHA-256"):
+            asyncio.run(tunnel_mod.download_cloudflared(root, tmp_path / "data"))
+    finally:
+        srv.shutdown()
+    assert not (root / "vendor" / "bin" / "cloudflared").exists()
+    assert not (root / "vendor" / "bin" / "cloudflared.part").exists()
+
+
+def test_la_descarga_se_reanuda_con_range(tmp_path, monkeypatch):
+    if not _linux_amd64():
+        pytest.skip("el lock de prueba usa la suma de linux-amd64")
+    payload = b"y" * (1 << 20)
+    srv, handler = _asset_server(payload)
+    root = tmp_path / "app"
+    _write_lock(root, f"http://127.0.0.1:{srv.server_address[1]}", hashlib.sha256(payload).hexdigest())
+    part = root / "vendor" / "bin" / "cloudflared.part"
+    part.parent.mkdir(parents=True)
+    part.write_bytes(payload[: len(payload) // 2])
+    monkeypatch.delenv("MPV_UOS_VENDOR_BIN", raising=False)
+    try:
+        dest = asyncio.run(tunnel_mod.download_cloudflared(root, tmp_path / "data"))
+    finally:
+        srv.shutdown()
+    assert handler.ranges == [f"bytes={len(payload) // 2}-"]
+    assert dest.read_bytes() == payload
+
+
+def test_sin_red_lo_dice_y_no_deja_basura(tmp_path, monkeypatch):
+    if not _linux_amd64():
+        pytest.skip("el lock de prueba usa la suma de linux-amd64")
+    root = tmp_path / "app"
+    _write_lock(root, "http://127.0.0.1:1", "0" * 64)
+    monkeypatch.delenv("MPV_UOS_VENDOR_BIN", raising=False)
+    with pytest.raises(CloudflaredDownloadError, match="no se pudo descargar"):
+        asyncio.run(tunnel_mod.download_cloudflared(root, tmp_path / "data"))
+    assert not (root / "vendor" / "bin" / "cloudflared").exists()
+
+
+def test_si_no_hay_asset_para_esta_plataforma_lo_dice(tmp_path, monkeypatch):
+    monkeypatch.setattr(tunnel_mod, "platform_asset", lambda root: None)
+    with pytest.raises(CloudflaredDownloadError, match="no hay un cloudflared fijado"):
+        asyncio.run(tunnel_mod.download_cloudflared(tmp_path, tmp_path / "data"))
+
+
+def test_si_cloudflared_esta_desactivado_no_descarga(tmp_path, monkeypatch):
+    monkeypatch.setenv("MPV_UOS_CLOUDFLARED", "0")
+    with pytest.raises(CloudflaredDownloadError, match="desactivado"):
+        asyncio.run(tunnel_mod.download_cloudflared(tmp_path, tmp_path / "data"))
+
+
+def test_el_pid_huerfano_se_barre(tmp_path):
+    pid_file = tmp_path / "cloudflared.pid"
+    fake_pid = tmp_path / "fake.pid"
+    env = {**os.environ, "FAKE_CF_PIDFILE": str(fake_pid)}
+    proc = subprocess.Popen([sys.executable, str(FAKE)], env=env, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL)
+    try:
+        deadline = time.monotonic() + 5
+        while not fake_pid.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)                  # wait for exec: /proc/<pid>/cmdline must already say cloudflared
+        pid_file.write_text(str(proc.pid), encoding="utf-8")
+        assert tunnel_mod.kill_stale(pid_file) == proc.pid
+        proc.wait(timeout=5)          # this test is the parent: reap it so it is not a zombie
+        assert proc.returncode is not None
+        assert not pid_file.exists()
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+
+
+def test_no_se_mata_un_pid_que_no_es_cloudflared(tmp_path):
+    pid_file = tmp_path / "cloudflared.pid"
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        pid_file.write_text(str(proc.pid), encoding="utf-8")
+        assert tunnel_mod.kill_stale(pid_file) is None
+        assert proc.poll() is None
+        assert not pid_file.exists()
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="PR_SET_PDEATHSIG es de Linux")
+def test_kill_9_del_padre_mata_cloudflared(tmp_path):
+    """The real promise of F1: SIGKILL to the daemon leaves no cloudflared behind (PDEATHSIG)."""
+    cloudflared_pid_file = tmp_path / "cloudflared.pid"
+    script = tmp_path / "parent.py"
+    script.write_text(
+        "import asyncio, sys, time\n"
+        "from pathlib import Path\n"
+        "from mpvd.share.tunnel import CloudflaredTunnel\n"
+        "pid_file = Path(sys.argv[2])\n"
+        "asyncio.run(CloudflaredTunnel(Path(sys.argv[1]), pid_file=pid_file).start(0))\n"
+        "print(pid_file.read_text(), flush=True)\n"
+        "time.sleep(60)\n",
+        encoding="utf-8")
+    parent = subprocess.Popen([sys.executable, str(script), str(FAKE), str(cloudflared_pid_file)],
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+                              env={**os.environ, "PYTHONPATH": str(ROOT)})
+    try:
+        pid = int(parent.stdout.readline().strip())
+        assert alive(pid)
+        os.kill(parent.pid, signal.SIGKILL)
+        parent.wait(timeout=5)
+        assert wait_gone(pid), "cloudflared sobrevivió al kill -9 de su padre"
+    finally:
+        if parent.poll() is None:
+            parent.kill()
+            parent.wait(timeout=5)
+        if cloudflared_pid_file.exists():
+            with contextlib.suppress(Exception):
+                leftover = int(cloudflared_pid_file.read_text())
+                if alive(leftover):
+                    os.kill(leftover, signal.SIGKILL)
+
+
+def test_sin_binario_se_dice_y_se_puede_reintentar_sin_cerrar_la_sala(daemon_env, media_dir):
+    """F1 · a download that cannot happen leaves the LAN room working and a «retry» that does not need a restart."""
+    daemon_env.extra_env.update({
+        "MPVD_SHARE_HOST": "127.0.0.1", "MPVD_SHARE_PUBLIC_HOST": "127.0.0.1", "MPVD_SHARE_PORT": "0",
+        "MPV_UOS_CLOUDFLARED": "0", "MPV_UOS_YTDLP_AUTO_UPDATE": "0",
+    })
+    from tests.conftest import start_mpv
+
+    h = start_mpv(daemon_env.runtime_dir,
+                  ["--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=5",
+                   "--keep-open=yes", "--pause=yes"], env=daemon_env.env)
+    try:
+        h.wait_property("user-data/mu/core", lambda v: bool(v) and v.get("mpvd") == "connected", timeout=40)
+        h.command("loadfile", str(media_dir / "video30.mkv"))
+        h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 0, timeout=20)
+
+        res = daemon_env.call("share.create", {"internet": True})
+        assert res["url"].startswith("http://127.0.0.1:")     # la sala sirve ya en la red local
+        st = esperar(daemon_env, lambda s: s["tunnel_state"] == "failed", timeout=20)
+        assert "desactivado" in st["tunnel_error"] and st["public_url"] is None
+        assert daemon_env.call("share.link")["url"].startswith("http://127.0.0.1:")
+
+        retry = daemon_env.call("share.tunnel_retry")          # no cierra la sala ni reinicia la app
+        assert retry["tunnel_state"] in ("downloading", "failed")
+        daemon_env.call("share.close")
     finally:
         h.stop()
