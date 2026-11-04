@@ -1,8 +1,8 @@
-// «Ver juntos» (H25): the guest page. Joins with the token of the link (#k=…) and a name, then follows the host
-// over SSE (/s/<room>/events) and keeps its own <video> in step (MuSync). HLS plays natively where the browser can
-// (Safari, iOS, Android) and through the vendored hls.js elsewhere (desktop Chrome/Firefox), loaded only if needed.
-// Private rooms add a chat and reactions (always drawn as text: textContent, never HTML). A public «solo ver» link
-// (#k=…&v=1) joins by itself without a name and shows only the picture and how many are watching.
+// «Ver juntos» (H25): the guest page. Proves it holds the token of the link (#k=…) with an HMAC challenge-response
+// (the token never travels), then follows the host over SSE (/s/<room>/events) and keeps its own <video> in step
+// (MuSync). The HLS relay is AES-128 encrypted (F4): hls.js gets the key from its own loader, derived in the page
+// from the token with MuCrypt, and the key is never fetched. Private rooms add a chat and reactions (always drawn
+// as text: textContent, never HTML). A public «solo ver» link (#k=…&v=1) joins by itself without a name.
 (function () {
   'use strict';
   var S = window.MuSync;
@@ -12,13 +12,18 @@
   var token = (location.hash.match(/[#&]k=([A-Za-z0-9_-]+)/) || [])[1] || '';
   var publicLink = /[#&]v=1\b/.test(location.hash);
   var tokenKey = 'mu-share-token-' + roomId;
-  try {  // a public viewer whose seat was given away can come back without the link (this tab only)
-    if (token && publicLink) sessionStorage.setItem(tokenKey, token);
-    else if (!token && sessionStorage.getItem(tokenKey)) { token = sessionStorage.getItem(tokenKey); publicLink = true; }
+  try {
+    // the token leaves the address bar after joining; keep it for this tab so a reload can still decrypt the
+    // relay and re-join if the short session credential expired. sessionStorage is neither a URL nor a header.
+    if (token) {
+      sessionStorage.setItem(tokenKey, token);
+      sessionStorage.setItem(tokenKey + '-public', publicLink ? '1' : '0');
+    } else if (sessionStorage.getItem(tokenKey)) {
+      token = sessionStorage.getItem(tokenKey);
+      publicLink = sessionStorage.getItem(tokenKey + '-public') === '1';
+    }
   } catch (e) { /* storage disabled */ }
   var mode = publicLink ? 'public' : 'private', lastChat = 0, reactions = {};
-  // ?hlsjs=1: use hls.js even where the browser plays HLS by itself (tests, comparing engines)
-  var forceHlsJs = /[?&]hlsjs=1\b/.test(location.search);
   // ?poll=1: skip SSE (tests of the tunnel fallback, and a page behind a proxy that buffers event streams)
   var forcePoll = /[?&]poll=1\b/.test(location.search);
   var video = $('video');
@@ -80,23 +85,41 @@
     if (!token) $('join-error').textContent = t('Abre el enlace de invitación completo que te han pasado.');
   }
 
+  // F4 · prove possession of the fragment token without sending it: the server gives a nonce, the page answers
+  // HMAC(token, "mu-share-v1|room|client|server") and gets a short-lived session credential.
+  function randomNonce() {
+    var b = new Uint8Array(16);
+    if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(b);
+    else for (var i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256);
+    return MuCrypt.hex(b);
+  }
+
+  function join(name, gesture) {
+    if (!token || !window.MuCrypt) {
+      return Promise.reject(new Error(t('Abre el enlace de invitación completo que te han pasado.')));
+    }
+    var nonce = randomNonce();
+    return api('api/challenge', { nonce: nonce }).then(function (d) {
+      var proof = MuCrypt.proof(token, roomId, nonce, d.nonce);
+      return api('api/join', { nonce: nonce, proof: proof, name: name });
+    }).then(function (data) {
+      history.replaceState(null, '', location.pathname + location.search);  // the token is not needed any more
+      enter(data.guest, gesture, data.room);
+    });
+  }
+
   $('join-form').addEventListener('submit', function (ev) {
     ev.preventDefault();
     var name = $('name').value.trim();
     if (!name) return;
     $('join-error').textContent = '';
-    api('api/join', { token: token, name: name }).then(function (data) {
+    join(name, true).then(function () {
       localStorage.setItem('mu-share-name', name);
-      history.replaceState(null, '', location.pathname + location.search);  // the token is not needed any more
-      enter(data.guest, true, data.room);
     }).catch(function (e) { $('join-error').textContent = e.message; });
   });
 
   function autoJoin() {
-    api('api/join', { token: token, name: '' }).then(function (data) {
-      history.replaceState(null, '', location.pathname + location.search);
-      enter(data.guest, false, data.room);
-    }).catch(function (e) {
+    join('', false).catch(function (e) {
       message(e.status === 410 ? t('La sala está cerrada o ha caducado.') : t('No se puede entrar: %s', e.message));
     });
   }
@@ -489,9 +512,9 @@
   var fileFor = '';
 
   function ownPlayer(m) {
-    // H51 · ya no es solo para un archivo del anfitrión: la TV y los vídeos de internet también se pueden abrir en
-    // tu reproductor (la retransmisión o la dirección original), que es donde se ven a calidad original.
-    var on = m && (m.kind === 'file' || m.kind === 'direct' || m.kind === 'hls');
+    // H51 · la TV y los vídeos de internet se abren en tu reproductor con su dirección original. F4: la
+    // retransmisión HLS ya no, va cifrada y su clave solo la sabe derivar esta página.
+    var on = m && (m.kind === 'file' || m.kind === 'direct');
     show('own', !!on);
     if (!on) { fileLink = ''; fileFor = ''; return; }
     $('own-name').textContent = m.name || m.title || '';
@@ -510,12 +533,6 @@
 
   // Por qué merece la pena llevárselo a tu reproductor, que no es lo mismo según lo que esté puesto.
   function whyOwnPlayer(m) {
-    if (m.kind === 'hls') {
-      // dos frases y dos `t()`: concatenar dentro de la llamada juntaría los trozos ANTES de llamar, así que la
-      // clave real sería la frase entera y la que se inyecta en la página solo el primer trozo
-      return t('Es un directo o un vídeo de internet: te llevas la retransmisión del anfitrión.') + ' '
-        + t('Tu reproductor aguanta formatos que este navegador no abre.');
-    }
     if (m.kind === 'direct') return t('El vídeo original de la web, directo: ni pasa por el equipo del anfitrión.');
     if (m.browser !== 'direct') {
       return t('Este vídeo no está en un formato que tu navegador abra tal cual, así que aquí lo ves recomprimido.')
@@ -557,20 +574,47 @@
     return hlsLoading;
   }
 
+  // F4 · the relay's AES-128 key never comes from a URL: this loader answers hls.js's key request with the key
+  // derived in the page from the invitation token. If there is no token (link stripped after a lost session) the
+  // video is not shown and the reason is said out loud.
+  function keyLoader(Hls) {
+    var Base = Hls.DefaultConfig.loader;
+    function MuLoader(config) { Base.call(this, config); }
+    MuLoader.prototype = Object.create(Base.prototype);
+    MuLoader.prototype.constructor = MuLoader;
+    MuLoader.prototype.load = function (context, config, callbacks) {
+      if (context.type !== 'key') return Base.prototype.load.call(this, context, config, callbacks);
+      if (!token || !window.MuCrypt) {
+        callbacks.onError({ code: 0, text: t('No se pudo preparar la clave de la retransmisión') }, context, null, null);
+        return;
+      }
+      var bytes = MuCrypt.utf8(MuCrypt.hlsKey(token, roomId));
+      callbacks.onSuccess({ url: context.url, data: bytes.buffer }, { trequest: 0, tfirst: 0, tload: 0,
+        loaded: bytes.length, total: bytes.length }, context, null);
+    };
+    return MuLoader;
+  }
+
   function attach(url) {
     source = url;
     if (hls) { hls.destroy(); hls = null; }
     var isHls = /\.m3u8(\?|$)/.test(url);
-    if (!isHls || (!forceHlsJs && video.canPlayType('application/vnd.apple.mpegurl'))) {
+    if (!isHls) {
       video.src = url;
       video.load();
       return;
     }
+    // Native HLS (Safari/iOS) cannot use a custom key loader, and every relay is encrypted: always hls.js.
     loadHlsJs().then(function (Hls) {
       if (source !== url) return;
       if (!Hls.isSupported()) { overlay(t('Este navegador no puede reproducir la retransmisión')); return; }
-      hls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 60 });
+      hls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 60, loader: keyLoader(Hls) });
       hls.on(Hls.Events.ERROR, function (_, data) {
+        if (data.details === Hls.ErrorDetails.KEY_LOAD_ERROR) {
+          overlay(t('No se pudo descifrar la retransmisión. Vuelve a abrir el enlace de invitación.'));
+          if (hls) { hls.destroy(); hls = null; }
+          return;
+        }
         if (!data.fatal) return;
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
         else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();

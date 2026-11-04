@@ -8,11 +8,20 @@ Chat text is cleaned here (control characters out, spaces collapsed, length limi
 a sliding window; the page shows it as text (never as HTML) and mu-share escapes it for the ASS overlay.
 
 A room link is ``/s/<room id>#k=<token>``: the token travels in the URL fragment (never in a request line or a
-log), the page posts it once with the chosen name and gets a cookie signed with the room's own secret, scoped to
-``/s/<room id>``. Closing the room (or its expiry) invalidates every cookie: the secret dies with it."""
+log). The browser proves it has that token without sending it (F4: HMAC challenge-response, ``challenge`` /
+``join_proof``); the token itself only goes in the body from the Atalaya guest (``mpvd/share/guest.py``), which is
+out of scope. A valid proof gets a short-lived credential (``SESSION_TTL``) signed with the room's own secret and
+scoped to ``/s/<room id>``; the page renews it on every authenticated request. Closing the room (or its expiry)
+invalidates every credential: the secret dies with it.
+
+F4 · the browser's HLS relay is AES-128 encrypted. Both ends derive the stream key from the invitation token with
+HKDF-SHA256 (``hls_key`` / ``http://.../static/mucrypt.js``): it never crosses the network, so a TLS-terminating
+proxy (Cloudflare) only sees ciphertext. One key per room: all guests watch the same relay. Rotating the invitation
+token while a relay is running changes the key for new guests (see docs/DECISIONS.md, ADR-142)."""
 
 from __future__ import annotations
 
+import base64
 import hmac
 import re
 import secrets
@@ -44,6 +53,11 @@ DEFAULT_VIEWERS = 20           # public room: viewers at once (configurable up t
 MAX_VIEWERS = 100
 STALE_SECONDS = 30.0           # public room full: a viewer without open streams this long leaves its seat
 POLL_ALIVE = 5.0               # F3: a polling guest has no open stream; recent requests still count as watching
+SESSION_TTL = 3600.0           # F4: guest session credential; the page renews it on every authenticated request
+CHALLENGE_TTL = 60.0           # F4: a challenge that is not answered in this long is useless (anti-replay)
+MAX_CHALLENGES = 64            # pending challenges kept per room (bounds memory against a flood)
+PROOF_PREFIX = "mu-share-v1"   # HMAC domain separator, shared with the page's mucrypt.js
+HLS_KEY_INFO = b"mu-share-hls-v1"
 CHAT_MAX = 200                 # characters of one chat message
 CHAT_BURST = 5                 # chat messages per guest inside RATE_WINDOW
 REACT_BURST = 8                # reactions per guest inside RATE_WINDOW
@@ -53,6 +67,31 @@ REACTIONS = {"like": ("👍", "me gusta"), "love": ("❤️", "me encanta"), "la
              "wow": ("😮", "se sorprende"), "clap": ("👏", "aplaude"), "sad": ("😢", "se entristece")}
 
 _CTRL = re.compile(r"[\x00-\x1f\x7f<>\"'`\\]")
+
+
+def hkdf_sha256(ikm: bytes, salt: bytes, info: bytes, length: int) -> bytes:
+    """RFC 5869 HKDF-SHA256 (extract + expand). The project carries no crypto dependency and needs only this."""
+    prk = hmac.new(salt, ikm, sha256).digest()
+    out, block, counter = b"", b"", 1
+    while len(out) < length:
+        block = hmac.new(prk, block + info + bytes([counter]), sha256).digest()
+        out += block
+        counter += 1
+    return out[:length]
+
+
+def hls_key(token: str, room_id: str) -> str:
+    """The relay's AES-128 key: 16 ASCII characters (96 bits of HKDF), the key file ffmpeg reads for HLS.
+
+    Token and room id are all the page needs (they arrive in the fragment); the derived key never travels."""
+    raw = hkdf_sha256(token.encode("utf-8", "replace"), room_id.encode("utf-8", "replace"), HLS_KEY_INFO, 12)
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def proof_for(token: str, room_id: str, client_nonce: str, server_nonce: str) -> str:
+    """The HMAC a browser sends to prove it holds the invitation token without putting it on the wire."""
+    msg = f"{PROOF_PREFIX}|{room_id}|{client_nonce}|{server_nonce}".encode("utf-8")
+    return hmac.new(token.encode("utf-8", "replace"), msg, sha256).hexdigest()
 
 
 class JoinError(Exception):
@@ -196,6 +235,8 @@ class Room:
     fail_times: list[float] = field(default_factory=list)
     locked: bool = False            # too many wrong tokens: the link no longer works until rotate()
     closed: bool = False
+    # F4 · pending challenge-response joins: client nonce → (server nonce, ip, issued at). Consumed on use.
+    challenges: dict[str, tuple[str, str, float]] = field(default_factory=dict)
     max_guests: int = MAX_GUESTS
     # H55 · en una sala privada has invitado tú a quien entra, así que por defecto puede pausar y saltar: es lo
     # que significa «ver juntos». Se puede quitar desde el menú. En una sala pública nunca: ahí solo se mira.
@@ -237,16 +278,19 @@ class Room:
         self.fails = 0
         self.fail_times = []
         self.locked = False
+        self.challenges.clear()
         return self.token
+
+    def hls_key(self) -> str:
+        """The AES-128 key of this room's relay; the page derives the same one from the invitation token."""
+        return hls_key(self.token, self.id)
 
     # -- joining ----------------------------------------------------------------------------------------
 
     def check_token(self, token: str) -> bool:
         return bool(token) and hmac.compare_digest(token.encode("utf-8", "replace"), self.token.encode())
 
-    def join(self, token: Any, name: Any, ip: str, limiter: AttemptLimiter | None = None,
-             now: float | None = None, hidden: bool = False) -> Guest:
-        now = time.time() if now is None else now
+    def _gate(self, ip: str, limiter: AttemptLimiter | None, now: float) -> None:
         if self.closed:
             raise JoinError(410, "la sala está cerrada")
         if self.expired(now):
@@ -257,15 +301,55 @@ class Room:
                 raise JoinError(429, f"demasiados intentos: espera {int(left // 60) + 1} min")
         if self.locked:
             raise JoinError(403, "este enlace ya no vale: pide uno nuevo al anfitrión")
+
+    def _wrong(self, ip: str, limiter: AttemptLimiter | None, now: float) -> None:
+        """One failed token/proof: counted against the room (locks it) and against the address (blocks it)."""
+        self.fail_times = [t for t in self.fail_times if now - t < FAIL_WINDOW]
+        self.fail_times.append(now)
+        self.fails = len(self.fail_times)
+        if self.fails >= MAX_FAILS_ROOM:
+            self.locked = True
+        if limiter is not None and limiter.fail(ip, now):
+            raise JoinError(429, "demasiados intentos: espera unos minutos")
+        raise JoinError(403, "enlace no válido o caducado")
+
+    def challenge(self, client_nonce: Any, ip: str, now: float | None = None) -> str:
+        """F4 · a server nonce for the guest to HMAC with the token it holds. Never reveals the token."""
+        now = time.time() if now is None else now
+        self._gate(ip, None, now)
+        if not isinstance(client_nonce, str) or not re.fullmatch(r"[0-9a-f]{16,64}", client_nonce):
+            raise JoinError(400, "nonce inválido")
+        self.challenges = {k: v for k, v in self.challenges.items() if now - v[2] < CHALLENGE_TTL}
+        while len(self.challenges) >= MAX_CHALLENGES:
+            self.challenges.pop(next(iter(self.challenges)))
+        server_nonce = secrets.token_hex(16)
+        self.challenges[client_nonce] = (server_nonce, ip, now)
+        return server_nonce
+
+    def join_proof(self, client_nonce: Any, proof: Any, name: Any, ip: str,
+                   limiter: AttemptLimiter | None = None, now: float | None = None) -> Guest:
+        """F4 · join with an HMAC proof instead of the token: the challenge is single-use and dies in 60 s."""
+        now = time.time() if now is None else now
+        self._gate(ip, limiter, now)
+        item = self.challenges.pop(client_nonce, None) if isinstance(client_nonce, str) else None
+        ok = bool(item) and now - item[2] < CHALLENGE_TTL and item[1] == ip
+        if ok and isinstance(proof, str):
+            ok = hmac.compare_digest(proof_for(self.token, self.id, client_nonce, item[0]), proof.lower())
+        if not ok:
+            self._wrong(ip, limiter, now)
+        return self._admit(name, ip, limiter, now)
+
+    def join(self, token: Any, name: Any, ip: str, limiter: AttemptLimiter | None = None,
+             now: float | None = None, hidden: bool = False) -> Guest:
+        """Atalaya's guest (and the host's hidden player credential) still join by sending the token in the body."""
+        now = time.time() if now is None else now
+        self._gate(ip, limiter, now)
         if not isinstance(token, str) or not self.check_token(token):
-            self.fail_times = [t for t in self.fail_times if now - t < FAIL_WINDOW]
-            self.fail_times.append(now)
-            self.fails = len(self.fail_times)
-            if self.fails >= MAX_FAILS_ROOM:
-                self.locked = True
-            if limiter is not None and limiter.fail(ip, now):
-                raise JoinError(429, "demasiados intentos: espera unos minutos")
-            raise JoinError(403, "enlace no válido o caducado")
+            self._wrong(ip, limiter, now)
+        return self._admit(name, ip, limiter, now, hidden)
+
+    def _admit(self, name: Any, ip: str, limiter: AttemptLimiter | None, now: float,
+               hidden: bool = False) -> Guest:
         active = [g for g in self.guests.values() if not g.kicked and not g.hidden]
         if len(active) >= self.max_guests:
             # viewers who closed the page do not say goodbye: their seats go to the new ones. Also in a private room,
@@ -297,19 +381,31 @@ class Room:
 
     # -- cookies ----------------------------------------------------------------------------------------
 
-    def cookie_value(self, guest_id: str) -> str:
-        return guest_id + "." + hmac.new(self.secret, f"{self.id}:{guest_id}".encode(), sha256).hexdigest()[:32]
+    def cookie_value(self, guest_id: str, exp: float | None = None, now: float | None = None) -> str:
+        """``guest.exp.signature``: a credential that belongs to one guest and dies on its own.
 
-    def guest_from_cookie(self, raw: str | None) -> Guest | None:
-        gid, _, sig = (raw or "").partition(".")
-        if not gid or not sig or not self.alive():
+        The browser gets ``SESSION_TTL`` and the page renews it on every request; a player link (``?k=``) is
+        minted with the room's expiry because mpv/VLC cannot renew anything mid-film."""
+        now = time.time() if now is None else now
+        exp = now + SESSION_TTL if exp is None else exp
+        stamp = int(exp)
+        sig = hmac.new(self.secret, f"{self.id}:{guest_id}:{stamp}".encode(), sha256).hexdigest()[:32]
+        return f"{guest_id}.{stamp}.{sig}"
+
+    def guest_from_cookie(self, raw: str | None, now: float | None = None) -> Guest | None:
+        now = time.time() if now is None else now
+        gid, _, rest = (raw or "").partition(".")
+        stamp, _, sig = rest.partition(".")
+        if not gid or not stamp or not sig or not stamp.isdigit() or not self.alive(now):
+            return None
+        if int(stamp) < now:
             return None
         guest = self.guests.get(gid)
         if guest is None or guest.kicked:
             return None
-        if not hmac.compare_digest(self.cookie_value(gid), raw or ""):
+        if not hmac.compare_digest(self.cookie_value(gid, exp=int(stamp), now=now), raw or ""):
             return None
-        guest.last_seen = time.time()
+        guest.last_seen = now
         return guest
 
     # -- permissions ------------------------------------------------------------------------------------

@@ -2,11 +2,19 @@
 relay made by ffmpeg in the cache (``-c copy`` for H.264/AAC, else H.264 by VA-API — ``h264_vaapi -low_power 1`` on
 iGPUs that only expose VAEntrypointEncSliceLP — or libx264 veryfast), and the active text subtitle as WebVTT.
 
-HLS options verified with ``ffmpeg -h muxer=hls`` (ffmpeg 8.0): ``-hls_time``, ``-hls_list_size 0``,
+HLS options verified with ``ffmpeg -h muxer=hls`` (ffmpeg 7.1/8.0): ``-hls_time``, ``-hls_list_size 0``,
 ``-hls_playlist_type event`` (every segment stays listed while it grows; ENDLIST at the end), ``-hls_flags
 independent_segments+temp_file`` (segments and playlist written to a temporary name and renamed: never served half
-written), ``-hls_segment_type mpegts`` and ``-hls_segment_filename``. MPEG-TS segments play in Safari/iOS/Android
-natively and in desktop Chrome/Firefox through the vendored hls.js."""
+written), ``-hls_segment_type mpegts`` and ``-hls_segment_filename``.
+
+F4 · segments are AES-128 encrypted with ``-hls_key_info_file`` (line 1: URI written into EXT-X-KEY; line 2: the
+16-byte key file; line 3: IV as hex). ``-hls_enc_key`` also takes 16 raw characters despite the help saying hex, but
+``-hls_enc_key_url`` is NOT just a playlist label: ffmpeg **writes/PUTs the key there** (measured: a bare name
+created ``mu-key`` in the process CWD with the key inside, and a URL made the muxer fail). Hence the key file, inside
+the relay's cache directory and 0600, deleted with it. The key is derived by both ends from the room token and never
+crosses the wire; the playlist's key URI stays a dummy that hls.js intercepts with its own loader. MPEG-TS still
+demuxes in the browser through the vendored hls.js (native HLS cannot use a custom key loader, so relays always
+play through hls.js)."""
 
 from __future__ import annotations
 
@@ -33,6 +41,9 @@ log = logging.getLogger("mpvd.share.hls")
 SEGMENT_SECONDS = 4
 PLAYLIST = "index.m3u8"
 SUBS_FILE = "subs.vtt"
+KEY_URI = "mu-key"          # never fetched: the page's key loader derives the key from the invitation token
+KEY_FILE = "hls.key"        # 0600, inside the relay dir (removed with it; never served: SEG_RE does not match it)
+KEY_INFO_FILE = "hls.keyinfo"
 MAX_HEIGHT_HW = 1080
 MAX_HEIGHT_CPU = 720
 VAAPI_QP = 24
@@ -238,12 +249,29 @@ def _scale(height: int, max_height: int) -> str | None:
     return None
 
 
+def write_key_info(out_dir: Path, key: str, iv: str) -> Path:
+    """Write the key file and ffmpeg's ``-hls_key_info_file``; returns the info path.
+
+    ``key``/``iv``: 16 ASCII characters each (ffmpeg reads them raw). The IV line has no ``0x``: ffmpeg adds it
+    when it writes ``EXT-X-KEY``. Files are 0600 and live inside the relay dir, so they disappear with it."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    key_path = out_dir / KEY_FILE
+    key_path.write_bytes(key.encode("ascii"))
+    key_path.chmod(0o600)
+    info = out_dir / KEY_INFO_FILE
+    info.write_text(f"{KEY_URI}\n{key_path.resolve()}\n{iv.encode('ascii').hex()}\n", encoding="utf-8")
+    info.chmod(0o600)
+    return info
+
+
 def build_command(inputs: list[Input], out_dir: Path, video: tuple[int, dict[str, Any]] | None,
                   audio: tuple[int, dict[str, Any]] | None, hw: HwPlan | None = None, ffmpeg: str | None = None,
-                  force_transcode: bool = False, segment: int = SEGMENT_SECONDS) -> HlsPlan:
+                  force_transcode: bool = False, segment: int = SEGMENT_SECONDS,
+                  key_info: Path | None = None) -> HlsPlan:
     """ffmpeg arguments that turn ``inputs`` into ``out_dir/index.m3u8`` + ``seg_NNNNN.ts``.
 
-    ``video``/``audio``: (input index, ffprobe stream) to map, or None. ``hw``: VA-API plan for h264 (None = CPU)."""
+    ``video``/``audio``: (input index, ffprobe stream) to map, or None. ``hw``: VA-API plan for h264 (None = CPU).
+    ``key_info``: F4, path from ``write_key_info``; None leaves the relay clear (only used by old tests)."""
     ff = ffmpeg or ffmpeg_bin() or "ffmpeg"
     cmd = [ff, "-hide_banner", "-nostdin", "-loglevel", "error", "-y"]
     vmode, amode = "none", "none"
@@ -288,16 +316,20 @@ def build_command(inputs: list[Input], out_dir: Path, video: tuple[int, dict[str
     cmd += vargs + aargs + ["-sn", "-dn",
                             "-f", "hls", "-hls_time", str(segment), "-hls_list_size", "0",
                             "-hls_playlist_type", "event", "-hls_flags", "independent_segments+temp_file",
-                            "-hls_segment_type", "mpegts",
-                            "-hls_segment_filename", str(out_dir / "seg_%05d.ts"), str(out_dir / PLAYLIST)]
+                            "-hls_segment_type", "mpegts"]
+    if key_info is not None:
+        cmd += ["-hls_key_info_file", str(key_info)]
+    cmd += ["-hls_segment_filename", str(out_dir / "seg_%05d.ts"), str(out_dir / PLAYLIST)]
     return HlsPlan(cmd, vmode, amode)
 
 
 def plans_for(inputs: list[Input], probes: list[dict[str, Any]], out_dir: Path, audio_index: int | None = None,
-              hw: HwPlan | None = None, ffmpeg: str | None = None) -> list[HlsPlan]:
+              hw: HwPlan | None = None, ffmpeg: str | None = None,
+              key_info: Path | None = None) -> list[HlsPlan]:
     """The plan to try first and, when it uses VA-API, the CPU fallback (drivers fail in surprising ways).
 
-    ``audio_index``: ffprobe stream index of the audio the host is listening to (in the first input carrying audio)."""
+    ``audio_index``: ffprobe stream index of the audio the host is listening to (in the first input carrying audio).
+    ``key_info``: F4, one key file shared by both plans, so a fallback keeps the playlist decryptable."""
     video: tuple[int, dict[str, Any]] | None = None
     audio: tuple[int, dict[str, Any]] | None = None
     for i, data in enumerate(probes):
@@ -310,9 +342,9 @@ def plans_for(inputs: list[Input], probes: list[dict[str, Any]], out_dir: Path, 
             audio = (i, chosen)
     if video is None and audio is None:
         raise ValueError("no hay vídeo ni audio que retransmitir")
-    first = build_command(inputs, out_dir, video, audio, hw=hw, ffmpeg=ffmpeg)
+    first = build_command(inputs, out_dir, video, audio, hw=hw, ffmpeg=ffmpeg, key_info=key_info)
     if first.video == "vaapi":
-        return [first, build_command(inputs, out_dir, video, audio, hw=None, ffmpeg=ffmpeg)]
+        return [first, build_command(inputs, out_dir, video, audio, hw=None, ffmpeg=ffmpeg, key_info=key_info)]
     return [first]
 
 
@@ -493,6 +525,8 @@ class HlsStream:
             log.warning("hls %s (%s) failed: %s", self.id, plan.mode, self.error)
             if produced == 0 and n + 1 < len(self.plans):
                 for p in self.dir.glob("*"):
+                    if p.name in (KEY_FILE, KEY_INFO_FILE):   # the fallback plan reads the same key
+                        continue
                     with contextlib.suppress(OSError):
                         p.unlink()
                 continue

@@ -55,8 +55,8 @@ from mpvd.share import hls
 from mpvd.share.live import LiveService
 from mpvd.share.live import register as register_live
 from mpvd.share.rooms import (CHAT_BURST, DEFAULT_VIEWERS, MIN_TTL, MODE_PRIVATE, MODES, PERM_CONTROL, PERM_VIEW,
-                              PERMS, REACT_BURST, REACTIONS, ROOM_TTL, AttemptLimiter, JoinError, Room, clean_chat,
-                              rate_ok)
+                              PERMS, REACT_BURST, REACTIONS, ROOM_TTL, SESSION_TTL, AttemptLimiter, JoinError, Room,
+                              clean_chat, rate_ok)
 from mpvd.proc import spawn_kwargs
 
 if TYPE_CHECKING:
@@ -78,6 +78,7 @@ MAX_STREAMS = 3                  # relays kept per room (current file + fallback
 CHAT_KEEP = 50                   # chat lines kept per room (new guests see the last ones)
 HOST_NAME = "Anfitrión"
 STATIC = {"room.js": "text/javascript; charset=utf-8", "sync.js": "text/javascript; charset=utf-8",
+          "mucrypt.js": "text/javascript; charset=utf-8",
           "room.css": "text/css; charset=utf-8", "hls.light.min.js": "text/javascript; charset=utf-8",
           "icon.svg": "image/svg+xml"}
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
@@ -455,7 +456,7 @@ class ShareService:
         best = self._player_url(rt, who.id, base)
         if best is None:
             raise RpcError(NOT_FOUND, t("ahora mismo no hay nada que llevarse a otro reproductor"))
-        return {**best, "m3u": f"{base}/s/{room.id}/file.m3u?k={room.cookie_value(who.id)}"}
+        return {**best, "m3u": f"{base}/s/{room.id}/file.m3u?k={room.cookie_value(who.id, exp=room.expires_at)}"}
 
     def invite_text(self) -> str:
         """H55 · los DOS enlaces en un solo pegado, con qué hace cada uno.
@@ -1079,10 +1080,13 @@ class ShareService:
             hw_plan = hw_mod.plan_for(caps, "h264")
         sid = secrets.token_hex(4)
         out = rt.dir / sid
-        plans = hls.plans_for(inputs, probes, out, audio_index=audio_index, hw=hw_plan)
         # probing a URL takes seconds: the room may have been closed meanwhile, and starting now would transcode the
         # whole film at full CPU for ever AND recreate the folder that close() had just deleted
         self._must_be_open(rt)
+        # F4 · cifrado de la retransmisión: la clave sale del token de la sala (la página deriva la misma) y el IV
+        # es de este relay; los dos van en la lista, la clave NO viaja. `token_urlsafe(12)` son 16 caracteres.
+        key_info = hls.write_key_info(out, rt.room.hls_key(), secrets.token_urlsafe(12))
+        plans = hls.plans_for(inputs, probes, out, audio_index=audio_index, hw=hw_plan, key_info=key_info)
         st = hls.HlsStream(sid, out, plans, duration=hls.duration_of(probes[0]),
                            offset=max((i.start for i in inputs), default=0.0))
         st.start()
@@ -1250,17 +1254,32 @@ class ShareService:
             return Response(status, headers, b"")
         return Response(status, headers, b"", stream=chunks())
 
+    def _cookie_header(self, room: Room, guest: Any, exp: float | None = None) -> str:
+        """A short-lived, room-scoped credential. The page renews it with every authenticated request."""
+        now = time.time()
+        exp = now + SESSION_TTL if exp is None else exp
+        max_age = max(1, int(min(max(0.0, exp - now), room.expires_at - now)))
+        return (f"{COOKIE}={room.cookie_value(guest.id, exp=exp, now=now)}; Path=/s/{room.id}; HttpOnly; "
+                f"SameSite=Strict; Max-Age={max_age}")
+
+    def _renew(self, rt: RoomRuntime, req: Request, guest: Any) -> Any:
+        # F4 · sliding session: any authenticated request pushes the credential another SESSION_TTL ahead.
+        req.renew = (rt.room, guest)
+        return guest
+
     def _guest_from(self, rt: RoomRuntime, req: Request) -> Any:
         guest = rt.room.guest_from_cookie(req.cookies.get(COOKIE))
         if guest is None:
             raise HttpError(401, t("no estás en la sala: abre el enlace de invitación"))
-        return guest
+        return self._renew(rt, req, guest)
 
     def _file_link(self, rt: RoomRuntime, guest_id: str) -> str:
         """The original file for ONE guest: their signed credential plus the per-film token, so a real player
-        that is handed this link sees a different URL when the host changes film."""
+        that is handed this link sees a different URL when the host changes film. The credential lives as long as
+        the room (a player cannot renew it mid-film); the browser's own session is the short-lived one."""
         v = rt.media.get("v")
-        return (f"/s/{rt.room.id}/file?k={rt.room.cookie_value(guest_id)}"
+        exp = rt.room.expires_at
+        return (f"/s/{rt.room.id}/file?k={rt.room.cookie_value(guest_id, exp=exp)}"
                 + (f"&v={v}" if v else ""))
 
     def _player_url(self, rt: RoomRuntime, guest_id: str, base: str) -> dict[str, Any] | None:
@@ -1276,31 +1295,35 @@ class ShareService:
             url = str(rt.media.get("url") or "")
             return {"url": url, "kind": "direct",
                     "quality": "El vídeo original de la web, directo: ni pasa por este equipo."} if url else None
-        if kind == "hls":
-            path = str(rt.media.get("url") or "")
-            if not path.startswith("/"):
-                return None
-            return {"url": f"{base}{path}?k={rt.room.cookie_value(guest_id)}", "kind": "hls",
-                    "quality": "La retransmisión del anfitrión (es un directo o un vídeo de internet)."}
+        # F4 · a relay is AES-128 encrypted and its key is derived in the page from the invitation fragment; a
+        # real player cannot do that, and serving the key by URL would hand it to Cloudflare, which is the whole
+        # point of encrypting. An original file (above) still opens in mpv/VLC as always.
         return None
 
     def _guest_or_key(self, rt: RoomRuntime, req: Request) -> Any:
         """Guest of a GET for media: the cookie or the SAME signed value in the query (``?k=``). A real player —mpv,
         VLC, Atalaya Player as a guest (H44/C6)— does not send our cookie, and the credential is per guest, does not
         open the room and dies with it."""
-        guest = rt.room.guest_from_cookie(req.cookies.get(COOKIE) or req.query.get("k"))
+        cookie = req.cookies.get(COOKIE)
+        guest = rt.room.guest_from_cookie(cookie or req.query.get("k"))
         if guest is None:
             raise HttpError(401, t("no estás en la sala: abre el enlace de invitación"))
-        return guest
+        # only a browser's cookie is renewed; a player's ?k= link is renewed by asking the page for another one
+        return self._renew(rt, req, guest) if cookie else guest
 
     async def handle(self, req: Request) -> Response:
         # H49/G8 · todo lo que se diga dentro de esta petición va en el idioma de QUIEN la hace (su navegador),
         # no en el de este equipo: los errores de la sala y del mando los lee el invitado, no el anfitrión.
         token = visitor_language(req.headers.get("accept-language"))
         try:
-            return await self._handle(req)
+            resp = await self._handle(req)
         finally:
             forget_visitor(token)
+        renew = getattr(req, "renew", None)
+        if renew is not None and "Set-Cookie" not in resp.headers:
+            room, guest = renew
+            resp.headers["Set-Cookie"] = self._cookie_header(room, guest)
+        return resp
 
     async def _handle(self, req: Request) -> Response:
         path = req.path
@@ -1333,23 +1356,37 @@ class ShareService:
         if rt is None or rt.room.id != room_id or not rt.room.alive():
             raise HttpError(410, t("la sala está cerrada o ha caducado"))
         room = rt.room
+        if rest == "api/challenge" and req.method == "POST":
+            # F4 · the page asks for a nonce and answers with HMAC(token, nonces): the token never travels.
+            body = req.json() or {}
+            if not isinstance(body, dict):
+                raise HttpError(400, t("cuerpo inválido"))
+            ip = req.peer.rsplit(":", 1)[0]
+            try:
+                server_nonce = room.challenge(body.get("nonce"), ip)
+            except JoinError as exc:
+                raise HttpError(exc.status, exc.message) from None
+            return Response.json({"nonce": server_nonce})
         if rest == "api/join" and req.method == "POST":
             body = req.json() or {}
             if not isinstance(body, dict):
                 raise HttpError(400, t("cuerpo inválido"))
             ip = req.peer.rsplit(":", 1)[0]
             try:
-                guest = room.join(body.get("token"), body.get("name"), ip, self.limiter)
+                if body.get("proof") is not None:
+                    guest = room.join_proof(body.get("nonce"), body.get("proof"), body.get("name"), ip,
+                                            self.limiter)
+                else:
+                    # Atalaya's guest (mpvd/share/guest.py) joins by posting the token in the body; the browser
+                    # page never does (F4). The token is not in a URL or a header either way.
+                    guest = room.join(body.get("token"), body.get("name"), ip, self.limiter)
             except JoinError as exc:
                 raise HttpError(exc.status, exc.message) from None
-            max_age = max(60, int(room.expires_at - time.time()))
-            cookie = (f"{COOKIE}={room.cookie_value(guest.id)}; Path=/s/{room.id}; HttpOnly; SameSite=Strict; "
-                      f"Max-Age={max_age}")
             if not room.public_mode:  # a public room does not announce each viewer
                 self._notice(rt, f"{guest.name} se ha unido", kind="join", who=guest.name)
             self._guests_changed(rt)
             return Response.json({"ok": True, "guest": guest.public(), "room": room.public()},
-                                 **{"Set-Cookie": cookie})
+                                 **{"Set-Cookie": self._cookie_header(room, guest)})
         if rest == "file.m3u" and req.method in ("GET", "HEAD"):
             # un .m3u de una línea: doble clic lo abre en VLC o en mpv en Windows, macOS y Linux. Vale para
             # cualquier cosa que esté puesta, no solo para un archivo del anfitrión (H51).

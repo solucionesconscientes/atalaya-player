@@ -1,8 +1,9 @@
 """«Entrar en una sala» (H44/C6): the guest side of *Ver juntos*, inside Atalaya Player instead of a browser.
 
 An invitation is ``http(s)://<host>/s/<room>#k=<token>``. The token lives in the fragment, which never reaches the
-server: the web page reads it and posts it to ``api/join``, and this module does exactly the same by hand. Then it
-opens the room's SSE stream and follows the host.
+server. Since F4 the web page proves it holds the token (HMAC challenge-response) instead of sending it; this module
+is out of that change and keeps posting it to ``api/join`` in the body, by hand, exactly as before. Then it opens
+the room's SSE stream and follows the host.
 
 Two things are deliberate here:
 
