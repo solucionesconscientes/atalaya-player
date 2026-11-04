@@ -44,6 +44,13 @@ CLOUDFLARED_SHA256_x86_64_linux=77e26d8d900e0b8469f416239d14b5f296525fdf79fee6f5
 CLOUDFLARED_SHA256_aarch64_linux=aaeb2d7d0da3614634c7e03ab13487a1522c2e79165ed2929cfe23d5e95b326d
 CLOUDFLARED_SHA256_x86_64_windows=f096265ec2fcbe9bb6e2d64268db167ced3fcbb83d894bdb9e2fcdb26f2ea7e2
 
+# Raíces de confianza para el paquete de Windows (F2, verificación del 2026-11-04): el CPython que viaja dentro no
+# lee el almacén de certificados de Windows y trae 16 raíces, así que https://1.1.1.1 (el DoH que decide si el enlace
+# ya enruta) y *.trycloudflare.com fallaban con CERTIFICATE_VERIFY_FAILED y la sala se quedaba sin enlace público.
+# Es el bundle de Mozilla que publica curl.se; se copia a vendor/cacert.pem y mpvd lo usa como SSL_CERT_FILE.
+CACERT_URL=https://curl.se/ca/cacert.pem
+CACERT_SHA256=796f1389bfea13c0ed78f663b765baaff54a508e5483786bd6ece73c5e3e3cbe
+
 # Argos Translate packages (docs/TRADUCCION.md): CTranslate2 model + sentencepiece, CC-BY 4.0 (OPUS-MT). Downloaded on demand by
 # mpvd (mpvd/subs/translate.py::PINNED) into vendor/dl and unpacked into vendor/models/argos/<from>_<to>/.
 ARGOS_ES_EN_URL=https://argos-net.com/v1/translate-es_en-1_0.argosmodel

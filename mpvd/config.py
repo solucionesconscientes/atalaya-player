@@ -34,6 +34,25 @@ def project_root() -> Path | None:
     return None
 
 
+def use_bundled_ca_bundle(bundle: Path | None = None, platform: str | None = None) -> bool:
+    """Point OpenSSL at the CA bundle that travels in the package (Windows).
+
+    OpenSSL does not read the Windows certificate store, and the CPython that goes inside the Windows package
+    ships almost no roots: ``https://1.1.1.1`` (the DNS-over-HTTPS of F2) and the tunnel's own
+    ``*.trycloudflare.com`` fail with ``CERTIFICATE_VERIFY_FAILED``, so the room never gets its public link.
+    The package carries Mozilla's bundle in ``vendor/cacert.pem``; this only sets ``SSL_CERT_FILE`` when the
+    caller has not already chosen one, and never on other systems (Linux/macOS read the system store).
+    """
+    if (platform or sys.platform) != "win32" or os.environ.get("SSL_CERT_FILE"):
+        return False
+    path = bundle or (_package_root() / "vendor" / "cacert.pem")
+    if not path.is_file():
+        return False
+    os.environ["SSL_CERT_FILE"] = str(path)
+    return True
+
+
+
 def default_runtime_dir() -> Path:
     env = os.environ.get("MPV_UOS_RUNTIME_DIR")
     if env:

@@ -86,3 +86,29 @@ def test_el_parche_del_panel_sigue_aplicado(project_root: Path):
     assert (project_root / "patches" / "uosc-5.13.0-panel.patch").is_file()
     vendor = (project_root / "tools" / "vendor.sh").read_text(encoding="utf-8")
     assert "patches/*.patch" in vendor, "vendor.sh tiene que reaplicar los parches al actualizar uosc"
+
+
+def test_win32_usa_el_bundle_de_ca_del_paquete(tmp_path, monkeypatch):
+    """Windows: el Python del paquete no lee el almacén del sistema y sin raíces falla el DoH del enlace (F2).
+    El bundle que viaja en vendor/cacert.pem se usa solo si nadie ha fijado SSL_CERT_FILE, y nunca fuera de Windows."""
+    from mpvd.config import use_bundled_ca_bundle
+
+    bundle = tmp_path / "cacert.pem"
+    bundle.write_text("-----BEGIN CERTIFICATE-----\n", encoding="utf-8")
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    assert use_bundled_ca_bundle(bundle, "win32") is True
+    assert Path(__import__("os").environ["SSL_CERT_FILE"]) == bundle
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    assert use_bundled_ca_bundle(bundle, "linux") is False
+    assert "SSL_CERT_FILE" not in __import__("os").environ
+    monkeypatch.setenv("SSL_CERT_FILE", "/otro/cacert.pem")
+    assert use_bundled_ca_bundle(bundle, "win32") is False
+    assert Path(__import__("os").environ["SSL_CERT_FILE"]) == Path("/otro/cacert.pem")
+
+
+def test_win32_sin_bundle_no_toca_el_entorno(tmp_path, monkeypatch):
+    from mpvd.config import use_bundled_ca_bundle
+
+    monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+    assert use_bundled_ca_bundle(tmp_path / "no-existe.pem", "win32") is False
+    assert "SSL_CERT_FILE" not in __import__("os").environ

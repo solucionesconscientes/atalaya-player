@@ -100,17 +100,24 @@ Section "Atalaya Player" SecMain
   ; El intérprete vive en runtime\ (antes en .venv\Scripts). Se borra antes de extraer para que no queden restos de
   ; la versión anterior; si Windows no deja, se dice en castellano en vez de dejar que falle NSIS a medias.
   SetOverwrite on
-  ClearErrors
-  RMDir /r "$INSTDIR\runtime"
-  ${If} ${Errors}
-    MessageBox MB_OK|MB_ICONSTOP "No se ha podido reemplazar el intérprete de Atalaya ($INSTDIR\runtime).$\r$\n$\r$\nCierra cualquier programa que lo esté usando y vuelve a ejecutar el instalador."
-    Abort
+  ; En una instalación nueva esa carpeta no existe y `RMDir /r` deja el indicador de error puesto aunque no haya
+  ; nada que borrar: sin el `IfFileExists`, el instalador se abortaba solo (código 2) antes de copiar nada. Solo
+  ; se comprueba el error si de verdad había algo que borrar.
+  ${If} ${FileExists} "$INSTDIR\runtime\*.*"
+    ClearErrors
+    RMDir /r "$INSTDIR\runtime"
+    ${If} ${Errors}
+      MessageBox MB_OK|MB_ICONSTOP "No se ha podido reemplazar el intérprete de Atalaya ($INSTDIR\runtime).$\r$\n$\r$\nCierra cualquier programa que lo esté usando y vuelve a ejecutar el instalador."
+      Abort
+    ${EndIf}
   ${EndIf}
-  ClearErrors
-  RMDir /r "$INSTDIR\.venv"
-  ${If} ${Errors}
-    MessageBox MB_OK|MB_ICONSTOP "No se ha podido borrar el intérprete anterior de Atalaya ($INSTDIR\.venv).$\r$\n$\r$\nCierra cualquier programa que lo esté usando y vuelve a ejecutar el instalador."
-    Abort
+  ${If} ${FileExists} "$INSTDIR\.venv\*.*"
+    ClearErrors
+    RMDir /r "$INSTDIR\.venv"
+    ${If} ${Errors}
+      MessageBox MB_OK|MB_ICONSTOP "No se ha podido borrar el intérprete anterior de Atalaya ($INSTDIR\.venv).$\r$\n$\r$\nCierra cualquier programa que lo esté usando y vuelve a ejecutar el instalador."
+      Abort
+    ${EndIf}
   ${EndIf}
 
   SetOutPath "$INSTDIR"

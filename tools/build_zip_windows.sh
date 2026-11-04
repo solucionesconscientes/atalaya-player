@@ -114,6 +114,16 @@ if [ ! -f "$exe" ]; then
 fi
 cp "$exe" "$APP/vendor/bin/"
 printf '%s\n' "$YTDLP_VERSION" > "$APP/vendor/bin/yt-dlp.exe.version"
+# Raíces de confianza (ver vendor.lock): el Python del paquete no lee el almacén de Windows y sin esto el DoH del
+# enlace y el propio túnel fallan por TLS. Solo Windows: Linux y macOS usan el almacén del sistema.
+ca="$ROOT/vendor/cacert.pem"
+if [ ! -f "$ca" ]; then
+  curl -fsSL -o "$ca.part" "$CACERT_URL"
+  echo "$CACERT_SHA256  $ca.part" | sha256sum -c --quiet
+  mv "$ca.part" "$ca"
+fi
+echo "$CACERT_SHA256  $ca" | sha256sum -c --quiet
+cp "$ca" "$APP/vendor/cacert.pem"
 if [ "$PACKAGE_CLOUDFLARED" = "1" ]; then
   # shellcheck source=/dev/null
   source "$ROOT/tools/vendor_cloudflared.sh"
