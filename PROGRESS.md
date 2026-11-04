@@ -20,7 +20,7 @@ ESTADO_GLOBAL: EN_CURSO
 - **Cierre de la sala con invitado que sondea.** Al cerrar se espera 1,5 s antes de apagar el servidor para que el
   sondeo (1 s) llegue a pedir `api/me` y reciba el 410; antes se quedaba reintentando una dirección muerta. El test
   de sondeo de F3, que fallaba por esto en server1, queda verde.
-- **Verificación (medido, no inferido).** Batería `share`+`mu-share`: **111 pasados, 3 omitidos, 0 rojos** (los
+- **Verificación (medido, no inferido).** Batería `share`+`mu-share`: **110 pasados, 3 omitidos, 0 rojos** (los
   tests de navegador corren en server1 con `DBUS_SESSION_BUS_ADDRESS=/dev/null DBUS_SYSTEM_BUS_ADDRESS=/dev/null`;
   el cuelgue de Chrome era D-Bus, no el producto). Medición real en la VM Windows con Edge 156 headless y el mpv
   anfitrión reproduciendo un MP4 de 180 s, con el reloj de la propia VM (mpv por su tubería y Edge por CDP, sin
