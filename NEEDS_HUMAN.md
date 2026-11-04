@@ -195,6 +195,10 @@ Ser preguntó por las tres cosas que solo puede hacer él. Esto es lo que recomi
 - **Carpeta oculta de la versión anterior**: la detección de intro escribía `.mpv-uos/segments.json` junto a los vídeos; ya no lo hace.
   Queda una en `~/Descargas/Los tres días del cóndor (1975)/.mpv-uos`. Para quitarla:
   `rm -r "$HOME/Descargas/Los tres días del cóndor (1975)/.mpv-uos"`
+## 2026-11-04 · Registro del proyecto (no bloquea)
+- La sesión desatendida de F1 no tenía MCP de Notion ni permiso para el MCP `vault`, así que el registro en
+  «Centro de proyectos» y en la memoria compartida queda pendiente. El parte de la fase está en
+  `tmp/fase-share-1.md` (ignorado por git).
 ## 2026-09-30 · Compartir (H25)
 - **Túnel a internet (H25 punto 3) — HECHO el 2026-10-01** (ADR-068), ya no necesita nada de ti salvo encenderlo:
   *Compartir → Que se pueda entrar desde internet* (encendido por defecto, se recuerda). Desde F1 (ADR-139, 2026-11-04)
