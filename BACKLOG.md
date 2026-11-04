@@ -176,11 +176,16 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
 - [x] Sala privada con enlace: «ver juntos» sincronizado (cada invitado reproduce la fuente en su navegador), permisos por invitado
       (solo ver / puede controlar, con aprobación en pantalla, revocable), quién está conectado, avisos «Ana ha pausado».
 - [x] Retransmisión de archivos locales a los invitados (HLS con subtítulos WebVTT, conversión al vuelo por VA-API si hace falta).
-- [x] Túnel de Cloudflare (cloudflared en vendor/, sin cuenta) activo SOLO mientras la sala está abierta (ADR-068):
-      `mpvd/share/tunnel.py`, opción *Compartir → Que se pueda entrar desde internet* (apagada por defecto, se recuerda),
-      binario opcional (`MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh`, fijado por SHA-256). Probado con un cloudflared falso
-      (tests/test_share_tunnel.py) y con un túnel real: la dirección pública sirve lo que sirve el servidor local y el
-      proceso muere con la sala. Con túnel no hace falta tocar el cortafuegos.
+- [x] Túnel de Cloudflare (cloudflared, sin cuenta) activo SOLO mientras la sala está abierta (ADR-068, ADR-139):
+      `mpvd/share/tunnel.py`, opción *Compartir → Que se pueda entrar desde internet* (encendida por defecto desde H51,
+      se recuerda). El binario se busca en el paquete, `$MPV_UOS_CLOUDFLARED`, `vendor/bin` o el PATH, y si falta se
+      **descarga bajo demanda** con la URL y el SHA-256 de `vendor.lock` (linux-amd64, linux-arm64 y windows-amd64),
+      con `.part` reanudable, verificación y `rename` atómico; la fila del menú muestra descarga/preparación/listo/
+      reintentar. Paquetes ligeros por defecto; `MU_PACKAGE_CLOUDFLARED=1` hace la variante completa. Al cerrar la
+      sala se para; si mpvd muere con `kill -9`, el siguiente arranque barre `cloudflared.pid`. Probado con un
+      cloudflared falso (tests/test_share_tunnel.py) y con un AppImage y un túnel reales: la dirección pública sirve
+      lo que sirve el servidor local y el proceso muere con la sala o el reproductor. Con túnel no hace falta tocar
+      el cortafuegos.
 - [x] Sala pública «solo ver» (cualquiera con el enlace en la red local, número máximo de espectadores, sin control ni chat).
 - [x] «Emitir en directo» a una plataforma (YouTube Live, Twitch, PeerTube, Owncast) por RTMP con clave de emisión, para audiencias
       grandes. Chat y reacciones en salas privadas. Aviso legal: solo contenido que se puede compartir.
