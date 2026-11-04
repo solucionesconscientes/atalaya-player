@@ -56,7 +56,7 @@ class GuestError(RuntimeError):
 
 
 class HostClock:
-    """F5 · the host's clock mapped to ours (mirror of ``anchor`` in www/sync.js).
+    """F5 · the host's clock mapped to ours (mirror of ``clockFrom``/``anchor`` in www/sync.js).
 
     ``state.at`` is when the host read ``state.pos``. Transit only ever subtracts from
     (``at`` − our clock), so the largest candidate seen is the closest to the offset between its clock and
@@ -65,16 +65,26 @@ class HostClock:
     """
 
     def __init__(self) -> None:
-        self.offset: float | None = None
+        self.offset: float | None = None      # from a round trip: the good one
+        self.seen: float | None = None        # one-way fallback: the best candidate so far
+        self.rtt: float | None = None
+
+    def from_round_trip(self, server_now: float, sent: float, got: float) -> None:
+        """A request we sent whose answer carries the host's `now`: midpoint, fastest round trip wins."""
+        rtt = got - sent
+        if self.rtt is None or rtt < self.rtt:
+            self.offset = float(server_now) - (sent + got) / 2
+            self.rtt = rtt
 
     def anchor(self, state: dict[str, Any], now: float) -> float:
         at = state.get("at")
         if not isinstance(at, (int, float)) or at <= 0:
             return now
         candidate = float(at) - now
-        if self.offset is None or candidate > self.offset:
-            self.offset = candidate
-        return now - max(0.0, now + self.offset - float(at))
+        if self.seen is None or candidate > self.seen:
+            self.seen = candidate
+        offset = self.seen if self.offset is None else self.offset
+        return now - max(0.0, now + offset - float(at))
 
 
 def expected(state: dict[str, Any] | None, anchor: float, now: float) -> float | None:
@@ -285,7 +295,12 @@ class GuestSession:
     # -- joining ---------------------------------------------------------------------------------------------
     async def join(self) -> dict[str, Any]:
         body = {"token": self.link.token, "name": self.state.name}
+        sent = time.monotonic()
         data, headers = await _json_request(self.link, "POST", f"/s/{self.link.room}/api/join", body=body)
+        got = time.monotonic()
+        now = data.get("now")
+        if isinstance(now, (int, float)):
+            self.clock.from_round_trip(float(now), sent, got)
         raw = headers.get("set-cookie", "")
         value = raw.split(";", 1)[0].partition("=")[2]
         if not value:

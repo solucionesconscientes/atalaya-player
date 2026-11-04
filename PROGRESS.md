@@ -12,8 +12,8 @@ ESTADO_GLOBAL: EN_CURSO
   envío y la recepción de una respuesta con `now` da el desfase anfitrión−invitado; gana la ida y vuelta más
   corta) y `anchor()` (sin ida y vuelta aún, el mayor `at − nuestro reloj` es el desfase más cercano, porque el
   tránsito solo resta). `expected()` no cambia. `room.js` pasa el ancla corregida, y `api/join` y `api/me` llevan
-  `now`. `guest.py` porta el mismo reloj (`HostClock`) para el invitado de Atalaya; `sync.js` y `HostClock` se
-  comparan en un test.
+  `now`. `guest.py` porta el mismo reloj (`HostClock`, también con la ida y vuelta del `api/join`) para el
+  invitado de Atalaya; `sync.js` y `HostClock` se comparan en un test.
 - **Saltos exactos y sin relanzar seeks.** `seek_rel` usa `relative+exact` (el `relative` a secas de mpv cae en el
   fotograma clave). La página no lanza otro `seek` mientras el anterior no ha terminado (2 s de tope): un seek HLS
   lento se cortaba y relanzaba cada 500 ms y el vídeo no se asentaba.

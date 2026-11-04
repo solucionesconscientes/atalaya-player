@@ -2234,8 +2234,8 @@
   recepción y toma el punto medio como hora del anfitrión (`clockFrom`), quedándose con la ida y vuelta más corta.
   (2) *Sin ida y vuelta todavía*: `anchor()` usa el mayor `at − reloj_local` observado, porque el tránsito solo
   puede restar; es una cota inferior del desfase y sirve de respaldo en SSE. (3) `expected()` no se toca: recibe
-  un ancla que ya es «cuándo estuvo el anfitrión en `pos`». `guest.py` porta el reloj (`HostClock`) y un test
-  compara las dos implementaciones. **Saltos**: `seek_rel` pasa a `relative+exact` (mpv redondea al fotograma
+  un ancla que ya es «cuándo estuvo el anfitrión en `pos`». `guest.py` porta el reloj (`HostClock`, con la ida y
+  vuelta del `api/join`) y un test compara las dos implementaciones. **Saltos**: `seek_rel` pasa a `relative+exact` (mpv redondea al fotograma
   clave con `relative` a secas) y la página no lanza un seek mientras el anterior siga en vuelo (tope 2 s): un
   seek HLS lento se relanzaba cada 500 ms y el vídeo no se asentaba. **Cierre**: al cerrar la sala se espera 1,5 s
   antes de parar el HTTP para que un invitado que sondea pida `api/me` y reciba el 410 (antes se quedaba

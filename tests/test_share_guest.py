@@ -101,6 +101,12 @@ def test_el_reloj_del_anfitrion_se_descuenta():
     assert clock.anchor({"pos": 13}, 7.0) == pytest.approx(7.0)                  # sin `at`, como antes
     assert G.expected({"pos": 13, "paused": False, "speed": 1}, 5.4, 6.2) == pytest.approx(13.8)
 
+    # el `now` de api/join da la ida y vuelta: corrige también un tránsito constante, que la marca de un solo
+    # sentido no puede distinguir del desfase de relojes
+    rtt = G.HostClock()
+    rtt.from_round_trip(1001.0, 1.0, 1.2)          # respondió en 1001; ida y vuelta 0,2 s
+    assert rtt.anchor({"pos": 12, "at": 1002.0}, 3.1) == pytest.approx(2.1)
+
 
 def test_donde_va_el_anfitrion_ahora():
     """`expected` adelanta el reloj mientras el anfitrión reproduce, no mientras está en pausa, y no se pasa del
