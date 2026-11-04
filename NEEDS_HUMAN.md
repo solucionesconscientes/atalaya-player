@@ -321,3 +321,9 @@ real en `tmp/fase-share-3-medicion.md` (20/20 cambios, p95 del total 1031 ms).
 La sesión no tiene conector de Notion y el MCP del vault pidió permiso y no se concedió (trabajo desatendido). El
 avance de F3 (sondeo por el túnel, ADR-141) queda en `PROGRESS.md`, `BACKLOG.md`, `docs/DECISIONS.md` y
 `tmp/fase-share-3.md`; falta pasarlo a Notion y a `proyectos/` del vault desde una sesión con permiso.
+
+## 2026-11-04 · Notion y vault en la sesión de F4 (no bloquea)
+Igual que en F3: no hay conector de Notion y el MCP del vault pidió permiso y no se concedió (trabajo desatendido).
+El avance de F4 (desafío HMAC, sesión corta, AES-128 del relay, ADR-142) queda en `PROGRESS.md`, `BACKLOG.md`,
+`docs/DECISIONS.md`, `tmp/fase-share-4.md` y `tmp/share-internet-RESUMEN.md`; falta pasarlo a Notion y a
+`proyectos/` del vault desde una sesión con permiso.
