@@ -104,7 +104,7 @@ tools/install.sh                              # menú de aplicaciones + lanzador
 - **Windows**: `.zip` portable con `EMPEZAR-AQUI.cmd`, que instala mpv con winget si falta. Construido, **sin abrir en un Windows real**.
 - **macOS**: solo con Homebrew y el repositorio (`brew install mpv ffmpeg uv chromaprint`); no hay `.dmg`. Sin probar en un Mac.
 
-Requisitos: Linux (Ubuntu con KDE/Wayland es donde se ha desarrollado), mpv 0.41 o superior del sistema, ffmpeg. yt-dlp lo descarga e instala el instalador (con su suma de verificación) y se actualiza solo; para YouTube conviene tener `node` ≥ 22 o `deno`. Para salas desde internet, `cloudflared` es opcional y se instala aparte (`MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh`).
+Requisitos: Linux (Ubuntu con KDE/Wayland es donde se ha desarrollado), mpv 0.41 o superior del sistema, ffmpeg. yt-dlp lo descarga e instala el instalador (con su suma de verificación) y se actualiza solo; para YouTube conviene tener `node` ≥ 22 o `deno`. Para salas desde internet, `cloudflared` es opcional: los paquetes completos lo llevan dentro y los ligeros lo descargan solos, con su SHA-256 verificado, la primera vez que se abre una sala hacia internet.
 
 > ¿Prefieres que te lo deje instalado en tu ordenador o en la tele del salón, con tus canales favoritos ya puestos? Lo hago en remoto, como servicio. [Escríbeme](https://api.whatsapp.com/send/?phone=34624237848&text=Hola+Dalmau%2C+quiero+que+me+instales+Atalaya+Player.+Mi+equipo%3A&type=phone_number&app_absent=0).
 

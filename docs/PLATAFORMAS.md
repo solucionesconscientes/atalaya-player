@@ -48,7 +48,7 @@ solo valen en Linux.
 | Traducción / semántica (extras) | ✅ | wheels oficiales (no probado) | wheels oficiales (no probado) |
 | Intro/créditos (`fpcalc`) | ✅ | `brew install chromaprint` | binario de acoustid.org en PATH |
 | Mando QR/PWA | ✅ (abrir puerto en `ufw`) | aviso de conexiones entrantes | diálogo del Firewall de Windows |
-| Salas desde internet (túnel de Cloudflare, H25) | ✅ probado con un túnel real (`cloudflared-linux-amd64` fijado en vendor.lock) | debería ir: falta añadir a vendor.lock la suma de `cloudflared-darwin-{amd64,arm64}.tgz` | debería ir: falta la suma de `cloudflared-windows-amd64.exe` y que `install.ps1` lo instale |
+| Salas desde internet (túnel de Cloudflare, H25/F1) | ✅ probado con un túnel real; suma de linux-amd64/arm64 en vendor.lock y descarga bajo demanda verificada con un servidor local | debería ir: falta la suma de `cloudflared-darwin-{amd64,arm64}.tgz`; mientras, se acepta uno del PATH o de `MPV_UOS_CLOUDFLARED` | debería ir: suma de windows-amd64 en vendor.lock y descarga/empaquetado implementados, pero **sin ejecutar en un Windows real** |
 | Despertar para grabar y apagar al terminar (H40) | ✅ suspender/apagar con logind sin sudo; el despertador necesita **una** regla de sudoers para `rtcwake` (NEEDS_HUMAN.md) | `pmset schedule wake` + `caffeinate`: misma regla para `/usr/bin/pmset` (no probado) | tarea de usuario con `schtasks /xml` y `<WakeToRun>true</WakeToRun>` (no hace falta administrador), suspender con `rundll32 powrprof.dll,SetSuspendState`; **sin Windows aquí: sin probar**. Si el plan de energía tiene desactivados los «temporizadores de activación», la tarea no despierta y Windows no avisa: hay que mirarlo con `powercfg /q` |
 | MCP (stdio) | ✅ | debería ir | debería ir (mpvd por named pipe; sin probar) |
 | Decodificación por hardware (etiquetas y preferencia de códec) | ✅ `vainfo` | ❌ sin comprobar (VideoToolbox: H.264/HEVC siempre; AV1 desde M3) | ❌ sin comprobar (D3D11VA/DXVA2; `dxdiag`) |
@@ -149,10 +149,16 @@ pwsh 7.6 en Linux (`tests/test_windows_scripts.py`, con un servidor HTTP local e
 
 ## Rutas
 - Config: siempre `<proyecto>/mpv-config` vía `--config-dir` (ADR-002). Caché de mpvd: `.cache/` en desarrollo; XDG/platformdirs en producción.
-- cloudflared (túnel de las salas): se instala con `tools/vendor.sh` desde H51 (las salas salen a internet por
-  defecto); `MU_VENDOR_CLOUDFLARED=0` lo deja fuera. Queda en
-  `vendor/bin/cloudflared` (en Linux x86_64/arm64, que son las sumas que hay fijadas) y mpvd también lo acepta en
-  `$MPV_UOS_CLOUDFLARED` o en el PATH. Sin él, las salas funcionan dentro de la red local.
+- cloudflared (túnel de las salas): desde F1 (ADR-139) mpvd lo **descarga bajo demanda** la primera vez que una sala
+  pide internet, con la URL y el SHA-256 de `vendor.lock`; `tools/vendor.sh` solo lo instala ya con
+  `MU_VENDOR_CLOUDFLARED=1` y los paquetes completos lo llevan dentro con `MU_PACKAGE_CLOUDFLARED=1`. El orden de
+  búsqueda es: copia del paquete → `$MPV_UOS_CLOUDFLARED` → `$MPV_UOS_VENDOR_BIN`/`vendor/bin` → PATH → descarga.
+  Linux amd64/arm64 y Windows amd64 tienen suma fijada; macOS no (se acepta uno del PATH). Sin red, la sala sigue
+  funcionando en la red local y el menú ofrece reintentar.
+- Cierre sin huérfanos: cloudflared se para al cerrar la sala o la aplicación. Si mpvd muere con `kill -9`, en Linux
+  `PR_SET_PDEATHSIG` lo mata con él; en todas las plataformas queda un `cloudflared.pid` en el directorio de ejecución
+  y el siguiente arranque de mpvd lo barre (en Windows no hay PDEATHSIG: ese barrido es la única red). Probado el
+  `kill -9` y el barrido en Linux; Windows sin probar.
 - Grabaciones (TV, radio y tramos): `<Vídeos>/<marca>/Grabaciones`, o `MPV_UOS_RECORD_DIR`; la reserva cuando mpvd no está
   conectado es `~~desktop/<marca>` (placeholder de mpv, válido en las tres plataformas). Copiar URL usa wl-copy/xclip/xsel
   en Linux, `pbcopy` en macOS y `clip` en Windows (no probado fuera de Linux).

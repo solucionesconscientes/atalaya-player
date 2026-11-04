@@ -505,7 +505,8 @@ página abierta). Al final de la página, *«Enviar a Atalaya Player» desde el 
 vez, en su navegador (móvil u ordenador) o en su propio reproductor.
 
 Por defecto la sala se abre **hacia internet**, porque compartir suele ser con alguien que no está en casa. Eso tarda
-un poco: la dirección pública la da Cloudflare en unos segundos pero **no empieza a funcionar hasta un minuto después**
+un poco: la primera vez se descarga `cloudflared` (se ve en el menú) y la dirección pública la da Cloudflare en unos
+segundos pero **no empieza a funcionar hasta un minuto después**
 (medido). Por eso el reproductor **no te copia el enlace hasta que la dirección contesta de verdad**: primero te dice
 «Abriendo la puerta a internet…» y luego «Enlace copiado». Si lo pegaras antes, quien lo abriera se encontraría un
 error durante ese minuto. Para salas dentro de casa, apaga *Que se pueda entrar desde internet* y el enlace es
@@ -563,12 +564,11 @@ inmediato.
   enlace pasa a ser una dirección `https://…trycloudflare.com` que funciona desde cualquier sitio. El túnel vive
   exactamente lo que vive la sala: al cerrarla, la dirección deja de existir, y la próxima sala tendrá otra distinta. Con
   túnel no hace falta tocar el cortafuegos ni el router.
-  La primera vez hay que instalar el programa del túnel (no viene de serie, porque es lo único que saca algo a internet):
-  ```bash
-  cd ~/Documentos/PROJECTES/MPV-UOS && MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh
-  ```
-  Si falta, la sala se abre igual en tu red y el menú te lo dice. Para entrar sigue haciendo falta el enlace con su
-  token: la dirección sola no deja pasar.
+  La primera vez, Atalaya Player descarga `cloudflared` (unos 40 MB) y comprueba su SHA-256 antes de usarlo; en el
+  menú verás **«Descargando cloudflared 12,4 de 40 MB»**. Se guarda y no se vuelve a descargar. Si no hay conexión o
+  la descarga falla, la sala sigue funcionando en tu red, el menú lo dice y tienes **«No se pudo · reintentar»**:
+  no hace falta cerrar la sala ni reiniciar la aplicación. Los paquetes completos ya llevan el binario dentro; los
+  ligeros lo descargan así. Para entrar sigue haciendo falta el enlace con su token: la dirección sola no deja pasar.
 
 **Sala pública (solo ver).** En *Compartir*, *Crear una sala pública (solo ver)*. Quien abra el enlace o escanee el QR
 entra sin escribir nada y solo puede mirar: no pausa, no salta, no hay chat. Caben hasta 20 personas a la vez (se cambia

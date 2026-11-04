@@ -1,6 +1,21 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## F1 · cloudflared en el producto (2026-11-04) — rama `feat/share-internet`
+
+- El binario ya no se pide a mano: `find_cloudflared` lo busca en el paquete, `$MPV_UOS_CLOUDFLARED`, `vendor/bin` y
+  el PATH, y si no está **lo descarga** mpvd con la URL y el SHA-256 de `vendor.lock`, reanudando el `.part` y
+  verificando antes del `rename` atómico. La fila del menú cuenta el progreso («Descargando cloudflared 12,4 de
+  40 MB»), y los estados son «Preparando el enlace…», «Listo…» y «No se pudo · reintentar».
+- Paquetes: ligeros por defecto; `MU_PACKAGE_CLOUDFLARED=1` produce la variante completa, con cloudflared dentro y
+  la licencia Apache-2.0 en `licenses/cloudflared/` (también en `TERCEROS.md`).
+- Cierre: al cerrar la sala o la app se para el proceso; si mpvd muere con `kill -9`, en Linux lo mata
+  `PR_SET_PDEATHSIG` y en todas las plataformas el siguiente arranque barre `cloudflared.pid`.
+- Verificación: `tests/test_share_tunnel.py` (23 tests) cubre hash bueno/malo, reanudación, sin red, desactivado,
+  barrido de PID y `kill -9`; la batería seleccionada (`share`, `tunnel`, `i18n`, `proc`) pasó de 126 pasados + 3
+  omitidos a 138 pasados + 3 omitidos (12 tests nuevos), sin rojos. Probado además con un AppImage real y un túnel
+  de Cloudflare real (ver `tmp/fase-share-1.md`).
+
 ## Resumen para Ser (2026-11-01, noche) · versión 0.1.1 empaquetada (`08815f2`)
 
 `dist/` tiene los cuatro paquetes nuevos, construidos de cero y verificados, y los del 30-oct quedan en

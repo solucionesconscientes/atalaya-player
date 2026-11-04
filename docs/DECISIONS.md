@@ -2104,3 +2104,24 @@
   abierto**, el resalte y la fila activa son del canal nuevo y se conservan la búsqueda y el sitio de la lista → Retroceso
   borra lo escrito y, con la búsqueda vacía, cierra sin cambiar de canal. `tests/test_mu_iptv.py` sigue comprobando que
   las listas de menú se cierran al elegir.
+- ADR-139 · cloudflared bajo demanda, empaquetado opcional y cierre sin huérfanos (F1, 2026-11-04). **Sustituye** la
+  parte de ADR-089 que hacía que `tools/vendor.sh` instalara cloudflared por defecto; ADR-068 y el resto de ADR-089
+  siguen en pie.
+  **Qué se vio.** El binario era un requisito previo invisible: si faltaba, la sala avisaba con una orden de terminal
+  (`MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh`) en plena interfaz. Eso obliga a salir del reproductor, y en un paquete
+  instalado ni siquiera hay un checkout donde ejecutarla. Además, el proceso solo moría si el cierre era ordenado.
+  **Decisión.** (1) Orden de búsqueda: copia incluida en el paquete → `$MPV_UOS_CLOUDFLARED` → `$MPV_UOS_VENDOR_BIN`/
+  `vendor/bin` → PATH → **descarga bajo demanda**. (2) La descarga usa la URL y el SHA-256 por plataforma de
+  `vendor.lock` (linux-amd64, linux-arm64 y windows-amd64), escribe un `.part` que se reanuda con `Range`, verifica el
+  hash y solo entonces hace `rename` atómico y `chmod 0755`; un hash malo borra el temporal y se dice. (3) La
+  interfaz muestra una sola fila con el estado real —«Descargando cloudflared 12,4 de 40 MB», «Preparando el enlace…»,
+  «Listo: se puede entrar desde internet», «No se pudo · reintentar»— y ya no enseña ninguna orden de terminal.
+  (4) Los paquetes son ligeros por defecto; `MU_PACKAGE_CLOUDFLARED=1` construye la variante completa, que lleva el
+  binario dentro, y la licencia Apache-2.0 con su aviso viaja en `licenses/cloudflared/` y `TERCEROS.md`.
+  (5) Cierre: se para al cerrar la sala o la app; en Linux `PR_SET_PDEATHSIG` mata a cloudflared si mpvd recibe
+  `SIGKILL`, y en todas las plataformas un `cloudflared.pid` en el directorio de ejecución se barre al arrancar (en
+  Windows, sin PDEATHSIG, el barrido es la única red).
+  **Cómo se comprueba.** `tests/test_share_tunnel.py`: descarga local con hash bueno, hash malo que borra el `.part`,
+  reanudación con `Range`, sin red, plataforma sin asset, desactivado, barrido de PID y `kill -9` del padre con
+  `PDEATHSIG`; el AppImage real se abre con un túnel de verdad y `pgrep` comprueba que no queda proceso al cerrar ni
+  al matar la app. Windows y macOS siguen sin probarse en hardware real (docs/PLATAFORMAS.md).

@@ -197,12 +197,10 @@ Ser preguntó por las tres cosas que solo puede hacer él. Esto es lo que recomi
   `rm -r "$HOME/Descargas/Los tres días del cóndor (1975)/.mpv-uos"`
 ## 2026-09-30 · Compartir (H25)
 - **Túnel a internet (H25 punto 3) — HECHO el 2026-10-01** (ADR-068), ya no necesita nada de ti salvo encenderlo:
-  *Compartir → Que se pueda entrar desde internet* (apagado por defecto, se recuerda). El binario no viene instalado;
-  una vez:
-  ```bash
-  cd ~/Documentos/PROJECTES/MPV-UOS && MU_VENDOR_CLOUDFLARED=1 tools/vendor.sh   # ya ejecutado aquí
-  ```
-  Probado con un túnel real: la dirección pública sirve lo que sirve el reproductor y el proceso muere con la sala.
+  *Compartir → Que se pueda entrar desde internet* (encendido por defecto, se recuerda). Desde F1 (ADR-139, 2026-11-04)
+  **no hay que instalar nada a mano**: si el paquete no lo lleva dentro, mpvd descarga `cloudflared`, comprueba su
+  SHA-256 y lo guarda la primera vez que abres una sala hacia internet. Probado con un túnel real: la dirección
+  pública sirve lo que sirve el reproductor y el proceso muere con la sala.
 - **Puerto de las salas**: solo hace falta si NO usas el túnel (dentro de tu wifi). `ufw` bloquea la entrada; para que
   otros equipos de tu red entren en una sala:
   `sudo ufw allow from 192.168.1.0/24 to any port 8791 proto tcp comment 'mpv-uos compartir'`
