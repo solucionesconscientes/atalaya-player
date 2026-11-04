@@ -9,8 +9,32 @@
   var GAIN = 0.5;      // speed change per second of difference
   var PAUSED_TOL = 0.3;
 
-  // Position of the host now: the last state plus the time since it arrived (the page's own clock, so the two
-  // devices never need to agree on the time of day).
+  // F5 · host clock − ours, from a request we sent and whose answer carries the host's `now`: the midpoint of our
+  // send and receive times is the fairest estimate of when it answered. The fastest round trip is the least
+  // noisy, so it wins; a one-way state stamp cannot know the latency, only a round trip can.
+  function clockFrom(serverNow, sentMs, gotMs, clock) {
+    var rtt = gotMs - sentMs;
+    if (clock.rtt === null || clock.rtt === undefined || rtt < clock.rtt) {
+      clock.offset = serverNow - (sentMs + gotMs) / 2000;
+      clock.rtt = rtt;
+    }
+  }
+
+  // F5 · when, on our clock, the host was at state.pos. `state.at` is the host's clock when it read that position;
+  // anchoring at arrival instead left the guest behind by the transport delay for ever (1–2 s with a poll, 4,5 s
+  // through the tunnel). Without a round trip yet, transit only ever subtracts from (at − our clock), so the
+  // largest candidate seen is the closest offset we have.
+  function anchor(state, nowMs, clock) {
+    var at = Number(state && state.at) || 0;
+    if (!at) return nowMs;
+    var candidate = at - nowMs / 1000;
+    if (clock.seen === null || clock.seen === undefined || candidate > clock.seen) clock.seen = candidate;
+    var offset = clock.offset === null || clock.offset === undefined ? clock.seen : clock.offset;
+    return nowMs - Math.max(0, nowMs / 1000 + offset - at) * 1000;
+  }
+
+  // Position of the host now: the last state plus the time since that position was read (the page's own clock,
+  // so the two devices never need to agree on the time of day).
   function expected(state, anchorMs, nowMs) {
     if (!state) return null;
     var pos = Number(state.pos) || 0;
@@ -43,7 +67,8 @@
     return (h ? h + ':' : '') + mm + ':' + String(sec).padStart(2, '0');
   }
 
-  var api = { expected: expected, correction: correction, clock: clock, HARD: HARD, SOFT: SOFT, MAX_ADJ: MAX_ADJ };
+  var api = { clockFrom: clockFrom, anchor: anchor, expected: expected, correction: correction, clock: clock,
+              HARD: HARD, SOFT: SOFT, MAX_ADJ: MAX_ADJ };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MuSync = api;
 })(this);

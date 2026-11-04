@@ -55,6 +55,28 @@ class GuestError(RuntimeError):
     """The room said no (bad link, full, closed) or it cannot be reached."""
 
 
+class HostClock:
+    """F5 · the host's clock mapped to ours (mirror of ``anchor`` in www/sync.js).
+
+    ``state.at`` is when the host read ``state.pos``. Transit only ever subtracts from
+    (``at`` − our clock), so the largest candidate seen is the closest to the offset between its clock and
+    ours; with it the anchor is when the host was really at that position, not when the message happened to
+    arrive (through a tunnel that was seconds).
+    """
+
+    def __init__(self) -> None:
+        self.offset: float | None = None
+
+    def anchor(self, state: dict[str, Any], now: float) -> float:
+        at = state.get("at")
+        if not isinstance(at, (int, float)) or at <= 0:
+            return now
+        candidate = float(at) - now
+        if self.offset is None or candidate > self.offset:
+            self.offset = candidate
+        return now - max(0.0, now + self.offset - float(at))
+
+
 def expected(state: dict[str, Any] | None, anchor: float, now: float) -> float | None:
     """Where the host is *now*: the last state plus the time since it arrived, by our own clock (the two machines
     never have to agree on the time of day)."""
@@ -253,7 +275,8 @@ class GuestSession:
         self.link = link
         self.state = GuestState(link=link, name=name)
         self.cookie = ""
-        self.host_at = 0.0          # monotonic clock when the last host state arrived
+        self.clock = HostClock()
+        self.host_at = 0.0          # our monotonic clock when the last host state was READ (not when it arrived)
         self.quiet_until = 0.0      # ...and until when our own time-pos means nothing
         self.stopped = False
         self.task: asyncio.Task[None] | None = None
@@ -364,7 +387,7 @@ class GuestSession:
             self._push("joined", f"En la sala de {self.state.room.get('host') or 'tu anfitrión'}")
         elif event == "state":
             self.state.host = data
-            self.host_at = time.monotonic()
+            self.host_at = self.clock.anchor(data, time.monotonic())
         elif event == "media":
             await self._media(data)
         elif event in ("notice", "chat"):

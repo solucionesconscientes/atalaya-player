@@ -527,7 +527,9 @@ class ShareService:
             for st in list(rt.streams.values()):
                 await st.stop()
             self.rt = None
-            await asyncio.sleep(0.3)  # let the event streams deliver «closed»
+            # let the event streams deliver «closed», and a guest that polls (the tunnel buffers SSE) start one more
+            # api/me and get the 410: stopping the server sooner leaves it retrying a dead address for ever
+            await asyncio.sleep(1.5)
             # H51 · se para SIEMPRE que haya túnel, no solo cuando ya contestaba: uno a medio abrir también es un
             # proceso de cloudflared con una puerta hacia fuera, y la promesa es que no vive más que la sala.
             if self.tunnel_task is not None:
@@ -1385,7 +1387,9 @@ class ShareService:
             if not room.public_mode:  # a public room does not announce each viewer
                 self._notice(rt, f"{guest.name} se ha unido", kind="join", who=guest.name)
             self._guests_changed(rt)
-            return Response.json({"ok": True, "guest": guest.public(), "room": room.public()},
+            # F5 · `now` and the client's send/receive times give the round trip that maps its clock to ours
+            return Response.json({"ok": True, "guest": guest.public(), "room": room.public(),
+                                  "now": round(time.time(), 3)},
                                  **{"Set-Cookie": self._cookie_header(room, guest)})
         if rest == "file.m3u" and req.method in ("GET", "HEAD"):
             # un .m3u de una línea: doble clic lo abre en VLC o en mpv en Windows, macOS y Linux. Vale para
@@ -1451,7 +1455,7 @@ class ShareService:
                                   "media": self._media_public(rt), "notices": list(rt.notices)[-5:],
                                   "chat": [] if room.public_mode else list(rt.chat)[-30:],
                                   "reactions": {k: v[0] for k, v in REACTIONS.items()},
-                                  "tunnel": self.public_url is not None})
+                                  "tunnel": self.public_url is not None, "now": round(time.time(), 3)})
         if rest == "events" and req.method in ("GET", "HEAD"):
             return Response.sse(self._events(rt, guest))
         if rest == "api/cmd" and req.method == "POST":
@@ -1543,7 +1547,8 @@ class ShareService:
                 except (TypeError, ValueError):
                     raise HttpError(400, t("seconds debe ser numérico")) from None
                 rt.guest_action["seek"] = time.monotonic()
-                await c.command("seek", value, "absolute" if cmd == "seek" else "relative", timeout=10)
+                # F5 · ±10 s are ten seconds, not "the next keyframe": mpv's relative seek is not exact by default
+                await c.command("seek", value, "absolute+exact" if cmd == "seek" else "relative+exact", timeout=10)
                 # an absolute seek says where it goes (time-pos may not have moved yet when read right away)
                 pos = value if cmd == "seek" else await self._prop(s, "time-pos")
                 self._notice(rt, f"{guest.name} ha saltado a {clock(pos if pos is not None else value)}",

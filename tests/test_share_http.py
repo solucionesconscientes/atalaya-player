@@ -272,6 +272,7 @@ def test_room_join_sync_relay_permissions_and_close(share_env, clip):
     h.command("seek", "20", "absolute")
     seek = ana.wait(lambda e, x: e == "state" and x["reason"] == "seek", start=mark)
     assert 19.5 < seek["pos"] < 23
+    assert isinstance(seek.get("at"), (int, float)) and seek["at"] > 0   # F5: cuándo se leyó esa posición
     ana.wait(lambda e, x: e == "notice" and x["text"].startswith("El anfitrión ha saltado a 0:2"), start=mark)
 
     # a guest who only watches cannot control
@@ -298,6 +299,12 @@ def test_room_join_sync_relay_permissions_and_close(share_env, clip):
     assert ana.req("api/cmd", {"cmd": "seek", "seconds": 5})[0] == 200
     h.wait_property("time-pos", lambda p: isinstance(p, (int, float)) and 4.5 < p < 6, timeout=10)
     _share(h, lambda v: "Ana ha saltado a 0:05" in (v.get("notices") or []))
+    # F5 · «+10 s» mueve diez segundos, no hasta el siguiente fotograma clave, y «−10 s» los deshace
+    before = h.get("time-pos")
+    assert ana.req("api/cmd", {"cmd": "seek_rel", "seconds": 10})[0] == 200
+    h.wait_property("time-pos", lambda p: isinstance(p, (int, float)) and abs(p - before - 10) < 0.3, timeout=10)
+    assert ana.req("api/cmd", {"cmd": "seek_rel", "seconds": -10})[0] == 200
+    h.wait_property("time-pos", lambda p: isinstance(p, (int, float)) and abs(p - before) < 0.3, timeout=10)
     assert ana.req("api/cmd", {"cmd": "toggle"})[0] == 200
     h.wait_property("pause", lambda p: p is False, timeout=10)
     _share(h, lambda v: "Ana ha reanudado" in (v.get("notices") or []))

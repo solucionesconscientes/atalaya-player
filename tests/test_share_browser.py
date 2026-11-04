@@ -298,6 +298,15 @@ def test_browser_guest_by_polling_follows_and_recovers_from_a_cut(share_env, cli
 
         h.command("set", "pause", "no")
         b.wait(f"!{VIDEO}.paused && {VIDEO}.currentTime > 2", timeout=40)
+        # F5 · con sondeo (el caso del túnel) el invitado sigue al anfitrión a menos de medio segundo, no detrás
+        # por la edad del último estado
+        time.sleep(3)
+        diffs = []
+        for _ in range(8):
+            host = h.get("time-pos")
+            diffs.append(abs(b.js(f"{VIDEO}.currentTime") - host))
+            time.sleep(0.5)
+        assert max(diffs) < 0.5, diffs
         h.command("seek", "25", "absolute")
         b.wait(f"Math.abs({VIDEO}.currentTime - 26) < 2", timeout=25)
         h.command("set", "pause", "yes")

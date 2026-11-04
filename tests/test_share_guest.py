@@ -69,12 +69,19 @@ def test_la_correccion_del_invitado_es_la_de_la_pagina():
     node = shutil.which("node")
     if not node:
         pytest.skip("sin node: no se puede comparar con sync.js")
-    script = ("var S = require(process.argv[1]);"
-              "console.log(JSON.stringify(" + json.dumps(CASES).replace('true', 'true').replace('false', 'false') +
-              ".map(function (c) { return S.correction(c[0], c[1], c[2], !!c[3]); })));")
+    script = ("var S = require(process.argv[1]); var clock = {offset: null, seen: null, rtt: null};"
+              "console.log(JSON.stringify({c: " +
+              json.dumps(CASES).replace('true', 'true').replace('false', 'false') +
+              ".map(function (c) { return S.correction(c[0], c[1], c[2], !!c[3]); }),"
+              " a: [S.anchor({pos: 10, at: 1000}, 1000, clock),"
+              "     S.anchor({pos: 12, at: 1002}, 2400, clock),"
+              "     S.anchor({pos: 13, at: 1005}, 6200, clock), S.anchor({pos: 13}, 7000, clock)]}));")
     out = subprocess.run([node, "-e", script, str(ROOT / "mpvd" / "share" / "www" / "sync.js")],
                          capture_output=True, text=True, check=True).stdout
-    theirs = json.loads(out)
+    data = json.loads(out)
+    theirs = data["c"]
+    assert all(abs(a - b) < 1e-6
+               for a, b in zip(data["a"], [1000, 2400, 5400, 7000], strict=True))   # el mismo reloj que HostClock
     assert len(theirs) == len(mine)
     for js, py, case in zip(theirs, mine, CASES, strict=True):
         assert js["action"] == py["action"], case
@@ -83,6 +90,16 @@ def test_la_correccion_del_invitado_es_la_de_la_pagina():
         if js["action"] == "seek":
             assert abs(js["to"] - py["to"]) < 1e-9, case
     assert (G.HARD, G.SOFT, G.MAX_ADJ, G.PAUSED_TOL) == (1.5, 0.15, 0.08, 0.3)
+
+
+def test_el_reloj_del_anfitrion_se_descuenta():
+    """F5 · un estado que tardó 0,5 s en llegar no deja al invitado 0,5 s atrás para siempre."""
+    clock = G.HostClock()
+    assert clock.anchor({"pos": 10, "at": 1000.0}, 1.0) == pytest.approx(1.0)     # llegó 1,0 s tras leerse
+    assert clock.anchor({"pos": 12, "at": 1002.0}, 2.4) == pytest.approx(2.4)     # 0,4 s: mejor reloj, edad 0
+    assert clock.anchor({"pos": 13, "at": 1005.0}, 6.2) == pytest.approx(5.4)     # 1,2 s: el estado tiene 0,8 s
+    assert clock.anchor({"pos": 13}, 7.0) == pytest.approx(7.0)                  # sin `at`, como antes
+    assert G.expected({"pos": 13, "paused": False, "speed": 1}, 5.4, 6.2) == pytest.approx(13.8)
 
 
 def test_donde_va_el_anfitrion_ahora():

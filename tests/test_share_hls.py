@@ -257,6 +257,16 @@ def test_sync_js_drift_correction():
 const S = require(process.argv[1]);
 const out = {};
 const st = {pos: 10, paused: false, speed: 1, duration: 100};
+const clock = {offset: null, seen: null, rtt: null};
+out.anchor = [S.anchor({pos: 10, at: 1000}, 1000, clock),      // 1,0 s in transit
+              S.anchor({pos: 12, at: 1002}, 2400, clock),      // 0,4 s: better clock, age 0
+              S.anchor({pos: 13, at: 1005}, 6200, clock),      // 1,2 s: the state is 0,8 s old
+              S.anchor({pos: 13}, 7000, clock)];               // without at: arrival, as before
+out.expAnchored = S.expected({pos: 13, at: 1005, paused: false, speed: 1}, 5400, 6200);
+const rt = {offset: null, seen: null, rtt: null};
+S.clockFrom(1001, 1000, 1200, rt);                             // answered at 1001, round trip 200 ms
+out.clockFrom = [rt.offset, rt.rtt];
+out.anchorRtt = S.anchor({pos: 12, at: 1002}, 3100, rt);
 out.exp = S.expected(st, 1000, 3000);
 out.expPaused = S.expected({...st, paused: true}, 1000, 3000);
 out.expFast = S.expected({...st, speed: 2}, 1000, 2000);
@@ -274,6 +284,11 @@ console.log(JSON.stringify(out));
     res = subprocess.run(["node", "-e", script, str(ROOT / "mpvd" / "share" / "www" / "sync.js")],
                          capture_output=True, text=True, check=True, timeout=30)
     o = json.loads(res.stdout)
+    assert all(abs(got - want) < 1e-6
+               for got, want in zip(o["anchor"], [1000, 2400, 5400, 7000], strict=True))
+    assert abs(o["expAnchored"] - 13.8) < 1e-6   # the 0,8 s that the state spent in transit are not lost
+    assert o["clockFrom"][1] == 200 and abs(o["clockFrom"][0] - 999.9) < 1e-6
+    assert abs(o["anchorRtt"] - 2100) < 1e-6     # the round trip catches the 1,0 s the state is old
     assert o["exp"] == 12 and o["expPaused"] == 10 and o["expFast"] == 12 and o["expEnd"] == 100
     assert o["seek"]["action"] == "seek" and o["seek"]["to"] == 12
     assert o["faster"]["action"] == "rate" and 1.0 < o["faster"]["rate"] <= 1.08

@@ -30,7 +30,9 @@
   var me = null, perm = 'view', pending = false;
   var state = null, anchor = 0, media = null, source = '', subsUrl = '';
   var hls = null, hlsLoading = null, useRelay = false, es = null, needGesture = false, ended = false;
-  var seeking = false;
+  var seeking = false, seekAt = 0;
+  // F5 · host clock − ours: `offset` from a round trip, `seen` from the one-way state stamps (fallback)
+  var hostClock = { offset: null, seen: null, rtt: null };
   // F3 · the Cloudflare quick tunnel forwards a response's headers but holds its body until the response ends,
   // and an SSE stream never ends. If the first event has not arrived in 2.5 s the page follows the room by polling
   // once a second (the same api/me the page already uses). Local/LAN guests keep the SSE push.
@@ -41,6 +43,7 @@
   function message(text) { show('join', false); show('room', false); show('message', true); $('message-text').textContent = text; }
 
   function api(path, body, timeoutMs) {
+    var started = performance.now();
     var opts = { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', headers: {} };
     if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
     var timer = null;
@@ -55,8 +58,11 @@
         if (!r.ok) { var e = new Error(data.error || t('HTTP %s', r.status)); e.status = r.status; throw e; }
         return data;
       });
-    }).then(function (data) { done(); return data; },
-            function (e) { done(); throw e; });
+    }).then(function (data) {
+      done();
+      if (data && typeof data.now === 'number') S.clockFrom(data.now, started, performance.now(), hostClock);
+      return data;
+    }, function (e) { done(); throw e; });
   }
 
   function toast(text) {
@@ -378,7 +384,7 @@
 
   function onState(st) {
     state = st;
-    anchor = performance.now();
+    anchor = S.anchor(st, performance.now(), hostClock);
     $('title').textContent = st.title || '';
     $('play').textContent = st.paused ? t('Seguir') : t('Pausa');
     if (st.reason === 'seek' || st.reason === 'file' || st.reason === 'hello') correct(true);
@@ -431,8 +437,12 @@
     overlay('');
     if (video.readyState < 1) return;  // metadata not loaded yet: loadedmetadata calls us again
     var c = S.correction(exp, video.currentTime, state.speed, state.paused);
-    if (c.action === 'seek' || (force && Math.abs(c.diff) > 0.3)) {
+    // one seek in flight at a time: a slow HLS seek used to be cut short and relaunched every 500 ms, which is
+    // seen as the video never settling (and on a live relay, never getting anywhere)
+    if ((c.action === 'seek' || (force && Math.abs(c.diff) > 0.3))
+        && !(seeking && performance.now() - seekAt < 2000)) {
       seeking = true;
+      seekAt = performance.now();
       video.currentTime = exp;
     }
     video.playbackRate = c.rate;
