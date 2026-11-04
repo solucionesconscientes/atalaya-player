@@ -114,9 +114,12 @@ Handler = Callable[[Request], Awaitable[Response]]
 
 
 class HttpServer:
-    def __init__(self, handler: Handler, name: str = "mpvd"):
+    def __init__(self, handler: Handler, name: str = "mpvd", max_inflight: int = 0):
         self.handler = handler
         self.name = name
+        self.max_inflight = max(0, int(max_inflight))
+        self.inflight = 0                 # connections being served right now (one request each)
+        self._last_full_log = 0.0
         self._server: asyncio.AbstractServer | None = None
         self._conns: set[asyncio.Task[None]] = set()
         self.host = ""
@@ -148,7 +151,22 @@ class HttpServer:
         if task is not None:
             self._conns.add(task)
         try:
-            await self._serve(reader, writer)
+            busy = bool(self.max_inflight and self.inflight >= self.max_inflight)
+            if busy:
+                # F3 · the room is served through the host's upload: past the cap the request is dropped on
+                # purpose, with a code the page can tell apart, instead of queueing everyone behind it.
+                now = time.monotonic()
+                if now - self._last_full_log > 5:
+                    self._last_full_log = now
+                    log.warning("http: %d requests in flight, dropping new ones (cap %d)",
+                                self.inflight, self.max_inflight)
+            else:
+                self.inflight += 1
+            try:
+                await self._serve(reader, writer, busy=busy)
+            finally:
+                if not busy:
+                    self.inflight -= 1
         except (ConnectionError, asyncio.IncompleteReadError, asyncio.CancelledError, asyncio.LimitOverrunError):
             pass
         except Exception:  # noqa: BLE001
@@ -160,7 +178,8 @@ class HttpServer:
             with contextlib.suppress(Exception):
                 await writer.wait_closed()
 
-    async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
+                     busy: bool = False) -> None:
         peer = writer.get_extra_info("peername")
         peer_s = f"{peer[0]}:{peer[1]}" if isinstance(peer, tuple) else str(peer)
         try:
@@ -174,6 +193,13 @@ class HttpServer:
             await self._linger(reader, writer)
             return
         if request is None:
+            return
+        if busy:
+            # read the request first: answering and closing on top of unread bytes resets the connection
+            await self._write(writer, Response.json(
+                {"error": "demasiadas peticiones a la vez: inténtalo en un momento", "busy": True}, 429,
+                **{"Retry-After": "2"}))
+            await self._linger(reader, writer)
             return
         started = time.monotonic()
         try:

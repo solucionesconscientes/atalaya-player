@@ -19,24 +19,39 @@
   var mode = publicLink ? 'public' : 'private', lastChat = 0, reactions = {};
   // ?hlsjs=1: use hls.js even where the browser plays HLS by itself (tests, comparing engines)
   var forceHlsJs = /[?&]hlsjs=1\b/.test(location.search);
+  // ?poll=1: skip SSE (tests of the tunnel fallback, and a page behind a proxy that buffers event streams)
+  var forcePoll = /[?&]poll=1\b/.test(location.search);
   var video = $('video');
   var me = null, perm = 'view', pending = false;
   var state = null, anchor = 0, media = null, source = '', subsUrl = '';
   var hls = null, hlsLoading = null, useRelay = false, es = null, needGesture = false, ended = false;
   var seeking = false;
+  // F3 · the Cloudflare quick tunnel forwards a response's headers but holds its body until the response ends,
+  // and an SSE stream never ends. If the first event has not arrived in 2.5 s the page follows the room by polling
+  // once a second (the same api/me the page already uses). Local/LAN guests keep the SSE push.
+  var transport = 'sse', helloTimer = null, pollTimer = null, pollFailures = 0, saturatedAt = 0;
+  var lastMediaSig = '', lastNoticeAt = 0, firstPoll = true;
 
   function show(id, on) { $(id).classList.toggle('hidden', !on); }
   function message(text) { show('join', false); show('room', false); show('message', true); $('message-text').textContent = text; }
 
-  function api(path, body) {
+  function api(path, body, timeoutMs) {
     var opts = { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', headers: {} };
     if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    var timer = null;
+    if (timeoutMs && typeof AbortController !== 'undefined') {
+      var ctl = new AbortController();
+      opts.signal = ctl.signal;
+      timer = setTimeout(function () { ctl.abort(); }, timeoutMs);
+    }
+    var done = function () { if (timer) { clearTimeout(timer); timer = null; } };
     return fetch(base + path, opts).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (data) {
         if (!r.ok) { var e = new Error(data.error || t('HTTP %s', r.status)); e.status = r.status; throw e; }
         return data;
       });
-    });
+    }).then(function (data) { done(); return data; },
+            function (e) { done(); throw e; });
   }
 
   function toast(text) {
@@ -108,10 +123,27 @@
 
   // -- events ------------------------------------------------------------------------------------------
 
+  function setTransport(name) {
+    transport = name;
+    document.documentElement.setAttribute('data-transport', name);
+  }
+
   function connect() {
+    if (transport === 'poll') return;   // a delayed SSE reconnect must not undo the polling fallback
+    if (helloTimer) { clearTimeout(helloTimer); helloTimer = null; }
     if (es) es.close();
+    es = null;
+    setTransport('sse');
+    if (forcePoll) { startPolling(); return; }
+    var sawHello = false;
+    helloTimer = setTimeout(function () {
+      helloTimer = null;
+      if (!sawHello && !ended) startPolling();
+    }, 2500);
     es = new EventSource(base + 'events');
     es.addEventListener('hello', function (e) {
+      sawHello = true;
+      if (helloTimer) { clearTimeout(helloTimer); helloTimer = null; }
       var d = JSON.parse(e.data); me = d.guest; perm = me.perm; pending = me.pending; updatePerm(); setMode(d.room);
     });
     es.addEventListener('state', function (e) { onState(JSON.parse(e.data)); });
@@ -120,20 +152,12 @@
     es.addEventListener('viewers', function (e) { renderViewers(JSON.parse(e.data)); });
     es.addEventListener('chat', function (e) { addChat(JSON.parse(e.data)); });
     es.addEventListener('notice', function (e) { var n = JSON.parse(e.data); if (!me || n.who !== me.name) toast(n.text); });
-    es.addEventListener('perm', function (e) {
-      var d = JSON.parse(e.data);
-      var before = perm;
-      perm = d.perm; pending = d.pending;
-      if (d.denied) toast(t('El anfitrión no te ha dado el control'));
-      else if (perm === 'control' && before !== 'control') toast(t('Ya puedes controlar la reproducción'));
-      else if (perm === 'view' && before === 'control') toast(t('El anfitrión ha recuperado el control'));
-      updatePerm();
-    });
+    es.addEventListener('perm', function (e) { applyPerm(JSON.parse(e.data)); });
     es.addEventListener('closed', function (e) { finish(JSON.parse(e.data).text || t('La sala se ha cerrado')); });
     es.addEventListener('kicked', function (e) { finish(JSON.parse(e.data).text || t('Has salido de la sala')); });
     es.onerror = function () {
-      if (ended) return;
-      if (es.readyState === EventSource.CLOSED) {
+      if (ended || transport !== 'sse') return;
+      if (es && es.readyState === EventSource.CLOSED) {
         api('api/me').then(function () { setTimeout(connect, 2000); })
           .catch(function (err) { finish(err.status === 410 ? t('La sala está cerrada') : t('Ya no estás en la sala')); });
       }
@@ -142,8 +166,85 @@
       .catch(function () {});
   }
 
+  // F3 · a tunneled guest: the page cannot receive SSE, so it asks api/me once a second. One request at a time
+  // (the next starts when the previous finishes), which keeps this guest at a single request in flight.
+  function startPolling() {
+    if (ended || transport === 'poll') return;
+    setTransport('poll');
+    if (helloTimer) { clearTimeout(helloTimer); helloTimer = null; }
+    if (es) { es.close(); es = null; }
+    pollOnce();
+  }
+
+  function pollOnce() {
+    if (ended || transport !== 'poll') return;
+    var started = performance.now();
+    api('api/me', undefined, 4000).then(function (d) {
+      pollFailures = 0;
+      applySnapshot(d);
+    }).catch(function (e) {
+      if (ended) return;
+      if (e.status === 401 || e.status === 403) { finish(t('Ya no estás en la sala')); return; }
+      if (e.status === 410) { finish(t('La sala está cerrada')); return; }
+      pollFailures += 1;
+      if (e.status === 429 || e.status === 503) {
+        var now = performance.now();
+        if (!saturatedAt || now - saturatedAt > 15000) {
+          saturatedAt = now;
+          toast(t('La sala va al límite de conexiones: la sincronía puede ir con retraso.'));
+        }
+      } else if (pollFailures === 5) {
+        toast(t('Sin conexión con la sala; seguimos intentando.'));
+      }
+    }).then(function () {
+      if (ended || transport !== 'poll') return;
+      pollTimer = setTimeout(pollOnce, Math.max(150, 1000 - (performance.now() - started)));
+    });
+  }
+
+  function applyPerm(d) {
+    var before = perm, wasPending = pending;
+    perm = d.perm; pending = d.pending;
+    if (d.denied || (wasPending && !pending && perm !== 'control')) {
+      toast(t('El anfitrión no te ha dado el control'));
+    } else if (perm === 'control' && before !== 'control') {
+      toast(t('Ya puedes controlar la reproducción'));
+    } else if (perm === 'view' && before === 'control') {
+      toast(t('El anfitrión ha recuperado el control'));
+    }
+    updatePerm();
+  }
+
+  function applySnapshot(d) {
+    if (ended) return;
+    if (d.guest) applyPerm({ perm: d.guest.perm, pending: d.guest.pending });
+    if (d.room) {
+      if (d.room.mode && d.room.mode !== mode) setMode(d.room);
+      if (mode === 'public') renderViewers({ count: d.room.viewers, max: d.room.max_guests });
+      else renderGuests(d.room.guests);
+    }
+    if (d.state && (!state || d.state.at !== state.at)) onState(d.state);
+    if (d.media) {
+      var sig = JSON.stringify(d.media);
+      if (sig !== lastMediaSig) { lastMediaSig = sig; onMedia(d.media); }
+    }
+    if (d.notices) {
+      var maxAt = 0;
+      d.notices.forEach(function (n) {
+        var at = n.at || 0;
+        if (at > maxAt) maxAt = at;
+        if (!firstPoll && at > lastNoticeAt && (!me || n.who !== me.name)) toast(n.text);
+      });
+      lastNoticeAt = Math.max(lastNoticeAt, maxAt);
+    }
+    firstPoll = false;
+    chatHistory(d);
+  }
+
   function finish(text) {
     ended = true;
+    if (helloTimer) { clearTimeout(helloTimer); helloTimer = null; }
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     if (es) es.close();
     try { video.pause(); } catch (e) { /* nothing playing */ }
     if (hls) { hls.destroy(); hls = null; }
@@ -539,7 +640,7 @@
   if (!roomId) { message(t('Enlace no válido')); return; }
   api('api/me').then(function (d) {
     enter(d.guest, false, d.room);
-    if (d.media) onMedia(d.media);
+    if (d.media) { lastMediaSig = JSON.stringify(d.media); onMedia(d.media); }
     if (d.state) onState(d.state);
   }).catch(function (e) {
     if (e.status === 401) askName();

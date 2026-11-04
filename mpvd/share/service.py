@@ -96,6 +96,10 @@ TUNNEL_WARM_MAX = float(os.environ.get("MPVD_SHARE_TUNNEL_WARM") or 240.0)
 TUNNEL_PROBE_EVERY = 2.0
 TUNNEL_PROBE_TIMEOUT = 5.0
 
+# F3 · the tunneled room is served by the host's upload. Cloudflare's quick tunnel allows ~200 requests in flight;
+# half of that leaves room for the HLS segments, so past this the request is dropped (429) and the page says so.
+MAX_INFLIGHT = int(os.environ.get("MPVD_SHARE_MAX_INFLIGHT") or 100)
+
 FILE_CHUNK = 256 * 1024          # H44/C1: bytes read per chunk when serving a file (measured: 2 MB of RSS)
 SEG_RE = re.compile(r"^(index\.m3u8|seg_\d{5}\.ts)$")
 SUB_RE = re.compile(r"^[a-f0-9]{8}\.vtt$")
@@ -162,7 +166,7 @@ class ShareService:
     def __init__(self, server: MpvdServer):
         self.server = server
         self.www = Path(__file__).resolve().parent / "www"
-        self.http = HttpServer(self.handle, name=f"mpvd/{__version__}")
+        self.http = HttpServer(self.handle, name=f"mpvd/{__version__}", max_inflight=MAX_INFLIGHT)
         self.host = os.environ.get("MPVD_SHARE_HOST", "0.0.0.0")
         self.public_host = os.environ.get("MPVD_SHARE_PUBLIC_HOST", "")
         env_port = os.environ.get("MPVD_SHARE_PORT")
@@ -1472,7 +1476,8 @@ class ShareService:
 
     async def _maybe_left(self, rt: RoomRuntime, guest: Any) -> None:
         await asyncio.sleep(LEAVE_GRACE)
-        if guest.streams == 0 and not guest.kicked and guest.id in rt.room.guests and not rt.room.closed:
+        # F3 · `connected` también cuenta al invitado que sondea: cerrar el SSE para pasarse al sondeo no es irse.
+        if not guest.connected and not guest.kicked and guest.id in rt.room.guests and not rt.room.closed:
             if not rt.room.public_mode:
                 self._notice(rt, f"{guest.name} se ha desconectado", kind="leave", who=guest.name)
             self._guests_changed(rt)

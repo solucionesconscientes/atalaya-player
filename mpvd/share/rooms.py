@@ -43,6 +43,7 @@ ROOM_ID_BYTES = 6              # 48 bits → 8 characters (not a secret: the tok
 DEFAULT_VIEWERS = 20           # public room: viewers at once (configurable up to MAX_VIEWERS)
 MAX_VIEWERS = 100
 STALE_SECONDS = 30.0           # public room full: a viewer without open streams this long leaves its seat
+POLL_ALIVE = 5.0               # F3: a polling guest has no open stream; recent requests still count as watching
 CHAT_MAX = 200                 # characters of one chat message
 CHAT_BURST = 5                 # chat messages per guest inside RATE_WINDOW
 REACT_BURST = 8                # reactions per guest inside RATE_WINDOW
@@ -166,7 +167,9 @@ class Guest:
 
     @property
     def connected(self) -> bool:
-        return self.streams > 0
+        # F3 · el invitado de navegador por el túnel no mantiene un SSE abierto: sondea cada segundo. Contarlo sólo
+        # por `streams` lo enseñaba «desconectado» en la lista del anfitrión y no sumaba en «N personas viendo».
+        return self.streams > 0 or time.time() - self.last_seen < POLL_ALIVE
 
     @property
     def can_control(self) -> bool:
