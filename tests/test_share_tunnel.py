@@ -15,6 +15,7 @@ import http.server
 import os
 import platform
 import signal
+import struct
 import subprocess
 import sys
 import threading
@@ -604,3 +605,69 @@ def test_sin_binario_se_dice_y_se_puede_reintentar_sin_cerrar_la_sala(daemon_env
         daemon_env.call("share.close")
     finally:
         h.stop()
+
+
+# -- F2 · DNS-over-HTTPS en resolvedores públicos (sin tocar el del sistema) ---------------------------------------
+
+
+def _dns_response(question: bytes, records: list[tuple[int, bytes]], ident: int = 0x1234, rcode: int = 0) -> bytes:
+    header = struct.pack("!HHHHHH", ident, 0x8180 | rcode, 1, len(records), 0, 0)
+    body = b""
+    for rtype, rdata in records:
+        body += b"\xc0\x0c" + struct.pack("!HHIH", rtype, 1, 60, len(rdata)) + rdata
+    return header + question + body
+
+
+def test_parse_dns_response_lee_estado_y_registros():
+    """El parser mínimo de RFC 8484: cabecera, pregunta y respuestas con compresión de nombres (0xC00C)."""
+    query = tunnel_mod.dns_query("sala.trycloudflare.com", 1, ident=0x1234)
+    data = _dns_response(query[12:], [(5, b"\x03sala\x00"), (1, b"\x01\x02\x03\x04"), (28, b"\x20" * 16)])
+    ident, rcode, records = tunnel_mod.parse_dns_response(data)
+    assert ident == 0x1234 and rcode == 0
+    assert [rtype for rtype, _ in records] == [5, 1, 28]
+
+
+def test_dos_de_tres_resolvedores_bastan(monkeypatch):
+    """Se considera resuelto con dos de tres, y se registra CUÁL contestó. 9.9.9.9 no está disponible: no cuenta."""
+    def ask(resolver, host, qtype, timeout):
+        if resolver == "9.9.9.9":
+            raise OSError("sin respuesta")
+        return [(1, b"\x01\x02\x03\x04")] if qtype == 1 else []
+
+    monkeypatch.setattr(tunnel_mod, "_doh_ask", ask)
+    res = asyncio.run(tunnel_mod.resolve_public("sala-de-prueba.trycloudflare.com"))
+    assert res.ready and res.answered == ("1.1.1.1", "8.8.8.8")
+    assert res.addresses == ("1.2.3.4",), "las direcciones se guardan para probar el HTTP sin el DNS del sistema"
+
+
+def test_si_ningun_resolvedor_contesta_no_esta_resuelto(monkeypatch):
+    def ask(resolver, host, qtype, timeout):
+        raise TimeoutError("tarde")
+
+    monkeypatch.setattr(tunnel_mod, "_doh_ask", ask)
+    res = asyncio.run(tunnel_mod.resolve_public("sala-de-prueba.trycloudflare.com"))
+    assert not res.ready and res.answered == () and res.addresses == ()
+
+
+def test_un_5xx_de_cloudflare_no_es_que_el_tunel_enrute():
+    """Mientras el túnel no enruta, Cloudflare contesta 530 (error 1033): eso NO es que la sala esté detrás.
+    Un 404 del servidor de la sala sí lo es (la petición ha llegado)."""
+    import http.server
+    import threading
+
+    from mpvd.share.service import url_answers
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            self.send_response(530)
+            self.end_headers()
+
+        def log_message(self, *a):  # noqa: ANN002
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        assert url_answers(f"http://127.0.0.1:{srv.server_address[1]}/") is False
+    finally:
+        srv.shutdown()

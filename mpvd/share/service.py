@@ -27,6 +27,7 @@ import os
 import re
 import socket
 import secrets
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -35,6 +36,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
+from urllib.parse import urlsplit
 
 from mpvd import __version__
 from mpvd.brand import app_id, app_name
@@ -119,6 +121,16 @@ def clock(seconds: float | None) -> str:
     return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60}:{s % 60:02d}"
 
 
+@dataclass(frozen=True)
+class ProbeResult:
+    """F2 · qué contestó la dirección pública y cuánto tardó cada etapa (DNS, primer HTTP)."""
+
+    ok: bool
+    dns_s: float | None = None
+    http_s: float | None = None
+    resolvers: tuple[str, ...] = ()
+
+
 @dataclass
 class RoomRuntime:
     room: Room
@@ -167,6 +179,8 @@ class ShareService:
         # the room keeps using its local address, so nothing ever points at something that does not work yet.
         self.pending_url: str | None = None
         self.tunnel_state = "off"               # off | downloading | starting | warming | ready | failed
+        self.tunnel_requested = 0.0             # monotonic time the tunnel was asked for (F2 counts from here)
+        self.tunnel_ready_s: int | None = None  # F2 · seconds until the link really routed, for the menu row
         self.tunnel_task: asyncio.Task[None] | None = None
         self.tunnel_error = ""                  # why there is no tunnel, for the menu to say it
         self.tunnel_progress = ""               # F1: «12,4 de 40 MB» while cloudflared is being downloaded
@@ -229,10 +243,12 @@ class ShareService:
         self.tunnel_progress = ""
         self.public_url = None
         self.pending_url = None
+        self.tunnel_ready_s = None
         self.tunnel = None
         if not internet:
             self.tunnel_state = "off"
         else:
+            self.tunnel_requested = time.monotonic()
             binary = tunnel_mod.find_cloudflared(self.server.root)
             self.tunnel_state = "starting" if binary is not None else "downloading"
             if binary is not None:
@@ -277,6 +293,7 @@ class ShareService:
             self.tunnel_progress = ""
             self.tunnel = tunnel_mod.CloudflaredTunnel(binary, pid_file=self.pid_file)
         tun = self.tunnel
+        requested = self.tunnel_requested or time.monotonic()
         self.tunnel_state = "starting"
         self._host_push(rt, "tunnel")
         try:
@@ -286,23 +303,37 @@ class ShareService:
         except Exception as exc:  # noqa: BLE001 - the room still works in the LAN
             self._tunnel_failed(rt, str(exc))
             return
+        start_s = time.monotonic() - requested
         if self.rt is not rt or rt.room.closed:
             return
         self.pending_url = url
         self.tunnel_state = "warming"
         self._host_push(rt, "link", "Abriendo la puerta a internet… (suele tardar un minuto)")
-        ok = await self._wait_public(url, rt)
+        probe = await self._wait_public(url, rt)
         if self.rt is not rt or rt.room.closed:
             return
-        if not ok:
+        total_s = time.monotonic() - requested
+        timings = {"tunnel_host": urlsplit(url).hostname or "", "tunnel_total_s": round(total_s, 1),
+                   "tunnel_start_s": round(start_s, 1),
+                   "tunnel_dns_s": None if probe.dns_s is None else round(probe.dns_s, 1),
+                   "tunnel_http_s": None if probe.http_s is None else round(probe.http_s, 1),
+                   "tunnel_dns_resolvers": list(probe.resolvers)}
+        if not probe.ok:
             self.tunnel_state = "failed"
-            self.tunnel_error = "la dirección de internet no ha llegado a contestar"
+            self.pending_url = None
+            self.tunnel_error = ("la dirección de internet no ha llegado a contestar: "
+                                 "el nombre no resuelve en ningún resolvedor"
+                                 if not probe.resolvers else
+                                 "la dirección de internet no ha llegado a contestar")
+            log.warning("tunnel not routable after %.1fs: %s", total_s, self.tunnel_error, extra=timings)
             self._host_push(rt, "link", "La dirección de internet no contesta; la sala sigue en tu red")
             return
         self.public_url = url
         self.pending_url = None
         self.tunnel_state = "ready"
-        log.info("tunnel ready: %s", url)
+        self.tunnel_ready_s = int(round(total_s))
+        log.info("tunnel ready in %.1fs (start %.1fs, dns %s, http %s)", total_s, start_s,
+                 timings["tunnel_dns_s"], timings["tunnel_http_s"], extra=timings)
         self._maybe_invite(rt)
 
     def _tunnel_progress(self, rt: RoomRuntime, text: str) -> None:
@@ -334,6 +365,8 @@ class ShareService:
             self.tunnel = None
         self.tunnel_error = ""
         self.tunnel_progress = ""
+        self.tunnel_ready_s = None
+        self.tunnel_requested = time.monotonic()
         binary = tunnel_mod.find_cloudflared(self.server.root)
         self.tunnel_state = "starting" if binary is not None else "downloading"
         if binary is not None:
@@ -341,18 +374,44 @@ class ShareService:
         self.tunnel_task = asyncio.create_task(self._open_tunnel(rt), name="share-tunnel-retry")
         return self.status()
 
-    async def _wait_public(self, url: str, rt: RoomRuntime) -> bool:
+    async def _wait_public(self, url: str, rt: RoomRuntime) -> ProbeResult:
+        """Wait until the name resolves in two of three public resolvers AND the root of the tunnel answers (F2).
+
+        DNS first, HTTP after: asking the local resolver would poison its negative cache, and an HTTP answer only
+        proves the tunnel carries requests once the name exists. The probe connects to the address the DoH gave,
+        with the tunnel's name as SNI and ``Host``. Any HTTP answer below 500 is ours; a 5xx is Cloudflare saying
+        it still cannot reach the tunnel (``url_answers``)."""
         if os.environ.get("MPVD_SHARE_TUNNEL_PROBE") == "0":
-            return True
-        probe = f"{url.rstrip('/')}/s/{rt.room.id}"
-        deadline = time.monotonic() + TUNNEL_WARM_MAX
+            return ProbeResult(True)
+        host = urlsplit(url).hostname or ""
+        probe = url.rstrip("/") + "/"
+        started = time.monotonic()
+        dns_at = 0.0
+        dns_s: float | None = None
+        resolvers: tuple[str, ...] = ()
+        address: str | None = None
+        deadline = started + TUNNEL_WARM_MAX
         while time.monotonic() < deadline:
             if self.rt is not rt or rt.room.closed:
-                return False
-            if await asyncio.to_thread(url_answers, probe):
-                return True
+                return ProbeResult(False, dns_s, None, resolvers)
+            if dns_s is None:
+                dns = await tunnel_mod.resolve_public(host)
+                if not dns.ready:
+                    await asyncio.sleep(TUNNEL_PROBE_EVERY)
+                    continue
+                dns_at = time.monotonic()
+                dns_s = dns_at - started
+                resolvers = dns.answered
+                address = dns.addresses[0] if dns.addresses else None
+                log.info("tunnel DNS resolves %s with %s after %.1fs", host, ", ".join(resolvers), dns_s,
+                         extra={"tunnel_host": host, "tunnel_dns_s": round(dns_s, 1),
+                                "tunnel_dns_resolvers": list(resolvers), "tunnel_dns_at": round(dns.at, 3),
+                                "tunnel_dns_addresses": list(dns.addresses)})
+            # la IP viene del DoH: ni se pregunta al DNS del sistema ni se envenena su caché negativa
+            if await asyncio.to_thread(url_answers, probe, address):
+                return ProbeResult(True, dns_s, time.monotonic() - dns_at, resolvers)
             await asyncio.sleep(TUNNEL_PROBE_EVERY)
-        return False
+        return ProbeResult(False, dns_s, None, resolvers)
 
     def set_open_control(self, on: bool) -> dict[str, Any]:
         """H55 · «los invitados pueden controlar», para los que están y para los que vengan."""
@@ -480,6 +539,7 @@ class ShareService:
             self.tunnel_state = "off"
             self.tunnel_progress = ""
             self.tunnel_error = ""
+            self.tunnel_ready_s = None
             await self.http.stop()
             # a guest asking for a relay right now is inside a handler of that server: only once it is down can no new
             # ffmpeg appear. Whatever started meanwhile is stopped here, and only then does the folder go.
@@ -510,7 +570,7 @@ class ShareService:
             "firewall": self.firewall if open_ else None, "tunnel": getattr(self.tunnel, "name", None),
             "public_url": self.public_url, "lan_only": self.public_url is None,
             "tunnel_error": self.tunnel_error, "tunnel_state": self.tunnel_state,
-            "tunnel_progress": self.tunnel_progress,
+            "tunnel_progress": self.tunnel_progress, "tunnel_ready_s": self.tunnel_ready_s,
             "pending_url": self.pending_url,
             # installed here, and downloadable from the pinned vendor.lock asset (F1: the UI offers both)
             "tunnel_available": tunnel_mod.find_cloudflared(self.server.root) is not None,
@@ -1453,16 +1513,35 @@ class ShareService:
         return {"ok": True, "cmd": cmd}
 
 
-def url_answers(url: str) -> bool:
-    """Does this address route yet? Any HTTP answer counts, including a 4xx: what is being checked is that the
-    tunnel carries the request, not what it replies."""
-    req = urllib.request.Request(url, method="GET", headers={"User-Agent": f"{app_id()}-probe"})
+def url_answers(url: str, address: str | None = None) -> bool:
+    """Does this address route yet? An HTTP answer below 500 counts, 4xx included: the request got to the room's
+    server and it answered. A 5xx is Cloudflare (530, «error 1033») saying it still cannot reach the tunnel.
+
+    ``address`` is an IP from DNS-over-HTTPS: the TLS connection goes there but SNI and ``Host`` are the tunnel's
+    name, so the probe neither asks the system resolver nor leaves a negative answer in its cache."""
+    parts = urlsplit(url)
+    if address and parts.scheme == "https":
+        try:
+            context = ssl.create_default_context()
+            with socket.create_connection((address, parts.port or 443), timeout=TUNNEL_PROBE_TIMEOUT) as sock:
+                with context.wrap_socket(sock, server_hostname=parts.hostname or "") as tls:
+                    path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+                    # HEAD: solo interesa que el túnel lleve la petición y qué contesta, no el cuerpo
+                    tls.sendall(f"HEAD {path} HTTP/1.1\r\nHost: {parts.netloc}\r\n"
+                                f"User-Agent: {app_id()}-probe\r\nConnection: close\r\n\r\n".encode())
+                    status = tls.makefile("rb").readline(256)
+            code = int(status.split()[1]) if status.startswith(b"HTTP/") else 0
+            return 0 < code < 500
+        except Exception:  # noqa: BLE001 - TLS, timeout, conexión rechazada…
+            return False
+    req = urllib.request.Request(url, method="GET",
+                                 headers={"Host": parts.netloc, "User-Agent": f"{app_id()}-probe"})
     try:
         with urllib.request.urlopen(req, timeout=TUNNEL_PROBE_TIMEOUT):
             return True
-    except urllib.error.HTTPError:
-        return True
-    except Exception:  # noqa: BLE001 - DNS todavía sin propagar, 530 de Cloudflare, timeout…
+    except urllib.error.HTTPError as exc:
+        return exc.code < 500
+    except Exception:  # noqa: BLE001 - DNS todavía sin propagar, timeout, conexión rechazada…
         return False
 
 

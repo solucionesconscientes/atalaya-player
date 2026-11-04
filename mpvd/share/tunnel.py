@@ -13,19 +13,27 @@ its SHA-256 and only then renamed into place, so a half-downloaded or tampered f
 A PID file is written next to the daemon's socket and the next daemon start sweeps it: if mpvd died with SIGKILL,
 the orphaned cloudflared does not survive the next start (and the room close already stops it when the player closes
 normally). No ``preexec_fn`` is used to get this: forking with Python code in a threaded daemon is not safe.
+
+Since F2 the printed address is not good yet: cloudflared publishes the name at once but the tunnel routes ~60 s
+later, so ``mpvd/share/service.py`` waits until two of three public resolvers see the name over DNS-over-HTTPS
+(``resolve_public`` here) and the tunnel's root answers an HTTP request.
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import hashlib
 import logging
 import os
 import platform
 import re
+import secrets
 import shutil
 import signal
+import socket
+import struct
 import subprocess
 import sys
 import time
@@ -47,6 +55,116 @@ TAIL_LINES = 8
 PID_NAME = "cloudflared.pid"
 CHUNK = 1 << 20
 DOWNLOAD_TIMEOUT = 60.0
+
+# F2 · cloudflared publica el nombre en Cloudflare en cuanto abre el túnel, pero el túnel no enruta hasta ~60 s
+# después. Se pregunta por DNS-over-HTTPS a IPs literales (no al resolutor del sistema, que guardaría la respuesta
+# negativa en su caché) y solo cuando dos de los tres ven el nombre se prueba el HTTP.
+# shortcut: Quad9 solo contesta DoH por HTTP/2 y la librería estándar habla HTTP/1.1, así que en la práctica el
+# quórum lo forman Cloudflare y Google; se le sigue preguntando y el log dice quién contestó. Si algún día se
+# admite una dependencia con HTTP/2 (h2/httpx), Quad9 contará sin tocar nada más.
+DOH_RESOLVERS = ("1.1.1.1", "8.8.8.8", "9.9.9.9")
+DOH_TYPES = (1, 28)          # A y AAAA
+DOH_QUORUM = 2
+DOH_TIMEOUT = 3.0
+
+
+@dataclass(frozen=True)
+class DnsResult:
+    host: str
+    answered: tuple[str, ...]     # resolvedores que devolvieron al menos un A/AAAA
+    at: float                     # hora de pared en que terminó la consulta
+    addresses: tuple[str, ...] = ()   # las direcciones que dieron, para probar el HTTP sin el DNS del sistema
+
+    @property
+    def ready(self) -> bool:
+        return len(self.answered) >= DOH_QUORUM
+
+
+def dns_query(host: str, qtype: int, ident: int | None = None) -> bytes:
+    """A minimal RFC 1035 query: the same bytes Cloudflare, Google and Quad9 answer over RFC 8484."""
+    ident = secrets.randbits(16) if ident is None else ident
+    qname = b"".join(bytes([len(label)]) + label.encode("ascii") for label in host.rstrip(".").split(".")) + b"\0"
+    return struct.pack("!HHHHHH", ident, 0x0100, 1, 0, 0, 0) + qname + struct.pack("!HH", qtype, 1)
+
+
+def _skip_name(data: bytes, off: int) -> int:
+    """Past a DNS name: labels, or a two-byte compression pointer (the only things a resolver sends here)."""
+    while True:
+        if off >= len(data):
+            raise ValueError("respuesta DNS truncada")
+        size = data[off]
+        if size == 0:
+            return off + 1
+        if size & 0xC0 == 0xC0:
+            if off + 1 >= len(data):
+                raise ValueError("respuesta DNS truncada")
+            return off + 2
+        off += 1 + size
+
+
+def parse_dns_response(data: bytes) -> tuple[int, int, list[tuple[int, bytes]]]:
+    """(id, rcode, [(type, rdata)]). Only what is needed to count A/AAAA records; nothing is interpreted."""
+    if len(data) < 12:
+        raise ValueError("respuesta DNS truncada")
+    ident, flags, questions, answers, _, _ = struct.unpack("!HHHHHH", data[:12])
+    off = 12
+    for _ in range(questions):
+        off = _skip_name(data, off) + 4
+    records: list[tuple[int, bytes]] = []
+    for _ in range(answers):
+        off = _skip_name(data, off)
+        if off + 10 > len(data):
+            raise ValueError("respuesta DNS truncada")
+        rtype, _, _, size = struct.unpack("!HHIH", data[off:off + 10])
+        off += 10
+        if off + size > len(data):
+            raise ValueError("respuesta DNS truncada")
+        records.append((rtype, data[off:off + size]))
+        off += size
+    return ident, flags & 0xF, records
+
+
+def _doh_ask(resolver: str, host: str, qtype: int, timeout: float) -> list[tuple[int, bytes]]:
+    """Ask one resolver over RFC 8484 (wire format) for one type; only address records come back."""
+    ident = secrets.randbits(16)
+    packet = dns_query(host, qtype, ident)
+    param = base64.urlsafe_b64encode(packet).rstrip(b"=").decode("ascii")
+    req = urllib.request.Request(f"https://{resolver}/dns-query?dns={param}",
+                                 headers={"Accept": "application/dns-message", "User-Agent": "mpv-uos-dns"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - https to a literal public resolver
+        got_id, rcode, records = parse_dns_response(resp.read(65535))
+    if got_id != ident:
+        raise ValueError("respuesta DNS de otra consulta")
+    if rcode != 0:
+        return []
+    return [(rtype, data) for rtype, data in records if rtype in DOH_TYPES]
+
+
+def _resolver_addresses(resolver: str, host: str, timeout: float) -> list[str]:
+    """The A and AAAA addresses one resolver gives, as text; empty when it answers neither."""
+    found: list[str] = []
+    for qtype in DOH_TYPES:
+        try:
+            records = _doh_ask(resolver, host, qtype, timeout)
+        except Exception:  # noqa: BLE001 - un resolvedor caído o bloqueado simplemente no cuenta
+            continue
+        if qtype == 1:
+            found += [socket.inet_ntop(socket.AF_INET, data) for _, data in records if len(data) == 4]
+        else:
+            found += [socket.inet_ntop(socket.AF_INET6, data) for _, data in records if len(data) == 16]
+    return found
+
+
+async def resolve_public(host: str, resolvers: tuple[str, ...] = DOH_RESOLVERS,
+                         timeout: float = DOH_TIMEOUT) -> DnsResult:
+    """Which public resolvers see this name, right now. Two of three is the quorum the room waits for (F2).
+    The addresses they return are kept so the HTTP probe can go to one of them without the system resolver."""
+    answers = await asyncio.gather(*(asyncio.to_thread(_resolver_addresses, r, host, timeout) for r in resolvers))
+    answered = tuple(r for r, found in zip(resolvers, answers, strict=True) if found)
+    addresses: list[str] = []
+    for found in answers:
+        addresses += [ip for ip in found if ip not in addresses]
+    return DnsResult(host, answered, time.time(), tuple(addresses))
 
 
 def _binary_name() -> str:
@@ -476,6 +594,7 @@ def _tail(lines: list[bytes]) -> str:
     return text[-400:] if text else "sin salida"
 
 
-__all__ = ["CloudflaredAsset", "CloudflaredDownloadError", "CloudflaredTunnel", "PID_NAME", "TunnelError",
-           "download_cloudflared", "ensure_cloudflared", "find_cloudflared", "kill_stale", "platform_asset",
-           "progress_text"]
+__all__ = ["CloudflaredAsset", "CloudflaredDownloadError", "CloudflaredTunnel", "DnsResult", "DOH_RESOLVERS",
+           "PID_NAME", "TunnelError", "dns_query", "download_cloudflared", "ensure_cloudflared",
+           "find_cloudflared", "kill_stale", "parse_dns_response", "platform_asset", "progress_text",
+           "resolve_public"]
