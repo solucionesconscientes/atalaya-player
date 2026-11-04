@@ -293,3 +293,8 @@ uv run pytest tests/test_share_browser.py -q
 
 Mientras tanto, el camino de servidor del sondeo está cubierto en `test_share_http.py` y el de consola por el túnel
 real en `tmp/fase-share-3-medicion.md` (20/20 cambios, p95 del total 1031 ms).
+
+## 2026-11-04 · Notion y vault en la sesión de F3 (no bloquea)
+La sesión no tiene conector de Notion y el MCP del vault pidió permiso y no se concedió (trabajo desatendido). El
+avance de F3 (sondeo por el túnel, ADR-141) queda en `PROGRESS.md`, `BACKLOG.md`, `docs/DECISIONS.md` y
+`tmp/fase-share-3.md`; falta pasarlo a Notion y a `proyectos/` del vault desde una sesión con permiso.
