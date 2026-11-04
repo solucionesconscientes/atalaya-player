@@ -279,3 +279,17 @@ Si algo falla, el instalador deja el motivo en `%LOCALAPPDATA%\Atalaya\instalado
 ## 2026-10-28 · Notion sin conector en la sesión (no bloquea)
 Esta sesión no tenía MCP de Notion, así que el avance de ADR-136/ADR-137 (panel de canales, ⌫/Esc y el intérprete de
 Windows en `runtime\`) no se ha registrado en la Bitácora. Se puede registrar desde una sesión con el conector.
+
+## 2026-11-04 · Tests de navegador de la sala (F3, no bloquea)
+En server1 los tests de navegador **no se pueden ejecutar**: Chrome cuelga en `Page.navigate` incluso contra un
+servidor local mínimo, y también con los tests que ya existían antes de F3 (`test_share_browser.py`). No es cosa del
+cambio de transporte. El test nuevo de sondeo y reconexión (`?poll=1`, cortar las peticiones y volver) está escrito
+y pasa `node --check`; falta verlo en una máquina con Chrome/Chromium funcional y node ≥ 22:
+
+```bash
+cd ~/Documentos/PROJECTES/productos/atalaya-player
+uv run pytest tests/test_share_browser.py -q
+```
+
+Mientras tanto, el camino de servidor del sondeo está cubierto en `test_share_http.py` y el de consola por el túnel
+real en `tmp/fase-share-3-medicion.md` (20/20 cambios, p95 del total 1031 ms).

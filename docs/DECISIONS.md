@@ -2143,3 +2143,37 @@
   respuesta»; `tests/test_share_tunnel.py`, el quórum y que un 530 no se confunde con un túnel enrutado. Con
   cloudflared real, tres aperturas: el enlace quedó listo en 49,8 / 10,7 / 15,2 s y la página de la sala respondió
   200 a través del túnel en ese mismo momento.
+- ADR-141 · El invitado de navegador por el túnel sondea cada segundo; el SSE se queda en la LAN (F3, 2026-11-04).
+  **Qué se vio.** Se midió el SSE de una sala real a través del túnel rápido de Cloudflare (20 cambios de pausa y
+  salto, cliente de consola). En la LAN el SSE llega con p95 de 6 ms de transporte (p50 2 ms; total p95 177 ms,
+  contando el sondeo de mpv). Por el túnel, la conexión devuelve 200 y las cabeceras en 0,12 s, pero **no llega ni
+  el `hello`**: 0 de 20 eventos en 15 s. No es latencia: una sonda aislada con un servidor mínimo (sin tocar el
+  proyecto) enseñó que Cloudflare retiene el cuerpo hasta que la respuesta termina —sin longitud, 0 B en 8 s;
+  cerrando a los 5 s, los 5 eventos llegan de golpe a los 5,14 s; con `Content-Length`, al completarse; con
+  `Transfer-Encoding: chunked`, exactamente igual—. Un SSE nunca termina, así que por este túnel no puede llegar en
+  tiempo real.
+  **Decisión.** (1) El invitado de navegador intenta SSE y, si el `hello` no ha llegado en 2,5 s, sigue la sala con
+  **sondeo de 1 s** de `api/me` (el mismo endpoint que ya usaba la página). En la LAN se queda el SSE. (2) El sondeo
+  mantiene una sola petición en vuelo por invitado; el servidor HTTP de la sala corta a **100 conexiones en vuelo**
+  (`MPVD_SHARE_MAX_INFLIGHT`, la mitad del límite aproximado del túnel, dejando sitio a los segmentos HLS), responde
+  `429` con `busy: true` y la página enseña «La sala va al límite de conexiones: la sincronía puede ir con retraso».
+  (3) **No se usa WebSocket**: `aiohttp` no está en el venv (la premisa del brief no se cumple y no se admiten
+  dependencias nuevas), así que un RFC 6455 a mano con reconexión y *resume* por `last_event_id` sería más código y
+  más riesgo que el sondeo, que ya usa el HTTP que el túnel sí entrega. (4) El invitado de Atalaya (`guest.py`) no
+  se toca: mismo SSE y misma corrección de deriva (0,15 s / ±8 % / 0,3 s). (5) `Guest.connected` cuenta también la
+  actividad reciente (`POLL_ALIVE = 5 s`), para que el invitado que sondea no salga «desconectado» en la lista del
+  anfitrión ni deje de sumar en «N personas viendo»; `_maybe_left` usa ese mismo `connected`, así que cerrar el SSE
+  para pasarse al sondeo no anuncia una desconexión.
+  **Cómo se comprueba.** `tests/test_share_service.py` fija el tope (una respuesta en curso ocupa la plaza, la
+  siguiente recibe 429 y la plaza vuelve al terminar); `tests/test_share_rooms.py`, que un invitado que sondea
+  cuenta como conectado; `tests/test_share_http.py`, que `api/me` trae los cambios del anfitrión sin abrir SSE. El
+  test de navegador `test_browser_guest_by_polling_follows_and_recovers_from_a_cut` (forzado con `?poll=1`) prueba
+  el seguimiento y la vuelta tras cortar las peticiones; en server1 **no se puede ejecutar**: Chrome cuelga en
+  `Page.navigate` incluso contra un servidor local mínimo, y también con los tests de navegador que ya existían. La
+  verificación de aquí es el cliente de consola por el túnel: 20/20 cambios vistos, total p50 992 ms / p95 1031 ms,
+  transporte p50 885 ms / p95 965 ms (dominado por el segundo de cadencia). Detalle en
+  `tmp/fase-share-3-medicion.md`.
+  **Límites.** El invitado de Atalaya por el túnel sigue esperando SSE y no recibirá eventos: el brief prohíbe
+  cambiar su protocolo; cubrirlo exige otra fase con sondeo también para él. Los tests de navegador quedan
+  pendientes de una máquina con navegador funcional (NEEDS_HUMAN). El sondeo añade hasta ~1 s de reacción frente al
+  SSE local; es el precio de que haya algo, y está medido.

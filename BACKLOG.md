@@ -187,7 +187,9 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
       lo que sirve el servidor local y el proceso muere con la sala o el reproductor. Con túnel no hace falta tocar
       el cortafuegos. Desde F2 (2026-11-04) el enlace no se anuncia hasta que el nombre resuelve por DNS-over-HTTPS
       en dos de tres resolvedores públicos (Cloudflare, Google, Quad9) y la raíz del túnel contesta; la fila del
-      menú dice en cuántos segundos quedó listo.
+      menú dice en cuántos segundos quedó listo. Desde F3 (2026-11-04) el invitado de navegador que entra por el
+      túnel sondea `api/me` cada segundo si el SSE no da señales en 2,5 s (Cloudflare retiene el cuerpo de un SSE
+      abierto), la LAN sigue con SSE y el servidor corta a 100 peticiones en vuelo con aviso en la página.
 - [x] Sala pública «solo ver» (cualquiera con el enlace en la red local, número máximo de espectadores, sin control ni chat).
 - [x] «Emitir en directo» a una plataforma (YouTube Live, Twitch, PeerTube, Owncast) por RTMP con clave de emisión, para audiencias
       grandes. Chat y reacciones en salas privadas. Aviso legal: solo contenido que se puede compartir.

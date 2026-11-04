@@ -1,6 +1,35 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## F3 · el invitado por el túnel sondea; el SSE se queda en la LAN (2026-11-04) — rama `feat/share-internet` · ADR-141
+
+- **Medido antes de tocar nada.** Control local con SSE: transporte p95 **6 ms** (p50 2 ms), total p95 177 ms
+  (incluye el sondeo de mpv cada 250 ms); 0/20 eventos perdidos. Túnel rápido: la conexión da 200 y cabeceras en
+  0,12 s, pero **no llega ni el `hello`**, 0/20 eventos en 15 s. Una sonda aislada demostró la causa: Cloudflare
+  retiene el cuerpo de la respuesta hasta que esta termina (sin longitud, 0 B en 8 s; al cerrar a los 5 s, los
+  eventos llegan de golpe a los 5,14 s; con `Content-Length`, al completarse; chunked, igual). Un SSE nunca
+  termina, así que por el túnel no hay tiempo real.
+- **Transporte.** La página intenta SSE y, si el `hello` no llega en 2,5 s, sigue la sala con sondeo de 1 s de
+  `api/me` (una petición en vuelo por invitado). En la LAN sigue el SSE. Medido por el túnel con el cliente de
+  consola: 20/20 cambios vistos, total p50 992 ms / p95 1031 ms; transporte p50 885 ms / p95 965 ms. No se usa
+  WebSocket: no hay `aiohttp` en el venv y no se admiten dependencias nuevas; un RFC 6455 a mano con *resume* es
+  más riesgo que el sondeo, que usa el HTTP que el túnel sí entrega.
+- **Tope.** 100 conexiones en vuelo en el servidor HTTP de la sala (`MPVD_SHARE_MAX_INFLIGHT`); por encima, `429`
+  con `busy: true` y aviso en la página («La sala va al límite de conexiones…»). Deja sitio a los segmentos HLS.
+- **Invitado de Atalaya.** `guest.py` no se toca: mismo SSE y misma corrección de deriva (0,15 s / ±8 % / 0,3 s).
+  `Guest.connected` cuenta la actividad reciente (`POLL_ALIVE = 5 s`) para que el que sondea no salga
+  «desconectado» ni deje de sumar en «N personas viendo»; `_maybe_left` usa `connected`, así que pasar de SSE a
+  sondeo no anuncia una desconexión.
+- **Verificación.** `test_share_service.py` fija el tope (429 y liberación de la plaza); `test_share_rooms.py`, el
+  invitado que sondea como conectado; `test_share_http.py`, el camino `api/me` sin SSE. Batería seleccionada:
+  `share`, `tunnel`, `mu-share` e `i18n` en verde (124 ejecutados, 2 omitidos por portapapeles). Los tests de
+  navegador **no corren en server1**: Chrome cuelga en `Page.navigate` también con los tests que ya existían; el
+  test nuevo de sondeo/reconexión queda escrito para una máquina con navegador funcional (NEEDS_HUMAN). Detalle en
+  `tmp/fase-share-3-medicion.md` y `tmp/fase-share-3.md`.
+
+**SIGUIENTE PASO**: F4 · segmentos HLS cifrados (desafío HMAC con el token, HKDF, AES-128 y loader propio de
+hls.js), según `.tareas/share-internet-f4-cifrado.md`; el parte de F3 está en `tmp/fase-share-3.md`.
+
 ## F2 · el enlace no se da hasta que enruta (2026-11-04) — rama `feat/share-internet` · ADR-140
 
 - Antes de dar el enlace por bueno, `ShareService._wait_public` pregunta por DNS-over-HTTPS a Cloudflare (1.1.1.1),
