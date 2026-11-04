@@ -275,3 +275,43 @@ def test_el_invitado_con_el_control_manda_de_verdad(share_env, clip):  # noqa: F
         b.wait(f"{VIDEO}.currentTime < 12", timeout=60)
     finally:
         b.close()
+
+
+def test_browser_guest_by_polling_follows_and_recovers_from_a_cut(share_env, clip):  # noqa: F811
+    """F3 · el túnel rápido de Cloudflare retiene el cuerpo del SSE, así que el invitado de navegador que entra por
+    él sondea api/me cada segundo. Aquí se fuerza el sondeo (?poll=1) y se comprueba lo que importa: sigue al
+    anfitrión (pausa, salto) y, si se cortan las peticiones un rato, se recupera solo cuando vuelven."""
+    h, d = share_env
+    h.command("loadfile", str(clip))
+    h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=20)
+    url = d.call("share.create")["url"]
+    base, frag = url.split("#", 1)
+    b = Browser()
+    try:
+        b.nav(base + "?poll=1#" + frag)
+        b.wait("!document.getElementById('join').classList.contains('hidden')")
+        b.js("document.getElementById('name').value = 'Sondeo'; "
+             "document.getElementById('join-form').requestSubmit(); true")
+        b.wait("!document.getElementById('room').classList.contains('hidden')")
+        b.wait("document.documentElement.getAttribute('data-transport') === 'poll'", timeout=10)
+        b.wait(f"{VIDEO}.readyState >= 1", timeout=40)
+
+        h.command("set", "pause", "no")
+        b.wait(f"!{VIDEO}.paused && {VIDEO}.currentTime > 2", timeout=40)
+        h.command("seek", "25", "absolute")
+        b.wait(f"Math.abs({VIDEO}.currentTime - 26) < 2", timeout=25)
+        h.command("set", "pause", "yes")
+        b.wait(f"{VIDEO}.paused", timeout=15)
+
+        # se cortan las peticiones (como si se fuera la red) y vuelven: el bucle tiene que reanudarse solo
+        b.js("window.__realFetch = window.fetch; window.fetch = function () {"
+             " return Promise.reject(new TypeError('cut')); }; true")
+        time.sleep(3.5)
+        b.js("window.fetch = window.__realFetch; true")
+        h.command("seek", "10", "absolute")
+        b.wait(f"Math.abs({VIDEO}.currentTime - 11) < 2", timeout=30)
+
+        d.call("share.close")
+        b.wait("document.getElementById('message-text').textContent.includes('cerrada')", timeout=15)
+    finally:
+        b.close()

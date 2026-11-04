@@ -148,3 +148,52 @@ def test_con_dns_y_http_el_enlace_queda_listo_y_se_mide(tmp_path, monkeypatch, c
     assert record.tunnel_start_s >= 0 and record.tunnel_dns_s >= 0 and record.tunnel_http_s >= 0
     assert record.tunnel_dns_resolvers == ["1.1.1.1", "8.8.8.8"]
     assert seen == ["104.16.0.1"], "el HTTP va a la IP que dio el DoH, no al DNS del sistema"
+
+
+def test_el_tope_de_peticiones_en_vuelo_descarta_con_429_y_libera_la_plaza():
+    """F3 · con el invitado sondeando por el túnel, el servidor no deja crecer las peticiones en vuelo sin límite:
+    la que llega con el tope lleno se descarta (429, lo que la página convierte en aviso) y la plaza vuelve al
+    terminar la respuesta que la ocupaba."""
+    from mpvd.remote.http import HttpServer, Response
+
+    gate = asyncio.Event()
+
+    async def handler(req):  # type: ignore[no-untyped-def]
+        if req.path == "/stream":
+            async def chunks():
+                await gate.wait()
+                yield b"ok"
+            return Response(200, {}, b"", stream=chunks())
+        return Response.text("ok")
+
+    async def run() -> None:
+        server = HttpServer(handler, name="test", max_inflight=1)
+        await server.start("127.0.0.1", 0)
+        try:
+            first, w1 = await asyncio.open_connection("127.0.0.1", server.port)
+            w1.write(b"GET /stream HTTP/1.1\r\nHost: x\r\n\r\n")
+            await w1.drain()
+            assert b"200" in await first.readuntil(b"\r\n\r\n")
+
+            second, w2 = await asyncio.open_connection("127.0.0.1", server.port)
+            w2.write(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+            await w2.drain()
+            assert b"429" in await second.readuntil(b"\r\n\r\n")
+            assert b'"busy": true' in await second.read()
+            w2.close()
+
+            gate.set()
+            assert await first.read() == b"ok"
+            w1.close()
+            await w1.wait_closed()
+
+            third, w3 = await asyncio.open_connection("127.0.0.1", server.port)
+            w3.write(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+            await w3.drain()
+            assert b"200" in await third.readuntil(b"\r\n\r\n")
+            w3.close()
+            await w3.wait_closed()
+        finally:
+            await server.stop()
+
+    asyncio.run(run())

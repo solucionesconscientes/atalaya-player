@@ -673,3 +673,41 @@ def test_el_anfitrion_tiene_un_enlace_que_abre_vlc_o_mpv(share_env, clip):
     status, m3u, _ = sonda.req(uno["m3u"])
     assert status == 200 and b"#EXTM3U" in m3u
     sonda.close()
+
+
+def test_el_invitado_que_sondea_ve_lo_mismo_que_el_del_sse(share_env, clip):  # noqa: F811
+    """F3 · por el túnel rápido el SSE no entrega el cuerpo, así que la página sondea `api/me` cada segundo. Este
+    es el camino de servidor que usa: sin abrir ningún SSE, cada consulta trae el estado nuevo y el invitado
+    cuenta como conectado (lista del anfitrión y «N personas viendo»)."""
+    h, d = share_env
+    h.command("loadfile", str(clip))
+    h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=20)
+    res = d.call("share.create")
+    base, rest = res["url"].split("/s/", 1)
+    room, token = rest.split("#k=")
+    guest = Guest(base, room)
+    assert guest.req("api/join", {"token": token, "name": "Sondeo"})[0] == 200
+    assert guest.events == [], "aquí no se abre el SSE: el invitado solo consulta"
+    status, me, _ = guest.req("api/me")
+    assert status == 200 and me["state"] is not None
+    assert d.call("share.status")["guests"][0]["connected"] is True   # last_seen, no streams
+
+    before = me["state"]["at"]
+    h.command("set", "pause", "no")
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        _status, me, _ = guest.req("api/me")
+        if me["state"]["at"] != before and me["state"]["paused"] is False:
+            break
+        time.sleep(0.2)
+    assert me["state"]["at"] != before and me["state"]["paused"] is False
+
+    h.command("seek", "25", "absolute")
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        _status, me, _ = guest.req("api/me")
+        if abs(float(me["state"]["pos"]) - 25) < 1.5:
+            break
+        time.sleep(0.2)
+    assert abs(float(me["state"]["pos"]) - 25) < 1.5
+    d.call("share.close")

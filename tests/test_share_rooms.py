@@ -259,3 +259,17 @@ def test_en_privada_se_entra_pudiendo_controlar_y_en_publica_no():
     assert oculto.hidden and not oculto.can_control
     assert [g.name for g in priv.active_guests()] == ["Ana", "Bea"]
     assert oculto.id in priv.guests                 # existe para firmar su enlace, pero no es un invitado
+
+
+def test_un_invitado_que_sondea_cuenta_como_conectado():
+    """F3 · el invitado de navegador por el túnel no mantiene un SSE abierto: sondea api/me cada segundo.
+    «connected» no puede mirar sólo los streams abiertos, o el anfitrión lo ve «desconectado» y no suma en viewers."""
+    import time
+
+    room = Room.new()
+    g = room.join(room.token, "Ana", "10.0.0.2")
+    assert g.connected and room.viewers() == 1          # acaba de entrar, aunque aún no tenga stream
+    g.last_seen = time.time() - rooms.POLL_ALIVE - 1
+    assert not g.connected and room.viewers() == 0
+    g.last_seen = time.time()
+    assert g.connected
