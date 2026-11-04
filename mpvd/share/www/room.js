@@ -681,6 +681,10 @@
 
   // -- start ---------------------------------------------------------------------------------------------
 
+  // F4 · la credencial de sesión dura 1 h y se renueva con cada petición; una página abierta y en pausa no hace
+  // ninguna, así que se refresca sola cada 10 min mientras la sala siga abierta.
+  setInterval(function () { if (!ended && me) api('api/me').catch(function () {}); }, 600000);
+
   if (!roomId) { message(t('Enlace no válido')); return; }
   api('api/me').then(function (d) {
     enter(d.guest, false, d.room);
