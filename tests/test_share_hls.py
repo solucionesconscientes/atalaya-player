@@ -15,10 +15,11 @@ import pytest
 
 from mpvd.convert import hw as hw_mod
 from mpvd.convert.presets import HwPlan
-from mpvd.share import hls
+from mpvd.share import hls, rooms
 
 ROOT = Path(__file__).resolve().parents[1]
 FIX = ROOT / "tests" / "fixtures" / "ytdlp"
+WWW = ROOT / "mpvd" / "share" / "www"
 pytestmark = pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="sin ffmpeg")
 
 
@@ -50,10 +51,11 @@ def _probe(path: Path) -> dict:
     return json.loads(out)
 
 
-def _run_stream(inputs: list[hls.Input], out: Path, audio_index: int | None = None, hw: HwPlan | None = None
-                ) -> tuple[hls.HlsStream, list[hls.HlsPlan]]:
+def _run_stream(inputs: list[hls.Input], out: Path, audio_index: int | None = None, hw: HwPlan | None = None,
+                key: str | None = None, iv: str | None = None) -> tuple[hls.HlsStream, list[hls.HlsPlan]]:
     probes = [hls.probe(i) for i in inputs]
-    plans = hls.plans_for(inputs, probes, out, audio_index=audio_index, hw=hw)
+    key_info = hls.write_key_info(out, key, iv) if key else None
+    plans = hls.plans_for(inputs, probes, out, audio_index=audio_index, hw=hw, key_info=key_info)
 
     async def go() -> hls.HlsStream:
         st = hls.HlsStream("t", out, plans, duration=hls.duration_of(probes[0]))
@@ -118,6 +120,73 @@ def test_hls_vaapi_when_available(clips, tmp_path):
     assert "h264_vaapi" in plans[0].cmd and ("-low_power" in plans[0].cmd) == plan.low_power
     assert st.status == "done", st.error
     _check_hls(out, 5.0)
+
+
+KEY = "AbCdEfGhIjKlMnOp"
+IV = "QrStUvWxYz012345"
+OPENSSL = shutil.which("openssl")
+
+
+def _decrypt(data: bytes, key: str, iv_hex: str) -> subprocess.CompletedProcess:
+    """AES-128-CBC as HLS defines it: PKCS#7, key bytes = the 16 characters ffmpeg was given."""
+    return subprocess.run(["openssl", "enc", "-d", "-aes-128-cbc", "-K", key.encode().hex(), "-iv", iv_hex],
+                          input=data, capture_output=True)
+
+
+def test_hls_converts_segments_to_aes128_with_a_key_that_is_not_a_url(tmp_path):
+    v = {"index": 0, "codec_name": "h264", "pix_fmt": "yuv420p"}
+    a = {"index": 1, "codec_name": "aac"}
+    info = hls.write_key_info(tmp_path, KEY, IV)
+    plan = hls.build_command([hls.Input("/m.mkv")], tmp_path, (0, v), (0, a), key_info=info)
+    assert plan.cmd[plan.cmd.index("-hls_key_info_file") + 1] == str(info)
+    # `-hls_enc_key_url` escribe la clave en esa ruta (se comprobó): aquí solo se lee un fichero 0600
+    assert "-hls_enc_key_url" not in plan.cmd and "-hls_enc_key" not in plan.cmd
+    assert (tmp_path / hls.KEY_FILE).read_bytes() == KEY.encode("ascii")
+    assert (tmp_path / hls.KEY_FILE).stat().st_mode & 0o777 == 0o600
+    assert (tmp_path / hls.KEY_INFO_FILE).stat().st_mode & 0o777 == 0o600
+    lines = info.read_text().splitlines()
+    assert lines[0] == hls.KEY_URI and "://" not in lines[0] and not lines[0].startswith("/")
+    assert lines[1] == str((tmp_path / hls.KEY_FILE).resolve()) and lines[2] == IV.encode().hex()
+    clear = hls.build_command([hls.Input("/m.mkv")], tmp_path, (0, v), (0, a))
+    assert "-hls_key_info_file" not in clear.cmd
+
+
+@pytest.mark.skipif(not OPENSSL, reason="sin openssl para descifrar en el test")
+def test_segments_are_encrypted_and_decrypt_with_the_room_key_but_not_with_another(clips, tmp_path):
+    room = rooms.Room.new()
+    key = room.hls_key()
+    assert len(key) == 16 and key != room.token
+    out = tmp_path / "enc"
+    st, _plans = _run_stream([hls.Input(str(clips["h264"]))], out, key=key, iv=IV)
+    assert st.status == "done", st.error
+    text = (out / hls.PLAYLIST).read_text()
+    m = re.search(r'#EXT-X-KEY:METHOD=AES-128,URI="([^"]+)",IV=0x([0-9a-fA-F]+)', text)
+    assert m and m.group(1) == hls.KEY_URI and "://" not in m.group(1), text[:400]
+    seg = sorted(out.glob("seg_*.ts"))[0].read_bytes()
+    assert seg[:1] != b"G" and seg[:4] != b"\x00\x00\x00\x18", "el segmento va en claro"
+    # with the right key it is a valid MPEG-TS; the same bytes with another key are not.
+    good = _decrypt(seg, key, m.group(2))
+    assert good.returncode == 0, good.stderr.decode("utf-8", "replace")
+    assert good.stdout[:1] == b"G"
+    plain = tmp_path / "plain.ts"
+    plain.write_bytes(good.stdout)
+    assert _probe(plain)["format"]["format_name"] == "mpegts"
+    bad = _decrypt(seg, "ZzZzZzZzZzZzZzZz", m.group(2))
+    assert bad.returncode != 0 or bad.stdout[:1] != b"G"
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="sin node")
+def test_the_page_derives_the_same_key_and_proof_as_the_host():
+    """Si mucrypt.js y rooms.py no derivan lo mismo, el invitado no descifra nada: se comparan los dos."""
+    script = ("const C=require(process.argv[1]);"
+              "console.log(JSON.stringify({key:C.hlsKey('tok3n','sala01'),"
+              "proof:C.proof('tok3n','sala01','aabb','ccdd'),sha:C.hex(C.sha256(C.utf8('abc')))}));")
+    res = subprocess.run(["node", "-e", script, str(WWW / "mucrypt.js")],
+                         capture_output=True, text=True, check=True, timeout=30)
+    got = json.loads(res.stdout)
+    assert got == {"key": rooms.hls_key("tok3n", "sala01"),
+                   "proof": rooms.proof_for("tok3n", "sala01", "aabb", "ccdd"),
+                   "sha": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"}
 
 
 def test_build_command_options():

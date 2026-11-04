@@ -110,6 +110,70 @@ def test_cookies_are_per_room_and_die_with_it():
     assert r.guest_from_cookie(raw2) is None
 
 
+def test_session_credential_is_short_lived_but_player_links_follow_the_room():
+    """F4 · la credencial del navegador caduca sola; el enlace para mpv/VLC dura lo que la sala (no puede renovarse)."""
+    r = Room.new(now=100.0, ttl=7200)
+    g = r.join(r.token, "Ana", "ip", now=100.0)
+    browser = r.cookie_value(g.id, now=100.0)
+    assert int(browser.split(".")[1]) == 100 + rooms.SESSION_TTL
+    assert r.guest_from_cookie(browser, now=100.0 + rooms.SESSION_TTL - 1) is g
+    assert r.guest_from_cookie(browser, now=100.0 + rooms.SESSION_TTL + 1) is None
+    player = r.cookie_value(g.id, exp=r.expires_at, now=100.0)
+    assert r.guest_from_cookie(player, now=100.0 + rooms.SESSION_TTL + 1) is g
+    # cambiar la caducidad sin la firma no cuela
+    gid, _stamp, sig = browser.split(".")
+    assert r.guest_from_cookie(f"{gid}.{r.expires_at:.0f}.{sig}", now=200.0) is None
+
+
+def test_hkdf_sha256_matches_rfc_5869():
+    ikm = bytes.fromhex("0b" * 22)
+    salt = bytes.fromhex("000102030405060708090a0b0c")
+    info = bytes.fromhex("f0f1f2f3f4f5f6f7f8f9")
+    assert rooms.hkdf_sha256(ikm, salt, info, 42).hex() == (
+        "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf"
+        "34007208d5b887185865")
+
+
+def test_challenge_response_joins_without_sending_the_token():
+    r = Room.new()
+    nonce = "a" * 32
+    server = r.challenge(nonce, "10.0.0.9", now=100.0)
+    proof = rooms.proof_for(r.token, r.id, nonce, server)
+    assert r.token not in proof and len(proof) == 64
+    g = r.join_proof(nonce, proof, "Ana", "10.0.0.9", now=101.0)
+    assert g.name == "Ana" and g.ip == "10.0.0.9"
+    # the challenge is single-use: the same answer cannot join a second time
+    with pytest.raises(JoinError) as e:
+        r.join_proof(nonce, proof, "Otra", "10.0.0.9", now=102.0)
+    assert e.value.status == 403
+
+
+def test_challenge_rejects_wrong_proof_other_ip_expiry_and_bad_nonce():
+    r = Room.new(now=100.0, ttl=3600)
+    nonce = "b" * 32
+    server = r.challenge(nonce, "10.0.0.9", now=100.0)
+    good = rooms.proof_for(r.token, r.id, nonce, server)
+    with pytest.raises(JoinError) as e:
+        r.join_proof(nonce, good[:-1] + ("0" if good[-1] != "0" else "1"), "Ana", "10.0.0.9", now=101.0)
+    assert e.value.status == 403 and r.fails == 1
+    with pytest.raises(JoinError) as e:
+        r.join_proof(nonce, good, "Ana", "10.0.0.8", now=101.0)   # another address: challenge is burnt
+    assert e.value.status == 403
+    server = r.challenge(nonce, "10.0.0.9", now=100.0)
+    good = rooms.proof_for(r.token, r.id, nonce, server)
+    with pytest.raises(JoinError) as e:
+        r.join_proof(nonce, good, "Ana", "10.0.0.9", now=100.0 + rooms.CHALLENGE_TTL + 1)
+    assert e.value.status == 403
+    with pytest.raises(JoinError) as e:
+        r.challenge("no-es-un-nonce", "10.0.0.9", now=200.0)
+    assert e.value.status == 400
+    # a rotated token changes the proof: the old one no longer opens the room
+    r.challenge(nonce, "10.0.0.9", now=200.0)
+    r.rotate()
+    with pytest.raises(JoinError):
+        r.join_proof(nonce, good, "Ana", "10.0.0.9", now=201.0)
+
+
 def test_permissions_request_grant_revoke_deny_kick():
     # H55 · con el control abierto (lo normal) no hay nada que pedir: esto prueba el camino de cuando el anfitrión
     # se lo queda, que sigue existiendo y es el de una sala pública o el del interruptor apagado

@@ -11,6 +11,9 @@ import functools
 import http.client
 import http.server
 import json
+import re
+import secrets
+import shutil
 import subprocess
 import threading
 import time
@@ -22,6 +25,7 @@ from urllib.parse import urlsplit
 import pytest
 
 from mpvd.rpc import RpcError
+from mpvd.share import rooms
 from tests.conftest import start_mpv
 
 MU_OPTS = "--script-opts=mu-core-watchdog_seconds=2,mu-core-retry_seconds=1,mu-core-rpc_timeout=10"
@@ -63,6 +67,15 @@ class Guest:
                 return e.code, json.loads(raw), dict(e.headers)
             except ValueError:
                 return e.code, raw, dict(e.headers)
+
+    def challenge_join(self, token: str, name: str = ""):
+        """F4 · the browser's way in: ask a nonce, answer HMAC(token, nonces), never send the token."""
+        nonce = secrets.token_hex(16)
+        status, data, _ = self.req("api/challenge", {"nonce": nonce})
+        if status != 200:
+            return status, data, {}
+        proof = rooms.proof_for(token, self.room, nonce, data["nonce"])
+        return self.req("api/join", {"nonce": nonce, "proof": proof, "name": name})
 
     def listen(self) -> None:
         u = urlsplit(self.base)
@@ -108,6 +121,15 @@ class Guest:
     def close(self) -> None:
         if self._conn is not None:
             self._conn.close()
+
+
+KEY_RE = re.compile(r'#EXT-X-KEY:METHOD=AES-128,URI="([^"]+)",IV=0x([0-9a-fA-F]+)')
+
+
+def aes128_decrypt(data: bytes, key: str, iv_hex: str) -> subprocess.CompletedProcess:
+    """Decrypt one HLS segment the way hls.js does: key bytes = the 16 characters, IV from the playlist."""
+    return subprocess.run(["openssl", "enc", "-d", "-aes-128-cbc", "-K", key.encode().hex(), "-iv", iv_hex],
+                          input=data, capture_output=True)
 
 
 @pytest.fixture(scope="module")
@@ -201,10 +223,19 @@ def test_room_join_sync_relay_permissions_and_close(share_env, clip):
     assert status == 200 and headers["Content-Type"] == "application/vnd.apple.mpegurl"
     text = m3u8.decode()
     assert "#EXT-X-ENDLIST" in text and "#EXT-X-PLAYLIST-TYPE:EVENT" in text
+    # F4 · la retransmisión va cifrada: la lista dice cómo, con una URI de clave que no es una URL
+    km = KEY_RE.search(text)
+    assert km and km.group(1) == "mu-key", text[:400]
     seg = next(ln for ln in text.splitlines() if ln.endswith(".ts"))
     seg_url = media["relay_url"].rsplit("/", 1)[0] + "/" + seg
     status, body, headers = ana.req(seg_url)
-    assert status == 200 and headers["Content-Type"] == "video/mp2t" and body[:1] == b"G"  # TS sync byte
+    assert status == 200 and headers["Content-Type"] == "video/mp2t"
+    assert body[:1] != b"G" and body[:4] != b"\x00\x00\x00\x18", "el segmento servido va en claro"
+    if shutil.which("openssl"):   # el servidor sirve cifrado; con la clave de la sala se descifra
+        good = aes128_decrypt(body, rooms.hls_key(token, room), km.group(2))
+        assert good.returncode == 0 and good.stdout[:1] == b"G", good.stderr[-200:]
+        bad = aes128_decrypt(body, "ZzZzZzZzZzZzZzZz", km.group(2))
+        assert bad.returncode != 0 or bad.stdout[:1] != b"G"
     status, part, headers = ana.req(seg_url, headers={"Range": "bytes=0-187"})
     assert status == 206 and len(part) == 188 and headers["Content-Range"].startswith("bytes 0-187/")
     assert ana.req(media["relay_url"].rsplit("/", 1)[0] + "/../../x")[0] == 404
@@ -324,6 +355,53 @@ def test_room_join_sync_relay_permissions_and_close(share_env, clip):
     ana.close()
     luis.close()
     assert not h.script_errors(), h.script_errors()
+
+
+def test_the_relay_key_cannot_be_asked_for_and_the_session_proves_the_token(share_env, clip):
+    """F4 · la clave no está en ninguna URL: la URI de la lista no la sirve ni con credencial. Y para entrar por
+    primera vez hay que demostrar que se tiene el token (HMAC), sin mandarlo; una respuesta no vale dos veces."""
+    h, d = share_env
+    h.command("loadfile", str(clip))
+    h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=20)
+    res = d.call("share.create", {"ttl_hours": 1})
+    base, rest = res["url"].split("/s/", 1)
+    room, token = rest.split("#k=")
+
+    # challenge-response: the token is never in the request; a wrong proof or a replayed nonce is refused
+    ana = Guest(base, room)
+    nonce = secrets.token_hex(16)
+    status, data, _ = ana.req("api/challenge", {"nonce": nonce})
+    assert status == 200 and len(data["nonce"]) == 32
+    bad = rooms.proof_for("no-es-el-token", room, nonce, data["nonce"])
+    status, _, _ = ana.req("api/join", {"nonce": nonce, "proof": bad, "name": "Eva"})
+    assert status == 403
+    nonce2 = secrets.token_hex(16)
+    _s, data2, _ = ana.req("api/challenge", {"nonce": nonce2})
+    good = rooms.proof_for(token, room, nonce2, data2["nonce"])
+    status, joined, _ = ana.req("api/join", {"nonce": nonce2, "proof": good, "name": "Ana"})
+    assert status == 200 and joined["guest"]["name"] == "Ana"
+    replay = Guest(base, room).req("api/join", {"nonce": nonce2, "proof": good, "name": "Otra"})
+    assert replay[0] == 403
+    assert Guest(base, room).req("api/challenge", {"nonce": "no-es-hex"})[0] == 400
+
+    ana.listen()
+    media = ana.wait(lambda e, x: e == "media" and x.get("kind") == "file" and x.get("relay_complete"),
+                     timeout=60)
+    status, playlist, _ = ana.req(media["relay_url"])
+    assert status == 200
+    km = KEY_RE.search(playlist.decode())
+    assert km and "://" not in km.group(1) and not km.group(1).startswith("/")
+    dir_url = media["relay_url"].rsplit("/", 1)[0] + "/"
+    # sin sesión ni siquiera se llega; con sesión, la URI de la clave no existe: no hay endpoint de clave
+    assert Guest(base, room).req(dir_url + km.group(1))[0] == 401
+    status, body, _ = ana.req(dir_url + km.group(1))
+    assert status == 404 and rooms.hls_key(token, room).encode() not in body
+    # y el fichero de clave que ffmpeg lee del disco tampoco se sirve, aunque exista en la caché del relay
+    for name in ("hls.key", "hls.keyinfo"):
+        assert Guest(base, room).req(dir_url + name)[0] == 401
+        status, body, _ = ana.req(dir_url + name)
+        assert status == 404 and rooms.hls_key(token, room).encode() not in body
+    ana.close()
 
 
 class _Quiet(http.server.SimpleHTTPRequestHandler):
