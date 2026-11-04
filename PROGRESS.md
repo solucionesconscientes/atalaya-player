@@ -11,8 +11,9 @@ ESTADO_GLOBAL: EN_CURSO
   `HMAC-SHA256(token, "mu-share-v1|sala|nonce|nonce")` en `api/join`. El token no va en URL, cabecera ni cuerpo
   del navegador. El camino de `guest.py` (Atalaya) sigue mandando el token en el cuerpo, sin tocar.
 - **Sesión corta.** La credencial firmada incluye su caducidad (`invitado.caducidad.firma`), el navegador recibe
-  1 h y se le renueva en cada petición autenticada; los enlaces `?k=` para mpv/VLC duran lo que la sala porque un
-  reproductor no puede renovar. `SESSION_TTL`, `CHALLENGE_TTL` y `MAX_CHALLENGES` en `rooms.py`.
+  1 h y se le renueva en cada petición autenticada (y con un `api/me` cada 10 min si la página sigue abierta); los
+  enlaces `?k=` para mpv/VLC duran lo que la sala porque un reproductor no puede renovar. `SESSION_TTL`,
+  `CHALLENGE_TTL` y `MAX_CHALLENGES` en `rooms.py`.
 - **Clave.** `HKDF-SHA256(token, salt=sala, info="mu-share-hls-v1")` → 16 caracteres; una clave por sala (el relay
   se cifra una vez). Ni la clave ni el token viajan. La lista lleva `EXT-X-KEY` con `URI="mu-key"` opaca; el loader
   propio de hls.js la deriva en la página. Un GET a esa URI: 401 sin sesión, 404 con ella. `GET` a segmentos y

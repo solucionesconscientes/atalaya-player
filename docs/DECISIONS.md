@@ -2192,7 +2192,8 @@
   sala incluidos). El invitado de Atalaya (`guest.py`) sigue mandando el token en el cuerpo: el brief prohíbe
   tocarlo, y ese camino no es el del navegador. El token sigue sin ir en ninguna URL ni cabecera.
   **Sesión corta y deslizante.** La credencial firmada pasa a `invitado.caducidad.firma` (HMAC con la caducidad
-  dentro); el navegador recibe `SESSION_TTL = 1 h` y `handle()` se la renueva en cada petición autenticada. Los
+  dentro); el navegador recibe `SESSION_TTL = 1 h` y `handle()` se la renueva en cada petición autenticada, más un
+  `api/me` cada 10 min mientras la página siga abierta (en pausa no hay otra petición que la renueve). Los
   enlaces para mpv/VLC (`?k=`) se firman con la caducidad de la sala, porque un reproductor no puede renovar a
   mitad de película. El enlace de la sala y su token no cambian.
   **Clave de la retransmisión.** `HKDF-SHA256(token, salt=id de sala, info="mu-share-hls-v1")` → 12 bytes → 16
