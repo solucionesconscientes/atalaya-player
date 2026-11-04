@@ -2225,3 +2225,26 @@
   por segmento** en tres tandas (la última 6,18 ms; mínimos 0,297 vs 0,389 s para 15 segmentos), y 19,4 ms de
   mediana para descifrar un segmento de 589 kB con `openssl` (incluye arrancar el proceso). El test de navegador no se puede ejecutar en server1 (Chrome cuelga en `Page.navigate`, igual que en
   F3): queda en NEEDS_HUMAN.
+- ADR-143 · La sincronía del invitado se ancla en la marca de tiempo del estado, no en su llegada (F5, 2026-11-05).
+  **El fallo medido.** `state` ya llevaba `at` (el reloj del anfitrión al leer `pos`), pero `expected()` contaba
+  desde que el mensaje **llegaba**: con sondeo cada segundo y estados cada dos, el invitado quedaba 1–2 s detrás
+  de forma permanente; por el túnel, la verificación de F4 midió 4,54 s. La corrección de deriva no lo veía porque
+  su referencia era esa misma posición envejecida, así que invitado y referencia estaban de acuerdo en el error.
+  **Cómo se arregla.** (1) *Ida y vuelta*: `api/join` y `api/me` responden con `now`; la página mide el envío y la
+  recepción y toma el punto medio como hora del anfitrión (`clockFrom`), quedándose con la ida y vuelta más corta.
+  (2) *Sin ida y vuelta todavía*: `anchor()` usa el mayor `at − reloj_local` observado, porque el tránsito solo
+  puede restar; es una cota inferior del desfase y sirve de respaldo en SSE. (3) `expected()` no se toca: recibe
+  un ancla que ya es «cuándo estuvo el anfitrión en `pos`». `guest.py` porta el reloj (`HostClock`) y un test
+  compara las dos implementaciones. **Saltos**: `seek_rel` pasa a `relative+exact` (mpv redondea al fotograma
+  clave con `relative` a secas) y la página no lanza un seek mientras el anterior siga en vuelo (tope 2 s): un
+  seek HLS lento se relanzaba cada 500 ms y el vídeo no se asentaba. **Cierre**: al cerrar la sala se espera 1,5 s
+  antes de parar el HTTP para que un invitado que sondea pida `api/me` y reciba el 410 (antes se quedaba
+  reintentando una dirección muerta; era el rojo de `test_browser_guest_by_polling_follows_and_recovers_from_a_cut`
+  en server1). **Medido** en la VM Windows con Edge 156 headless y mpv reproduciendo un MP4 de 180 s, con el reloj
+  de la VM y `?poll=1`: media |deriva| **0,140 s** en 60 s (máx. 0,369; sin crecimiento), «+10 s» → **+10,000 s**,
+  «−10 s» → **−10,000 s**, salto del anfitrión de +6 s → convergencia **0,82 s** sin pasos atrás. El segundo túnel
+  de la sesión no enrutó y la medición se hizo por la dirección LAN desde dentro de la misma VM (el brief lo
+  permite); el JSON está en `informes/atalaya-f5-2026-11-05/f5-sincronia.json`. **Límite conocido**: la ida y
+  vuelta corrige el desfase con un error de medio RTT; con un túnel que añada varios segundos simétricos, el
+  invitado puede quedar medio RTT detrás (no segundos). El test de navegador de server1 vuelve a correr con
+  `DBUS_SESSION_BUS_ADDRESS=/dev/null DBUS_SYSTEM_BUS_ADDRESS=/dev/null`; el cuelgue era D-Bus, no Chrome.

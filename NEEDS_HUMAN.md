@@ -327,3 +327,15 @@ Igual que en F3: no hay conector de Notion y el MCP del vault pidió permiso y n
 El avance de F4 (desafío HMAC, sesión corta, AES-128 del relay, ADR-142) queda en `PROGRESS.md`, `BACKLOG.md`,
 `docs/DECISIONS.md`, `tmp/fase-share-4.md` y `tmp/share-internet-RESUMEN.md`; falta pasarlo a Notion y a
 `proyectos/` del vault desde una sesión con permiso.
+
+## 2026-11-05 · Chrome en server1: no era Chrome, era D-Bus (resuelto, no bloquea)
+Los tests de navegador (`tests/test_share_browser.py`) y Chrome/Edge headless colgaban en `Page.navigate` incluso
+contra un servidor local mínimo. La causa es la sesión D-Bus de esta máquina: Chromium se queda esperando en el
+arranque/red. Con `DBUS_SESSION_BUS_ADDRESS=/dev/null DBUS_SYSTEM_BUS_ADDRESS=/dev/null` cargan y la batería de
+navegador pasa entera. No hace falta intervención humana; se deja anotado por si vuelve a aparecer.
+
+## 2026-11-05 · Notion y vault en la sesión de F5 (no bloquea)
+La sesión no tiene conector de Notion, y el MCP del vault pidió permiso y no se concedió (trabajo desatendido). El
+avance de F5 (ADR-143, medición de los cuatro criterios y la batería en verde) queda en `PROGRESS.md`,
+`docs/DECISIONS.md` y `informes/atalaya-f5-2026-11-05/f5-sincronia.json`; falta pasarlo a la Bitácora y a
+`proyectos/` del vault desde una sesión con permiso.

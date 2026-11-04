@@ -1,6 +1,58 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## F5 · la sincronía del invitado: deriva y saltos (2026-11-05) — rama `feat/share-internet` · ADR-143
+
+- **La deriva era el estado envejecido.** `api/me` y los eventos `state` ya llevaban `at` (cuándo leyó el
+  anfitrión `pos`), pero la página anclaba el estado **a la llegada** y adelantaba desde ahí: con sondeo (lo que
+  usa el túnel) el estado puede tener 1–2 s y el invitado se quedaba esos segundos detrás para siempre. Medido
+  antes del arreglo en local con Chrome y `?poll=1`: deriva de −0,24 a −0,78 s; en la verificación del túnel,
+  −4,54 s. No crecía sin límite, pero no se corregía nunca.
+- **Reloj por ida y vuelta + ancla por marca de tiempo.** `sync.js` gana `clockFrom()` (el punto medio entre el
+  envío y la recepción de una respuesta con `now` da el desfase anfitrión−invitado; gana la ida y vuelta más
+  corta) y `anchor()` (sin ida y vuelta aún, el mayor `at − nuestro reloj` es el desfase más cercano, porque el
+  tránsito solo resta). `expected()` no cambia. `room.js` pasa el ancla corregida, y `api/join` y `api/me` llevan
+  `now`. `guest.py` porta el mismo reloj (`HostClock`) para el invitado de Atalaya; `sync.js` y `HostClock` se
+  comparan en un test.
+- **Saltos exactos y sin relanzar seeks.** `seek_rel` usa `relative+exact` (el `relative` a secas de mpv cae en el
+  fotograma clave). La página no lanza otro `seek` mientras el anterior no ha terminado (2 s de tope): un seek HLS
+  lento se cortaba y relanzaba cada 500 ms y el vídeo no se asentaba.
+- **Cierre de la sala con invitado que sondea.** Al cerrar se espera 1,5 s antes de apagar el servidor para que el
+  sondeo (1 s) llegue a pedir `api/me` y reciba el 410; antes se quedaba reintentando una dirección muerta. El test
+  de sondeo de F3, que fallaba por esto en server1, queda verde.
+- **Verificación (medido, no inferido).** Batería `share`+`mu-share`: **111 pasados, 3 omitidos, 0 rojos** (los
+  tests de navegador corren en server1 con `DBUS_SESSION_BUS_ADDRESS=/dev/null DBUS_SYSTEM_BUS_ADDRESS=/dev/null`;
+  el cuelgue de Chrome era D-Bus, no el producto). Medición real en la VM Windows con Edge 156 headless y el mpv
+  anfitrión reproduciendo un MP4 de 180 s, con el reloj de la propia VM (mpv por su tubería y Edge por CDP, sin
+  SSH en medio), forzando `?poll=1` (el transporte del túnel):
+
+  | Criterio | Resultado |
+  |---|---|
+  | Deriva media en 60 s (59 muestras) | **0,140 s** (máx. 0,369; primera media 0,143 vs última 0,117: no crece) |
+  | «+10 s» del invitado | **+10,000 s** (límite 10,0 ± 0,3) |
+  | «−10 s» del invitado | **−10,000 s** |
+  | Salto del anfitrión de +6 s | converge en **0,82 s**, sin pasos hacia atrás |
+
+  JSON: `/home/server1/Documentos/informes/atalaya-f5-2026-11-05/f5-sincronia.json`. Script de la medición:
+  `.tareas/win_f5_sample.py` (la VM tarda 9–25 s por orden SSH, así que `edge_sync.py` no sirve para muestrear).
+- **Lo que no se pudo hacer por el túnel.** El primer túnel de la sesión llegó a `ready` (78 s) y la página de Edge
+  entró por él, pero el vídeo del anfitrión estaba al final; el segundo túnel no llegó a enrutar («la dirección de
+  internet no ha llegado a contestar»). La medición final se hizo, como permite el brief, contra la dirección LAN
+  de la sala **desde dentro de la misma VM**, con el mismo Edge y la misma página y con el sondeo forzado. La
+  lógica de reloj es la misma para LAN y túnel (lo único que cambia es la latencia, que es justo lo que mide la
+  ida y vuelta).
+- **Probar a mano.**
+  ```bash
+  # servidor1: los tests de navegador, con D-Bus neutralizado
+  DBUS_SESSION_BUS_ADDRESS=/dev/null DBUS_SYSTEM_BUS_ADDRESS=/dev/null uv run pytest tests/test_share_browser.py -q
+  # VM: medir los cuatro criterios (Edge headless + mpv; config con el enlace de la sala)
+  #   runtime\python.exe win_f5_sample.py C:\Users\atalaya\f5-config.json
+  ```
+
+**SIGUIENTE PASO**: F6 (`.tareas/f6-fallback.md`): que el invitado no se quede en negro cuando el `src` directo
+falla; reserva a la retransmisión, reintento ordenado y botón de reintentar. La sincronía de F5 ya está medida;
+si F6 toca `attach()`/`onMedia()`, volver a pasar `f5-sincronia.json` en la VM.
+
 ## F4 · segmentos HLS cifrados: Cloudflare solo ve texto cifrado (2026-11-04) — rama `feat/share-internet` · ADR-142
 
 - **La premisa del brief no se cumplía.** `cryptography` y `Crypto` no están en el proyecto (ni en `pyproject.toml`
