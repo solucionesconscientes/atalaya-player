@@ -456,8 +456,12 @@ views.root = function()
                             selectable = false,
                             hint = tunel == 'starting' and tr('arrancando') or tr('esperando a que la dirección conteste') }
     elseif tunel == 'ready' then
-      items[#items + 1] = { title = tr('Listo: se puede entrar desde internet'), icon = 'check_circle',
-                            muted = true, selectable = false }
+      -- F2 · el tiempo medido desde que se pidió el túnel hasta que el enlace enruta de verdad
+      local seg = st.tunnel_ready_s
+      local listo = (type(seg) == 'number')
+        and tr('Listo en %d s: se puede entrar desde internet'):format(seg)
+        or tr('Listo: se puede entrar desde internet')
+      items[#items + 1] = { title = listo, icon = 'check_circle', muted = true, selectable = false }
     elseif tunel == 'failed' then
       items[#items + 1] = { title = tr('No se pudo · reintentar'), icon = 'refresh',
                             value = { action = 'retry-tunnel' },
