@@ -30,8 +30,8 @@ if [ -z "$ZIP" ]; then
 fi
 [ -n "$ZIP" ] && [ -f "$ZIP" ] || { echo "no hay zip portable: ejecuta antes tools/build_zip_windows.sh" >&2; exit 1; }
 
-VERSION="$(basename "$ZIP" | sed -E 's/^Atalaya-([0-9][^-]*)-windows.*/\1/')"
-[ -n "$VERSION" ] || { echo "no sé sacar la versión de $ZIP" >&2; exit 1; }
+VERSION="$(basename "$ZIP" | sed -nE 's/^Atalaya-([0-9][^-]*)-windows.*/\1/p')"
+[ -n "$VERSION" ] || { echo "no sé sacar la versión de $ZIP (se esperaba Atalaya-<versión>-windows-…zip)" >&2; exit 1; }
 
 NSIS="$(command -v makensis || true)"
 [ -n "$NSIS" ] || { echo "falta makensis (paquete nsis + nsis-common; ver la cabecera)" >&2; exit 1; }
