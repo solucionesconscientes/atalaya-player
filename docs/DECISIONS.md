@@ -2220,8 +2220,8 @@
   credencial corta) y `tests/test_share_hls.py` (argumentos de ffmpeg, segmento cifrado que se descifra a MPEG-TS con
   la clave correcta y no con otra, paridad JS/Python). `tests/test_share_http.py` recorre el desafío por HTTP, que
   la URI de la clave no existe y que el segmento servido no empieza por 0x47. La captura real por el túnel rápido
-  está en `tmp/f4-captura/`: segmento de 603.120 B con primer byte 0x5b, descifrado a `mpegts` de 10,02 s, clave
-  incorrecta rechazada; coste añadido por ffmpeg **1,95 ms por segmento** (5 pasadas, 15 segmentos; mínimos 0,320
-  vs 0,349 s), y 18,6 ms de mediana para descifrar un segmento de 589 kB con `openssl` (incluye arrancar el
-  proceso). El test de navegador no se puede ejecutar en server1 (Chrome cuelga en `Page.navigate`, igual que en
+  está en `tmp/f4-captura/`: segmento de 598.976 B con primer byte 0x62, descifrado a `mpegts` de 10,08 s, clave
+  incorrecta rechazada, y la misma petición con `curl` (byte a byte idéntica). Coste añadido por ffmpeg **0,1–6,2 ms
+  por segmento** en tres tandas (la última 6,18 ms; mínimos 0,297 vs 0,389 s para 15 segmentos), y 19,4 ms de
+  mediana para descifrar un segmento de 589 kB con `openssl` (incluye arrancar el proceso). El test de navegador no se puede ejecutar en server1 (Chrome cuelga en `Page.navigate`, igual que en
   F3): queda en NEEDS_HUMAN.

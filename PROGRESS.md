@@ -21,10 +21,10 @@ ESTADO_GLOBAL: EN_CURSO
 - **Verificación.** `tests/test_share_rooms.py`, `tests/test_share_hls.py`, `tests/test_share_http.py` (nuevos:
   RFC 5869, desafío de un solo uso/prueba errónea/IP/caducidad, cifrado y descifrado con clave buena/mala, paridad
   JS-Python, URI de clave inexistente). Batería seleccionada (`share`, `tunnel`, `file`, `mu-share`, `i18n`):
-  **139 pasados, 3 omitidos** (VA-API, portapapeles ×2), 0 rojos. Captura real por el túnel: 603.120 B, primer byte
-  0x5b (no 0x47), descifrado a `mpegts` de 10,02 s, clave incorrecta rechazada; ffmpeg añade **1,95 ms por
-  segmento** (5 pasadas, 15 segmentos; mínimos 0,320 vs 0,349 s). Túnel listo en **17,6 s**, DNS 0,18 s, primer
-  HTTP 0,13 s, segmento por el túnel 137 ms. Detalle en `tmp/fase-share-4.md`, datos en `tmp/f4-captura/` y
+  **139 pasados, 3 omitidos** (VA-API, portapapeles ×2), 0 rojos. Captura real por el túnel (también con `curl`): 598.976 B, primer byte
+  0x62 (no 0x47), descifrado a `mpegts` de 10,08 s, clave incorrecta rechazada; ffmpeg añade **0,1–6,2 ms por
+  segmento** (tres tandas; la última 6,18 ms, mínimos 0,297 vs 0,389 s para 15 segmentos). Túnel listo en
+  **16,7 s**, DNS 0,24 s, primer HTTP 0,15 s, segmento por el túnel 159 ms. Detalle en `tmp/fase-share-4.md`, datos en `tmp/f4-captura/` y
   `tmp/share-internet-RESUMEN.md`.
 - **Límites.** El test de navegador no corre en server1 (Chrome cuelga en `Page.navigate`, igual que en F3; queda en
   NEEDS_HUMAN). El HLS del navegador va siempre por hls.js: el HLS nativo de Safari/iOS no admite loader de clave.
