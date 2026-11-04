@@ -10,16 +10,15 @@ Where the binary comes from (F1, ADR-139): the copy bundled in the package, ``$M
 ``vendor.lock``. The download goes to a ``.part`` file (resumed with a Range request if it was cut), is checked against
 its SHA-256 and only then renamed into place, so a half-downloaded or tampered file is never executed.
 
-A PID file is written next to the daemon's socket. If mpvd dies with SIGKILL on Linux, ``PR_SET_PDEATHSIG`` kills
-cloudflared with it; on every platform the next daemon start sweeps the PID file as a second net (on Windows, where
-there is no PDEATHSIG, that sweep is the only net).
+A PID file is written next to the daemon's socket and the next daemon start sweeps it: if mpvd died with SIGKILL,
+the orphaned cloudflared does not survive the next start (and the room close already stops it when the player closes
+normally). No ``preexec_fn`` is used to get this: forking with Python code in a threaded daemon is not safe.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
-import ctypes
 import hashlib
 import logging
 import os
@@ -35,7 +34,6 @@ import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from mpvd.config import project_root
 from mpvd.proc import spawn_kwargs
@@ -358,12 +356,6 @@ def kill_stale(pid_file: Path) -> int | None:
     return pid
 
 
-def _die_with_parent() -> None:
-    """Linux: the kernel sends SIGTERM to cloudflared if mpvd dies, even with SIGKILL (ADR-139)."""
-    with contextlib.suppress(Exception):
-        ctypes.CDLL(None, use_errno=True).prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG
-
-
 class TunnelError(RuntimeError):
     pass
 
@@ -413,12 +405,9 @@ class CloudflaredTunnel:
         if self._proc is not None and self._proc.returncode is None and self.url:
             return self.url
         await self.stop()
-        extra: dict[str, Any] = {}
-        if sys.platform.startswith("linux"):
-            extra["preexec_fn"] = _die_with_parent
         proc = await asyncio.create_subprocess_exec(
             *self.args(local_port), stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE, **spawn_kwargs(), **extra)
+            stderr=asyncio.subprocess.PIPE, **spawn_kwargs())
         self._proc = proc
         self._write_pid(proc.pid)
         assert proc.stderr is not None

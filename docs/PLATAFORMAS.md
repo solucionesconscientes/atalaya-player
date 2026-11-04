@@ -155,10 +155,11 @@ pwsh 7.6 en Linux (`tests/test_windows_scripts.py`, con un servidor HTTP local e
   búsqueda es: copia del paquete → `$MPV_UOS_CLOUDFLARED` → `$MPV_UOS_VENDOR_BIN`/`vendor/bin` → PATH → descarga.
   Linux amd64/arm64 y Windows amd64 tienen suma fijada; macOS no (se acepta uno del PATH). Sin red, la sala sigue
   funcionando en la red local y el menú ofrece reintentar.
-- Cierre sin huérfanos: cloudflared se para al cerrar la sala o la aplicación. Si mpvd muere con `kill -9`, en Linux
-  `PR_SET_PDEATHSIG` lo mata con él; en todas las plataformas queda un `cloudflared.pid` en el directorio de ejecución
-  y el siguiente arranque de mpvd lo barre (en Windows no hay PDEATHSIG: ese barrido es la única red). Probado el
-  `kill -9` y el barrido en Linux; Windows sin probar.
+- Cierre sin huérfanos: cloudflared se para al cerrar la sala o la aplicación; si muere el reproductor, la sesión se
+  cierra y el túnel se para con ella. Si mpvd muere con `kill -9`, queda un `cloudflared.pid` en el directorio de
+  ejecución y el siguiente arranque de mpvd lo barre (Linux y Windows). Probado el `kill -9` del reproductor y el
+  barrido en Linux; Windows sin probar. Aquí no se usa `preexec_fn` (forkear con Python en un daemon con hilos no es
+  seguro).
 - Grabaciones (TV, radio y tramos): `<Vídeos>/<marca>/Grabaciones`, o `MPV_UOS_RECORD_DIR`; la reserva cuando mpvd no está
   conectado es `~~desktop/<marca>` (placeholder de mpv, válido en las tres plataformas). Copiar URL usa wl-copy/xclip/xsel
   en Linux, `pbcopy` en macOS y `clip` en Windows (no probado fuera de Linux).

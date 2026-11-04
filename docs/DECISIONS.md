@@ -2118,10 +2118,11 @@
   «Listo: se puede entrar desde internet», «No se pudo · reintentar»— y ya no enseña ninguna orden de terminal.
   (4) Los paquetes son ligeros por defecto; `MU_PACKAGE_CLOUDFLARED=1` construye la variante completa, que lleva el
   binario dentro, y la licencia Apache-2.0 con su aviso viaja en `licenses/cloudflared/` y `TERCEROS.md`.
-  (5) Cierre: se para al cerrar la sala o la app; en Linux `PR_SET_PDEATHSIG` mata a cloudflared si mpvd recibe
-  `SIGKILL`, y en todas las plataformas un `cloudflared.pid` en el directorio de ejecución se barre al arrancar (en
-  Windows, sin PDEATHSIG, el barrido es la única red).
+  (5) Cierre: se para al cerrar la sala o la app (la muerte del reproductor cierra la sesión y con ella el túnel);
+  si mpvd muere con `SIGKILL`, queda un `cloudflared.pid` en el directorio de ejecución y el siguiente arranque lo
+  barre, en Linux y en Windows. Aquí no se usa `preexec_fn`: forkear con código Python en un daemon con hilos no es
+  seguro, y el barrido ya cubre el caso.
   **Cómo se comprueba.** `tests/test_share_tunnel.py`: descarga local con hash bueno, hash malo que borra el `.part`,
-  reanudación con `Range`, sin red, plataforma sin asset, desactivado, barrido de PID y `kill -9` del padre con
-  `PDEATHSIG`; el AppImage real se abre con un túnel de verdad y `pgrep` comprueba que no queda proceso al cerrar ni
-  al matar la app. Windows y macOS siguen sin probarse en hardware real (docs/PLATAFORMAS.md).
+  reanudación con `Range`, sin red, plataforma sin asset, desactivado, barrido de PID y `kill -9` del padre seguido
+  del barrido; el AppImage real se abre con un túnel de verdad y `pgrep` comprueba que no queda proceso al cerrar ni
+  al matar el reproductor. Windows y macOS siguen sin probarse en hardware real (docs/PLATAFORMAS.md).

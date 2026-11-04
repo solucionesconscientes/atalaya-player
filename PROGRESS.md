@@ -9,12 +9,16 @@ ESTADO_GLOBAL: EN_CURSO
   40 MB»), y los estados son «Preparando el enlace…», «Listo…» y «No se pudo · reintentar».
 - Paquetes: ligeros por defecto; `MU_PACKAGE_CLOUDFLARED=1` produce la variante completa, con cloudflared dentro y
   la licencia Apache-2.0 en `licenses/cloudflared/` (también en `TERCEROS.md`).
-- Cierre: al cerrar la sala o la app se para el proceso; si mpvd muere con `kill -9`, en Linux lo mata
-  `PR_SET_PDEATHSIG` y en todas las plataformas el siguiente arranque barre `cloudflared.pid`.
+- Cierre: al cerrar la sala o la app se para el proceso; si mpvd muere con `kill -9`, el siguiente arranque barre
+  `cloudflared.pid` (aquí no se usa `preexec_fn`: forkear con Python en un daemon con hilos no es seguro).
 - Verificación: `tests/test_share_tunnel.py` (23 tests) cubre hash bueno/malo, reanudación, sin red, desactivado,
   barrido de PID y `kill -9`; la batería seleccionada (`share`, `tunnel`, `i18n`, `proc`) pasó de 126 pasados + 3
   omitidos a 138 pasados + 3 omitidos (12 tests nuevos), sin rojos. Probado además con un AppImage real y un túnel
   de Cloudflare real (ver `tmp/fase-share-1.md`).
+- Paquetes comprobados por dentro: AppImage 56 MB completa / 38 MB ligera, `.deb` 43/27 MB, zip de Windows 53/35 MB
+  e instaladores NSIS 78/65 MB; el binario incluido coincide con el SHA-256 de `vendor.lock`. La batería completa se
+  lanzó, pero esta máquina tiene 2 núcleos y una carga externa de ~7 (indexadores y otros procesos ajenos), así que
+  los tests de ffmpeg/whisper superan su timeout de 180 s; el detalle queda en `tmp/fase-share-1.md`.
 
 ## Resumen para Ser (2026-11-01, noche) · versión 0.1.1 empaquetada (`08815f2`)
 

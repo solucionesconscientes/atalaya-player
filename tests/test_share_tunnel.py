@@ -537,9 +537,12 @@ def test_no_se_mata_un_pid_que_no_es_cloudflared(tmp_path):
         proc.wait(timeout=5)
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="PR_SET_PDEATHSIG es de Linux")
-def test_kill_9_del_padre_mata_cloudflared(tmp_path):
-    """The real promise of F1: SIGKILL to the daemon leaves no cloudflared behind (PDEATHSIG)."""
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="el barrido con /proc se prueba en Linux")
+def test_kill_9_del_padre_y_barrido_al_arrancar(tmp_path):
+    """F1: si mpvd muere con SIGKILL, el siguiente arranque barre el cloudflared huérfano con el PID file.
+
+    No se usa ``preexec_fn`` para esto: meter código Python en el hijo de un daemon con hilos no es seguro.
+    El cierre ordenado (y la muerte del reproductor, que cierra la sesión) ya paran el túnel antes."""
     cloudflared_pid_file = tmp_path / "cloudflared.pid"
     script = tmp_path / "parent.py"
     script.write_text(
@@ -559,7 +562,10 @@ def test_kill_9_del_padre_mata_cloudflared(tmp_path):
         assert alive(pid)
         os.kill(parent.pid, signal.SIGKILL)
         parent.wait(timeout=5)
-        assert wait_gone(pid), "cloudflared sobrevivió al kill -9 de su padre"
+        assert alive(pid), "el hijo debía quedar huérfano hasta el siguiente arranque"
+        assert tunnel_mod.kill_stale(cloudflared_pid_file) == pid
+        assert wait_gone(pid), "el barrido del PID file no mató al huérfano"
+        assert not cloudflared_pid_file.exists()
     finally:
         if parent.poll() is None:
             parent.kill()
