@@ -1,6 +1,30 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## F2 · el enlace no se da hasta que enruta (2026-11-04) — rama `feat/share-internet` · ADR-140
+
+- Antes de dar el enlace por bueno, `ShareService._wait_public` pregunta por DNS-over-HTTPS a Cloudflare (1.1.1.1),
+  Google (8.8.8.8) y Quad9 (9.9.9.9) con A y AAAA, y exige **dos de tres**. Las consultas van por RFC 8484 a IPs
+  literales: ni se usa el resolutor del sistema ni se envenena su caché negativa. Quad9 solo contesta DoH por
+  HTTP/2 (la librería estándar habla HTTP/1.1), así que en la práctica el quórum son Cloudflare y Google; se le
+  sigue preguntando y el log dice quién contestó.
+- Solo después se prueba la raíz del túnel: la conexión va a la IP que dio el DoH, con el nombre del túnel como
+  SNI y `Host`, y se acepta cualquier respuesta por debajo de 500. Un 530 de Cloudflare (error 1033) no cuenta; un
+  404 de la sala sí.
+- Tiempos: desde que se pide el túnel hasta que enruta, y cada etapa (arranque de cloudflared, DNS, primer HTTP),
+  al log con campos (`tunnel_total_s`, `tunnel_start_s`, `tunnel_dns_s`, `tunnel_http_s`, `tunnel_dns_resolvers`,
+  `tunnel_dns_addresses`). La fila del menú muestra «Listo en N s: se puede entrar desde internet». El corte de 4
+  minutos se conserva y el fallo distingue «no resolvió» de «no contestó».
+- Mientras no enruta, `share.link` y las invitaciones siguen usando la dirección local: el invitado ya no puede
+  recibir un enlace muerto. `tests/test_share_service.py` fija los dos casos del contrato (DNS sí/HTTP no; los tres
+  resolvedores sin respuesta).
+- Verificación: contrato `test_share_tunnel.py` + `test_share_service.py` **30 pasados**; batería seleccionada
+  **145 pasados + 3 omitidos, 0 rojos**; túnel real, tres aperturas listas en 49,8 / 10,7 / 15,2 s con la página
+  de la sala respondiendo 200 en ese mismo momento (detalle en `tmp/fase-share-2.md`).
+
+**SIGUIENTE PASO**: F3 · medir el retraso real del SSE a través del túnel antes de cambiar de transporte, según
+`.tareas/share-internet-f3-sincronia.md`; el parte de F2 está en `tmp/fase-share-2.md`.
+
 ## F1 · cloudflared en el producto (2026-11-04) — rama `feat/share-internet`
 
 - El binario ya no se pide a mano: `find_cloudflared` lo busca en el paquete, `$MPV_UOS_CLOUDFLARED`, `vendor/bin` y

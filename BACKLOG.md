@@ -185,7 +185,9 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
       sala se para; si mpvd muere con `kill -9`, el siguiente arranque barre `cloudflared.pid`. Probado con un
       cloudflared falso (tests/test_share_tunnel.py) y con un AppImage y un túnel reales: la dirección pública sirve
       lo que sirve el servidor local y el proceso muere con la sala o el reproductor. Con túnel no hace falta tocar
-      el cortafuegos.
+      el cortafuegos. Desde F2 (2026-11-04) el enlace no se anuncia hasta que el nombre resuelve por DNS-over-HTTPS
+      en dos de tres resolvedores públicos (Cloudflare, Google, Quad9) y la raíz del túnel contesta; la fila del
+      menú dice en cuántos segundos quedó listo.
 - [x] Sala pública «solo ver» (cualquiera con el enlace en la red local, número máximo de espectadores, sin control ni chat).
 - [x] «Emitir en directo» a una plataforma (YouTube Live, Twitch, PeerTube, Owncast) por RTMP con clave de emisión, para audiencias
       grandes. Chat y reacciones en salas privadas. Aviso legal: solo contenido que se puede compartir.

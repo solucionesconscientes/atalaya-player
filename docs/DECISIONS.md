@@ -2126,3 +2126,20 @@
   reanudación con `Range`, sin red, plataforma sin asset, desactivado, barrido de PID y `kill -9` del padre seguido
   del barrido; el AppImage real se abre con un túnel de verdad y `pgrep` comprueba que no queda proceso al cerrar ni
   al matar el reproductor. Windows y macOS siguen sin probarse en hardware real (docs/PLATAFORMAS.md).
+- ADR-140 · El enlace de la sala no se anuncia hasta que enruta de verdad (F2, 2026-11-04).
+  **Qué se vio.** cloudflared imprime la dirección a los 5,6-7,7 s, pero la dirección no enruta hasta los 65-69 s
+  (tres medidas del 2026-10-02). El enlace se copiaba al primer momento: quien lo recibía se comía un minuto de
+  error del túnel.
+  **Decisión.** (1) Antes de nada, DNS-over-HTTPS RFC 8484 a Cloudflare (`1.1.1.1`), Google (`8.8.8.8`) y Quad9
+  (`9.9.9.9`), con `TYPE=A` y `TYPE=AAAA`, a IPs literales para no usar el resolutor del sistema ni envenenar su
+  caché negativa; se considera resuelto con **dos de tres**. (2) Solo después, `HEAD` a la raíz del túnel conectando
+  a la IP que devolvió el DoH, con el nombre del túnel como SNI y `Host`; cualquier respuesta por debajo de 500
+  cuenta (el 404 de la sala incluido) y un 530 de Cloudflare (error 1033) no. (3) Se mide el total desde que se pide
+  el túnel y cada etapa (arranque, DNS, primer HTTP), con campos en el log y «Listo en N s» en la fila. (4) Se
+  conserva el corte de 4 minutos y, mientras no enruta, `share.link` sigue dando la dirección local.
+  Quad9 solo sirve DoH por HTTP/2 y la librería estándar habla HTTP/1.1 (505): en la práctica el quórum son
+  Cloudflare + Google. Se le sigue preguntando y queda anotado como `shortcut:`; si entra h2/httpx, contará solo.
+  **Cómo se comprueba.** `tests/test_share_service.py` fija «DNS sí y HTTP no» y «los tres resolvedores sin
+  respuesta»; `tests/test_share_tunnel.py`, el quórum y que un 530 no se confunde con un túnel enrutado. Con
+  cloudflared real, tres aperturas: el enlace quedó listo en 49,8 / 10,7 / 15,2 s y la página de la sala respondió
+  200 a través del túnel en ese mismo momento.
