@@ -2177,3 +2177,50 @@
   cambiar su protocolo; cubrirlo exige otra fase con sondeo también para él. Los tests de navegador quedan
   pendientes de una máquina con navegador funcional (NEEDS_HUMAN). El sondeo añade hasta ~1 s de reacción frente al
   SSE local; es el precio de que haya algo, y está medido.
+- ADR-142 · Segmentos HLS cifrados con una clave derivada del token; la sesión del invitado se prueba con HMAC (F4, 2026-11-04).
+  **Premisa del encargo, comprobada.** El brief daba por hecho que `cryptography` ya estaba en el proyecto: no lo
+  está (`pyproject.toml` no tiene dependencias, y `import cryptography` / `import Crypto` fallan en el venv). Como no
+  se admiten dependencias nuevas y `hashlib`/`hmac` no traen AES, el cifrado lo hace **ffmpeg** (`-hls_enc`), que ya
+  era obligatorio para la retransmisión; en Python solo se usa la biblioteca estándar y en la página se añade
+  `mpvd/share/www/mucrypt.js` (SHA-256/HMAC/HKDF en JS puro, verificado contra `hashlib` y los vectores del RFC
+  5869). WebCrypto no sirve aquí: `crypto.subtle` solo existe en contextos seguros y la sala de la LAN se sirve por
+  HTTP.
+  **Entrada sin mandar el token.** La página pide `api/challenge` con un nonce aleatorio; el servidor responde otro
+  nonce (60 s de vida, un solo uso, atado a la IP de quien lo pidió, máximo 64 pendientes por sala). La página
+  contesta `HMAC-SHA256(token, "mu-share-v1|sala|nonce_cliente|nonce_servidor")` en `api/join`; el servidor lo
+  compara en tiempo constante y, si falla, cuenta como un intento de token erróneo (bloqueo por IP y bloqueo de la
+  sala incluidos). El invitado de Atalaya (`guest.py`) sigue mandando el token en el cuerpo: el brief prohíbe
+  tocarlo, y ese camino no es el del navegador. El token sigue sin ir en ninguna URL ni cabecera.
+  **Sesión corta y deslizante.** La credencial firmada pasa a `invitado.caducidad.firma` (HMAC con la caducidad
+  dentro); el navegador recibe `SESSION_TTL = 1 h` y `handle()` se la renueva en cada petición autenticada. Los
+  enlaces para mpv/VLC (`?k=`) se firman con la caducidad de la sala, porque un reproductor no puede renovar a
+  mitad de película. El enlace de la sala y su token no cambian.
+  **Clave de la retransmisión.** `HKDF-SHA256(token, salt=id de sala, info="mu-share-hls-v1")` → 12 bytes → 16
+  caracteres base64url, que son los 16 bytes crudos del fichero de clave de ffmpeg (el `-h` de `-hls_enc_key`
+  habla de hex, pero se comprobó que usa los caracteres tal cual; el IV de la lista es el hex de los suyos).
+  **No se usa `-hls_enc_key_url`**: no es solo la URI que se escribe en `EXT-X-KEY`, ffmpeg **escribe o sube la
+  clave a esa ruta** —con un nombre pelado dejó un fichero `mu-key` con la clave en el directorio de trabajo, y con
+  una URL hizo fallar el muxer—. Se usa `-hls_key_info_file` (URI, ruta del fichero de clave, IV), con la clave en
+  un fichero 0600 dentro del directorio del relay que se borra con él y que el servidor HTTP nunca sirve. Una clave por
+  sala, no por invitado: el relay lo cifra ffmpeg una sola vez y todos los invitados ven el mismo; una clave por
+  sesión exigiría cifrar cada segmento por invitado o un relay por invitado. La sesión HMAC prueba quién puede
+  pedir los segmentos; la clave no viaja nunca. La lista lleva `EXT-X-KEY` con `URI="mu-key"` (una URI opaca, sin
+  esquema ni ruta) y el IV del relay; el loader propio de hls.js (`config.loader` en hls.js 1.7.3: el cargador de
+  claves instancia `config.loader`, no hay `keyLoader` de configuración) la deriva en la página y no pide nada por
+  red. Un `GET` a esa URI responde 401 sin sesión y 404 con ella: no hay endpoint de clave. `rotate()` a mitad de
+  relay cambia el token y por tanto la clave: los invitados ya dentro siguen con la vieja; los nuevos no podrán
+  descifrar lo que ya estaba en marcha (límite conocido; el anfitrión puede volver a cargar la película).
+  **Lo que deja de poder abrirse.** Los segmentos son AES-128 también en disco (en la caché del relay; el fichero
+  original no se toca). Un reproductor externo no puede derivar la clave, así que la retransmisión HLS deja de
+  ofrecerse en «Abrir en mi reproductor» (mpv/VLC/Atalaya); el fichero original del anfitrión se sigue abriendo
+  igual. El HLS del navegador va siempre por hls.js: el HLS nativo de Safari/iOS no admite un loader de clave
+  propio.
+  **Cómo se comprueba.** `tests/test_share_rooms.py` (RFC 5869, desafío de un solo uso, prueba errónea, IP, caducidad,
+  credencial corta) y `tests/test_share_hls.py` (argumentos de ffmpeg, segmento cifrado que se descifra a MPEG-TS con
+  la clave correcta y no con otra, paridad JS/Python). `tests/test_share_http.py` recorre el desafío por HTTP, que
+  la URI de la clave no existe y que el segmento servido no empieza por 0x47. La captura real por el túnel rápido
+  está en `tmp/f4-captura/`: segmento de 603.120 B con primer byte 0x5b, descifrado a `mpegts` de 10,02 s, clave
+  incorrecta rechazada; coste añadido por ffmpeg **1,95 ms por segmento** (5 pasadas, 15 segmentos; mínimos 0,320
+  vs 0,349 s), y 18,6 ms de mediana para descifrar un segmento de 589 kB con `openssl` (incluye arrancar el
+  proceso). El test de navegador no se puede ejecutar en server1 (Chrome cuelga en `Page.navigate`, igual que en
+  F3): queda en NEEDS_HUMAN.

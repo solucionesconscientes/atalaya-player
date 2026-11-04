@@ -1,6 +1,39 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## F4 · segmentos HLS cifrados: Cloudflare solo ve texto cifrado (2026-11-04) — rama `feat/share-internet` · ADR-142
+
+- **La premisa del brief no se cumplía.** `cryptography` y `Crypto` no están en el proyecto (ni en `pyproject.toml`
+  ni en el venv); no se añadió ninguna dependencia. El AES-128 lo pone ffmpeg (`-hls_enc`, que ya era obligatorio
+  para el relay); en Python solo `hashlib`/`hmac`, y la página lleva `mucrypt.js` (SHA-256/HMAC/HKDF en JS puro)
+  porque `crypto.subtle` no existe en la sala de la LAN por HTTP.
+- **Entrada sin el token.** `api/challenge` da un nonce de 60 s, un solo uso y atado a la IP; el navegador responde
+  `HMAC-SHA256(token, "mu-share-v1|sala|nonce|nonce")` en `api/join`. El token no va en URL, cabecera ni cuerpo
+  del navegador. El camino de `guest.py` (Atalaya) sigue mandando el token en el cuerpo, sin tocar.
+- **Sesión corta.** La credencial firmada incluye su caducidad (`invitado.caducidad.firma`), el navegador recibe
+  1 h y se le renueva en cada petición autenticada; los enlaces `?k=` para mpv/VLC duran lo que la sala porque un
+  reproductor no puede renovar. `SESSION_TTL`, `CHALLENGE_TTL` y `MAX_CHALLENGES` en `rooms.py`.
+- **Clave.** `HKDF-SHA256(token, salt=sala, info="mu-share-hls-v1")` → 16 caracteres; una clave por sala (el relay
+  se cifra una vez). Ni la clave ni el token viajan. La lista lleva `EXT-X-KEY` con `URI="mu-key"` opaca; el loader
+  propio de hls.js la deriva en la página. Un GET a esa URI: 401 sin sesión, 404 con ella. `GET` a segmentos y
+  lista sin sesión: 401.
+- **Verificación.** `tests/test_share_rooms.py`, `tests/test_share_hls.py`, `tests/test_share_http.py` (nuevos:
+  RFC 5869, desafío de un solo uso/prueba errónea/IP/caducidad, cifrado y descifrado con clave buena/mala, paridad
+  JS-Python, URI de clave inexistente). Batería seleccionada (`share`, `tunnel`, `file`, `mu-share`, `i18n`):
+  **139 pasados, 3 omitidos** (VA-API, portapapeles ×2), 0 rojos. Captura real por el túnel: 603.120 B, primer byte
+  0x5b (no 0x47), descifrado a `mpegts` de 10,02 s, clave incorrecta rechazada; ffmpeg añade **1,95 ms por
+  segmento** (5 pasadas, 15 segmentos; mínimos 0,320 vs 0,349 s). Túnel listo en **17,6 s**, DNS 0,18 s, primer
+  HTTP 0,13 s, segmento por el túnel 137 ms. Detalle en `tmp/fase-share-4.md`, datos en `tmp/f4-captura/` y
+  `tmp/share-internet-RESUMEN.md`.
+- **Límites.** El test de navegador no corre en server1 (Chrome cuelga en `Page.navigate`, igual que en F3; queda en
+  NEEDS_HUMAN). El HLS del navegador va siempre por hls.js: el HLS nativo de Safari/iOS no admite loader de clave.
+  La retransmisión HLS deja de ofrecerse en «Abrir en mi reproductor» (mpv/VLC/Atalaya); el fichero original sigue
+  igual. `rotate()` a mitad de relay cambia la clave para los invitados nuevos (límite conocido en ADR-142).
+
+**SIGUIENTE PASO**: probar `tests/test_share_browser.py` en una máquina con Chrome funcional (NEEDS_HUMAN); si el
+loader de la clave falla ahí, el punto a mirar es `keyLoader()` en `mpvd/share/www/room.js` y la URI `mu-key` de la
+lista. Después, decidir si se empaqueta (ver `tmp/share-internet-RESUMEN.md`).
+
 ## F3 · el invitado por el túnel sondea; el SSE se queda en la LAN (2026-11-04) — rama `feat/share-internet` · ADR-141
 
 - **Medido antes de tocar nada.** Control local con SSE: transporte p95 **6 ms** (p50 2 ms), total p95 177 ms

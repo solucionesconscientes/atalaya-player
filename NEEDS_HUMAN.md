@@ -1,5 +1,28 @@
 # NEEDS_HUMAN — cosas que necesita Ser (con el comando exacto)
 
+## 2026-11-04 · F4: probar en un navegador de verdad que el invitado descifra el HLS
+
+**Qué falta.** El servidor está probado de punta a punta (desafío-respuesta HMAC, segmentos AES-128 servidos por el
+túnel real, descifrado con la clave de la sala y rechazo con una clave incorrecta; ver `tmp/fase-share-4.md` y
+`tmp/f4-captura/`). Lo que **no** se ha podido ejecutar es el navegador: en server1 Chrome cuelga en
+`Page.navigate` desde F3, también contra un servidor local mínimo y con los tests que ya existían. Hace falta una
+máquina con Chrome/Chromium funcional y node ≥ 22:
+
+```bash
+cd ~/Documentos/PROJECTES/productos/atalaya-player
+uv run pytest tests/test_share_browser.py -q
+```
+
+Qué mirar: que la página entre sin mandar el token (pestaña Red: `api/challenge` y `api/join` con `proof`, ninguna
+petición con `#k` ni a `.../mu-key`), que el vídeo se vea y que en la pestaña Red el segmento NO empiece por 0x47.
+Si el loader de la clave falla, la página debe decir «No se pudo descifrar la retransmisión…».
+
+**2. Subir la rama cuando la des por buena** (la regla del proyecto es que yo no empujo):
+
+```bash
+git push -u origin feat/share-internet
+```
+
 ## 2026-10-15 · Los capítulos con una IA: la rama y una prueba que solo puedes hacer tú
 
 **1. Pegar en una IA de verdad, una vez.** El flujo está probado de punta a punta con vídeos reales y con respuestas

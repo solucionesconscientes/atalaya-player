@@ -189,7 +189,10 @@ desactivado por defecto. Un hito marcado «DECISIÓN PENDIENTE» no se implement
       en dos de tres resolvedores públicos (Cloudflare, Google, Quad9) y la raíz del túnel contesta; la fila del
       menú dice en cuántos segundos quedó listo. Desde F3 (2026-11-04) el invitado de navegador que entra por el
       túnel sondea `api/me` cada segundo si el SSE no da señales en 2,5 s (Cloudflare retiene el cuerpo de un SSE
-      abierto), la LAN sigue con SSE y el servidor corta a 100 peticiones en vuelo con aviso en la página.
+      abierto), la LAN sigue con SSE y el servidor corta a 100 peticiones en vuelo con aviso en la página. Desde F4
+      (2026-11-04) la retransmisión HLS va cifrada con AES-128 y la clave se deriva en la página del token de la
+      invitación (HKDF), tras un desafío-respuesta HMAC que lo demuestra sin enviarlo: el túnel solo ve segmentos
+      cifrados y la URI de la clave no existe como endpoint (ADR-142).
 - [x] Sala pública «solo ver» (cualquiera con el enlace en la red local, número máximo de espectadores, sin control ni chat).
 - [x] «Emitir en directo» a una plataforma (YouTube Live, Twitch, PeerTube, Owncast) por RTMP con clave de emisión, para audiencias
       grandes. Chat y reacciones en salas privadas. Aviso legal: solo contenido que se puede compartir.
