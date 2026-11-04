@@ -339,3 +339,9 @@ La sesión no tiene conector de Notion, y el MCP del vault pidió permiso y no s
 avance de F5 (ADR-143, medición de los cuatro criterios y la batería en verde) queda en `PROGRESS.md`,
 `docs/DECISIONS.md` y `informes/atalaya-f5-2026-11-05/f5-sincronia.json`; falta pasarlo a la Bitácora y a
 `proyectos/` del vault desde una sesión con permiso.
+
+## 2026-11-05 · `tools/check.sh` completo no es ejecutable en server1 (no bloquea F5)
+El paso de lint Lua marca error porque no hay `luacheck` ni `luajit` instalados (y no se pueden instalar sin
+sudo). Los tests de ASR fallan en este entorno antes de llegar a `share`; no se ha tocado nada de ASR. La batería
+seleccionada de `share` + `mu-share` sí pasa (111 pasados, 3 omitidos, 0 rojos). Para el próximo cierre, ejecutar
+`tools/check.sh` en una máquina con las herramientas de Lua y el entorno de ASR completo.
