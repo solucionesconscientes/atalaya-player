@@ -22,7 +22,7 @@ ESTADO_GLOBAL: EN_CURSO
   sondeo no anuncia una desconexión.
 - **Verificación.** `test_share_service.py` fija el tope (429 y liberación de la plaza); `test_share_rooms.py`, el
   invitado que sondea como conectado; `test_share_http.py`, el camino `api/me` sin SSE. Batería seleccionada:
-  `share`, `tunnel`, `mu-share` e `i18n` en verde (124 ejecutados, 2 omitidos por portapapeles). Los tests de
+  `share`, `tunnel`, `mu-share` e `i18n` en verde (123 ejecutados, 2 omitidos por portapapeles). Los tests de
   navegador **no corren en server1**: Chrome cuelga en `Page.navigate` también con los tests que ya existían; el
   test nuevo de sondeo/reconexión queda escrito para una máquina con navegador funcional (NEEDS_HUMAN). Detalle en
   `tmp/fase-share-3-medicion.md` y `tmp/fase-share-3.md`.
