@@ -149,6 +149,8 @@ class RoomRuntime:
     media_sent: float = 0.0
     subs_key: tuple[Any, ...] | None = None
     info: dict[str, Any] | None = None                          # yt-dlp -J of the current web video
+    probe_info: dict[str, Any] | None = None                    # F6: ffprobe of the current media, warmed in advance
+    probe_url: str = ""
     streams: dict[str, hls.HlsStream] = field(default_factory=dict)
     guest_action: dict[str, float] = field(default_factory=dict)
     notices: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=20))
@@ -964,6 +966,8 @@ class ShareService:
         key = (path, raw.get("aid"))
         rt.media_key = key
         rt.info = None
+        rt.probe_info = None
+        rt.probe_url = ""
         if not path:
             rt.media = {"kind": "none", "reason": t("nada en reproducción")}
             self._send_media(rt)
@@ -971,6 +975,19 @@ class ShareService:
         rt.media = {"kind": "preparing", "title": raw.get("media-title") or ""}
         self._send_media(rt)
         self._spawn(rt, self._prepare_media(rt, key, str(path)))
+
+    async def _warm_probe(self, rt: RoomRuntime, key: tuple[Any, ...], url: str) -> None:
+        """F6 · ffprobe a direct URL while the guest still plays it.
+
+        When that browser cannot and asks for the relay, `_start_stream` would probe again: over a tunnel that is
+        seconds of waiting before the first segment. If the probe fails the direct path may still work, so this is
+        best-effort and the relay probes on demand as before."""
+        try:
+            data = await asyncio.to_thread(hls.probe, hls.Input(url))
+        except Exception:  # noqa: BLE001
+            return
+        if rt.media_key == key and not rt.room.closed:
+            rt.probe_info, rt.probe_url = data, url
 
     async def _audio_ff_index(self, s: Session) -> int | None:
         tracks = await self._prop(s, "track-list") or []
@@ -1003,6 +1020,8 @@ class ShareService:
                 # Si además lo lleva el navegador (H.264/AAC en MP4), esa es la vía de la página; si no, se hace el
                 # relay de siempre para el navegador y se ofrecen las dos cosas a la vez.
                 probe = await asyncio.to_thread(hls.probe, hls.Input(str(local)))
+                if rt.media_key == key:
+                    rt.probe_info, rt.probe_url = probe, str(local)
                 # H51 · un testigo POR PELÍCULA en la URL. Sin él `/s/<sala>/file` es la misma cadena para
                 # todas, y quien la está reproduciendo —el navegador, el modo invitado, VLC— no tiene forma de
                 # saber que el anfitrión ha cambiado de película: se queda con la anterior. Se deriva del secreto
@@ -1021,6 +1040,7 @@ class ShareService:
                     media["browser"] = "direct"
             elif hls.plain_direct(path):
                 media = {"kind": "direct", "url": path, "source": "url", "can_relay": True, "path": path}
+                self._spawn(rt, self._warm_probe(rt, key, path))
             else:
                 seed = None
                 if s is not None:
@@ -1069,11 +1089,13 @@ class ShareService:
         pos = rt.raw.get("time-pos")
         return max(0.0, float(pos)) if isinstance(pos, (int, float)) else 0.0
 
-    async def _start_stream(self, rt: RoomRuntime, inputs: list[hls.Input], audio_index: int | None) -> hls.HlsStream:
+    async def _start_stream(self, rt: RoomRuntime, inputs: list[hls.Input], audio_index: int | None,
+                            probes: list[dict[str, Any]] | None = None) -> hls.HlsStream:
         if not hls.ffmpeg_bin():
             raise RuntimeError("ffmpeg no está instalado")
         self._must_be_open(rt)
-        probes = [await asyncio.to_thread(hls.probe, i) for i in inputs]
+        if probes is None:
+            probes = [await asyncio.to_thread(hls.probe, i) for i in inputs]
         needs_video = any(hls.video_stream(p) is not None and not hls.video_copyable(hls.video_stream(p))
                           for p in probes)
         hw_plan = None
@@ -1097,8 +1119,12 @@ class ShareService:
         # la lista, y quien la pidiera antes se llevaría un 404. Se nota al REHACERLA (el invitado ya está viendo
         # algo y reengancha al instante); en el primer arranque lo tapaba el «preparando».
         wait_until = time.monotonic() + PLAYLIST_WAIT
-        while time.monotonic() < wait_until and not st.playlist.exists():
+        while time.monotonic() < wait_until:
             if st.status == "failed":
+                break
+            # H54/F6 · no se anuncia una lista vacía: hls.js se la queda y no vuelve a mirar hasta pasado un
+            # `targetduration` entero, que es justo el arranque que se nota. Con un segmento dentro, arranca ya.
+            if st.playlist.exists() and st.info()["segments"]:
                 break
             await asyncio.sleep(0.1)
         while len(rt.streams) > MAX_STREAMS:
@@ -1109,28 +1135,62 @@ class ShareService:
         log.info("share relay %s: %s (%s)", sid, plans[0].mode, inputs[0].url[:80])
         return st
 
+    def _relay_alive(self, rt: RoomRuntime, sid: Any) -> bool:
+        st = rt.streams.get(sid) if isinstance(sid, str) else None
+        return st is not None and st.status in ("preparing", "running", "done") and st.playlist.exists()
+
     async def relay(self) -> dict[str, Any]:
-        """A guest cannot play the direct URL: make (once) an HLS relay of the same video."""
+        """A guest cannot play what it was given (or its relay died): make —or remake— the HLS relay.
+
+        F6 · before this only a web video's direct URL had a relay, and a relay that had been evicted or had
+        failed was never rebuilt: the guest kept asking for a playlist that returned 404. Now a local file the
+        browser claimed to open, a web video that only had a relay, and a dead relay all come back the same way."""
         rt = self._room()
         m = rt.media
-        if m.get("kind") != "direct":
+        kind = m.get("kind")
+        if kind not in ("direct", "file", "hls"):
             return self._media_public(rt)
-        if m.get("relay_url") or m.get("relay_pending"):
+        if m.get("relay_pending"):
+            return self._media_public(rt)
+        sid = m.get("stream") if kind == "hls" else m.get("relay_stream")
+        if self._relay_alive(rt, sid):
             return self._media_public(rt)
         key = rt.media_key
         m["relay_pending"] = True
         try:
-            info = rt.info
-            inputs = hls.pick_relay(info) if info else [hls.Input(str(m.get("path") or m.get("url")))]
-            at = 0.0 if info is not None and info.get("is_live") else self._host_pos(rt)
-            inputs = [hls.Input(i.url, i.headers, start=at) for i in inputs]
-            st = await self._start_stream(rt, inputs, None)
+            probes: list[dict[str, Any]] | None = None
+            if kind == "file":
+                local = m.get("local")
+                if not local:
+                    raise RuntimeError("no hay archivo que retransmitir")
+                at = self._host_pos(rt)
+                inputs = [hls.Input(str(local), start=at)]
+                if rt.probe_info and rt.probe_url == str(local):
+                    probes = [rt.probe_info]
+            else:
+                info = rt.info
+                origin = str(m.get("path") or rt.media_key[0] or m.get("url") or "")
+                if info:
+                    inputs = hls.pick_relay(info)
+                elif origin:
+                    inputs = [hls.Input(origin)]
+                else:
+                    raise RuntimeError("no hay nada que retransmitir")
+                at = 0.0 if info is not None and info.get("is_live") else self._host_pos(rt)
+                inputs = [hls.Input(i.url, i.headers, start=at) for i in inputs]
+                if kind == "direct" and len(inputs) == 1 and rt.probe_info and rt.probe_url == origin:
+                    probes = [rt.probe_info]
+            st = await self._start_stream(rt, inputs, None, probes=probes)
         except Exception as exc:  # noqa: BLE001
             m.pop("relay_pending", None)
             raise HttpError(503, t("no se pudo retransmitir: %s") % (exc,)) from exc
         if rt.media_key == key:
             m.pop("relay_pending", None)
             m.update({"relay_url": self._stream_url(rt, st), "relay_stream": st.id, "relay_offset": at})
+            if kind == "hls":
+                # the page plays m["url"] for a web video: a rebuilt relay has to replace it too
+                m.update({"url": m["relay_url"], "stream": st.id, "offset": at, "status": "running",
+                          "complete": False, "ready": 0.0, "error": ""})
             self._media_progress(rt)
             self._send_media(rt)
         return self._media_public(rt)
@@ -1243,7 +1303,18 @@ class ShareService:
 
         async def chunks() -> AsyncIterator[bytes]:
             left = length
-            with path.open("rb") as fh:
+            fh = None
+            for attempt in range(4):
+                try:
+                    fh = await asyncio.to_thread(path.open, "rb")
+                    break
+                except PermissionError:
+                    # Windows: `-hls_flags temp_file` renames segments/playlists while a request is opening them
+                    if attempt == 3:
+                        raise
+                    await asyncio.sleep(0.05)
+            assert fh is not None
+            with fh:
                 await asyncio.to_thread(fh.seek, start)
                 while left > 0:
                     data = await asyncio.to_thread(fh.read, min(FILE_CHUNK, left))
@@ -1255,6 +1326,21 @@ class ShareService:
         if length == 0:
             return Response(status, headers, b"")
         return Response(status, headers, b"", stream=chunks())
+
+    @staticmethod
+    async def _read_retry(path: Path, binary: bool = True) -> Any:
+        """Read a small file even while ffmpeg's ``temp_file`` renames it (Windows gives PermissionError for a
+        moment). A playlist is small and must be served whole: stat-then-stream could also mix two versions."""
+        for attempt in range(5):
+            try:
+                if binary:
+                    return await asyncio.to_thread(path.read_bytes)
+                return await asyncio.to_thread(path.read_text, encoding="utf-8")
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                await asyncio.sleep(0.05)
+        raise AssertionError("unreachable")
 
     def _cookie_header(self, room: Room, guest: Any, exp: float | None = None) -> str:
         """A short-lived, room-scoped credential. The page renews it with every authenticated request."""
@@ -1428,12 +1514,16 @@ class ShareService:
                 raise HttpError(404)
             if name == hls.PLAYLIST:
                 key = req.query.get("k")
-                if not key:
-                    return self._file(st.dir / name, "application/vnd.apple.mpegurl", "no-cache", req)
-                # H51 · con credencial en la query (mpv, VLC) hay que ponérsela también a cada trozo: la lista los
-                # nombra en relativo, el reproductor los pediría a pelo y se llevaría un 401 en el primero.
                 try:
-                    text = (st.dir / name).read_text(encoding="utf-8")
+                    # la lista pequeña se lee entera, con reintento: en Windows ffmpeg la renombra mientras se
+                    # serviría y `stat` + apertura perezosa podían mezclar dos versiones o fallar al abrir
+                    if not key:
+                        data = await self._read_retry(st.dir / name)
+                        return Response(200, {"Content-Type": "application/vnd.apple.mpegurl",
+                                              "Cache-Control": "no-cache"}, data)
+                    # H51 · con credencial en la query (mpv, VLC) hay que ponérsela también a cada trozo: la lista
+                    # los nombra en relativo, el reproductor los pediría a pelo y se llevaría un 401 en el primero.
+                    text = await self._read_retry(st.dir / name, binary=False)
                 except OSError:
                     raise HttpError(404) from None
                 lines = [ln if (not ln or ln.startswith("#")) else f"{ln}?k={key}" for ln in text.split("\n")]

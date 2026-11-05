@@ -31,6 +31,11 @@
   var state = null, anchor = 0, media = null, source = '', subsUrl = '';
   var hls = null, hlsLoading = null, useRelay = false, es = null, needGesture = false, ended = false;
   var seeking = false, seekAt = 0;
+  // F6 · un invitado no se queda en negro: cada error se explica y se reintenta solo (manifiesto → retransmisión →
+  // una recarga) y, cuando ya no queda nada que probar, aparece «Reintentar». La recarga se marca en la sesión del
+  // navegador para que no pueda haber un bucle.
+  var failed = false, attempts = 0, attemptAt = 0, retryTimer = null, retryBusy = false, relayBusy = false;
+  var mediaRetried = false, reloadKey = 'mu-share-reloaded-' + roomId, relayKey = 'mu-share-relay-' + roomId;
   // F5 · host clock − ours: `offset` from a round trip, `seen` from the one-way state stamps (fallback)
   var hostClock = { offset: null, seen: null, rtt: null };
   // F3 · the Cloudflare quick tunnel forwards a response's headers but holds its body until the response ends,
@@ -76,9 +81,22 @@
   }
 
   function overlay(text, button) {
+    // F6 · el aviso de un fallo no se borra solo: se queda hasta que se reintenta o vuelve a haber imagen. Si no,
+    // el vídeo negro se queda mudo justo cuando hay que explicarlo.
+    if (!text && !button && failed) return;
+    failed = false;
     show('overlay', !!text || !!button);
     $('overlay-text').textContent = text || '';
     show('start', !!button);
+    show('retry', false);
+  }
+
+  function playError(text) {
+    failed = true;
+    show('overlay', true);
+    $('overlay-text').textContent = text;
+    show('start', false);
+    show('retry', true);
   }
 
   // -- joining -----------------------------------------------------------------------------------------
@@ -148,6 +166,9 @@
     $('who').textContent = mode === 'public' ? t('Sala pública · solo ver') : t('Estás como %s', guest.name);
     updatePerm();
     connect();
+    // F6 · la retransmisión puede hacer falta en cualquier momento (el src directo falla sin avisar): se carga
+    // hls.js en segundo plano al entrar, no en el momento del fallo, que es cuando cada segundo se nota.
+    loadHlsJs().catch(function () {});
   }
 
   // -- events ------------------------------------------------------------------------------------------
@@ -272,6 +293,7 @@
 
   function finish(text) {
     ended = true;
+    clearRetry();
     if (helloTimer) { clearTimeout(helloTimer); helloTimer = null; }
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     if (es) es.close();
@@ -417,11 +439,124 @@
     return complete ? Infinity : (r || 0);
   }
 
+  // F6 · recuperación, en el orden del brief: recargar el manifiesto → volver a la retransmisión → recargar la
+  // página UNA vez → aviso con «Reintentar». Los intentos se olvidan tras 10 s sin errores.
+  function clearRetry() {
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+  }
+
+  function rememberRelay(m) {
+    try { if (m) sessionStorage.setItem(relayKey, mediaKey(m)); } catch (e) { /* storage disabled */ }
+  }
+
+  function relayRemembered(m) {
+    try { return !!m && sessionStorage.getItem(relayKey) === mediaKey(m); } catch (e) { return false; }
+  }
+
+  function reloadOnce() {
+    try {
+      if (sessionStorage.getItem(reloadKey) === '1') return false;
+      sessionStorage.setItem(reloadKey, '1');
+    } catch (e) { return false; }   // sin almacenamiento no se puede garantizar el tope: mejor no recargar
+    location.reload();
+    return true;
+  }
+
+  function recover(why) {
+    if (ended) return;
+    var now = performance.now();
+    // dos avisos del mismo fallo seguidos no cuentan como dos intentos: hls.js a veces repite el suyo
+    if (attempts && now - attemptAt < 400) return;
+    if (now - attemptAt > 10000) attempts = 0;
+    attemptAt = now;
+    attempts += 1;
+    clearRetry();
+    retryBusy = true;
+    if (attempts <= 2) {
+      // 1 · el manifiesto otra vez (o el propio vídeo, si era una URL directa)
+      if (hls) hls.startLoad();
+      else if (source) video.load();
+      retryTimer = setTimeout(function () { retryTimer = null; retryBusy = false; }, 1000 * attempts);
+      return;
+    }
+    retryBusy = false;
+    if (attempts === 3) { backToLive(why); return; }
+    if (attempts === 4) {
+      if (!reloadOnce()) playError(t('La reproducción se ha cortado y no se ha podido recuperar sola. Comprueba la conexión y pulsa «Reintentar».'));
+      return;
+    }
+    playError(t('La reproducción se ha cortado y no se ha podido recuperar sola. Comprueba la conexión y pulsa «Reintentar».'));
+  }
+
+  function backToLive(why) {
+    if (ended || !media) {
+      playError(t('No se puede reproducir ahora mismo. Comprueba la conexión y pulsa «Reintentar».'));
+      return;
+    }
+    useRelay = true;
+    rememberRelay(media);
+    // siempre se le pregunta al servidor: si la lista que teníamos se evictó, la rehace; si sigue viva, la
+    // devuelve tal cual y el invitado reengancha sin esperar a otro ffmpeg
+    overlay(t('Volviendo a la retransmisión…'));
+    requestRelay(why);
+  }
+
+  function requestRelay(why) {
+    if (ended || relayBusy) return;
+    relayBusy = true;
+    api('api/relay', {}, 30000).then(function (m) {
+      relayBusy = false;
+      if (ended || !m) return;
+      var url = m.kind === 'hls' ? m.url : m.relay_url;
+      if (!url) {
+        if (m.relay_pending) {   // otro invitado la está preparando: se vuelve a preguntar, no se da por rota
+          setTimeout(function () { requestRelay(why); }, 1000);
+          return;
+        }
+        playError(t('No se puede reproducir ahora mismo. Comprueba la conexión y pulsa «Reintentar».'));
+        return;
+      }
+      useRelay = true;
+      rememberRelay(m);
+      attempts = 0;
+      source = '';
+      onMedia(m);
+    }).catch(function (e) {
+      relayBusy = false;
+      if (ended) return;
+      playError(t('No se ha podido recuperar la reproducción: %s', e.message));
+    });
+  }
+
+  function retryPlayback() {
+    if (ended) return;
+    clearRetry();
+    failed = false;
+    attempts = 0;
+    attemptAt = 0;
+    retryBusy = false;
+    if (!media) {
+      api('api/me').then(function (d) { if (d.media) onMedia(d.media); }).catch(function () {});
+      return;
+    }
+    if (media.kind === 'hls') {
+      if (media.status === 'failed') requestRelay('retry');
+      else { source = ''; onMedia(media); }
+      return;
+    }
+    if (media.relay_status === 'failed') { requestRelay('retry'); return; }
+    if (useRelay || relayRemembered(media)) { requestRelay('retry'); return; }
+    source = '';
+    onMedia(media);
+  }
+
   function correct(force) {
-    if (!state || !source || ended) return;
+    if (!state || !source || ended || failed) return;
     if (state.idle) { overlay(t('El anfitrión no está reproduciendo nada')); return; }
     var exp = localPos();
-    if (exp > ready() - 1) {
+    // F6 · medio segundo de colchón, no uno: con segmentos de 2 s el segundo entero retrasaba el arranque del
+    // invitado justo cuando la retransmisión acababa de nacer (ya hay medio segmento por delante).
+    if (exp > ready() - 0.5) {
       if (!video.paused) video.pause();
       var r = ready();
       // con offset, lo que se está preparando empieza donde va el anfitrión: decirlo, en vez de dejar al invitado
@@ -449,7 +584,11 @@
     if (state.paused && !video.paused) video.pause();
     if (!state.paused && video.paused) {
       var p = video.play();
-      if (p && p.catch) p.catch(function () { needGesture = true; overlay(t('Pulsa para empezar a ver'), true); });
+      // F6 · un rechazo transitorio (AbortError al cambiar de fuente) no pide gesto; solo NotAllowedError.
+      // Si no, un reintento que llega antes de que el relay tenga datos dejaba la sala clavada pidiendo otro clic.
+      if (p && p.catch) p.catch(function (e) {
+        if (e && e.name === 'NotAllowedError') { needGesture = true; overlay(t('Pulsa para empezar a ver'), true); }
+      });
     }
   }
 
@@ -464,18 +603,28 @@
 
   video.addEventListener('loadedmetadata', function () { correct(true); });
   video.addEventListener('seeked', function () { seeking = false; });
+  video.addEventListener('playing', function () { attempts = 0; });
   video.addEventListener('error', function () {
-    if (media && media.kind === 'direct' && !useRelay) {
-      useRelay = true;
-      overlay(t('Este navegador no puede abrir el vídeo directamente: preparando la retransmisión…'));
-      api('api/relay', {}).then(onMedia).catch(function (e) { overlay(t('No se puede reproducir: %s', e.message)); });
+    if (ended || !source || failed) return;
+    if (hls) { recover('video'); return; }
+    // F6 · el src directo no va en ESTE navegador: a la retransmisión, que es la vía que sí existe. No tiene
+    // sentido gastar los dos intentos recargando una URL que acaba de fallar.
+    if (media && (media.kind === 'direct' || (media.kind === 'file' && !useRelay))) {
+      backToLive('video');
+      return;
     }
+    recover('video');
   });
   $('start').addEventListener('click', function () {
     needGesture = false;
     overlay('');
     video.play().catch(function () {});
     correct(true);
+  });
+  $('retry').addEventListener('click', function () {
+    needGesture = false;
+    video.play().catch(function () {});
+    retryPlayback();
   });
 
   // -- what to play -----------------------------------------------------------------------------------------
@@ -496,6 +645,15 @@
       useRelay = (m.kind === 'file') && (m.browser !== 'direct');
       ended = false;
     }
+    // F6 · si en esta pestaña el directo ya falló una vez, no se vuelve a intentar tras una recarga: se va a la
+    // retransmisión que sí funciona.
+    if (m.kind === 'direct' || m.kind === 'file') useRelay = useRelay || relayRemembered(m);
+    var relayFailed = (m.kind === 'hls' && m.status === 'failed') ||
+      (useRelay && m.relay_status === 'failed');
+    if (relayFailed) {
+      playError(t('La retransmisión ha fallado: %s', m.error || m.relay_error || ''));
+      return;
+    }
     var url = '';
     if (m.kind === 'hls') url = m.url;
     // H44/C4 · un archivo del anfitrión: el original tal cual cuando este navegador puede con él, y si no el relay.
@@ -507,8 +665,8 @@
     else if (m.kind === 'preparing') overlay(t('Preparando la retransmisión de «%s»… puede tardar un minuto',
                                                m.title || t('lo que está viendo')));
     else if (m.kind === 'none') overlay(m.reason ? t('No se puede compartir esto: %s', m.reason) : t('Nada en reproducción'));
-    if (m.kind === 'hls' && m.status === 'failed') overlay(t('La retransmisión ha fallado: %s', m.error || ''));
     if (url && url !== source) attach(url);
+    if (!url && useRelay && (m.kind === 'direct' || m.kind === 'file')) requestRelay('media');
     setSubs(m.subs);
     ownPlayer(m);
     correct(false);
@@ -578,7 +736,7 @@
       var s = document.createElement('script');
       s.src = '/static/hls.light.min.js';
       s.onload = function () { resolve(window.Hls); };
-      s.onerror = reject;
+      s.onerror = function () { hlsLoading = null; reject(new Error('hls.js')); };  // «Reintentar» lo vuelve a pedir
       document.head.appendChild(s);
     });
     return hlsLoading;
@@ -598,7 +756,14 @@
         callbacks.onError({ code: 0, text: t('No se pudo preparar la clave de la retransmisión') }, context, null, null);
         return;
       }
-      var bytes = MuCrypt.utf8(MuCrypt.hlsKey(token, roomId));
+      var bytes;
+      try {
+        bytes = MuCrypt.utf8(MuCrypt.hlsKey(token, roomId));
+      } catch (e) {
+        // una clave que no se puede derivar es un KEY_LOAD_ERROR como otro cualquiera: se dice y queda «Reintentar»
+        callbacks.onError({ code: 0, text: t('No se pudo preparar la clave de la retransmisión') }, context, null, null);
+        return;
+      }
       callbacks.onSuccess({ url: context.url, data: bytes.buffer }, { trequest: 0, tfirst: 0, tload: 0,
         loaded: bytes.length, total: bytes.length }, context, null);
     };
@@ -607,6 +772,9 @@
 
   function attach(url) {
     source = url;
+    failed = false;
+    mediaRetried = false;
+    show('retry', false);
     if (hls) { hls.destroy(); hls = null; }
     var isHls = /\.m3u8(\?|$)/.test(url);
     if (!isHls) {
@@ -618,20 +786,30 @@
     loadHlsJs().then(function (Hls) {
       if (source !== url) return;
       if (!Hls.isSupported()) { overlay(t('Este navegador no puede reproducir la retransmisión')); return; }
-      hls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 60, loader: keyLoader(Hls) });
+      // F6 · arrancar donde va el anfitrión, no «en el borde» que hls.js calcula para un directo: con una lista
+      // recién creada el borde aún no existe y el invitado esperaba varias listas antes de la primera imagen.
+      var startPos = state ? Math.max(0, localPos()) : 0;
+      hls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 60,
+                      startPosition: startPos, loader: keyLoader(Hls) });
       hls.on(Hls.Events.ERROR, function (_, data) {
         if (data.details === Hls.ErrorDetails.KEY_LOAD_ERROR) {
-          overlay(t('No se pudo descifrar la retransmisión. Vuelve a abrir el enlace de invitación.'));
+          // F6 · sin clave no hay nada que reintentar en red: se dice y queda el botón, que vuelve a montar el
+          // reproductor y a derivar la clave en la página.
+          playError(t('No se pudo descifrar la retransmisión. Vuelve a abrir el enlace de invitación.'));
           if (hls) { hls.destroy(); hls = null; }
           return;
         }
         if (!data.fatal) return;
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !mediaRetried) {
+          mediaRetried = true;
+          hls.recoverMediaError();
+          return;
+        }
+        recover('hls:' + data.type);
       });
       hls.loadSource(url);
       hls.attachMedia(video);
-    }).catch(function () { overlay(t('No se pudo cargar el reproductor')); });
+    }).catch(function () { playError(t('No se puede reproducir ahora mismo. Comprueba la conexión y pulsa «Reintentar».')); });
   }
 
   function setSubs(sub) {

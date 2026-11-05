@@ -38,7 +38,7 @@ from mpvd.proc import spawn_kwargs
 
 log = logging.getLogger("mpvd.share.hls")
 
-SEGMENT_SECONDS = 4
+SEGMENT_SECONDS = 2   # F6: the guest waits for the first segment; 2 s (our GOP) gets it playing much sooner
 PLAYLIST = "index.m3u8"
 SUBS_FILE = "subs.vtt"
 KEY_URI = "mu-key"          # never fetched: the page's key loader derives the key from the invitation token
