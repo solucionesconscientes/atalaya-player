@@ -197,3 +197,97 @@ def test_el_tope_de_peticiones_en_vuelo_descarta_con_429_y_libera_la_plaza():
             await server.stop()
 
     asyncio.run(run())
+
+
+class _FakeStream:
+    """Lo mínimo de un relay para `_relay_alive`: id, estado y una lista que existe en disco."""
+
+    def __init__(self, sid: str, folder):  # type: ignore[no-untyped-def]
+        self.id = sid
+        self.dir = folder
+        self.status = "running"
+
+    @property
+    def playlist(self):  # type: ignore[no-untyped-def]
+        return self.dir / "index.m3u8"
+
+
+def _fake_relay(monkeypatch, svc, rt):  # type: ignore[no-untyped-def]
+    started: list[list] = []
+
+    async def fake_start(rt_, inputs, audio_index, probes=None):
+        sid = f"s{len(started) + 1}"
+        d = rt_.dir / sid
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "index.m3u8").write_text("#EXTM3U\n#EXT-X-ENDLIST\n", encoding="utf-8")
+        st = _FakeStream(sid, d)
+        rt_.streams[sid] = st
+        started.append(inputs)
+        return st
+
+    monkeypatch.setattr(svc, "_start_stream", fake_start)
+    svc._send_media = lambda rt_: None       # type: ignore[method-assign]
+    svc._media_progress = lambda rt_: None   # type: ignore[method-assign]
+    return started
+
+
+def test_el_relay_se_rehace_si_el_que_habia_ya_no_existe(tmp_path, monkeypatch):
+    """F6 · el invitado pidió el relay cuando el directo falló, pero para entonces su lista ya no estaba (se
+    evictó o el proceso murió). `api/relay` devolvía la misma URL muerta y el invitado seguía en negro: ahora se
+    detecta y se rehace en el sitio, sin recargar la sala."""
+    svc = make_service(tmp_path)
+    rt = make_runtime(tmp_path)
+    svc.rt = rt
+    rt.raw = {"time-pos": 42.0}
+    rt.media_key = ("/cine/peli.mkv", None)
+    rt.media = {"kind": "file", "local": "/cine/peli.mkv", "url": "/s/sala/file?v=x", "browser": "direct",
+                "relay_url": "/s/sala/media/viejo/index.m3u8", "relay_stream": "viejo"}
+    started = _fake_relay(monkeypatch, svc, rt)
+
+    first = asyncio.run(svc.relay())
+
+    assert len(started) == 1 and started[0][0].start == 42.0
+    assert first["relay_stream"] == "s1" and first["relay_url"].endswith("/s1/index.m3u8")
+    # vivo: otra petición no arranca otro ffmpeg
+    again = asyncio.run(svc.relay())
+    assert len(started) == 1 and again["relay_url"] == first["relay_url"]
+
+
+def test_el_relay_de_un_video_web_se_rehace_y_cambia_la_url_que_reproduce_la_pagina(tmp_path, monkeypatch):
+    """F6 · un vídeo que solo se ve por relay (`kind: hls`) también puede quedarse sin lista. La página reproduce
+    `media.url`, así que al rehacerlo hay que cambiar las dos: la URL y el id del stream."""
+    svc = make_service(tmp_path)
+    rt = make_runtime(tmp_path)
+    svc.rt = rt
+    rt.raw = {"time-pos": 10.0}
+    rt.media_key = ("https://sitio.example/video.mp4", None)
+    rt.info = None
+    rt.media = {"kind": "hls", "url": "/s/sala/media/viejo/index.m3u8", "stream": "viejo",
+                "source": "web", "offset": 0.0}
+    started = _fake_relay(monkeypatch, svc, rt)
+
+    rebuilt = asyncio.run(svc.relay())
+
+    assert len(started) == 1 and started[0][0].url == "https://sitio.example/video.mp4"
+    assert rebuilt["stream"] == "s1" and rebuilt["url"].endswith("/s1/index.m3u8")
+    assert rebuilt["offset"] == 10.0
+
+
+def test_el_relay_de_una_url_directa_muerta_no_se_confunde_con_uno_vivo(tmp_path, monkeypatch):
+    """F6 · si el stream anterior existe pero ffmpeg falló, no vale: se rehace. Si está vivo, se reutiliza."""
+    svc = make_service(tmp_path)
+    rt = make_runtime(tmp_path)
+    svc.rt = rt
+    rt.raw = {}
+    rt.media_key = ("https://sitio.example/v.mp4", None)
+    rt.info = None
+    rt.media = {"kind": "direct", "url": "https://sitio.example/v.mp4", "path": "https://sitio.example/v.mp4",
+                "relay_url": "/s/sala/media/viejo/index.m3u8", "relay_stream": "viejo"}
+    started = _fake_relay(monkeypatch, svc, rt)
+    dead = _FakeStream("viejo", rt.dir / "viejo")
+    dead.status = "failed"
+    rt.streams["viejo"] = dead
+
+    rebuilt = asyncio.run(svc.relay())
+
+    assert len(started) == 1 and rebuilt["relay_stream"] == "s1"

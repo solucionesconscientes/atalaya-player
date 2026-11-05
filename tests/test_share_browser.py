@@ -5,11 +5,14 @@ the «room closed» message. Nothing is downloaded."""
 
 from __future__ import annotations
 
+import functools
+import http.server
 import json
 import os
 import shutil
 import signal
 import subprocess
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -322,5 +325,106 @@ def test_browser_guest_by_polling_follows_and_recovers_from_a_cut(share_env, cli
 
         d.call("share.close")
         b.wait("document.getElementById('message-text').textContent.includes('cerrada')", timeout=15)
+    finally:
+        b.close()
+
+
+def _join(b: Browser) -> None:
+    b.wait("!document.getElementById('join').classList.contains('hidden')")
+    b.js("document.getElementById('name').value = 'Navegador'; "
+         "document.getElementById('join-form').requestSubmit(); true")
+    b.wait("!document.getElementById('room').classList.contains('hidden')")
+
+
+def test_browser_direct_src_broken_returns_to_the_relay(share_env, clip, tmp_path):  # noqa: F811
+    """F6 · el fallo del informe del 4-nov: el invitado se quedaba con el `src` directo, `error = 4` y en negro.
+    Aquí se rompe el `src` desde la consola, como se hizo entonces, y se mide cuánto tarda en volver solo a la
+    retransmisión y seguir reproduciendo."""
+    h, d = share_env
+    mp4 = tmp_path / "web.mp4"
+    # faststart: con el `moov` al final y un servidor de pruebas sin Range, Chrome no arranca el MP4 directo y
+    # el test mediría el fallback antes de tiempo (el navegador da el mismo error 4 que el informe del 4-nov)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(clip), "-t", "35", "-map", "0:v", "-map", "0:a",
+                    "-c", "copy", "-movflags", "+faststart", str(mp4)], check=True)
+    class QuietServer(http.server.ThreadingHTTPServer):
+        def handle_error(self, request, client_address):  # type: ignore[no-untyped-def]
+            pass   # el navegador corta la descarga al romper el src: no es un fallo del test
+
+    httpd = QuietServer(("127.0.0.1", 0), functools.partial(
+        type("Quiet", (http.server.SimpleHTTPRequestHandler,), {"log_message": lambda *a: None}),
+        directory=str(tmp_path)))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    b = Browser()
+    try:
+        web = f"http://127.0.0.1:{httpd.server_address[1]}/web.mp4"
+        h.command("loadfile", web)
+        h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 10, timeout=20)
+        # el anfitrión tiene que estar reproduciendo ANTES de que entre el invitado: si no, la página obedece el
+        # estado «en pausa» del anfitrión y el test confunde eso con que el directo no arranca
+        h.command("set", "pause", "no")
+        h.wait_property("pause", lambda v: v is False, timeout=10)
+        res = d.call("share.create")
+        room = res["url"].split("/s/", 1)[1].split("#", 1)[0]
+        b.nav(res["url"])
+        _join(b)
+        # el directo puede arrancar o fallar solo (según el navegador y el MP4 de prueba); en los dos casos el
+        # invitado tiene que acabar en la retransmisión
+        b.wait(f"{VIDEO}.readyState >= 2 || {VIDEO}.currentSrc.indexOf('blob:') === 0", timeout=40)
+        direct = b.js(f"{VIDEO}.currentSrc").startswith("http")
+        elapsed = None
+        if direct:
+            # el src directo deja de existir: el elemento emite `error` como en la prueba real. No se exige que
+            # el directo esté reproduciendo: el fallo del informe del 4-nov es justo que no arranca.
+            b.js("window.__f6 = performance.now();"
+                 "var v = document.getElementById('video'); v.src = '/s/%s/media/roto/no.mp4'; v.load(); true" % room)
+            b.wait(f"{VIDEO}.currentSrc.indexOf('blob:') === 0 && {VIDEO}.readyState >= 2", timeout=25)
+            elapsed = b.js("(performance.now() - window.__f6) / 1000")
+            # el criterio fino (< 5 s) y la reproducción se miden en la VM; aquí basta con que la reserva exista
+            # y el invitado no se quede con el src roto (server1 comparte CPU con el resto de la batería)
+            assert elapsed < 10.0, f"tardó {elapsed:.2f} s en volver a la retransmisión"
+        else:
+            b.wait(f"{VIDEO}.currentSrc.indexOf('blob:') === 0 && {VIDEO}.readyState >= 2", timeout=10)
+        assert b.js("document.getElementById('overlay').classList.contains('hidden')") is True
+        assert b.js(f"{VIDEO}.error === null") is True
+        assert b.js(f"{VIDEO}.currentSrc.indexOf('blob:') === 0") is True
+        print(f"fallback directo → relay: {'ya caído solo' if elapsed is None else f'{elapsed:.2f} s'}")
+        d.call("share.close")
+    finally:
+        b.close()
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_browser_key_error_shows_retry_and_recovers_when_the_key_comes_back(share_env, clip, tmp_path):  # noqa: F811
+    """F6 · si la clave no se puede derivar, hls.js da KEY_LOAD_ERROR: antes solo quedaba un aviso y el reproductor
+    destruido. Ahora se ve el aviso y «Reintentar», y al volver la clave el botón recupera sin recargar la página.
+    (Un 404 literal de `mu-key` no llega a la red: la clave se deriva en la página y su URI nunca se pide.)"""
+    h, d = share_env
+    other = tmp_path / "otra.mkv"
+    shutil.copy(clip, other)
+    h.command("loadfile", str(clip))
+    h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 30, timeout=20)
+    h.command("set", "pause", "no")
+    res = d.call("share.create")
+    b = Browser()
+    try:
+        b.nav(res["url"])
+        _join(b)
+        b.wait(f"{VIDEO}.readyState >= 2 && {VIDEO}.currentTime > 1", timeout=40)
+        # la clave deja de derivarse; al cargar otra película la página monta otro hls.js con ese fallo
+        b.js("window.__ck = window.MuCrypt.hlsKey;"
+             "window.MuCrypt.hlsKey = function () { throw new Error('sin clave'); }; true")
+        h.command("loadfile", str(other))
+        b.wait("!document.getElementById('overlay').classList.contains('hidden') && "
+               "!document.getElementById('retry').classList.contains('hidden')", timeout=90)
+        aviso = b.js("document.getElementById('overlay-text').textContent").lower()
+        assert any(w in aviso for w in ("descifrar", "decrypt", "déchiffrer")), aviso
+        # vuelve la clave y el botón rehace el reproductor, sin recargar
+        b.js("window.MuCrypt.hlsKey = window.__ck; true")
+        b.js("document.getElementById('retry').click(); true")
+        b.wait(f"{VIDEO}.readyState >= 2 && !{VIDEO}.paused && {VIDEO}.currentTime > 1", timeout=60)
+        assert b.js("document.getElementById('overlay').classList.contains('hidden')") is True
+        assert b.js("document.getElementById('retry').classList.contains('hidden')") is True
+        d.call("share.close")
     finally:
         b.close()
