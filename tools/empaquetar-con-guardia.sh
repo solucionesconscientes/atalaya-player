@@ -13,8 +13,9 @@ mkdir -p tmp
 : > "$LOG"
 log() { printf '\n=== %s\n' "$*" | tee -a "$LOG"; }
 
-# Rojos conocidos del banco: navegador headless sin GPU, xdg-mime de qtxdg, timeouts de 180 s, intermitentes.
-CONOCIDOS='test_share_browser|test_install|test_downloads_panel|test_mu_subs|test_smoke_mpv|test_flujos_e2e'
+# Rojos conocidos del banco: xdg-mime de qtxdg, timeouts de 180 s, intermitentes. Los de navegador YA no están
+# aquí: con D-Bus neutralizado corren en server1 (~111 s) y son parte de la guarda.
+CONOCIDOS='test_install|test_downloads_panel|test_mu_subs|test_smoke_mpv|test_flujos_e2e'
 
 if [ -n "$VERSION" ]; then
   log "versión $VERSION"
@@ -32,7 +33,10 @@ PY
 fi
 
 log "batería completa"
-MU_SKIP_NETWORK=1 .venv/bin/python -m pytest tests/ -q --basetemp=/tmp/pt-guardia -p no:cacheprovider > tmp/pytest-guardia.log 2>&1
+# /var/tmp es disco de verdad: /tmp es un tmpfs de 7,6 GB y con los basetemps media batería sale en cascada.
+# D-Bus neutralizado: sin él Chrome headless no vuelve de Page.navigate y los de navegador se cuelgan.
+DBUS_SESSION_BUS_ADDRESS=/dev/null DBUS_SYSTEM_BUS_ADDRESS=/dev/null MU_SKIP_NETWORK=1 \
+  .venv/bin/python -m pytest tests/ -q --basetemp=/var/tmp/pt-guardia -p no:cacheprovider > tmp/pytest-guardia.log 2>&1
 log "pytest rc=$? · rojos: $(grep -cE '^(FAILED|ERROR)' tmp/pytest-guardia.log)"
 
 mapfile -t NUEVOS < <(grep -E '^(FAILED|ERROR)' tmp/pytest-guardia.log | sed -E 's/ - .*//' | sort -u | grep -vE "$CONOCIDOS")
@@ -41,7 +45,7 @@ for linea in "${NUEVOS[@]:-}"; do
   [ -z "$linea" ] && continue
   prueba="${linea#FAILED }"; prueba="${prueba#ERROR }"
   log "re-ejecutando a solas: $prueba"
-  if MU_SKIP_NETWORK=1 .venv/bin/python -m pytest "$prueba" -q --basetemp=/tmp/pt-solo -p no:cacheprovider >> "$LOG" 2>&1; then
+  if MU_SKIP_NETWORK=1 .venv/bin/python -m pytest "$prueba" -q --basetemp=/var/tmp/pt-solo -p no:cacheprovider >> "$LOG" 2>&1; then
     log "inestable: pasa a solas → se anota y se sigue"
     flaky=$((flaky + 1))
   else
