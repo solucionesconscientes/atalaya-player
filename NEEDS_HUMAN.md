@@ -345,3 +345,10 @@ El paso de lint Lua marca error porque no hay `luacheck` ni `luajit` instalados 
 sudo). Los tests de ASR fallan en este entorno antes de llegar a `share`; no se ha tocado nada de ASR. La batería
 seleccionada de `share` + `mu-share` sí pasa (110 pasados, 3 omitidos, 0 rojos). Para el próximo cierre, ejecutar
 `tools/check.sh` en una máquina con las herramientas de Lua y el entorno de ASR completo.
+
+## 2026-11-05 · Notion y vault en la sesión de F6 (no bloquea)
+La sesión no tiene conector de Notion, y el MCP del vault pidió permiso y no se concedió (trabajo desatendido). El
+avance de F6 (ADR-144, reserva al relay, recuperación ordenada y la medición de los cuatro criterios) queda en
+`PROGRESS.md`, `docs/DECISIONS.md` y
+`/home/server1/Documentos/informes/atalaya-f6-2026-11-05/f6-recuperacion-final.json`; falta pasarlo a la Bitácora
+y a `proyectos/` del vault desde una sesión con permiso.

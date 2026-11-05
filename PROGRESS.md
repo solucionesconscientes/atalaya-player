@@ -1,6 +1,58 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## F6 · el invitado no se queda en negro: reserva y recuperación (2026-11-05) — rama `feat/share-internet` · ADR-144
+
+- **El fallo del 4-nov.** El `src` directo del invitado quedaba con `video.error = 4`, en pausa y en negro. La
+  página solo miraba `kind:direct`, y `api/relay` a su vez solo sabía retransmitir un `direct`: un archivo local
+  que el navegador decía poder abrir no tenía vuelta, y un relay evicto o muerto dejaba una URL que devolvía 404
+  para siempre.
+- **Reserva.** `api/relay` acepta `direct`, `file` y `hls`; no se fía de `relay_url`: comprueba que el stream
+  siga en `rt.streams` y que su lista exista, y si no arranca otro desde la posición del anfitrión. La página
+  recuerda en `sessionStorage` que esa película necesita relay, así que una recarga no vuelve a probar el `src`
+  directo.
+- **Recuperación.** Ante `error` del `<video>` o `ERROR` fatal de hls.js: dos recargas del manifiesto
+  (`startLoad`/`video.load`), volver a la retransmisión (`api/relay`), una única `location.reload()` por pestaña
+  (marca en `sessionStorage`) y, si no hay nada más, aviso claro con botón «Reintentar». Un `KEY_LOAD_ERROR` va
+  directo al aviso con botón. `correct()` no toca el vídeo mientras hay un fallo en pantalla. Un `play()` rechazado
+  por `AbortError` (cambio de fuente) ya no pide gesto: solo `NotAllowedError`; antes un reintento que llegaba antes
+  de que el relay tuviera datos dejaba la sala pidiendo otro clic.
+- **Arranque más corto.** Segmentos de 2 s, `ffprobe` del URL directo en segundo plano, la lista no se anuncia
+  vacía, `startPosition` en la posición del anfitrión, hls.js precargado al entrar, medio segundo de colchón y
+  lectura de la lista con reintento ante el `PermissionError` de Windows mientras ffmpeg la renombra.
+- **Verificación (medido, no inferido).** VM Windows con Edge 156 headless y el mpv anfitrión, `?poll=1`, reloj
+  de la propia VM (mpv por tubería, Edge por CDP). `.tareas/win_f6_sample.py`; pasada final con el árbol que se
+  commitea en `/home/server1/Documentos/informes/atalaya-f6-2026-11-05/f6-recuperacion-final.json` (la anterior,
+  `f6-recuperacion.json`).
+
+  | Criterio | Resultado |
+  |---|---|
+  | `src` directo roto → vuelve al relay en < 5 s | **4,46 s** en la pasada final (4,33 s en la anterior; una pasada con el host a `load` 6,65 dio 9,36 s con la misma recuperación) |
+  | Clave rota → aviso + «Reintentar»; restaurarla y recuperar sin recargar | **Sí** (pasada final; `KEY_LOAD_ERROR` forzado; un 404 literal de `mu-key` no existe por diseño: la clave se deriva en la página) |
+  | Corte/restauración de red → recuperación < 15 s o aviso | **1,38 s** en la pasada final (2,14 s en la anterior; 10 s offline + salto del anfitrión de +8 s); sin aviso ni recarga |
+  | Sin bucles de recarga | **Sí**: ninguna recarga; el tope de una por sesión queda en `sessionStorage` |
+
+  Batería `share` + `mu-share` + i18n en server1: **163 pasados, 3 omitidos, 0 rojos** (166 recogidos;
+  `tests/test_share_*.py`, `tests/test_mu_share.py` y `tests/test_i18n.py` con `MU_SKIP_NETWORK=1`,
+  `DBUS_SESSION_BUS_ADDRESS=/dev/null DBUS_SYSTEM_BUS_ADDRESS=/dev/null` y `--basetemp=/var/tmp/ptshare_f6final`;
+  los 3 omitidos son dos de portapapeles sin pantalla y uno de VA-API). Incluye los **7 tests de navegador** de
+  `test_share_browser.py` (111 s), que aquí sí corren con D-Bus neutralizado; los dos nuevos de F6 pasan.
+- **F5 re-medida con el código final.** F6 toca `attach()` y `onMedia()`, así que se volvió a pasar
+  `win_f5_sample.py` en la VM: deriva media **0,198 s** (máx. 0,961, primera 0,584 vs última 0,108), «+10 s»
+  **+10,000 s**, «−10 s» **−10,000 s** y salto del anfitrión de +6 s converge en **1,05 s** sin pasos atrás.
+  JSON: `/home/server1/Documentos/informes/atalaya-f5-2026-11-05/f5-sincronia-f6.json`.
+- **Probar a mano.**
+  ```bash
+  # servidor1: batería de share con D-Bus neutralizado
+  DBUS_SESSION_BUS_ADDRESS=/dev/null DBUS_SYSTEM_BUS_ADDRESS=/dev/null MU_SKIP_NETWORK=1 \
+    uv run pytest tests/test_share_*.py tests/test_mu_share.py tests/test_i18n.py -q
+  # VM: con el mpv anfitrión abierto y video-180s.mp4/mkv en C:\Users\atalaya
+  #   runtime\python.exe win_f6_sample.py C:\Users\atalaya\f6-full.json
+  ```
+
+**SIGUIENTE PASO**: F6 cerrado en código, batería en verde y medido con el árbol final (criterios 1–4 y la
+sincronía de F5). Lo que queda es de Ser: revisar el diff y decidir si se sube `feat/share-internet` (sin push).
+
 ## F5 · la sincronía del invitado: deriva y saltos (2026-11-05) — rama `feat/share-internet` · ADR-143
 
 - **La deriva era el estado envejecido.** `api/me` y los eventos `state` ya llevaban `at` (cuándo leyó el
@@ -51,7 +103,8 @@ ESTADO_GLOBAL: EN_CURSO
 
 **SIGUIENTE PASO**: F6 (`.tareas/f6-fallback.md`): que el invitado no se quede en negro cuando el `src` directo
 falla; reserva a la retransmisión, reintento ordenado y botón de reintentar. La sincronía de F5 ya está medida;
-si F6 toca `attach()`/`onMedia()`, volver a pasar `f5-sincronia.json` en la VM.
+F6 tocó `attach()`/`onMedia()` y se volvió a pasar en la VM con el código final el 2026-11-05 (ver F6 arriba:
+`f5-sincronia-f6.json`).
 
 ## F4 · segmentos HLS cifrados: Cloudflare solo ve texto cifrado (2026-11-04) — rama `feat/share-internet` · ADR-142
 

@@ -2248,3 +2248,38 @@
   vuelta corrige el desfase con un error de medio RTT; con un túnel que añada varios segundos simétricos, el
   invitado puede quedar medio RTT detrás (no segundos). El test de navegador de server1 vuelve a correr con
   `DBUS_SESSION_BUS_ADDRESS=/dev/null DBUS_SYSTEM_BUS_ADDRESS=/dev/null`; el cuelgue era D-Bus, no Chrome.
+- ADR-144 · El invitado vuelve solo a la retransmisión y nunca se queda en negro (F6, 2026-11-05).
+  **El fallo.** La verificación del 4-nov dejó al invitado con el `src` directo, `video.error=4`, en pausa y en
+  negro. La página solo reaccionaba a `kind:direct` y `api/relay` solo sabía retransmitir un `direct`; un archivo
+  local que el navegador decía poder abrir no tenía vuelta, y un relay evicto o muerto dejaba para siempre una
+  `relay_url` que devolvía 404. **Reserva.** `api/relay` acepta `direct`, `file` y `hls`, y no se fía de la URL
+  guardada: comprueba que el stream siga en `rt.streams` y que su lista exista; si no, arranca otro desde la
+  posición del anfitrión. La página recuerda en `sessionStorage` que esa película necesita relay, así que una
+  recarga no vuelve a probar el src directo. **Recuperación.** Ante `error` del `<video>` o `ERROR` fatal de
+  hls.js: (1,2) recargar el manifiesto (`startLoad`/`video.load`); (3) `api/relay` (la lista viva, rehecha si
+  hace falta); (4) una única `location.reload()` por pestaña, marcada en `sessionStorage`; (5) aviso claro con
+  botón «Reintentar». Un `KEY_LOAD_ERROR` va directo al aviso con botón: no hay red que reintentar. `correct()`
+  no toca el vídeo mientras hay un fallo en pantalla, `overlay('')` no borra el aviso y un `play()` rechazado por
+  `AbortError` (cambio de fuente) no pide gesto: solo `NotAllowedError` (antes, un reintento que llegaba antes de
+  que el relay tuviera datos dejaba la sala pidiendo otro clic). **Arranque.** Para
+  cumplir los 5 s: segmentos de 2 s (nuestras grabaciones tienen keyframes cada 2 s), `ffprobe` del URL directo
+  en segundo plano y reutilizado si luego hace falta el relay, la lista no se anuncia vacía (hls.js esperaría
+  un `targetduration` entero), `startPosition` en la posición del anfitrión y no en el borde calculado para un
+  directo, hls.js precargado al entrar, medio segundo de colchón en vez de uno y lectura entera de la lista con
+  reintento ante el `PermissionError` de Windows mientras ffmpeg la renombra (`temp_file`). **Medido** en la VM
+  Windows con Edge 156 headless y mpv por su tubería, `?poll=1`, el mismo reloj dentro de la VM: el `src` directo
+  roto vuelve al relay en **4,46 s** y sigue reproduciendo en la pasada final (4,33 s en la anterior; una pasada
+  con el host a `load` 6,65 dio 9,36 s con la misma recuperación; la VM comparte los 2 núcleos del host); un
+  `KEY_LOAD_ERROR` forzado muestra el aviso y «Reintentar», y al restaurar la clave el botón recupera sin recargar
+  (un 404 literal de `mu-key` no existe: la clave se deriva en la página y su URI nunca se pide); un corte de red
+  del invitado de 10 s con un salto del anfitrión de +8 s se recupera en **1,38 s** en la pasada final (2,14 s en
+  la anterior), sin aviso ni recarga; ninguna de las recuperaciones recargó la página y el tope de una recarga por
+  sesión queda en `sessionStorage`. JSON en
+  `/home/server1/Documentos/informes/atalaya-f6-2026-11-05/f6-recuperacion-final.json` (pasada anterior en
+  `f6-recuperacion.json`); script en `.tareas/win_f6_sample.py`. **F5 re-medida** con el árbol final (F6 toca
+  `attach()`/`onMedia()`): deriva media **0,198 s** (máx. 0,961; primera 0,584 vs última 0,108), «+10 s»
+  **+10,000 s**, «−10 s» **−10,000 s** y salto del anfitrión de +6 s converge en **1,05 s** sin pasos atrás; JSON
+  en `/home/server1/Documentos/informes/atalaya-f5-2026-11-05/f5-sincronia-f6.json`. Batería `share` + `mu-share` +
+  i18n en server1: **163 pasados, 3 omitidos, 0 rojos** (166 recogidos; incluye los 7 tests de navegador, con
+  D-Bus neutralizado). **Límite conocido**: un 404 de `mu-key` no llega a la red; la prueba de la clave es el
+  mismo `KEY_LOAD_ERROR` con la derivación rota.
