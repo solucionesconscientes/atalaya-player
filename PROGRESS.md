@@ -1,6 +1,24 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## H75 · pantalla completa: Esc devuelve la ventana y el salón sigue a la realidad (2026-11-16) — ADR-145
+
+- **Lo que se veía.** En KDE Plasma, en pantalla completa, Esc no hacía nada. ADR-136 le quitó a Esc el «salir» de
+  mpv, pero el atajo solo cerraba el menú: sin menú abierto se quedaba muerto, y con él se perdió el
+  `set fullscreen no` que mpv traía por defecto. Al volver, además, la ventana no siempre volvía maximizada.
+- **Esc.** Cierra primero lo abierto (menú o panel) y, si no hay nada, sale de pantalla completa; nunca cierra la
+  aplicación (`q` y la ✕). Primero se cierra, después se devuelve la ventana.
+- **La ventana vuelve maximizada** (ADR-132). mpv restaura la geometría que tenía al entrar y, según su manual, en
+  Wayland el compositor puede restringir `window-maximized`: se vuelve a pedir solo cuando el estado dice que no
+  está maximizada (en X11 no hay parpadeo), con un segundo intento a los 0,3 s y rastro en `mpv.log`.
+- **El modo salón se apaga al salir de pantalla completa** (Esc, `f` o el botón de la barra): antes seguía
+  diciendo «activo» con las letras grandes y la ventana en su sitio.
+- **El mini** se des-maximiza antes de pedir su 30 % —una ventana maximizada ignora el tamaño en KDE y el mini
+  salía a pantalla entera— y devuelve el maximizado al salir.
+- **Verificación.** `tests/test_mu_modes.py` + `tests/test_i18n.py`: **56 pruebas, 0 rojos**
+  (`--basetemp=/var/tmp/ptmodes`), con mpv real sin ventana. **Sin medir**: lo visual en KDE/Wayland; hace falta
+  el registro del equipo de Ser.
+
 ## F6 · el invitado no se queda en negro: reserva y recuperación (2026-11-05) — rama `feat/share-internet` · ADR-144
 
 - **El fallo del 4-nov.** El `src` directo del invitado quedaba con `video.error = 4`, en pausa y en negro. La

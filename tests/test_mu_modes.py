@@ -160,6 +160,67 @@ def test_gamepad_drives_salon(modes_mpv):
         os.close(fd)
 
 
+def test_esc_sale_de_pantalla_completa_y_devuelve_la_ventana(modes_mpv):
+    """Esc sin nada abierto sale de pantalla completa (antes no hacía nada y en KDE parecía colgado) y la ventana
+    vuelve maximizada, que es como abre (ADR-132); nunca cierra la aplicación. Con un menú abierto el primer Esc
+    cierra el menú y NO sale de pantalla completa: primero se cierra lo abierto, después se devuelve la ventana."""
+    h, _d, _fifo = modes_mpv
+    assert h.get("window-maximized") is True
+
+    h.command("set_property", "fullscreen", True)
+    h.wait_property("fullscreen", lambda v: v is True, timeout=10)
+    h.command("keypress", "ESC")
+    h.wait_property("fullscreen", lambda v: v is False, timeout=10)
+    assert h.proc.poll() is None, "Esc ha cerrado el reproductor"
+    h.wait_property("window-maximized", lambda v: v is True, timeout=10)
+
+    h.command("set_property", "fullscreen", True)
+    h.wait_property("fullscreen", lambda v: v is True, timeout=10)
+    h.command("script-binding", "mu_menu/root")
+    h.wait_property("user-data/uosc/menu/type", lambda v: v == "mu-menu", timeout=15)
+    h.command("keypress", "ESC")
+    h.wait_property("user-data/uosc/menu/type", lambda v: v in (None, ""), timeout=10)
+    assert h.get("fullscreen") is True, "el primer Esc ha salido de pantalla completa con el menú abierto"
+    h.command("keypress", "ESC")
+    h.wait_property("fullscreen", lambda v: v is False, timeout=10)
+    assert h.proc.poll() is None
+
+
+def test_salir_de_pantalla_completa_apaga_el_salon(modes_mpv):
+    """El modo salón ES la pantalla completa: salir de ella (Esc, `f` o el botón) lo apaga también, y con él vuelven
+    el tamaño de letra y la escala de la interfaz. Antes el estado seguía diciendo «salón activo» sin pantalla
+    completa."""
+    h, _d, _fifo = modes_mpv
+    antes = {k: h.get(k) for k in ("sub-scale", "osd-font-size")}
+
+    h.command("script-message-to", "mu_modes", "mu-modes-set", "salon", "yes")
+    modes(h, lambda v: v["salon"])
+    assert h.get("fullscreen") is True and h.get("sub-scale") == pytest.approx(1.5)
+
+    h.command("keypress", "ESC")
+    h.wait_property("fullscreen", lambda v: v is False, timeout=10)
+    modes(h, lambda v: not v["salon"], timeout=10)
+    assert {k: h.get(k) for k in antes} == antes
+    assert uosc_opt(h, "scale") is None
+    assert h.proc.poll() is None
+
+
+def test_mini_desde_maximizado_vuelve_maximizado(modes_mpv):
+    """El mini necesita tamaño propio: desde una ventana maximizada hay que des-maximizarla antes de pedir el 30 %,
+    y al salir del mini la ventana vuelve maximizada (antes se quedaba con el tamaño del mini)."""
+    h, _d, _fifo = modes_mpv
+    h.command("set_property", "window-maximized", True)
+    h.wait_property("window-maximized", lambda v: v is True, timeout=10)
+
+    h.command("script-binding", "mu_modes/mini-toggle")
+    modes(h, lambda v: v["mini"])
+    assert h.get("window-maximized") is False and h.get("border") is False
+
+    h.command("script-binding", "mu_modes/mini-toggle")
+    modes(h, lambda v: not v["mini"])
+    assert h.get("window-maximized") is True and h.get("border") is True
+
+
 def test_js_event_layout():
     # struct js_event from linux/joystick.h: __u32 time; __s16 value; __u8 type; __u8 number
     assert EVENT.size == 8 and EVENT.format in ("<IhBB", b"<IhBB")

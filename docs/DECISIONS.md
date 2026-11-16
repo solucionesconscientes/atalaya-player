@@ -2283,3 +2283,19 @@
   i18n en server1: **163 pasados, 3 omitidos, 0 rojos** (166 recogidos; incluye los 7 tests de navegador, con
   D-Bus neutralizado). **Límite conocido**: un 404 de `mu-key` no llega a la red; la prueba de la clave es el
   mismo `KEY_LOAD_ERROR` con la derivación rota.
+
+- ADR-145 · Esc devuelve la ventana y el modo salón no miente (pantalla completa, 2026-11-16).
+  **El fallo.** ADR-136 le quitó a Esc el «salir» de mpv, pero el binding solo cerraba el menú: en pantalla completa
+  y sin nada abierto, Esc no hacía nada y en KDE Plasma parecía que el reproductor se había colgado; además se
+  perdió el `set fullscreen no` que mpv traía por defecto. **Decisión.** Esc cierra primero lo abierto (menú/panel)
+  y, si no hay nada, sale de pantalla completa; nunca cierra la aplicación (`q` y la ✕). Al salir, la ventana vuelve
+  maximizada (ADR-132): mpv restaura la geometría de la entrada y, según su manual, el compositor puede restringir
+  `window-maximized` en Wayland, así que se vuelve a pedir **solo si el estado dice que no está maximizada** (en X11
+  no hay parpadeo), con un segundo intento a los 0,3 s y rastro en `mpv.log` — esa combinación no se puede medir en
+  server1, que no tiene compositor. **El modo salón sigue a la realidad**: es pantalla completa por definición, así
+  que al salir de ella se apaga solo (Esc, `f` o el botón), en vez de seguir anunciándose activo con la ventana en
+  su sitio. **El mini** guarda y devuelve `window-maximized` y se des-maximiza antes de pedir su 30 %: una ventana
+  maximizada ignora el tamaño en KDE y el mini salía a pantalla entera. **Probado** en `tests/test_mu_modes.py`
+  (mpv real sin ventana): Esc sale y no cierra, la ventana queda maximizada, el primer Esc con menú abierto solo
+  cierra el menú, el salón se apaga al salir y el mini vuelve maximizado; 56 pruebas con i18n, 0 rojos.
+  **Sin medir**: el resultado visual en KDE/Wayland, que solo se puede confirmar con el registro del equipo de Ser.

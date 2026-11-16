@@ -528,11 +528,54 @@ mp.add_key_binding(nil, 'back', function()
   mp.commandv('script-message-to', 'mu_iptv', 'mu-back')
 end)
 
--- Esc ya no sale de mpv (era su «quit» por defecto). Con algo abierto, lo cierra; sin nada, no hace nada: no abre
--- el panel (eso es solo Retroceso y el botón «atrás» del ratón) y nunca cierra el reproductor. Salir es `q` o la ✕.
+-- Salir de pantalla completa devuelve la ventana maximizada, que es como abre (ADR-132). mpv restaura la geometría
+-- que tenía al entrar y, según su propio manual, en Wayland el compositor puede restringir `window-maximized`: en KDE
+-- la ventana volvía «restaurada» (pequeña) o no volvía. Se vuelve a pedir solo si el estado dice que no está
+-- maximizada, para no parpadear en X11 donde la opción ya sigue en «sí», y se deja rastro en el registro porque esta
+-- combinación no se puede medir aquí (server1 no tiene compositor).
+local function keep_maximized(why)
+  local modes = mp.get_property_native('user-data/mu/modes')
+  if type(modes) == 'table' and modes.mini then return end       -- el mini es pequeño a propósito
+  if mp.get_property_native('border') == false then return end   -- ventana sin bordes: no se maximiza
+  local function state()
+    return { maximized = mp.get_property_native('window-maximized'),
+             scale = mp.get_property_native('window-scale') }
+  end
+  local before = state()
+  msg.verbose(string.format('pantalla completa → ventana (%s): maximizada=%s escala=%s', why,
+                            tostring(before.maximized), tostring(before.scale)))
+  if before.maximized == false then mp.set_property_native('window-maximized', true) end
+  -- el compositor puede aplicarlo después: si sigue sin estarlo, un segundo intento y el dato al registro
+  mp.add_timeout(0.3, function()
+    if mp.get_property_native('fullscreen') then return end
+    local after = state()
+    if after.maximized == false then
+      msg.info(string.format('la ventana no volvió maximizada (%s): se vuelve a pedir', why))
+      mp.set_property_native('window-maximized', true)
+    end
+    msg.verbose(string.format('ventana tras salir (%s): maximizada=%s escala=%s', why,
+                              tostring(after.maximized), tostring(after.scale)))
+  end)
+end
+
+local was_fullscreen = mp.get_property_native('fullscreen') == true
+mp.observe_property('fullscreen', 'bool', function(_, fs)
+  local was = was_fullscreen
+  was_fullscreen = fs == true
+  -- solo al SALIR (true→false): al arrancar y al entrar no se toca nada
+  if was and fs == false then keep_maximized('cambio de estado') end
+end)
+
+-- Esc ya no sale de mpv (era su «quit» por defecto). Con algo abierto, lo cierra; sin nada abierto y en pantalla
+-- completa, devuelve la ventana maximizada; en ventana, no hace nada: no abre el panel (eso es solo Retroceso y el
+-- botón «atrás» del ratón) y nunca cierra el reproductor. Salir es `q` o la ✕.
 mp.add_key_binding(nil, 'back-close', function()
   local t = mp.get_property_native('user-data/uosc/menu/type')
-  if type(t) == 'string' and t ~= '' then mp.commandv('script-message-to', 'uosc', 'close-menu') end
+  if type(t) == 'string' and t ~= '' then
+    mp.commandv('script-message-to', 'uosc', 'close-menu')
+    return
+  end
+  if mp.get_property_native('fullscreen') then mp.set_property_native('fullscreen', false) end
 end)
 
 mp.add_key_binding(nil, 'quit-ask', quit_asking)

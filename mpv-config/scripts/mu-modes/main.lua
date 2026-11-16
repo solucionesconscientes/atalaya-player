@@ -50,17 +50,27 @@ local function set_mini(on)
   if on == state.mini then return end
   if on then
     saved.mini = { fullscreen = mp.get_property_native('fullscreen'), ontop = mp.get_property_native('ontop'),
-      border = mp.get_property_native('border'), ['window-scale'] = mp.get_property_native('window-scale') }
+      border = mp.get_property_native('border'), ['window-scale'] = mp.get_property_native('window-scale'),
+      ['window-maximized'] = mp.get_property_native('window-maximized') }
     local dw = mp.get_property_number('display-width') or 1920
     local vw = mp.get_property_number('dwidth') or 0
+    -- el estado se publica ANTES de tocar la ventana: mu-core deja de «re-maximizar» al salir de pantalla completa
+    -- en cuanto ve `mini`, y si se enterase después maximizaría el mini recién hecho.
+    state.mini = true
+    publish()
     mp.set_property_native('fullscreen', false)
+    -- una ventana maximizada ignora el tamaño pedido (KDE la deja a pantalla entera): se des-maximiza primero y el
+    -- maximizado se devuelve al salir.
+    if saved.mini['window-maximized'] then mp.set_property_native('window-maximized', false) end
     if vw > 0 then mp.set_property_number('window-scale', math.max(0.1, dw * MINI_FRACTION / vw)) end
     mp.set_property_native('border', false)
     mp.set_property_native('ontop', true)
-    state.mini = true
     osd(tr('Mini reproductor (vuelve con la misma tecla)'))
   else
-    for k, v in pairs(saved.mini or {}) do mp.set_property_native(k, v) end
+    local s = saved.mini or {}
+    for k, v in pairs(s) do if k ~= 'window-maximized' then mp.set_property_native(k, v) end end
+    -- el maximizado, al final: pedirlo antes de devolver el tamaño deja la ventana pequeña en algunos compositores
+    if s['window-maximized'] ~= nil then mp.set_property_native('window-maximized', s['window-maximized']) end
     saved.mini = nil
     state.mini = false
     osd(tr('Ventana normal'))
@@ -172,6 +182,15 @@ mp.add_key_binding(nil, 'simple-toggle', function() set_simple(not state.simple)
 mp.register_script_message('mu-modes-set', function(name, on)
   local v = on == 'yes' or on == 'true'
   if name == 'mini' then set_mini(v) elseif name == 'salon' then set_salon(v) elseif name == 'simple' then set_simple(v) end
+end)
+
+-- El modo salón ES la pantalla completa: si se sale de ella (Esc, `f` o el botón de la barra) el modo se apaga
+-- también. Antes solo se apagaba desde el menú, y el estado quedaba mintiendo: «salón activo» con letras grandes y la
+-- ventana en su sitio. Los cambios que hace set_salon(false) no vuelven a entrar (pone fullscreen=false sobre algo
+-- que ya es falso), y si el salón se activó estando ya en pantalla completa, al apagarlo se queda en pantalla
+-- completa, que es lo que había antes.
+mp.observe_property('fullscreen', 'bool', function(_, fs)
+  if fs == false and state.salon then set_salon(false) end
 end)
 
 P:on_change(function(reason)
