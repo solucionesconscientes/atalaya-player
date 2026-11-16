@@ -20,11 +20,10 @@ APP_ID=es.solucionesconscientes.Atalaya
 mkdir -p "$ROOT/tmp" "$OUT"
 
 LIMPIAR=""
+# flatpak-builder no reanuda un build a medias («App dir is not empty»): o limpia el directorio o se para. Por eso
+# se usa siempre --force-clean; lo que sí se conserva entre pasadas son el runtime y el repo de módulos (volúmenes).
 FORCE="--force-clean"
-case "${1:-}" in
-  --limpio)   LIMPIAR="rm -rf /cache/build /cache/builder" ;;
-  --reanudar) FORCE="" ;;   # reutiliza los módulos ya compilados (deps caras: ffmpeg, libplacebo)
-esac
+[ "${1:-}" = "--limpio" ] && LIMPIAR="rm -rf /cache/build /cache/builder"
 
 # --- 1 · el árbol que entra: lo mismo que empaquetaban los build_*.sh, sin modelos ni descargas de vendor ---
 echo "=== preparando el árbol ($(git -C "$ROOT" log --oneline -1)) ===" | tee "$LOG"
