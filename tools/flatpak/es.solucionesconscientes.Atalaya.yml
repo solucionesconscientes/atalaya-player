@@ -213,6 +213,20 @@ modules:
         url: https://gitlab.freedesktop.org/emersion/libdisplay-info/-/archive/0.2.0/libdisplay-info-0.2.0.tar.gz
         sha256: f7331fcaf5527251b84c8fb84238d06cd2f458422ce950c80e86c72927aa8c2b
 
+  # mpv 0.42 busca LuaJIT / Lua 5.1-5.2 y el runtime de freedesktop no trae ninguna: sin esto el build para en
+  # «Lua enabled but no suitable Lua version could be found». LuaJIT es lo que usa mpv en todas partes.
+  - name: luajit
+    buildsystem: simple
+    build-commands:
+      - make PREFIX=/app
+      - make PREFIX=/app install
+    cleanup:
+      - /share/man
+    sources:
+      - type: git
+        url: https://github.com/LuaJIT/LuaJIT.git
+        commit: 63c8f1a9b479ba5518cf6a170ff7729178bc3cfd
+
   - name: mpv
     buildsystem: meson
     config-opts:
