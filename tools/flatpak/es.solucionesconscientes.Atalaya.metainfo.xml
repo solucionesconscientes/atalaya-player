@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>es.solucionesconscientes.Atalaya</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Atalaya</name>
+  <summary>Reproductor de vídeo sencillo, con TV, descargas y subtítulos</summary>
+  <description>
+    <p>
+      Atalaya es un reproductor de vídeo pensado para gente que no quiere pelearse con el ordenador: todo se hace
+      desde un menú, sin teclas raras. Reproduce lo que tenga el equipo, sintoniza la TDT y la radio, descarga
+      vídeos y audio de internet, pone subtítulos (también transcritos con IA) y permite ver una película a la vez
+      con otra persona.
+    </p>
+    <p>
+      Está hecho sobre mpv y trae su propia copia dentro del paquete, junto con los controladores del sistema, para
+      que funcione igual en cualquier distribución.
+    </p>
+  </description>
+  <launchable type="desktop-id">es.solucionesconscientes.Atalaya.desktop</launchable>
+  <url type="homepage">https://solucionesconscientes.es/atalaya</url>
+  <developer_name>Dalmau Romaní · Soluciones Conscientes</developer_name>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.6" date="2026-11-16"/>
+  </releases>
+</component>

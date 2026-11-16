@@ -1,0 +1,264 @@
+# Atalaya Player como Flatpak: un runtime con su mpv (0.42), su ffmpeg y el intérprete de Python, y NUESTRO
+# reproductor dentro del mismo sandbox (mpv y mpvd se hablan por el socket IPC, así que no pueden estar en cajas
+# distintas). Nace de la receta de Flathub para io.mpv.Mpv (misma versión de mpv y mismas dependencias) recortada a
+# lo que este producto usa: sin DVD/Blu-ray, sin VapourSynth, sin CUDA, sin SMB ni Tesseract.
+id: es.solucionesconscientes.Atalaya
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: atalaya
+
+finish-args:
+  # red: IPTV, descargas, salas y avisos de versión nueva
+  - --share=network
+  # ventana: el mismo mpv de siempre, en X11 o Wayland
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  # GPU: sin esto no hay aceleración por hardware (la razón de ser del paquete)
+  - --device=dri
+  # abrir un vídeo del equipo y escribir los .srt al lado: el reproductor es, por definición, un lector de casa
+  - --filesystem=home
+  # MPRIS para los controles del escritorio; sin esto no aparecen las teclas multimedia
+  - --own-name=org.mpris.MediaPlayer2.atalaya
+  - --talk-name=org.gnome.SessionManager
+
+cleanup:
+  - '*.la'
+  - '*.a'
+
+modules:
+  - name: lmdb
+    sources:
+      - sha256: f3927859882eb608868c8c31586bb7eb84562a40a6bf5cc3e13b6b564641ea28
+        type: archive
+        url: https://github.com/LMDB/lmdb/archive/LMDB_0.9.22.tar.gz
+    make-install-args:
+      - prefix=/app
+    no-autogen: true
+    subdir: libraries/liblmdb
+
+  - name: xclip
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/astrand/xclip.git
+        tag: '0.13'
+        commit: 9aa7090c3b8b437c6489edca32ae43d82e0c1281
+        x-checker-data:
+          type: git
+          tag-pattern: ^(\d+\.\d+)$
+
+  - name: libass
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    config-opts:
+      - --disable-static
+      - --enable-asm
+      - --enable-harfbuzz
+      - --enable-fontconfig
+    sources:
+      - type: git
+        url: https://github.com/libass/libass.git
+        tag: 0.17.5
+        commit: 4a05d8127f525943ebf45fdc6497c9e665947f0d
+        x-checker-data:
+          type: git
+          tag-pattern: ^(\d\.\d{1,3}\.\d{1,2})$
+
+  - name: uchardet
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_STATIC=0
+      # TODO can be removed when updating to uchardet > 0.0.8
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
+        sha256: e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0
+        x-checker-data:
+          type: html
+          url: https://www.freedesktop.org/software/uchardet/releases/
+          version-pattern: uchardet-(\d\.\d+\.?\d*).tar.xz
+          url-template: https://www.freedesktop.org/software/uchardet/releases/uchardet-$version.tar.xz
+
+  - name: x264
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    config-opts:
+      - --disable-cli
+      - --enable-shared
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/x264.git
+        commit: b35605ace3ddf7c1a5d67a2eb553f034aef41d55
+        # Every commit to the stable branch is considered a release
+        # https://code.videolan.org/videolan/x264/-/issues/35
+        x-checker-data:
+          type: json
+          url: https://code.videolan.org/api/v4/projects/536/repository/branches/stable
+          commit-query: .commit.id
+          version-query: .commit.short_id
+          timestamp-query: .commit.created_at
+
+  - name: x265
+    buildsystem: cmake
+    subdir: source
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_STATIC=0
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    sources:
+      - type: git
+        url: https://bitbucket.org/multicoreware/x265_git.git
+        tag: '4.2'
+        commit: e444744c03978c1fb4e037168967020cf2648427
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+
+  - name: ffmpeg
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/ffmpeg/examples
+    config-opts:
+      - --disable-debug
+      - --disable-doc
+      - --disable-static
+      - --enable-shared
+      - --enable-gpl
+      - --enable-version3
+      - --enable-gnutls
+      - --enable-libass
+      - --enable-libdav1d
+      - --enable-libfreetype
+      - --enable-libmp3lame
+      - --enable-libopus
+      - --enable-libtheora
+      - --enable-libv4l2
+      - --enable-libvorbis
+      - --enable-libvpx
+      - --enable-libx264
+      - --enable-libx265
+      - --enable-libwebp
+      - --enable-libxml2
+      - --enable-vaapi
+      - --enable-libdrm
+      - --enable-encoder=png
+    sources:
+      - type: git
+        url: https://git.ffmpeg.org/ffmpeg.git
+        commit: 946fcce07b6dcd0331c8cc609192aeff5e1924f8
+        tag: n9.0.2
+        x-checker-data:
+          type: git
+          tag-pattern: ^n([\d.]{3,7})$
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=enabled
+      - -Dshaderc=enabled
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/libplacebo.git
+        tag: v7.387.0
+        commit: 275f7dea27924cdd34ab2e6c20e448b6bc4fab65
+        x-checker-data:
+          type: json
+          url: https://code.videolan.org/api/v4/projects/videolan%2Flibplacebo/repository/tags
+          tag-query: .[0].name
+          version-query: $tag | sub("^v";"")
+          timestamp-query: .[0].commit.created_at
+
+  - name: hwdata
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/vcrhonek/hwdata/archive/refs/tags/v0.394.tar.gz
+        sha256: b7c3fd7214a3b7c49d2661db127a712dc11cffd1799f793947aa1cb20aaf3298
+
+  - name: libdisplay-info
+    buildsystem: meson
+
+    sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/emersion/libdisplay-info/-/archive/0.2.0/libdisplay-info-0.2.0.tar.gz
+        sha256: f7331fcaf5527251b84c8fb84238d06cd2f458422ce950c80e86c72927aa8c2b
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dbuild-date=false
+      - -Dcplayer=true
+      - -Dlibmpv=false
+      - -Dlua=enabled
+      - -Djavascript=disabled
+      - -Dcplugins=disabled
+      - -Dgl=enabled
+      - -Dplain-gl=enabled
+      - -Degl=enabled
+      - -Dvulkan=enabled
+      - -Dwayland=enabled
+      - -Dx11=enabled
+      - -Dvaapi=enabled
+      - -Dvdpau=disabled
+      - -Ddrm=enabled
+      - -Dgbm=enabled
+      - -Dpulse=enabled
+      - -Dalsa=enabled
+      - -Djack=disabled
+      - -Dpipewire=disabled
+      - -Duchardet=enabled
+      - -Dzimg=disabled
+      - -Djpeg=enabled
+      - -Dlcms2=enabled
+      - -Dlibarchive=enabled
+      - -Ddvdnav=disabled
+      - -Dcdda=disabled
+      - -Dbluray=disabled
+      - -Ddvbin=disabled
+      - -Drubberband=disabled
+      - -Dwerror=false
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.42.0
+        commit: b0841e8c4d156b8403dc1876c4cbd9011eb583f3
+        x-checker-data:
+          is-main-source: true
+          type: json
+          url: https://api.github.com/repos/mpv-player/mpv/releases/latest
+          tag-query: .tag_name
+          version-query: $tag | sub("^v"; "")
+          timestamp-query: .published_at
+
+  - name: atalaya
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib
+      - cp -a . /app/lib/atalaya
+      - install -Dm755 tools/flatpak/atalaya-wrapper.sh /app/bin/atalaya
+      - install -Dm644 tools/flatpak/es.solucionesconscientes.Atalaya.desktop /app/share/applications/es.solucionesconscientes.Atalaya.desktop
+      - install -Dm644 tools/flatpak/es.solucionesconscientes.Atalaya.metainfo.xml /app/share/metainfo/es.solucionesconscientes.Atalaya.metainfo.xml
+      - install -Dm644 docs/marca/logo-sin-fondo.svg /app/share/icons/hicolor/scalable/apps/es.solucionesconscientes.Atalaya.svg
+    sources:
+      - type: dir
+        path: stage

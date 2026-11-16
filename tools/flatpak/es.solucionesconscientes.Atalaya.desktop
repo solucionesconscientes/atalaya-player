@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Atalaya
+GenericName=Reproductor de vídeo
+Comment=Reproductor de vídeo sencillo: TV y radio, descargas, subtítulos con IA y salas para ver con alguien
+Exec=atalaya %U
+Icon=es.solucionesconscientes.Atalaya
+Terminal=false
+Categories=AudioVideo;Player;Video;Audio;
+MimeType=video/mp4;video/x-matroska;video/webm;video/mpeg;video/quicktime;video/x-msvideo;video/x-ms-wmv;audio/mpeg;audio/flac;audio/ogg;audio/x-wav;audio/mp4;application/x-mpegURL;video/mp2t;
+Keywords=video;reproductor;player;mpv;tv;radio;subtítulos;descargas;
+StartupWMClass=mpv-uos
+StartupNotify=true
