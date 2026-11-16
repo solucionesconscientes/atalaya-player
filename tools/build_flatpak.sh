@@ -20,7 +20,11 @@ APP_ID=es.solucionesconscientes.Atalaya
 mkdir -p "$ROOT/tmp" "$OUT"
 
 LIMPIAR=""
-[ "${1:-}" = "--limpio" ] && LIMPIAR="rm -rf /cache/build /cache/builder"
+FORCE="--force-clean"
+case "${1:-}" in
+  --limpio)   LIMPIAR="rm -rf /cache/build /cache/builder" ;;
+  --reanudar) FORCE="" ;;   # reutiliza los módulos ya compilados (deps caras: ffmpeg, libplacebo)
+esac
 
 # --- 1 · el árbol que entra: lo mismo que empaquetaban los build_*.sh, sin modelos ni descargas de vendor ---
 echo "=== preparando el árbol ($(git -C "$ROOT" log --oneline -1)) ===" | tee "$LOG"
@@ -45,6 +49,9 @@ for f in "$ROOT"/vendor/bin/yt-dlp "$ROOT"/vendor/bin/yt-dlp.exe "$ROOT"/vendor/
   [ -f "$f" ] && cp -a "$f" "$STAGE/vendor/bin/" || true
 done
 [ -f "$ROOT/vendor/cacert.pem" ] && cp -a "$ROOT/vendor/cacert.pem" "$STAGE/vendor/" || true
+# CPython portátil: el runtime de freedesktop NO trae python3 (lo trae el SDK, que solo existe al compilar), y mpvd
+# es Python. Se lleva el mismo intérprete relocalizable que el AppImage llevaba, para no depender del runtime.
+[ -f "$ROOT/vendor/cpython-amd64.tar.gz" ] && cp -a "$ROOT/vendor/cpython-amd64.tar.gz" "$STAGE/vendor/" || true
 echo "    $(find "$STAGE" -type f | wc -l) ficheros, $(du -sh "$STAGE" | cut -f1)" | tee -a "$LOG"
 
 # --- 2 · compilar dentro del contenedor ---
@@ -53,6 +60,7 @@ docker run --rm --privileged \
   -v "$ROOT":/src:ro \
   -v "$OUT":/out \
   -v "$CACHE_VOL":/cache \
+  -v atalaya-flatpak-runtimes:/var/lib/flatpak \
   -w /src \
   -e FLATPAK_USER_DIR=/cache/flatpak \
   atalaya-flatpak-builder bash -lc '
@@ -60,7 +68,7 @@ docker run --rm --privileged \
     '"$LIMPIAR"'
     flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
     flatpak install -y --noninteractive flathub org.freedesktop.Platform//26.08 org.freedesktop.Sdk//26.08
-    flatpak-builder --state-dir=/cache/builder --repo=/cache/repo --force-clean \
+    flatpak-builder --state-dir=/cache/builder --repo=/cache/repo '"$FORCE"' \
       --disable-rofiles-fuse /cache/build /src/tools/flatpak/es.solucionesconscientes.Atalaya.yml
     flatpak build-bundle /cache/repo /out/Atalaya-x86_64.flatpak '"$APP_ID"'
   ' 2>&1 | tee -a "$LOG"

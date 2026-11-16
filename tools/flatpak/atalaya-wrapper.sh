@@ -11,7 +11,7 @@ set -eu
 ROOT=/app/lib/atalaya
 export MPV_UOS_MPV="${MPV_UOS_MPV:-/app/bin/mpv}"
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
-export PATH="/app/bin:$PATH"
+export PATH="/app/python/bin:/app/bin:$PATH"
 
 # Datos del usuario: dentro del sandbox, en $HOME/.var/app/<id>/.local/share/mpv-uos. La primera vez se copian los
 # que dejó el paquete .deb o el AppImage (posiciones, preferencias, favoritos): cambiar de formato no puede costar
