@@ -2323,3 +2323,26 @@
   binarios de su CI «son sobre todo para probar y pueden faltarles cosas», así que la reserva no se cambia por el
   número: se prueba en la VM de Windows y entonces se fija en `vendor.lock` con su SHA-256, como cualquier otra.
   Mientras no se pruebe, se queda la build de git fijada que ya hay.
+- ADR-148 · Linux se empaqueta una sola vez: Flatpak con su mpv dentro (2026-11-16).
+  **El problema que cierra.** El mpv del sistema era el contrato más frágil del producto (Debian 12 y Raspberry Pi OS
+  traen 0.35, Ubuntu 24.04 trae 0.37 y pierde el portapapeles en silencio, Debian 13 y Fedora 0.40, Arch 0.41→0.42)
+  y cada distro era una matriz de pruebas distinta. Llevar mpv dentro del .deb/AppImage se descartó en ADR-067/115
+  porque rompía la aceleración por hardware; Flatpak resuelve justo eso: el runtime trae **mpv, ffmpeg y los
+  drivers juntos y probados**, así que hay una sola versión para todas las distribuciones.
+  **Decisión.** Desde 0.1.6 el único paquete de Linux es `Atalaya-x86_64.flatpak`; el `.deb` y el AppImage dejan de
+  publicarse (los ya publicados se quedan en la release, no se borran). El reproductor va en `/app/lib/atalaya` y
+  `mpvd` **dentro del mismo sandbox**: mpv y el daemon se hablan por el socket IPC, así que no pueden estar en cajas
+  distintas — es la razón por la que no vale «instalar el Flatpak de mpv y enchufarse a él».
+  **Consecuencias, dichas antes de prometerlas.** (1) Se pierde HDMI-CEC y el mando por `/dev/input` salvo
+  `--device=all`, que no se pone. (2) El primer arranque baja el runtime (cientos de MB, hasta ~1,5 GB): en un equipo
+  viejo se nota, y por eso se dice en la web. (3) Los datos del usuario pasan a `~/.var/app/<id>/.local/share/mpv-uos`
+  con **copia** de los del paquete viejo la primera vez (no se mueven): cambiar de formato no puede costar el
+  historial de nadie. (4) El aviso de versión nueva (H68) deja de tener sentido en Linux —Flatpak se actualiza solo—
+  y se queda solo en Windows. (5) Flathub, más adelante: primero el `.flatpak` en nuestra release, con revisión y
+  repo mantenido cuando lleve meses sin romperse.
+  **Cómo se construye sin root.** `tools/build_flatpak.sh` corre `flatpak-builder` en un contenedor Docker
+  (`--privileged`, imagen propia con flatpak-builder 1.4.4); server1 no tiene flatpak ni sudo y no hace falta
+  instalarlo ni hacer push. El árbol se saca con `git archive HEAD` (lo commiteado, no el árbol sucio) y la receta
+  viene de la de Flathub para `io.mpv.Mpv`, recortada a lo que este producto usa: mpv 0.42 del tag, ffmpeg,
+  libplacebo, libass, x264/x265 y uchardet; sin DVD/Blu-ray, VapourSynth, CUDA, SMB ni Tesseract.
+  **Pendiente de medir**: la batería dentro del sandbox y el consumo real (mpv del runtime frente al del sistema).

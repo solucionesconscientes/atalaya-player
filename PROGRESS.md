@@ -1,6 +1,18 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## H78 · Linux en un solo paquete: Flatpak con mpv dentro (2026-11-16) — ADR-148
+
+- **Decisión de Ser**: para Linux, solo Flatpak. Nada de `.deb` ni AppImage en la próxima entrega: una versión de
+  mpv para todas las distros en vez de una matriz de cuatro, y una sola batería de pruebas.
+- **Lo que ya está en el repo**: `tools/build_flatpak.sh` (flatpak-builder dentro de Docker, sin sudo ni push),
+  `tools/flatpak/es.solucionesconscientes.Atalaya.yml` (mpv 0.42 del tag + ffmpeg + libplacebo + libass + x264/x265,
+  sin DVD/Blu-ray/VapourSynth/CUDA/SMB/Tesseract), lanzador `atalaya`, `.desktop`, metainfo e icono.
+- **Datos**: dentro de `~/.var/app/<id>/.local/share/mpv-uos`, con **copia** de los del `.deb`/AppImage la primera
+  vez. Se pierde HDMI-CEC y el mando por `/dev/input` (no se pone `--device=all`).
+- **Estado**: primer build lanzado (runtime 26.08 + compilación de x264/x265/ffmpeg/libplacebo/mpv; horas en dos
+  núcleos). Falta: batería dentro del sandbox, medición de consumo y actualizar la web (botones de `.deb`/AppImage).
+
 ## H76 · mpv 0.42: el portapapeles y «abrir URL pegada» (2026-11-16) — ADR-146 · ADR-147
 
 - **Lo que rompe 0.42.** `clipboard/text` deja de devolver el contenido actual sin monitorización: hay que pedir
