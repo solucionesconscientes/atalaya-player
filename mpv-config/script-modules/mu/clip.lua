@@ -56,7 +56,15 @@ end
 
 -- read() → what is in the clipboard right now, or ''. mpv 0.41 reads it natively; a build or a session without a
 -- backend simply has nothing to give, and that is not an error: the caller asks for the text instead.
+-- mpv 0.42 dejó de devolver el contenido actual si no hay monitorización (--clipboard-monitor está en «no» por
+-- defecto, y en Wayland solo la tiene el backend `wayland`): hay que pedir `update-clipboard text` antes de leer o
+-- llega vacío y «Abrir URL pegada» se queda sin nada. En 0.41 el comando no existe y el pcall lo deja pasar.
+local function refresh()
+  pcall(mp.command_native, { 'update-clipboard', 'text', 100 })
+end
+
 function M.read()
+  refresh()
   local ok, text = pcall(mp.get_property, 'clipboard/text')
   return (ok and type(text) == 'string') and text or ''
 end

@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from mpvd.hashing import file_hash
 from mpvd.jobs import Job, Priority, Status
+from mpvd import clipboard
 from mpvd.library import tmdb as tmdb_mod
 from mpvd.library.opensubtitles import API_URL as OSUB_URL
 from mpvd.library.opensubtitles import MIN_HASH_SIZE, OpenSubtitles, OpenSubtitlesError, rank
@@ -541,7 +542,8 @@ class LibraryService:
         # la propiedad se lee en cada llamada (no al importar): los tests apuntan a un user-data propio
         prop = os.environ.get("MPVD_LIBRARY_CLIPBOARD_PROP") or CLIPBOARD_PROP
         try:
-            value = await session.client.get_property(prop, timeout=5)
+            # mpv 0.42 exige `update-clipboard` antes de leer (mpvd.clipboard lo hace; en 0.41 no existe y se ignora)
+            value = await clipboard.read(session.client, prop)
         except Exception:  # noqa: BLE001 - nunca repetir lo que hubiera en el portapapeles
             raise RpcError(UNAVAILABLE, t("no se pudo leer el portapapeles del reproductor")) from None
         value = str(value or "").strip()

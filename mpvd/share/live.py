@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote, urlsplit
 
+from mpvd import clipboard
 from mpvd.control import pick_session
 from mpvd.convert import hw as hw_mod
 from mpvd.convert.presets import HwPlan
@@ -494,7 +495,8 @@ class LiveService:
                 raise RpcError(INVALID_PARAMS, t("key_from solo admite 'clipboard'"))
             try:
                 session = pick_session(self.server, None, ctx_session)
-                value = await session.client.get_property(self.clipboard_prop, timeout=5)
+                # mpv 0.42 exige `update-clipboard` antes de leer; en 0.41 el comando no existe y se ignora
+                value = await clipboard.read(session.client, self.clipboard_prop)
             except Exception:  # noqa: BLE001 - never echo what the clipboard had
                 raise RpcError(UNAVAILABLE, t("no se pudo leer el portapapeles")) from None
             if not isinstance(value, str) or not value.strip():

@@ -2299,3 +2299,27 @@
   (mpv real sin ventana): Esc sale y no cierra, la ventana queda maximizada, el primer Esc con menú abierto solo
   cierra el menú, el salón se apaga al salir y el mini vuelve maximizado; 56 pruebas con i18n, 0 rojos.
   **Sin medir**: el resultado visual en KDE/Wayland, que solo se puede confirmar con el registro del equipo de Ser.
+
+- ADR-146 · mpv 0.42: el portapapeles pide refresco y el clic derecho no choca (2026-11-16).
+  **Lo que cambia y nos toca**, leído del manual y del `etc/input.conf` del tag v0.42.0 (no de memoria): (1)
+  `clipboard/text` ya no devuelve el contenido actual si no hay monitorización (`--clipboard-monitor` está en «no»
+  por defecto y en Wayland solo la tiene el backend `wayland`): hay que ejecutar `update-clipboard text` antes de
+  leer o llega vacío. (2) El clic derecho **no** queda ligado al menú de contexto por defecto: en el `input.conf`
+  que se envía está comentado (`#MBTN_RIGHT script-binding select/context-menu`), así que uosc conserva su
+  secundario y no hay conflicto. (3) `--ytdl-format` recupera `bestvideo*+bestaudio/bestvideo+bestaudio/best` como
+  valor por defecto. (4) `--tls-verify` pasa a «sí» por defecto. **Decisión.** El portapapeles se lee siempre por
+  un sitio único que refresca antes: `mu.clip.read()` en Lua y `mpvd/clipboard.py` en el daemon, y los dos ignoran
+  el error en 0.41, donde el comando no existe. «Abrir URL pegada» deja de expandir `${clipboard/text}` dentro del
+  comando —en 0.42 esa expansión llega vacía y `loadfile` fallaba en silencio— y va por
+  `mu_menu/open-clipboard`, que avisa «El portapapeles está vacío». El TLS estricto se acepta tal cual: es lo
+  correcto y lo que ya hacía el sistema; si una lista IPTV con certificado malo deja de sonar, se arregla en esa
+  fuente, no bajando la verificación para todos. **Probado** en `tests/test_clipboard.py` (orden del refresco y
+  tolerancia a 0.41) y `tests/test_mu_menu.py::test_abrir_url_pegada_pasa_por_mu_clip` (la fila no expande la
+  propiedad y avisa con el portapapeles vacío). **Sin medir**: la matriz con un binario 0.42 real; en Linux no hay
+  paquete para Debian 13 sin compilarlo, y en Windows sí existe build del tag (ver ADR-147).
+- ADR-147 · La reserva de mpv para Windows puede venir del tag, no de una nightly (2026-11-16).
+  La release v0.42.0 **sí** publica binarios de primera mano (`mpv-v0.42.0-x86_64-pc-windows-msvc.zip`,
+  `...w64-mingw32-full.zip`), además de las builds diarias de git de shinchiro. La página de mpv avisa de que los
+  binarios de su CI «son sobre todo para probar y pueden faltarles cosas», así que la reserva no se cambia por el
+  número: se prueba en la VM de Windows y entonces se fija en `vendor.lock` con su SHA-256, como cualquier otra.
+  Mientras no se pruebe, se queda la build de git fijada que ya hay.

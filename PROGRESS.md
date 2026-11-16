@@ -1,6 +1,21 @@
 # PROGRESS
 ESTADO_GLOBAL: EN_CURSO
 
+## H76 · mpv 0.42: el portapapeles y «abrir URL pegada» (2026-11-16) — ADR-146 · ADR-147
+
+- **Lo que rompe 0.42.** `clipboard/text` deja de devolver el contenido actual sin monitorización: hay que pedir
+  `update-clipboard text` antes de leer. En nuestro código se leía en tres sitios (Lua por `mu.clip`, y el daemon
+  en `library` y `live`) y, además, una fila del menú expandía `${clipboard/text}` dentro del comando, que en 0.42
+  llega vacío y hace que `loadfile` falle en silencio.
+- **Arreglo en un solo sitio.** `mu.clip.read()` refresca antes de leer y `mpvd/clipboard.py` hace lo mismo para el
+  daemon; los dos ignoran el error en 0.41, donde el comando no existe. La fila pasa por
+  `mu_menu/open-clipboard` y avisa «El portapapeles está vacío» en vez de cargar nada.
+- **Lo que NO hay que tocar.** El clic derecho no queda ligado al menú de contexto (en el `input.conf` del tag está
+  comentado) y `ytdl-format` recupera un valor por defecto que no pisa el nuestro. `--tls-verify` pasa a «sí»: se
+  acepta.
+- **Verificación.** `tests/test_clipboard.py` + el test de la fila en `tests/test_mu_menu.py` + `test_i18n`:
+  **52 pruebas, 0 rojos**. La batería completa va en la misma pasada del empaquetado.
+
 ## H75 · pantalla completa: Esc devuelve la ventana y el salón sigue a la realidad (2026-11-16) — ADR-145
 
 - **Lo que se veía.** En KDE Plasma, en pantalla completa, Esc no hacía nada. ADR-136 le quitó a Esc el «salir» de

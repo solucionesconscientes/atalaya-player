@@ -802,7 +802,7 @@ local CURATED = {
   { title = tr('Restablecer preferencias'), cmd = 'script-message-to mu_prefs reset-ask' },
   -- Los títulos de las teclas. Hasta H46 los daba el comentario `#!` de input.conf, que de paso construía
   -- un segundo menú; ahora viven aquí, en un solo sitio y en español. La tecla no se escribe: se lee.
-  { title = tr('Abrir URL o ruta copiada (portapapeles)'), cmd = 'loadfile "${clipboard/text}" replace' },
+  { title = tr('Abrir URL o ruta copiada (portapapeles)'), cmd = 'script-binding mu_menu/open-clipboard' },
   { title = tr('Abrir URL…'), cmd = 'script-binding mu_ytdl/open-url' },
   { title = tr('Abrir archivo'), cmd = 'script-binding uosc/open-file' },
   { title = tr('Abrir carpeta de configuración'), cmd = 'script-binding uosc/open-config-directory' },
@@ -1399,6 +1399,14 @@ set_pref = function(name, value)
   publish()
   osd((PREF_LABELS[name] or name) .. ': ' .. (opts[name] and 'activado' or 'desactivado'))
 end
+
+-- «Abrir URL o ruta copiada»: el texto se lee por mu.clip, que en mpv 0.42 pide `update-clipboard` antes de leer.
+-- Con la expansión `${clipboard/text}` que había aquí, en 0.42 llegaba vacía y `loadfile` fallaba en silencio.
+mp.add_key_binding(nil, 'open-clipboard', function()
+  local text = clip.first_line()
+  if text == '' then return osd(tr('El portapapeles está vacío')) end
+  mp.commandv('loadfile', text, 'replace')
+end)
 
 mp.add_key_binding(nil, 'root', open_root)
 mp.add_key_binding(nil, 'palette', open_palette)

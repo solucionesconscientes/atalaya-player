@@ -271,3 +271,24 @@ def test_una_reproduccion_se_cuenta_una_vez(menu_mpv, media_dir, tmp_path):
     # y un guardado de posición sin declarar reproducción no cuenta nunca
     d.call("watch.update", {"path": str(video), "position": 13})
     assert [r["plays"] for r in d.call("watch.recents")] == [3]
+
+
+def test_abrir_url_pegada_pasa_por_mu_clip(menu_mpv, media_dir):
+    """La fila ya no lleva `${clipboard/text}` dentro del comando: en mpv 0.42 esa expansión llega vacía (sin
+    monitorización el portapapeles no se refresca solo) y `loadfile` fallaba en silencio. Ahora va a un binding que
+    lee por mu.clip, que pide `update-clipboard` antes, y avisa cuando no hay nada que abrir."""
+    from pathlib import Path as _P
+
+    fuente = (_P(__file__).resolve().parents[1] / "mpv-config/scripts/mu-menu/main.lua").read_text(encoding="utf-8")
+    assert 'loadfile "${clipboard/text}"' not in fuente, "alguna fila vuelve a expandir la propiedad del portapapeles"
+    assert "mu_menu/open-clipboard" in fuente
+
+    h, _d = menu_mpv
+    h.command("loadfile", str(media_dir / "video30.mkv"))
+    h.wait_property("duration", lambda v: isinstance(v, (int, float)) and v > 0, timeout=20)
+
+    # sin portapapeles (headless) avisa en vez de intentar cargar una cadena vacía
+    h.command("script-binding", "mu_menu/open-clipboard")
+    h.wait_property("user-data/mu/menu-osd", lambda v: v == "El portapapeles está vacío", timeout=10)
+    assert h.proc.poll() is None
+    assert h.get("path").endswith("video30.mkv")     # no ha cambiado lo que se estaba viendo
