@@ -1,5 +1,32 @@
 # NEEDS_HUMAN — cosas que necesita Ser (con el comando exacto)
 
+## 2026-11-16 · Pantalla completa en KDE: una prueba de dos minutos (y el registro si falla)
+
+**Qué cambió.** Esc ya no se queda muerto en pantalla completa: cierra lo que esté abierto y, si no hay nada,
+devuelve la ventana maximizada (ADR-145). El modo salón se apaga al salir de pantalla completa y el mini ya no sale
+a pantalla entera. Está probado con mpv real sin ventana, pero **el resultado visual en KDE/Wayland no se puede
+medir en server1**: aquí no hay compositor.
+
+**La prueba, con el paquete 0.1.6.** Abre un vídeo, pulsa `f` (o el botón de pantalla completa) y después `Esc`.
+Tiene que volver la ventana maximizada con el vídeo dentro, y `Esc` no cierra la aplicación.
+
+**Si la ventana no vuelve maximizada** (o vuelve pequeña), arráncalo desde una consola con el registro y mándame el
+fichero:
+
+```bash
+bin/mpv-uos --log-file=/tmp/atalaya-ventana.log --msg-level=mu-core=v --keep-open=yes ~/Vídeos/loquesea.mkv
+# f → Esc → cerrar el reproductor
+```
+
+En Windows, desde PowerShell en la carpeta del programa:
+
+```powershell
+.\bin\mpv-uos.cmd --log-file="$env:TEMP\atalaya-ventana.log" --msg-level=mu-core=v "$env:USERPROFILE\Videos\loquesea.mkv"
+```
+
+En ese registro busco `pantalla completa → ventana (…)` y `ventana tras salir (…)`: dicen qué cree mpv que pasó con
+`window-maximized` y con la escala de la ventana, que es justo lo que Wayland puede ignorar.
+
 ## 2026-11-04 · F4: probar en un navegador de verdad que el invitado descifra el HLS
 
 **Qué falta.** El servidor está probado de punta a punta (desafío-respuesta HMAC, segmentos AES-128 servidos por el
