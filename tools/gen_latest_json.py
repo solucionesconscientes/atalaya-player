@@ -50,10 +50,10 @@ def paquetes(v: str) -> list[dict]:
     salida = []
     patron = re.compile(re.escape(v))
     for f in sorted(DIST.iterdir()):
-        if not f.is_file() or f.suffix.lower() not in {".deb", ".appimage", ".exe", ".zip"}:
+        if not f.is_file() or f.suffix.lower() not in {".deb", ".appimage", ".exe", ".zip", ".flatpak"}:
             continue
-        # los AppImage no llevan versión en el nombre (Atalaya-x86_64.AppImage): se aceptan tal cual
-        if not patron.search(f.name) and f.suffix.lower() != ".appimage":
+        # AppImage y Flatpak no llevan versión en el nombre (Atalaya-x86_64.flatpak): se aceptan tal cual
+        if not patron.search(f.name) and f.suffix.lower() not in (".appimage", ".flatpak"):
             continue
         salida.append({"name": f.name, "sha256": sha256(f), "size": f.stat().st_size})
     return salida
@@ -80,7 +80,7 @@ def main() -> int:
     destino = DIST / "latest.json"
     destino.write_text(texto, encoding="utf-8")
     print(f"{destino} · {len(datos['files'])} paquetes · versión {v}")
-    faltan = [n for n in ("setup.exe", ".deb", ".AppImage") if not any(n in p["name"] for p in datos["files"])]
+    faltan = [n for n in ("setup.exe", ".flatpak") if not any(n in p["name"] for p in datos["files"])]
     if faltan:
         print(f"aviso: no hay paquete de {', '.join(faltan)} en dist/", file=sys.stderr)
     return 0

@@ -255,3 +255,29 @@ def test_por_la_puerta_del_demonio_tambien(tmp_path, monkeypatch, encendido):
     assert consulta["newer"] is True and consulta["current"] == __version__
     assert consulta["files"][0]["sha256"] == "ab" * 32
     assert (tmp_path / "data/updates.json").is_file(), "lo dicho se apunta, y sobrevive a cerrar el programa"
+
+
+def test_el_flatpak_cuenta_como_paquete_de_linux(tmp_path, monkeypatch):
+    """Linux ya solo se publica como Flatpak: si el generador no lo ve, latest.json lo omite.
+
+    Se vio al publicar la 0.1.6: `latest.json` salía con el .exe y el zip y sin el .flatpak,
+    porque el filtro solo conocía .deb y .AppImage.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parent.parent
+    spec = importlib.util.spec_from_file_location("gen_latest", raiz / "tools" / "gen_latest_json.py")
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    for nombre in ("Atalaya-x86_64.flatpak", "Atalaya-9.9.9-setup.exe",
+                   "atalaya-player_0.1.0_amd64.deb"):
+        (dist / nombre).write_bytes(b"x")
+    monkeypatch.setattr(gen, "DIST", dist)
+    nombres = {p["name"] for p in gen.paquetes("9.9.9")}
+    assert "Atalaya-x86_64.flatpak" in nombres, "el Flatpak no lleva versión en el nombre"
+    assert "Atalaya-9.9.9-setup.exe" in nombres
+    assert all(".deb" not in n for n in nombres), "un .deb de otra versión no se publica"
