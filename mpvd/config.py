@@ -24,12 +24,18 @@ def _package_root() -> Path:
 
 
 def project_root() -> Path | None:
-    """Project checkout root (dev mode) or None when running installed."""
+    """Project checkout root (dev mode) or None when running installed.
+
+    Un paquete instalado (Flatpak, AppImage) también lleva `pyproject.toml` y `mpv-config/`,
+    pero su árbol es de **solo lectura**: si no se puede escribir, no es un checkout y la caché
+    tiene que ir a los directorios del usuario. Sin esta comprobación, el daemon intentaba crear
+    `<raíz>/.cache` dentro de `/app` y moría con «Read-only file system» al arrancar.
+    """
     env = os.environ.get("MPV_UOS_ROOT")
     candidates = [Path(env)] if env else []
     candidates.append(_package_root())
     for c in candidates:
-        if (c / "pyproject.toml").exists() and (c / "mpv-config").is_dir():
+        if (c / "pyproject.toml").exists() and (c / "mpv-config").is_dir() and os.access(c, os.W_OK):
             return c.resolve()
     return None
 

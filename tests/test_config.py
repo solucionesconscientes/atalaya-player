@@ -112,3 +112,26 @@ def test_win32_sin_bundle_no_toca_el_entorno(tmp_path, monkeypatch):
     monkeypatch.delenv("SSL_CERT_FILE", raising=False)
     assert use_bundled_ca_bundle(tmp_path / "no-existe.pem", "win32") is False
     assert "SSL_CERT_FILE" not in __import__("os").environ
+
+
+def test_un_arbol_de_solo_lectura_no_es_un_checkout(tmp_path, monkeypatch):
+    """El paquete instalado lleva pyproject.toml, pero no es un checkout: su caché no va ahí.
+
+    Sin esto, mpvd intentaba escribir `/app/lib/atalaya/.cache` dentro del Flatpak y moría al
+    arrancar con «Read-only file system».
+    """
+    from mpvd import config as cfg
+
+    raiz = tmp_path / "paquete"
+    (raiz / "mpv-config").mkdir(parents=True)
+    (raiz / "pyproject.toml").write_text("")
+    monkeypatch.setenv("MPV_UOS_ROOT", str(raiz))
+    # Aislado: si el árbol de verdad está detrás, siempre sería un checkout.
+    monkeypatch.setattr(cfg, "_package_root", lambda: tmp_path / "no-existe")
+    assert cfg.project_root() == raiz.resolve()
+    raiz.chmod(0o555)
+    try:
+        assert cfg.project_root() is None
+        assert cfg.default_cache_dir() != raiz / ".cache"
+    finally:
+        raiz.chmod(0o755)
