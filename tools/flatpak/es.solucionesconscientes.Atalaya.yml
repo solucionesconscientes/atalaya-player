@@ -289,9 +289,9 @@ modules:
     build-commands:
       - mkdir -p /app/lib
       - cp -a . /app/lib/atalaya
-      # CPython 3.12 relocalizable: el runtime no trae python3 y mpvd es Python (el tarball trae `python/` arriba)
-      - mkdir -p /app/python
-      - tar -xzf /app/lib/atalaya/vendor/cpython-amd64.tar.gz -C /app/python --strip-components=1
+      # NADA de CPython vendorizado: el runtime 26.08 trae /usr/bin/python3 (3.14) y mpvd ya
+      # arranca con él. El tarball relocalizable del AppImage no carga en este sandbox
+      # («undefined symbol: , version»), y meter 33 MB de intérprete para nada es peor paquete.
       - install -Dm755 tools/flatpak/atalaya-wrapper.sh /app/bin/atalaya
       - install -Dm644 tools/flatpak/es.solucionesconscientes.Atalaya.desktop /app/share/applications/es.solucionesconscientes.Atalaya.desktop
       - install -Dm644 tools/flatpak/es.solucionesconscientes.Atalaya.metainfo.xml /app/share/metainfo/es.solucionesconscientes.Atalaya.metainfo.xml

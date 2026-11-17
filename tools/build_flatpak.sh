@@ -48,9 +48,8 @@ for f in "$ROOT"/vendor/bin/yt-dlp "$ROOT"/vendor/bin/yt-dlp.exe "$ROOT"/vendor/
   [ -f "$f" ] && cp -a "$f" "$STAGE/vendor/bin/" || true
 done
 [ -f "$ROOT/vendor/cacert.pem" ] && cp -a "$ROOT/vendor/cacert.pem" "$STAGE/vendor/" || true
-# CPython portátil: el runtime de freedesktop NO trae python3 (lo trae el SDK, que solo existe al compilar), y mpvd
-# es Python. Se lleva el mismo intérprete relocalizable que el AppImage llevaba, para no depender del runtime.
-[ -f "$ROOT/vendor/cpython-amd64.tar.gz" ] && cp -a "$ROOT/vendor/cpython-amd64.tar.gz" "$STAGE/vendor/" || true
+# CPython NO se lleva: el runtime 26.08 trae /usr/bin/python3 (3.14) y mpvd corre con él. El tarball
+# relocalizable del AppImage no carga en el sandbox, así que meterlo era peso muerto y un fallo.
 echo "    $(find "$STAGE" -type f | wc -l) ficheros, $(du -sh "$STAGE" | cut -f1)" | tee -a "$LOG"
 
 # --- 2 · compilar dentro del contenedor ---
