@@ -295,7 +295,13 @@ modules:
       - install -Dm755 tools/flatpak/atalaya-wrapper.sh /app/bin/atalaya
       - install -Dm644 tools/flatpak/es.solucionesconscientes.Atalaya.desktop /app/share/applications/es.solucionesconscientes.Atalaya.desktop
       - install -Dm644 tools/flatpak/es.solucionesconscientes.Atalaya.metainfo.xml /app/share/metainfo/es.solucionesconscientes.Atalaya.metainfo.xml
-      - install -Dm644 docs/marca/logo-sin-fondo.svg /app/share/icons/hicolor/scalable/apps/es.solucionesconscientes.Atalaya.svg
+      # Icono en PNG: appstreamcli de este SDK no sabe leer SVG («Unrecognized image») y el
+      # build se paraba al componer los metadatos. 128 y 256 para que no se vea borroso.
+      - install -Dm644 docs/marca/logo-128.png /app/share/icons/hicolor/128x128/apps/es.solucionesconscientes.Atalaya.png
+      - install -Dm644 docs/marca/logo-256.png /app/share/icons/hicolor/256x256/apps/es.solucionesconscientes.Atalaya.png
+      # mpv instala su propio .desktop, .svg y metainfo: son de otro programa y al componer
+      # metadatos salen como componentes ajenos (filters-but-no-output, que es un error).
+      - rm -f /app/share/applications/mpv.desktop /app/share/metainfo/mpv.metainfo.xml /app/share/icons/hicolor/scalable/apps/mpv.svg
     sources:
       - type: dir
         path: stage

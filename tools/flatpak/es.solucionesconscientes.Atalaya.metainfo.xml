@@ -19,7 +19,9 @@
   </description>
   <launchable type="desktop-id">es.solucionesconscientes.Atalaya.desktop</launchable>
   <url type="homepage">https://solucionesconscientes.es/atalaya</url>
-  <developer_name>Dalmau Romaní · Soluciones Conscientes</developer_name>
+  <developer id="es.solucionesconscientes">
+    <name>Dalmau Romaní · Soluciones Conscientes</name>
+  </developer>
   <content_rating type="oars-1.1"/>
   <releases>
     <release version="0.1.6" date="2026-11-16"/>
